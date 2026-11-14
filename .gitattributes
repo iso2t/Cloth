@@ -14,5 +14,6 @@ CMakeLists.txt text eol=lf
 *.ts text eol=lf
 *.txt text eol=lf
 Makefile text eol=lf
+.editorconfig text eol=lf
 
 *.png binary

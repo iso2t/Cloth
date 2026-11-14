@@ -39,7 +39,7 @@ int main(int argv, char *argc[]) {
             return status
         }
 
-        )";
+    )";
 
 	ClothObject co("Main", textSource, Extension::CLOTH_OBJECT);
 	Lexer lexer(co);
