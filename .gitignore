@@ -1,0 +1,10 @@
+/build/
+/examples/target/
+/.cache/
+/.vscode/*.log
+compile_commands.json
+
+.idea/
+build/
+.vscode/
+.zed/

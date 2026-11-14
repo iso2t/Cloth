@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=none
+BasedOnStyle: LLVM
+Standard: Latest
+CommentPragmas: '^ Part of the Cloth Compiler project'
+DerivePointerAlignment: false
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^"Compiler/'
+    Priority: 1
+  - Regex: '^"'
+    Priority: 2
+  - Regex: '^<'
+    Priority: 3
+PointerAlignment: Right
