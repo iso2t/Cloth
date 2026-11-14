@@ -1,0 +1,18 @@
+Welcome!
+========
+
+Hello Weavers! This is the main documentation for the Cloth compiler project.
+
+The Cloth compiler is the core of the Cloth programming language. Cloth is defined
+as a modern, strongly-typed object-oriented language aimed at low level systems work
+with an upfront a high level type system. It feels somewhat familiar to C-style
+languages with inspirations taken from many languages, including C, C++, Java, Kotlin,
+and Go.
+
+Cloth is not a garbage compiled language. Instead, it has an owner/operator model, where
+only the owner of the reference can destroy the reference. The main goal for Cloth is to
+hide boiler plate pointers and references.
+
+Cloth also incorporates a first class state system, in which an object can exist in multiple
+states or no states, allowing certain parameters to be valid or invalid, moving beyond just
+normal boolean expressions with explicit syntax.
