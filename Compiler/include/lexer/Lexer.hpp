@@ -15,25 +15,25 @@ struct Position {
 class Lexer {
     public:
 	Lexer(const std::string &src)
-		: source(src)
-	{
+		: source(src) {
 	}
+
 	Lexer(const ClothObject &co)
-		: source(co.contents())
-	{
+		: source(co.contents()) {
 	}
+
 	Lexer(const char *src)
-		: source(src)
-	{
+		: source(src) {
 	}
+
 	Lexer(const char *src, size_t length)
-		: source(std::string(src, length))
-	{
+		: source(std::string(src, length)) {
 	}
+
 	Lexer(const ClothObject &co, size_t length)
-		: source(std::string(co.contents(), length))
-	{
+		: source(std::string(co.contents(), length)) {
 	}
+
 	~Lexer() = default;
 
 	std::vector<Token> scanTokens();
@@ -52,8 +52,7 @@ class Lexer {
 	char advance();
 	char peek() const;
 	bool isAtEnd() const;
-	void addToken(TokenType type, TokenSpan span,
-		      const std::string &lexeme);
+	void addToken(TokenType type, TokenSpan span, const std::string &lexeme);
 	TokenSpan span();
 	TokenSpan cursorSpan();
 	Tokens::Operator matchOperator();

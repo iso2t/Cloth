@@ -2,8 +2,7 @@
 
 #include <string_view>
 
-namespace Tokens
-{
+namespace Tokens {
 
 enum Keyword {
 	k_MOD,

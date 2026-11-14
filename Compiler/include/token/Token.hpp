@@ -13,11 +13,8 @@ struct TokenSpan {
 	size_t endLine;
 	size_t endCol;
 
-	std::string to_string() const
-	{
-		return std::to_string(startLine) + ":" +
-		       std::to_string(startCol) + "-" +
-		       std::to_string(endLine) + ":" + std::to_string(endCol);
+	std::string to_string() const {
+		return std::to_string(startLine) + ":" + std::to_string(startCol) + "-" + std::to_string(endLine) + ":" + std::to_string(endCol);
 	}
 };
 
@@ -55,53 +52,46 @@ class Token {
 	Token(std::string lexeme, TokenType type, TokenSpan span)
 		: m_span(span)
 		, m_type(type)
-		, m_lexeme(std::move(lexeme))
-	{
+		, m_lexeme(std::move(lexeme)) {
 	}
+
 	Token(std::string lexeme, Tokens::Operator op, TokenSpan span)
 		: m_span(span)
 		, m_type(TokenType::Operator)
 		, m_operator(op)
-		, m_lexeme(std::move(lexeme))
-	{
+		, m_lexeme(std::move(lexeme)) {
 	}
+
 	Token(char *lexeme, TokenType type, TokenSpan span)
 		: m_span(span)
 		, m_type(type)
-		, m_lexeme(lexeme, sizeof(lexeme))
-	{
+		, m_lexeme(lexeme, sizeof(lexeme)) {
 	}
+
 	Token(const Token &other) = default;
 
-	const std::string &get_lexeme() const
-	{
+	const std::string &get_lexeme() const {
 		return m_lexeme;
 	}
-	TokenSpan get_span() const
-	{
+
+	TokenSpan get_span() const {
 		return m_span;
 	}
-	TokenType get_type() const
-	{
+
+	TokenType get_type() const {
 		return m_type;
 	}
 
-	std::string_view type_name() const
-	{
-		return m_operator == Tokens::o_ERROR ?
-			       ::to_string(m_type) :
-			       Tokens::operator_name(m_operator);
+	std::string_view type_name() const {
+		return m_operator == Tokens::o_ERROR ? ::to_string(m_type) : Tokens::operator_name(m_operator);
 	}
 
-	std::string to_string() const
-	{
-		return "{ l: " + m_lexeme + " t: " + std::string(type_name()) +
-		       " s: " + m_span.to_string() + " }";
+	std::string to_string() const {
+		return "{ l: " + m_lexeme + " t: " + std::string(type_name()) + " s: " + m_span.to_string() + " }";
 	}
 
 	// Allows printing directly with std::cout << token
-	friend std::ostream &operator<<(std::ostream &os, const Token &token)
-	{
+	friend std::ostream &operator<<(std::ostream &os, const Token &token) {
 		return os << token.to_string();
 	}
 };

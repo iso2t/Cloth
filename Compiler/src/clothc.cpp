@@ -6,8 +6,7 @@
 
 int lex_only = 0;
 
-int main(int argv, char *argc[])
-{
+int main(int argv, char *argc[]) {
 	std::string textSource = R"(
         using lexer.Lexer: *
         using parser.Ast: SourceUnit

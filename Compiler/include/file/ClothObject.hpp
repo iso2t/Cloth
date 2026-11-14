@@ -11,25 +11,23 @@ std::string_view to_string(Extension type);
 
 class ClothObject {
     public:
-	ClothObject(const std::string &name, const std::string &contents,
-		    Extension extension)
+	ClothObject(const std::string &name, const std::string &contents, Extension extension)
 		: s_name(name)
 		, s_contents(contents)
-		, e_extension(extension)
-	{
+		, e_extension(extension) {
 	}
+
 	~ClothObject() = default;
 
-	std::string name() const
-	{
+	std::string name() const {
 		return s_name;
 	}
-	std::string contents() const
-	{
+
+	std::string contents() const {
 		return s_contents;
 	}
-	Extension extension() const
-	{
+
+	Extension extension() const {
 		return e_extension;
 	}
 

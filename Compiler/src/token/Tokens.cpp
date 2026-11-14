@@ -1,10 +1,8 @@
 #include <token/Tokens.hpp>
 
-namespace Tokens
-{
+namespace Tokens {
 
-std::string_view to_string(Keyword keyword)
-{
+std::string_view to_string(Keyword keyword) {
 	switch (keyword) {
 	case k_MOD:
 		return "mod";
@@ -108,16 +106,14 @@ std::string_view to_string(Keyword keyword)
 	return "";
 }
 
-namespace
-{
+namespace {
 
 struct OperatorInfo {
 	std::string_view spelling;
 	std::string_view name;
 };
 
-OperatorInfo operator_info(Operator op)
-{
+OperatorInfo operator_info(Operator op) {
 	switch (op) {
 	case o_PLUS:
 		return { "+", "PLUS" };
@@ -227,13 +223,11 @@ OperatorInfo operator_info(Operator op)
 
 } // namespace
 
-std::string_view to_string(Operator op)
-{
+std::string_view to_string(Operator op) {
 	return operator_info(op).spelling;
 }
 
-std::string_view operator_name(Operator op)
-{
+std::string_view operator_name(Operator op) {
 	return operator_info(op).name;
 }
 

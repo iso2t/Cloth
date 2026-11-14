@@ -1,7 +1,6 @@
 #include <token/Token.hpp>
 
-std::string_view to_string(TokenType type)
-{
+std::string_view to_string(TokenType type) {
 	switch (type) {
 	case EndOfFile:
 		return "EndOfFile";
