@@ -1,12 +1,14 @@
-#include "../include/file/ClothObject.hpp"
-#include "../include/lexer/Lexer.hpp"
+#include <file/ClothObject.hpp>
+#include <lexer/Lexer.hpp>
 
 #include <iostream>
+#include <string>
 
 int lex_only = 0;
 
-int main(int argv, char *argc[]) {
-  std::string textSource = R"(
+int main(int argv, char *argc[])
+{
+	std::string textSource = R"(
         using lexer.Lexer: *
         using parser.Ast: SourceUnit
         using parser.Parser: Parser
@@ -40,13 +42,13 @@ int main(int argv, char *argc[]) {
 
         )";
 
-  ClothObject co("Main", textSource, Extension::CLOTH_OBJECT);
-  Lexer lexer(co);
+	ClothObject co("Main", textSource, Extension::CLOTH_OBJECT);
+	Lexer lexer(co);
 
-  if (lex_only == 0) {
-    lexer.printTokens(std::cout);
-    return lex_only;
-  }
+	if (lex_only == 0) {
+		lexer.printTokens(std::cout);
+		return lex_only;
+	}
 
-  return 0;
+	return 0;
 }
