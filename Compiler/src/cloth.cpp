@@ -7,6 +7,7 @@
 #include <errors/cloth_errors.hpp>
 #include <file/source_file.hpp>
 #include <lexer/Lexer.hpp>
+#include <parser/Parser.hpp>
 #include <system/compiler_options.hpp>
 #include <util/pstream.hpp>
 
@@ -26,6 +27,8 @@ int main(int argc, char *argv[]) try {
 		cloth::printLexer(l_lexer, std::cout);
 		return PRINT_LEXED_ONLY;
 	}
+
+	cloth::Parser p_parser = cloth::Parser{ l_lexer };
 
 	return SUCCESS;
 } catch (const std::exception &error) {

@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <ast/SourceUnit.hpp>
+#include <lexer/lexer.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -13,6 +14,10 @@ class Parser {
     public:
 	Parser(std::vector<Token> tokens)
 		: v_tokens(tokens) {
+	}
+
+	Parser(Lexer &lexer)
+		: v_tokens(lexer.scanTokens()) {
 	}
 
     private:

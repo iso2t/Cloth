@@ -8,6 +8,7 @@
 #include <utility>
 
 namespace cloth {
+
 struct TokenSpan {
 	size_t startLine;
 	size_t startCol;
@@ -175,7 +176,7 @@ class Token {
     private:
 	TokenSpan t_span;
 	TokenType t_type;
-	cloth::Operator m_operator = cloth::Operator::o_ERROR;
+	cloth::Operator o_operator = cloth::Operator::o_ERROR;
 	std::string s_lexeme;
 
     public:
@@ -188,7 +189,7 @@ class Token {
 	Token(std::string lexeme, cloth::Operator op, TokenSpan span)
 		: t_span(span)
 		, t_type(TokenType::Operator)
-		, m_operator(op)
+		, o_operator(op)
 		, s_lexeme(std::move(lexeme)) {
 	}
 
@@ -213,7 +214,7 @@ class Token {
 	}
 
 	std::string_view type_name() const {
-		return m_operator == cloth::o_ERROR ? cloth::to_string(t_type) : cloth::operator_name(m_operator);
+		return o_operator == cloth::o_ERROR ? cloth::to_string(t_type) : cloth::operator_name(o_operator);
 	}
 
 	std::string to_string() const {
