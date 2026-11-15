@@ -2,6 +2,7 @@
 
 #include <exception>
 #include <iostream>
+#include <tuple>
 
 #include <errors/cloth_errors.hpp>
 #include <file/source_file.hpp>
@@ -17,7 +18,7 @@ int main(int argc, char *argv[]) try {
 
 	cloth::Lexer l_lexer = cloth::Lexer{ cloth::SourceFile{ *co_options.p_sourcePath } };
 	if (co_options.get_lexer_flag() == 1) {
-		l_lexer.scanTokens(); // TODO: discards result, not capturing the vector.
+		std::ignore = l_lexer.scanTokens(); // discards result, not capturing the vector.
 		return LEXED_ONLY;
 	}
 
