@@ -2,9 +2,10 @@
 
 #pragma once
 
-#include <token/token.hpp>
-#include <ast/SourceUnit.hpp>
 #include <vector>
+
+#include <ast/SourceUnit.hpp>
+#include <token/token.hpp>
 
 namespace cloth {
 

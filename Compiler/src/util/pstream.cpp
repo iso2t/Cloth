@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <cstddef>
-#include <util/pstream.hpp>
 #include <format>
+
+#include <util/pstream.hpp>
 
 namespace cloth {
 

@@ -4,6 +4,7 @@
  * Cloth print streams
  */
 #include <ostream>
+
 #include <lexer/Lexer.hpp>
 
 namespace cloth {

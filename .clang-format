@@ -55,11 +55,11 @@ DerivePointerAlignment: false
 DisableFormat: false
 ExperimentalAutoDetectBinPacking: false
 FixNamespaceComments: false
-IncludeBlocks: Preserve
+IncludeBlocks: Regroup
 IncludeCategories:
-  - Regex: '^"Compiler/'
+  - Regex: '^<Compiler/'
     Priority: 1
-  - Regex: '^"'
+  - Regex: '^<([a-z0-9_]+|c[a-z0-9_]+|[a-z0-9_/]+\.h)>'
     Priority: 2
   - Regex: '^<'
     Priority: 3
@@ -94,7 +94,7 @@ PenaltyReturnTypeOnItsOwnLine: 60
 PointerAlignment: Right
 ReflowComments: false
 SeparateDefinitionBlocks: Always
-SortIncludes: false
+SortIncludes: CaseSensitive
 SortUsingDeclarations: false
 SpaceAfterCStyleCast: false
 SpaceAfterTemplateKeyword: true

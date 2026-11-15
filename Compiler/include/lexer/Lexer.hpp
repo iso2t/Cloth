@@ -2,10 +2,10 @@
 
 #pragma once
 
+#include <vector>
+
 #include <file/source_file.hpp>
 #include <token/Token.hpp>
-
-#include <vector>
 
 namespace cloth {
 struct Position {

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <lexer/Lexer.hpp>
-#include <util/utf8.hpp>
-
 #include <algorithm>
 #include <cstddef>
 #include <format>
@@ -10,6 +7,9 @@
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include <lexer/Lexer.hpp>
+#include <util/utf8.hpp>
 
 namespace cloth {
 namespace {

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "token/token.hpp"
 #include <cstddef>
 #include <cstdint>
-#include <parser/Parser.hpp>
 #include <stdexcept>
+
+#include <parser/Parser.hpp>
+#include <token/token.hpp>
 
 namespace cloth {
 

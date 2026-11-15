@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <file/source_file.hpp>
-#include <lexer/Lexer.hpp>
-#include <util/pstream.hpp>
-#include <system/compiler_options.hpp>
-#include <errors/cloth_errors.hpp>
-
 #include <exception>
 #include <iostream>
+
+#include <errors/cloth_errors.hpp>
+#include <file/source_file.hpp>
+#include <lexer/Lexer.hpp>
+#include <system/compiler_options.hpp>
+#include <util/pstream.hpp>
 
 int main(int argc, char *argv[]) try {
 	const cloth::sys::CompilerOptions co_options{ argc, argv };

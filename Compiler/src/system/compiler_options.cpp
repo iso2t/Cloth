@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <system/compiler_options.hpp>
-
 #include <algorithm>
 #include <stdexcept>
 #include <string_view>
+
+#include <system/compiler_options.hpp>
 
 namespace cloth::sys {
 

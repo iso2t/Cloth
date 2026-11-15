@@ -2,3 +2,7 @@
 
 CompileFlags:
   Compiler: clang++
+
+Style:
+  AngledHeaders:
+    - ".*"
