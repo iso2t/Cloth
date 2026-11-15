@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 #pragma once
 
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -13,30 +16,30 @@ std::string_view to_string(Extension type);
 
 class SourceFile {
     public:
-	SourceFile(const std::string &name, const std::string &contents, Extension extension)
-		: s_name(name)
-		, s_contents(contents)
-		, e_extension(extension) {
-	}
+	explicit SourceFile(const std::filesystem::path &path);
 
 	~SourceFile() = default;
 
-	std::string name() const {
+	std::string get_name() const {
 		return s_name;
 	}
 
-	std::string contents() const {
+	std::string get_contents() const {
 		return s_contents;
 	}
 
-	Extension extension() const {
+	Extension get_extension() const {
 		return e_extension;
 	}
 
     private:
 	const std::string s_name;
-	const std::string s_contents;
 	const Extension e_extension;
+	const std::string s_contents;
+
+	std::string source_name(const std::filesystem::path &path);
+	Extension source_extension(const std::filesystem::path &path);
+	std::string read_source(const std::filesystem::path &path);
 };
 
 }

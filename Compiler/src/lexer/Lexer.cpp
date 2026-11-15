@@ -1,9 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 #include <lexer/Lexer.hpp>
+#include <util/utf8.hpp>
 
 #include <algorithm>
 #include <cstddef>
 #include <format>
-#include <ostream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -616,48 +618,11 @@ void Lexer::rawString() {
  * value.
  */
 void Lexer::advanceStringScalar() {
-	const auto position = p_current;
-	const auto first = static_cast<unsigned char>(advance());
-	if (first < 0x80) {
-		return;
+	const auto length = utf8_scalar_length(std::string_view{ source }.substr(current));
+	if (length == 0) {
+		lexerError(p_current, "Invalid UTF-8 in literal");
 	}
-
-	// Bound the second byte to reject overlong encodings, surrogates and
-	// code points beyond U+10FFFF.
-	int continuationCount;
-	unsigned char secondMin = 0x80;
-	unsigned char secondMax = 0xBF;
-	if (first >= 0xC2 && first <= 0xDF) {
-		continuationCount = 1;
-	} else if (first >= 0xE0 && first <= 0xEF) {
-		continuationCount = 2;
-		if (first == 0xE0) {
-			secondMin = 0xA0;
-		} else if (first == 0xED) {
-			secondMax = 0x9F;
-		}
-	} else if (first >= 0xF0 && first <= 0xF4) {
-		continuationCount = 3;
-		if (first == 0xF0) {
-			secondMin = 0x90;
-		} else if (first == 0xF4) {
-			secondMax = 0x8F;
-		}
-	} else {
-		lexerError(position, "Invalid UTF-8 in literal");
-	}
-
-	const auto second = static_cast<unsigned char>(peek());
-	if (second < secondMin || second > secondMax) {
-		lexerError(position, "Invalid UTF-8 in literal");
-	}
-	advance();
-
-	for (int i = 1; i < continuationCount; ++i) {
-		const auto next = static_cast<unsigned char>(peek());
-		if (next < 0x80 || next > 0xBF) {
-			lexerError(position, "Invalid UTF-8 in literal");
-		}
+	for (std::size_t i = 0; i < length; ++i) {
 		advance();
 	}
 }

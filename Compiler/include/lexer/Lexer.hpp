@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 #pragma once
 
 #include <file/source_file.hpp>
@@ -18,7 +20,7 @@ class Lexer {
 	}
 
 	Lexer(const SourceFile &co)
-		: source(co.contents()) {
+		: source(co.get_contents()) {
 	}
 
 	Lexer(const char *src)
@@ -30,7 +32,7 @@ class Lexer {
 	}
 
 	Lexer(const SourceFile &co, size_t length)
-		: source(std::string(co.contents(), length)) {
+		: source(std::string(co.get_contents(), length)) {
 	}
 
 	~Lexer() = default;

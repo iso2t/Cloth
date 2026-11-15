@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 CXX ?= g++
 CXXFLAGS ?= -Wall -Wextra -g
 BUILD_DIR ?= build

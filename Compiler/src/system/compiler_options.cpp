@@ -1,6 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 #include <system/compiler_options.hpp>
 
 #include <algorithm>
+#include <stdexcept>
+#include <string_view>
 
 namespace cloth::sys {
 
@@ -8,9 +12,19 @@ CompilerOptions::CompilerOptions(int argc, const char *const argv[]) {
 	build_defaults();
 
 	for (int index = 1; index < argc; ++index) {
-		const auto flag = std::ranges::find(compiler_flags, argv[index], &CompilerFlag::flag);
-		if (flag != compiler_flags.end()) {
-			flag->func();
+		const std::string_view argument = argv[index];
+		const auto flag = std::ranges::find(compiler_flags, argument, &CompilerFlag::flag);
+		if (flag == compiler_flags.end()) {
+			continue;
+		}
+
+		if (const auto *value = std::get_if<CompilerFlag::Value>(&flag->action)) {
+			if (index + 1 == argc || argv[index + 1][0] == '\0') {
+				throw std::invalid_argument(flag->flag + " requires " + value->description);
+			}
+			value->func(argv[++index]);
+		} else {
+			std::get<std::function<void()> >(flag->action)();
 		}
 	}
 }
@@ -22,6 +36,7 @@ void CompilerOptions::add_flag(const CompilerFlag &flag) {
 void CompilerOptions::build_defaults() {
 	add_flag({ "-l", [this]() { LEXER = 1; } });
 	add_flag({ "-L", [this]() { LEXER = 2; } });
+	add_flag({ "--src", CompilerFlag::Value{ "a file path", [this](std::string_view path) { source_path.emplace(path); } } });
 }
 
 }

@@ -1,14 +1,25 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 #pragma once
 
+#include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
+#include <string_view>
+#include <variant>
 #include <vector>
 
 namespace cloth::sys {
 
 struct CompilerFlag {
+	struct Value {
+		std::string description;
+		std::function<void(std::string_view)> func;
+	};
+
 	std::string flag;
-	std::function<void()> func;
+	std::variant<std::function<void()>, Value> action;
 };
 
 class CompilerOptions {
@@ -24,10 +35,15 @@ class CompilerOptions {
 	void add_flag(const CompilerFlag &flag);
 	void build_defaults();
 
-	int LEXER = 0;
+	std::optional<std::filesystem::path> source_path;
+
+	int get_lexer_flag() const {
+		return LEXER;
+	}
 
     private:
 	std::vector<CompilerFlag> compiler_flags;
+	int LEXER = 0;
 };
 
 }
