@@ -18,3 +18,18 @@ hide boiler plate pointers and references.
 Cloth also incorporates a first class state system, in which an object can exist in multiple
 states or no states, allowing certain parameters to be valid or invalid, moving beyond just
 normal boolean expressions with explicit syntax.
+
+Contributing
+------------
+
+Cloth welcomes contributions to the compiler and its documentation.
+Submit changes for review through a pull request. The terms for
+submitting contributions are set out in the project's
+`Apache License 2.0 with the LLVM exception <../LICENSE>`_.
+
+* For AI-assisted changes, follow the review, verification, and
+  disclosure requirements in `AI Agents <contributing/AI%20Agents.rst>`_.
+* Propose significant changes to the language or compiler through the
+  `RFC Process <contributing/RFC%20Process.rst>`_.
+* Follow the C++ naming, formatting, and license header conventions in
+  `Code Style <contributing/Code%20Style.rst>`_.
