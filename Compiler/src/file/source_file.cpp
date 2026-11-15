@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <file/source_file.hpp>
+#include <string>
+#include <string_view>
 #include <util/utf8.hpp>
 
 #include <cstddef>
@@ -32,25 +34,25 @@ std::string_view to_string(Extension type) {
 }
 
 std::string SourceFile::source_name(const std::filesystem::path &path) {
-	const auto name = path.stem().string();
-	if (name.empty() || name == SEPERATOR) {
-		throw std::invalid_argument("Invalid source file name '" + path.string() + "'");
+	const std::string s_name = path.stem().string();
+	if (!s_name.empty() || s_name != SEPERATOR) {
+		return s_name;
 	}
-	return name;
+	throw std::invalid_argument("Invalid source file name '" + path.string() + "'");
 }
 
 Extension SourceFile::source_extension(const std::filesystem::path &path) {
-	auto suffix = path.extension().string();
-	if (!suffix.empty()) {
-		for (char &c : suffix) {
+	std::string s_suffix = path.extension().string();
+	if (!s_suffix.empty()) {
+		for (char &c : s_suffix) {
 			if (c >= 'A' && c <= 'Z') {
 				c = static_cast<char>(c - 'A' + 'a');
 			}
 		}
 
-		const auto spelling = std::string_view{ suffix }.substr(1);
+		const std::string_view s_spelling = std::string_view{ s_suffix }.substr(1);
 		for (const auto extension : { CLOTH_OBJECT, LIBRARY }) {
-			if (spelling == to_string(extension)) {
+			if (s_spelling == to_string(extension)) {
 				return extension;
 			}
 		}
@@ -64,30 +66,30 @@ std::string SourceFile::read_source(const std::filesystem::path &path) {
 		throw std::runtime_error("Could not open source file '" + path.string() + "': expected a regular file");
 	}
 
-	std::ifstream input(path, std::ios::binary);
-	if (!input) {
+	std::ifstream ifs_input(path, std::ios::binary);
+	if (!ifs_input) {
 		throw std::runtime_error("Could not open source file '" + path.string() + "'");
 	}
 
-	std::string contents;
-	char buffer[4096];
-	while (input.read(buffer, sizeof(buffer))) {
-		contents.append(buffer, sizeof(buffer));
+	std::string s_contents;
+	char c_buffer[4096];
+	while (ifs_input.read(c_buffer, sizeof(c_buffer))) {
+		s_contents.append(c_buffer, sizeof(c_buffer));
 	}
-	if (input.bad() || !input.eof()) {
+	if (ifs_input.bad() || !ifs_input.eof()) {
 		throw std::runtime_error("Could not read source file '" + path.string() + "'");
 	}
-	contents.append(buffer, static_cast<std::size_t>(input.gcount()));
+	s_contents.append(c_buffer, static_cast<std::size_t>(ifs_input.gcount()));
 
-	for (auto bytes = std::string_view{ contents }; !bytes.empty();) {
-		const auto length = utf8_scalar_length(bytes);
-		if (length == 0) {
-			const auto offset = contents.size() - bytes.size() + 1;
+	for (std::string_view s_bytes = std::string_view{ s_contents }; !s_bytes.empty();) {
+		const size_t st_length = utf8_scalar_length(s_bytes);
+		if (st_length == 0) {
+			const auto offset = s_contents.size() - s_bytes.size() + 1;
 			throw std::runtime_error("Invalid UTF-8 in source file '" + path.string() + "' at byte " + std::to_string(offset));
 		}
-		bytes.remove_prefix(length);
+		s_bytes.remove_prefix(st_length);
 	}
-	return contents;
+	return s_contents;
 }
 
 }

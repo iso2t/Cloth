@@ -1,40 +1,41 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <cstddef>
 #include <util/pstream.hpp>
 #include <format>
 
 namespace cloth {
 
 std::string quoteLexeme(std::string_view lexeme) {
-	std::string quoted(1, '"');
-	quoted.reserve(lexeme.size() + 2);
-	for (const char c : lexeme) {
-		switch (c) {
+	std::string s_quoted(1, '"');
+	s_quoted.reserve(lexeme.size() + 2);
+	for (const char c_character : lexeme) {
+		switch (c_character) {
 		case '"':
 		case '\\':
-			quoted += '\\';
-			quoted += c;
+			s_quoted += '\\';
+			s_quoted += c_character;
 			break;
 		case '\n':
-			quoted += "\\n";
+			s_quoted += "\\n";
 			break;
 		case '\r':
-			quoted += "\\r";
+			s_quoted += "\\r";
 			break;
 		case '\t':
-			quoted += "\\t";
+			s_quoted += "\\t";
 			break;
 		default:
-			const auto byte = static_cast<unsigned char>(c);
-			if (byte < 0x20 || byte >= 0x7F) {
-				quoted += std::format("\\x{:02X}", byte);
+			const unsigned char c_byte = static_cast<unsigned char>(c_character);
+			if (c_byte < 0x20 || c_byte >= 0x7F) {
+				s_quoted += std::format("\\x{:02X}", c_byte);
 			} else {
-				quoted += c;
+				s_quoted += c_character;
 			}
 		}
 	}
-	quoted += '"';
-	return quoted;
+	s_quoted += '"';
+	return s_quoted;
 }
 
 /**
@@ -43,12 +44,12 @@ std::string quoteLexeme(std::string_view lexeme) {
 void printLexer(Lexer &lexer, std::ostream &out) {
 	lexer.scan();
 
-	constexpr std::string_view lexemeHeader = "LEXEME";
-	constexpr std::string_view typeHeader = "TYPE";
-	constexpr std::string_view spanHeader = "SPAN";
-	auto lexemeWidth = lexemeHeader.size();
-	auto typeWidth = typeHeader.size();
-	auto spanWidth = spanHeader.size();
+	constexpr std::string_view s_lexemeHeader = "LEXEME";
+	constexpr std::string_view s_typeHeader = "TYPE";
+	constexpr std::string_view s_spanHeader = "SPAN";
+	size_t st_lexemeWidth = s_lexemeHeader.size();
+	size_t st_typeWidth = s_typeHeader.size();
+	size_t st_spanWidth = s_spanHeader.size();
 
 	struct Row {
 		std::string lexeme;
@@ -56,22 +57,22 @@ void printLexer(Lexer &lexer, std::ostream &out) {
 		std::string span;
 	};
 
-	std::vector<Row> rows;
-	rows.reserve(lexer.get_tokens().size());
-	for (const auto &token : lexer.get_tokens()) {
-		const auto &row = rows.emplace_back(quoteLexeme(token.get_lexeme()), token.type_name(), token.get_span().to_string());
-		lexemeWidth = std::max(lexemeWidth, row.lexeme.size());
-		typeWidth = std::max(typeWidth, row.type.size());
-		spanWidth = std::max(spanWidth, row.span.size());
+	std::vector<Row> v_rows;
+	v_rows.reserve(lexer.get_tokens().size());
+	for (const Token &t_token : lexer.get_tokens()) {
+		const Row &r_row = v_rows.emplace_back(quoteLexeme(t_token.get_lexeme()), t_token.type_name(), t_token.get_span().to_string());
+		st_lexemeWidth = std::max(st_lexemeWidth, r_row.lexeme.size());
+		st_typeWidth = std::max(st_typeWidth, r_row.type.size());
+		st_spanWidth = std::max(st_spanWidth, r_row.span.size());
 	}
 
 	const auto printRow = [&](std::string_view lexeme, std::string_view type, std::string_view spanText) {
-		out << std::format("{:<{}}  {:<{}}  {}\n", lexeme, lexemeWidth, type, typeWidth, spanText);
+		out << std::format("{:<{}}  {:<{}}  {}\n", lexeme, st_lexemeWidth, type, st_typeWidth, spanText);
 	};
-	printRow(lexemeHeader, typeHeader, spanHeader);
-	printRow(std::string(lexemeWidth, '-'), std::string(typeWidth, '-'), std::string(spanWidth, '-'));
-	for (const auto &row : rows) {
-		printRow(row.lexeme, row.type, row.span);
+	printRow(s_lexemeHeader, s_typeHeader, s_spanHeader);
+	printRow(std::string(st_lexemeWidth, '-'), std::string(st_typeWidth, '-'), std::string(st_spanWidth, '-'));
+	for (const Row &r_row : v_rows) {
+		printRow(r_row.lexeme, r_row.type, r_row.span);
 	}
 
 	out << "Count: " << lexer.get_tokens().size();

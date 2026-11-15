@@ -16,23 +16,23 @@ struct Position {
 class Lexer {
     public:
 	Lexer(const std::string &src)
-		: source(src) {
+		: s_source(src) {
 	}
 
 	Lexer(const SourceFile &co)
-		: source(co.get_contents()) {
+		: s_source(co.get_contents()) {
 	}
 
 	Lexer(const char *src)
-		: source(src) {
+		: s_source(src) {
 	}
 
 	Lexer(const char *src, size_t length)
-		: source(std::string(src, length)) {
+		: s_source(std::string(src, length)) {
 	}
 
 	Lexer(const SourceFile &co, size_t length)
-		: source(std::string(co.get_contents(), length)) {
+		: s_source(std::string(co.get_contents(), length)) {
 	}
 
 	~Lexer() = default;
@@ -41,14 +41,14 @@ class Lexer {
 	void scan();
 
 	std::vector<Token> get_tokens() const {
-		return tokens;
+		return v_tokens;
 	}
 
     private:
-	std::string source;
-	std::vector<Token> tokens;
-	int start = 0;
-	int current = 0;
+	std::string s_source;
+	std::vector<Token> v_tokens;
+	int i_start = 0;
+	int i_current = 0;
 
 	Position p_start{ 1, 1 };
 	Position p_current{ 1, 1 };

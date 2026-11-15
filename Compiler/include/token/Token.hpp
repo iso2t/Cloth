@@ -173,51 +173,51 @@ std::string_view operator_name(Operator op);
 
 class Token {
     private:
-	TokenSpan m_span;
-	TokenType m_type;
+	TokenSpan t_span;
+	TokenType t_type;
 	cloth::Operator m_operator = cloth::Operator::o_ERROR;
-	std::string m_lexeme;
+	std::string s_lexeme;
 
     public:
 	Token(std::string lexeme, TokenType type, TokenSpan span)
-		: m_span(span)
-		, m_type(type)
-		, m_lexeme(std::move(lexeme)) {
+		: t_span(span)
+		, t_type(type)
+		, s_lexeme(std::move(lexeme)) {
 	}
 
 	Token(std::string lexeme, cloth::Operator op, TokenSpan span)
-		: m_span(span)
-		, m_type(TokenType::Operator)
+		: t_span(span)
+		, t_type(TokenType::Operator)
 		, m_operator(op)
-		, m_lexeme(std::move(lexeme)) {
+		, s_lexeme(std::move(lexeme)) {
 	}
 
 	Token(char *lexeme, TokenType type, TokenSpan span)
-		: m_span(span)
-		, m_type(type)
-		, m_lexeme(lexeme, sizeof(lexeme)) {
+		: t_span(span)
+		, t_type(type)
+		, s_lexeme(lexeme, sizeof(lexeme)) {
 	}
 
 	Token(const Token &other) = default;
 
 	const std::string &get_lexeme() const {
-		return m_lexeme;
+		return s_lexeme;
 	}
 
 	TokenSpan get_span() const {
-		return m_span;
+		return t_span;
 	}
 
 	TokenType get_type() const {
-		return m_type;
+		return t_type;
 	}
 
 	std::string_view type_name() const {
-		return m_operator == cloth::o_ERROR ? cloth::to_string(m_type) : cloth::operator_name(m_operator);
+		return m_operator == cloth::o_ERROR ? cloth::to_string(t_type) : cloth::operator_name(m_operator);
 	}
 
 	std::string to_string() const {
-		return "{ l: " + m_lexeme + " t: " + std::string(type_name()) + " s: " + m_span.to_string() + " }";
+		return "{ l: " + s_lexeme + " t: " + std::string(type_name()) + " s: " + t_span.to_string() + " }";
 	}
 
 	// Allows printing directly with std::cout << token

@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+#include "token/token.hpp"
+#include <cstddef>
+#include <cstdint>
+#include <parser/Parser.hpp>
+#include <stdexcept>
+
+namespace cloth {
+
+/**
+ * I may have over engineered this.
+ * Peeks the next token at a given offset.
+ * The offset defaults to the next up token.
+ */
+Token Parser::peek(int offset) {
+	if (v_tokens.empty()) {
+		throw std::out_of_range("Token stream is empty.");
+	}
+
+	const std::int64_t i64_target = static_cast<std::int64_t>(i_currentIndex) + offset;
+	if (i64_target < 0) {
+		return v_tokens.front();
+	}
+
+	if (static_cast<std::uint64_t>(i64_target) >= v_tokens.size()) {
+		return v_tokens.back();
+	}
+
+	return v_tokens[static_cast<std::size_t>(i64_target)];
+}
+
+Token Parser::previous() {
+	return v_tokens[i_currentIndex - 1];
+}
+
+Token Parser::advance() {
+	return v_tokens[i_currentIndex++];
+}
+
+SourceUnit Parser::parse() {
+	return parseDeclarations();
+}
+
+SourceUnit Parser::parseDeclarations() {
+	throw std::logic_error("Not implemented");
+}
+}

@@ -10,18 +10,19 @@
 #include <iostream>
 
 int main(int argc, char *argv[]) try {
-	const cloth::sys::CompilerOptions options{ argc, argv };
+	const cloth::sys::CompilerOptions co_options{ argc, argv };
 
-	if (!options.source_path)
+	if (!co_options.p_sourcePath)
 		return FAILED;
-	auto lexer = cloth::Lexer{ cloth::SourceFile{ *options.source_path } };
-	if (options.get_lexer_flag() == 1) {
-		lexer.scanTokens(); // TODO: discards result, not capturing the vector.
+
+	cloth::Lexer l_lexer = cloth::Lexer{ cloth::SourceFile{ *co_options.p_sourcePath } };
+	if (co_options.get_lexer_flag() == 1) {
+		l_lexer.scanTokens(); // TODO: discards result, not capturing the vector.
 		return LEXED_ONLY;
 	}
 
-	if (options.get_lexer_flag() == 2) {
-		cloth::printLexer(lexer, std::cout);
+	if (co_options.get_lexer_flag() == 2) {
+		cloth::printLexer(l_lexer, std::cout);
 		return PRINT_LEXED_ONLY;
 	}
 

@@ -12,31 +12,31 @@ CompilerOptions::CompilerOptions(int argc, const char *const argv[]) {
 	build_defaults();
 
 	for (int index = 1; index < argc; ++index) {
-		const std::string_view argument = argv[index];
-		const auto flag = std::ranges::find(compiler_flags, argument, &CompilerFlag::flag);
-		if (flag == compiler_flags.end()) {
+		const std::string_view s_argument = argv[index];
+		const auto bi_flag = std::ranges::find(v_compilerFlags, s_argument, &CompilerFlag::s_flag);
+		if (bi_flag == v_compilerFlags.end()) {
 			continue;
 		}
 
-		if (const auto *value = std::get_if<CompilerFlag::Value>(&flag->action)) {
+		if (const auto *rr_value = std::get_if<CompilerFlag::Value>(&bi_flag->v_action)) {
 			if (index + 1 == argc || argv[index + 1][0] == '\0') {
-				throw std::invalid_argument(flag->flag + " requires " + value->description);
+				throw std::invalid_argument(bi_flag->s_flag + " requires " + rr_value->s_description);
 			}
-			value->func(argv[++index]);
+			rr_value->f_func(argv[++index]);
 		} else {
-			std::get<std::function<void()> >(flag->action)();
+			std::get<std::function<void()> >(bi_flag->v_action)();
 		}
 	}
 }
 
 void CompilerOptions::add_flag(const CompilerFlag &flag) {
-	compiler_flags.push_back(flag);
+	v_compilerFlags.push_back(flag);
 }
 
 void CompilerOptions::build_defaults() {
-	add_flag({ "-l", [this]() { LEXER = 1; } });
-	add_flag({ "-L", [this]() { LEXER = 2; } });
-	add_flag({ "--src", CompilerFlag::Value{ "a file path", [this](std::string_view path) { source_path.emplace(path); } } });
+	add_flag({ "-l", [this]() { i_lexer = 1; } });
+	add_flag({ "-L", [this]() { i_lexer = 2; } });
+	add_flag({ "--src", CompilerFlag::Value{ "a file path", [this](std::string_view path) { p_sourcePath.emplace(path); } } });
 }
 
 }

@@ -14,12 +14,12 @@ namespace cloth::sys {
 
 struct CompilerFlag {
 	struct Value {
-		std::string description;
-		std::function<void(std::string_view)> func;
+		std::string s_description;
+		std::function<void(std::string_view)> f_func;
 	};
 
-	std::string flag;
-	std::variant<std::function<void()>, Value> action;
+	std::string s_flag;
+	std::variant<std::function<void()>, Value> v_action;
 };
 
 class CompilerOptions {
@@ -29,21 +29,21 @@ class CompilerOptions {
 	~CompilerOptions() = default;
 
 	std::vector<CompilerFlag> get_flags() const {
-		return compiler_flags;
+		return v_compilerFlags;
 	}
 
 	void add_flag(const CompilerFlag &flag);
 	void build_defaults();
 
-	std::optional<std::filesystem::path> source_path;
+	std::optional<std::filesystem::path> p_sourcePath;
 
 	int get_lexer_flag() const {
-		return LEXER;
+		return i_lexer;
 	}
 
     private:
-	std::vector<CompilerFlag> compiler_flags;
-	int LEXER = 0;
+	std::vector<CompilerFlag> v_compilerFlags;
+	int i_lexer = 0;
 };
 
 }

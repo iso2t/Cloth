@@ -18,13 +18,13 @@ namespace {
  * @brief Represents the prefix used for string interpolation.
  * @param INTERPOLATION_PREFIX The prefix used for string interpolation.
  */
-const auto INTERPOLATION_PREFIX = std::format("{}{}", to_string(o_POUND), to_string(o_DOUBLE_QUOTATION));
+const std::string S_INTERPOLATION_PREFIX = std::format("{}{}", to_string(o_POUND), to_string(o_DOUBLE_QUOTATION));
 
 /**
  * @brief Represents the prefix used for string interpolation.
  * @param INTERPOLATION_PREFIX The prefix used for string interpolation.
  */
-const auto RAW_STRING_DELIMITER = std::string(3, to_string(o_DOUBLE_QUOTATION).front());
+const std::string S_RAW_STRING_DELIMITER = std::string(3, to_string(o_DOUBLE_QUOTATION).front());
 
 /**
  * @brief Represents an entry for an operator, including its type and spelling.
@@ -44,18 +44,18 @@ struct OperatorEntry {
  * @return std::vector<OperatorEntry> The list of operators sorted by descending
  * spelling length.
  */
-const auto OPERATORS = [] {
-	std::vector<OperatorEntry> entries;
+const std::vector<OperatorEntry> V_OPERATORS = [] {
+	std::vector<OperatorEntry> v_entries;
 
 	for (int value = o_PLUS; value < o_ERROR; ++value) {
 		const auto op = static_cast<Operator>(value);
-		entries.push_back({ op, to_string(op) });
+		v_entries.push_back({ op, to_string(op) });
 	}
 
-	std::sort(entries.begin(), entries.end(),
+	std::sort(v_entries.begin(), v_entries.end(),
 		  [](const OperatorEntry &left, const OperatorEntry &right) { return left.spelling.size() > right.spelling.size(); });
 
-	return entries;
+	return v_entries;
 }();
 
 /**
@@ -63,17 +63,17 @@ const auto OPERATORS = [] {
  *
  * @return std::vector<Keyword> The list of keywords excluding 'auto'.
  */
-const auto KEYWORDS = [] {
-	std::vector<Keyword> entries;
+const std::vector<Keyword> V_KEYWORDS = [] {
+	std::vector<Keyword> v_entries;
 
 	for (int value = k_MOD; value < k_ERROR; ++value) {
 		const auto keyword = static_cast<Keyword>(value);
 		if (keyword != k_AUTO) {
-			entries.push_back(keyword);
+			v_entries.push_back(keyword);
 		}
 	}
 
-	return entries;
+	return v_entries;
 }();
 
 /**
@@ -162,7 +162,7 @@ bool isValidEscape(char c) {
  * @return char The character that was advanced past.
  */
 char Lexer::advance() {
-	const char c = source[current++];
+	const char c = s_source[i_current++];
 	if (c == '\n') {
 		p_current = { p_current.line + 1, 1 };
 	} else {
@@ -177,7 +177,7 @@ char Lexer::advance() {
  * @return char The current character without advancing the lexer.
  */
 char Lexer::peek() const {
-	return charAt(source, current);
+	return charAt(s_source, i_current);
 }
 
 /**
@@ -187,7 +187,7 @@ char Lexer::peek() const {
  * @return false Otherwise.
  */
 bool Lexer::isAtEnd() const {
-	return static_cast<std::size_t>(current) >= source.size();
+	return static_cast<std::size_t>(i_current) >= s_source.size();
 }
 
 /**
@@ -197,17 +197,17 @@ bool Lexer::isAtEnd() const {
  */
 std::vector<Token> Lexer::scanTokens() {
 	scan();
-	return tokens;
+	return v_tokens;
 }
 
 void Lexer::scan() {
 	while (!isAtEnd()) {
-		start = current;
+		i_start = i_current;
 		p_start = p_current;
 		scanToken();
 	}
 
-	if (tokens.empty() || tokens.back().get_type() != TokenType::EndOfFile) {
+	if (v_tokens.empty() || v_tokens.back().get_type() != TokenType::EndOfFile) {
 		addToken(TokenType::EndOfFile, cursorSpan(), "");
 	}
 }
@@ -222,7 +222,7 @@ void Lexer::scan() {
  * tokens.
  */
 void Lexer::addToken(TokenType type, TokenSpan span, const std::string &lexeme) {
-	tokens.push_back(Token(lexeme, type, span));
+	v_tokens.push_back(Token(lexeme, type, span));
 }
 
 /**
@@ -250,14 +250,14 @@ TokenSpan Lexer::cursorSpan() {
  * operator matches.
  */
 Operator Lexer::matchOperator() {
-	const auto remaining = std::string_view{ source }.substr(current);
+	const std::string_view s_remaining = std::string_view{ s_source }.substr(i_current);
 
-	for (const auto &[op, spelling] : OPERATORS) {
-		if (!remaining.starts_with(spelling)) {
+	for (const auto &[op, spelling] : V_OPERATORS) {
+		if (!s_remaining.starts_with(spelling)) {
 			continue;
 		}
 
-		if (op == o_UNDERSCORE && isIdentifierPart(charAt(remaining, spelling.size()))) {
+		if (op == o_UNDERSCORE && isIdentifierPart(charAt(s_remaining, spelling.size()))) {
 			continue;
 		}
 
@@ -276,19 +276,19 @@ Operator Lexer::matchOperator() {
  * @return void
  */
 void Lexer::scanToken() {
-	const auto remaining = std::string_view{ source }.substr(current);
+	const std::string_view s_remaining = std::string_view{ s_source }.substr(i_current);
 
-	if (remaining.starts_with(INTERPOLATION_PREFIX)) {
-		for (std::size_t i = 0; i < INTERPOLATION_PREFIX.size(); ++i) {
+	if (s_remaining.starts_with(S_INTERPOLATION_PREFIX)) {
+		for (std::size_t i = 0; i < S_INTERPOLATION_PREFIX.size(); ++i) {
 			advance();
 		}
-		addToken(TokenType::InterpolationStart, span(), source.substr(start, current - start));
+		addToken(TokenType::InterpolationStart, span(), s_source.substr(i_start, i_current - i_start));
 		interpolatedString();
 		return;
 	}
 
-	if (remaining.starts_with(RAW_STRING_DELIMITER)) {
-		for (std::size_t i = 0; i < RAW_STRING_DELIMITER.size(); ++i) {
+	if (s_remaining.starts_with(S_RAW_STRING_DELIMITER)) {
+		for (std::size_t i = 0; i < S_RAW_STRING_DELIMITER.size(); ++i) {
 			advance();
 		}
 		rawString();
@@ -312,12 +312,12 @@ void Lexer::scanToken() {
 	}
 
 	if (const auto op = matchOperator(); op != o_ERROR) {
-		tokens.emplace_back(source.substr(start, current - start), op, span());
+		v_tokens.emplace_back(s_source.substr(i_start, i_current - i_start), op, span());
 		return;
 	}
 
-	const char c = advance();
-	switch (c) {
+	const char c_character = advance();
+	switch (c_character) {
 	case ' ':
 	case '\r':
 	case '\t':
@@ -326,12 +326,12 @@ void Lexer::scanToken() {
 		addToken(TokenType::NewLine, span(), "\n");
 		return;
 	default:
-		if (isDigit(c)) {
+		if (isDigit(c_character)) {
 			number();
-		} else if (isIdentifierStart(c)) {
+		} else if (isIdentifierStart(c_character)) {
 			identifier();
 		} else {
-			lexerError(p_start, std::format("Unexpected byte 0x{:02X}", static_cast<unsigned char>(c)));
+			lexerError(p_start, std::format("Unexpected byte 0x{:02X}", static_cast<unsigned char>(c_character)));
 		}
 	}
 }
@@ -347,7 +347,7 @@ bool Lexer::skipComments() {
 		return false;
 	}
 
-	switch (charAt(source, current + 1)) {
+	switch (charAt(s_source, i_current + 1)) {
 	case '/':
 		advance();
 		advance();
@@ -360,7 +360,7 @@ bool Lexer::skipComments() {
 		advance();
 		advance();
 		while (!isAtEnd()) {
-			if (peek() == '*' && charAt(source, current + 1) == '/') {
+			if (peek() == '*' && charAt(s_source, i_current + 1) == '/') {
 				advance();
 				advance();
 				return true;
@@ -383,68 +383,68 @@ bool Lexer::skipComments() {
  * tokens.
  */
 void Lexer::number() {
-	bool isFloat = false;
-	int radix = 10;
-	if (source[start] == '0') {
+	bool b_isFloat = false;
+	int i_radix = 10;
+	if (s_source[i_start] == '0') {
 		switch (peek()) {
 		case 'x':
-			radix = 16;
+			i_radix = 16;
 			break;
 		case 'b':
-			radix = 2;
+			i_radix = 2;
 			break;
 		case 'o':
-			radix = 8;
+			i_radix = 8;
 			break;
 		}
 	}
 
-	const auto digit = [radix](char c) {
+	const auto digit = [i_radix](char c) {
 		if (isDigit(c)) {
-			return c - '0' < radix;
+			return c - '0' < i_radix;
 		}
-		return radix == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
+		return i_radix == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
 	};
 
 	const auto completeSuffix = [this](char lower, char upper) {
-		const char suffix = charAt(source, current + 1);
-		return (suffix == lower || suffix == upper) && !isIdentifierPart(charAt(source, current + 2));
+		const char suffix = charAt(s_source, i_current + 1);
+		return (suffix == lower || suffix == upper) && !isIdentifierPart(charAt(s_source, i_current + 2));
 	};
 
 	const auto invalid = [this](std::string_view reason) {
 		while (isIdentifierPart(peek())) {
 			advance();
 		}
-		lexerError(p_start, std::format("Invalid numeric literal '{}': {}", source.substr(start, current - start), reason));
+		lexerError(p_start, std::format("Invalid numeric literal '{}': {}", s_source.substr(i_start, i_current - i_start), reason));
 	};
 
 	const auto consumeDigits = [this, &digit] {
 		while (digit(peek()) || peek() == '_') {
-			if (peek() == '_' && (!digit(source[current - 1]) || !digit(charAt(source, current + 1)))) {
+			if (peek() == '_' && (!digit(s_source[i_current - 1]) || !digit(charAt(s_source, i_current + 1)))) {
 				lexerError(p_current, "Numeric separators must appear between digits");
 			}
 			advance();
 		}
 	};
 
-	if (radix != 10) {
+	if (i_radix != 10) {
 		advance();
 		if (peek() == '_') {
 			lexerError(p_current, "Numeric separators must appear between digits");
 		}
 		if (!digit(peek())) {
-			invalid(std::format("Expected a base-{} digit after the prefix", radix));
+			invalid(std::format("Expected a base-{} digit after the prefix", i_radix));
 		}
 	}
 	consumeDigits();
 
 	if (peek() == '.') {
-		const char next = charAt(source, current + 1);
+		const char next = charAt(s_source, i_current + 1);
 		const bool trailingFloat = completeSuffix('f', 'F');
 		const bool trailingInteger = completeSuffix('i', 'I');
 		if (isDigit(next) || trailingFloat || trailingInteger || next == '_') {
 			advance();
-			if (radix != 10) {
+			if (i_radix != 10) {
 				invalid("Base-prefixed literals cannot have a decimal point or suffix");
 			}
 			if (trailingInteger) {
@@ -453,30 +453,30 @@ void Lexer::number() {
 			if (peek() == '_') {
 				lexerError(p_current, "Numeric separators must appear between digits");
 			}
-			isFloat = true;
+			b_isFloat = true;
 			consumeDigits();
 		}
 	}
 
 	const char suffix = peek();
-	if (radix == 10 && (suffix == 'f' || suffix == 'F' || suffix == 'i' || suffix == 'I')) {
+	if (i_radix == 10 && (suffix == 'f' || suffix == 'F' || suffix == 'i' || suffix == 'I')) {
 		advance();
 		const bool floatSuffix = suffix == 'f' || suffix == 'F';
-		if (isFloat && !floatSuffix) {
+		if (b_isFloat && !floatSuffix) {
 			invalid("An integer suffix cannot follow a decimal point");
 		}
-		isFloat = isFloat || floatSuffix;
+		b_isFloat = b_isFloat || floatSuffix;
 	}
 
 	if (isIdentifierPart(peek())) {
-		if (radix == 10) {
+		if (i_radix == 10) {
 			invalid("Invalid numeric suffix");
 		} else {
-			invalid(std::format("Invalid base-{} digit or forbidden suffix", radix));
+			invalid(std::format("Invalid base-{} digit or forbidden suffix", i_radix));
 		}
 	}
 
-	addToken(isFloat ? TokenType::FloatingPointLiteral : TokenType::IntegerLiteral, span(), source.substr(start, current - start));
+	addToken(b_isFloat ? TokenType::FloatingPointLiteral : TokenType::IntegerLiteral, span(), s_source.substr(i_start, i_current - i_start));
 }
 
 /**
@@ -493,10 +493,10 @@ void Lexer::identifier() {
 		advance();
 	}
 
-	const auto text = source.substr(start, current - start);
-	const bool isKeyword = std::any_of(KEYWORDS.begin(), KEYWORDS.end(), [&text](Keyword keyword) { return to_string(keyword) == text; });
+	const std::string s_text = s_source.substr(i_start, i_current - i_start);
+	const bool b_isKeyword = std::any_of(V_KEYWORDS.begin(), V_KEYWORDS.end(), [&s_text](Keyword keyword) { return to_string(keyword) == s_text; });
 
-	addToken(isKeyword ? TokenType::Keyword : TokenType::Identifier, span(), text);
+	addToken(b_isKeyword ? TokenType::Keyword : TokenType::Identifier, span(), s_text);
 }
 
 /**
@@ -507,17 +507,17 @@ void Lexer::identifier() {
  * list of tokens.
  */
 void Lexer::interpolatedString() {
-	const auto opening = p_start;
+	const Position p_opening = p_start;
 	const auto mark = [this] {
-		start = current;
+		i_start = i_current;
 		p_start = p_current;
 	};
-	const auto emit = [this](TokenType type) { addToken(type, span(), source.substr(start, current - start)); };
+	const auto emit = [this](TokenType type) { addToken(type, span(), s_source.substr(i_start, i_current - i_start)); };
 
 	mark();
 	while (!isAtEnd()) {
-		const char c = peek();
-		if (c == '"') {
+		const char c_character = peek();
+		if (c_character == '"') {
 			emit(TokenType::StringSegment);
 			mark();
 			advance();
@@ -525,13 +525,13 @@ void Lexer::interpolatedString() {
 			return;
 		}
 
-		if (c == '{' || c == '}') {
-			if (charAt(source, current + 1) == c) {
+		if (c_character == '{' || c_character == '}') {
+			if (charAt(s_source, i_current + 1) == c_character) {
 				advance();
 				advance();
 				continue;
 			}
-			if (c == '}') {
+			if (c_character == '}') {
 				lexerError(p_current, "Expected '}}' for a literal closing brace");
 			}
 
@@ -563,7 +563,7 @@ void Lexer::interpolatedString() {
 			continue;
 		}
 
-		if (c == '\\') {
+		if (c_character == '\\') {
 			const auto escapeStart = p_current;
 			advance();
 			if (isAtEnd()) {
@@ -576,14 +576,14 @@ void Lexer::interpolatedString() {
 			if (!isValidEscape(escaped)) {
 				lexerError(escapeStart, "Invalid escape in interpolated string");
 			}
-		} else if (isLineBreak(c)) {
+		} else if (isLineBreak(c_character)) {
 			lexerError(p_current, "Newline in interpolated string");
 		} else {
 			advanceStringScalar();
 		}
 	}
 
-	lexerError(opening, "Unterminated interpolated string");
+	lexerError(p_opening, "Unterminated interpolated string");
 }
 
 /**
@@ -595,11 +595,11 @@ void Lexer::interpolatedString() {
  */
 void Lexer::rawString() {
 	while (!isAtEnd()) {
-		if (std::string_view{ source }.substr(current).starts_with(RAW_STRING_DELIMITER)) {
-			for (std::size_t i = 0; i < RAW_STRING_DELIMITER.size(); ++i) {
+		if (std::string_view{ s_source }.substr(i_current).starts_with(S_RAW_STRING_DELIMITER)) {
+			for (std::size_t i = 0; i < S_RAW_STRING_DELIMITER.size(); ++i) {
 				advance();
 			}
-			addToken(TokenType::RawStringLiteral, span(), source.substr(start, current - start));
+			addToken(TokenType::RawStringLiteral, span(), s_source.substr(i_start, i_current - i_start));
 			return;
 		}
 
@@ -618,7 +618,7 @@ void Lexer::rawString() {
  * value.
  */
 void Lexer::advanceStringScalar() {
-	const auto length = utf8_scalar_length(std::string_view{ source }.substr(current));
+	const auto length = utf8_scalar_length(std::string_view{ s_source }.substr(i_current));
 	if (length == 0) {
 		lexerError(p_current, "Invalid UTF-8 in literal");
 	}
@@ -637,15 +637,15 @@ void Lexer::advanceStringScalar() {
  */
 void Lexer::string() {
 	while (!isAtEnd()) {
-		const char c = peek();
-		if (c == '"') {
+		const char c_character = peek();
+		if (c_character == '"') {
 			advance();
-			addToken(TokenType::StringLiteral, span(), source.substr(start, current - start));
+			addToken(TokenType::StringLiteral, span(), s_source.substr(i_start, i_current - i_start));
 			return;
 		}
 
-		if (c == '\\') {
-			const auto escapeStart = p_current;
+		if (c_character == '\\') {
+			const Position p_escapeStart = p_current;
 			advance();
 			if (isAtEnd()) {
 				break;
@@ -653,11 +653,11 @@ void Lexer::string() {
 			if (isLineBreak(peek())) {
 				lexerError(p_current, "Newline in string literal");
 			}
-			const char escaped = advance();
-			if (!isValidEscape(escaped)) {
-				lexerError(escapeStart, "Invalid escape in string literal");
+			const char c_escaped = advance();
+			if (!isValidEscape(c_escaped)) {
+				lexerError(p_escapeStart, "Invalid escape in string literal");
 			}
-		} else if (isLineBreak(c)) {
+		} else if (isLineBreak(c_character)) {
 			lexerError(p_current, "Newline in string literal");
 		} else {
 			advanceStringScalar();
@@ -686,14 +686,14 @@ void Lexer::character() {
 	}
 
 	if (peek() == '\\') {
-		const auto escapeStart = p_current;
+		const Position p_escapeStart = p_current;
 		advance();
 		if (isAtEnd()) {
 			lexerError(p_start, "Unterminated character literal");
 		}
 		const char escaped = advance();
 		if (!isValidEscape(escaped)) {
-			lexerError(escapeStart, "Invalid escape in character literal");
+			lexerError(p_escapeStart, "Invalid escape in character literal");
 		}
 	} else {
 		advanceStringScalar();
@@ -704,7 +704,7 @@ void Lexer::character() {
 	}
 
 	advance();
-	addToken(TokenType::CharacterLiteral, span(), source.substr(start, current - start));
+	addToken(TokenType::CharacterLiteral, span(), s_source.substr(i_start, i_current - i_start));
 }
 
 }
