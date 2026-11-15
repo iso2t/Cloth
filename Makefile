@@ -17,7 +17,7 @@ run_path = $(abspath $<)
 endif
 
 objects := $(addprefix $(BUILD_DIR)/obj/,$(obj-y))
-program := $(BUILD_DIR)/clothc$(exe_suffix)
+program := $(BUILD_DIR)/cloth$(exe_suffix)
 
 .PHONY: all run
 all: $(program)

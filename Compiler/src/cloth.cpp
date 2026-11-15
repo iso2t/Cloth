@@ -1,13 +1,14 @@
 #include <file/source_file.hpp>
 #include <lexer/Lexer.hpp>
 #include <util/pstream.hpp>
+#include <system/compiler_options.hpp>
+#include <errors/cloth_errors.hpp>
 
 #include <iostream>
 #include <string>
 
-int lex_only = 0;
-
-int main(int argv, char *argc[]) {
+int main(int argc, char *argv[]) {
+	cloth::sys::CompilerOptions options{ argc, argv };
 	std::string textSource = R"(
         using lexer.Lexer: *
         using parser.Ast: SourceUnit
@@ -44,11 +45,15 @@ int main(int argv, char *argc[]) {
 
 	cloth::SourceFile co("Main", textSource, cloth::Extension::CLOTH_OBJECT);
 	cloth::Lexer lexer(co);
-
-	if (lex_only == 0) {
-		cloth::printLexer(lexer, std::cout);
-		return lex_only;
+	if (options.LEXER == 1) {
+		lexer.scanTokens(); // TODO: discards result, not capturing the vector.
+		return LEXED_ONLY;
 	}
 
-	return 0;
+	if (options.LEXER == 2) {
+		cloth::printLexer(lexer, std::cout);
+		return PRINT_LEXED_ONLY;
+	}
+
+	return SUCCESS;
 }

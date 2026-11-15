@@ -152,8 +152,6 @@ bool isValidEscape(char c) {
 	throw std::runtime_error(std::format("{}:{}: {}", position.line, position.column, message));
 }
 
-
-
 } // namespace
 
 /**
@@ -199,8 +197,6 @@ std::vector<Token> Lexer::scanTokens() {
 	scan();
 	return tokens;
 }
-
-
 
 void Lexer::scan() {
 	while (!isAtEnd()) {

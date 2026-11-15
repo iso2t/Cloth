@@ -1,5 +1,6 @@
 obj-y := cloth.o \
          file/source_file.o \
          lexer/lexer.o \
+         system/compiler_options.o \
          token/token.o \
          util/pstream.o
