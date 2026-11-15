@@ -9,19 +9,20 @@
 #include <string_view>
 #include <vector>
 
+namespace cloth {
 namespace {
 
 /**
  * @brief Represents the prefix used for string interpolation.
  * @param INTERPOLATION_PREFIX The prefix used for string interpolation.
  */
-const auto INTERPOLATION_PREFIX = std::format("{}{}", Tokens::to_string(Tokens::o_POUND), Tokens::to_string(Tokens::o_DOUBLE_QUOTATION));
+const auto INTERPOLATION_PREFIX = std::format("{}{}", to_string(o_POUND), to_string(o_DOUBLE_QUOTATION));
 
 /**
  * @brief Represents the prefix used for string interpolation.
  * @param INTERPOLATION_PREFIX The prefix used for string interpolation.
  */
-const auto RAW_STRING_DELIMITER = std::string(3, Tokens::to_string(Tokens::o_DOUBLE_QUOTATION).front());
+const auto RAW_STRING_DELIMITER = std::string(3, to_string(o_DOUBLE_QUOTATION).front());
 
 /**
  * @brief Represents an entry for an operator, including its type and spelling.
@@ -31,7 +32,7 @@ const auto RAW_STRING_DELIMITER = std::string(3, Tokens::to_string(Tokens::o_DOU
  * @return OperatorEntry The operator entry containing the type and spelling.
  */
 struct OperatorEntry {
-	Tokens::Operator op;
+	Operator op;
 	std::string_view spelling;
 };
 
@@ -44,9 +45,9 @@ struct OperatorEntry {
 const auto OPERATORS = [] {
 	std::vector<OperatorEntry> entries;
 
-	for (int value = Tokens::o_PLUS; value < Tokens::o_ERROR; ++value) {
-		const auto op = static_cast<Tokens::Operator>(value);
-		entries.push_back({ op, Tokens::to_string(op) });
+	for (int value = o_PLUS; value < o_ERROR; ++value) {
+		const auto op = static_cast<Operator>(value);
+		entries.push_back({ op, to_string(op) });
 	}
 
 	std::sort(entries.begin(), entries.end(),
@@ -58,14 +59,14 @@ const auto OPERATORS = [] {
 /**
  * @brief Returns a list of all keywords except for 'auto'.
  *
- * @return std::vector<Tokens::Keyword> The list of keywords excluding 'auto'.
+ * @return std::vector<Keyword> The list of keywords excluding 'auto'.
  */
 const auto KEYWORDS = [] {
-	std::vector<Tokens::Keyword> entries;
+	std::vector<Keyword> entries;
 
-	for (int value = Tokens::k_MOD; value < Tokens::k_ERROR; ++value) {
-		const auto keyword = static_cast<Tokens::Keyword>(value);
-		if (keyword != Tokens::k_AUTO) {
+	for (int value = k_MOD; value < k_ERROR; ++value) {
+		const auto keyword = static_cast<Keyword>(value);
+		if (keyword != k_AUTO) {
 			entries.push_back(keyword);
 		}
 	}
@@ -151,37 +152,7 @@ bool isValidEscape(char c) {
 	throw std::runtime_error(std::format("{}:{}: {}", position.line, position.column, message));
 }
 
-std::string quoteLexeme(std::string_view lexeme) {
-	std::string quoted(1, '"');
-	quoted.reserve(lexeme.size() + 2);
-	for (const char c : lexeme) {
-		switch (c) {
-		case '"':
-		case '\\':
-			quoted += '\\';
-			quoted += c;
-			break;
-		case '\n':
-			quoted += "\\n";
-			break;
-		case '\r':
-			quoted += "\\r";
-			break;
-		case '\t':
-			quoted += "\\t";
-			break;
-		default:
-			const auto byte = static_cast<unsigned char>(c);
-			if (byte < 0x20 || byte >= 0x7F) {
-				quoted += std::format("\\x{:02X}", byte);
-			} else {
-				quoted += c;
-			}
-		}
-	}
-	quoted += '"';
-	return quoted;
-}
+
 
 } // namespace
 
@@ -229,45 +200,7 @@ std::vector<Token> Lexer::scanTokens() {
 	return tokens;
 }
 
-/**
- * @brief Scans the source and writes a table of its tokens.
- */
-void Lexer::printTokens(std::ostream &out) {
-	scan();
 
-	constexpr std::string_view lexemeHeader = "LEXEME";
-	constexpr std::string_view typeHeader = "TYPE";
-	constexpr std::string_view spanHeader = "SPAN";
-	auto lexemeWidth = lexemeHeader.size();
-	auto typeWidth = typeHeader.size();
-	auto spanWidth = spanHeader.size();
-
-	struct Row {
-		std::string lexeme;
-		std::string_view type;
-		std::string span;
-	};
-
-	std::vector<Row> rows;
-	rows.reserve(tokens.size());
-	for (const auto &token : tokens) {
-		const auto &row = rows.emplace_back(quoteLexeme(token.get_lexeme()), token.type_name(), token.get_span().to_string());
-		lexemeWidth = std::max(lexemeWidth, row.lexeme.size());
-		typeWidth = std::max(typeWidth, row.type.size());
-		spanWidth = std::max(spanWidth, row.span.size());
-	}
-
-	const auto printRow = [&](std::string_view lexeme, std::string_view type, std::string_view spanText) {
-		out << std::format("{:<{}}  {:<{}}  {}\n", lexeme, lexemeWidth, type, typeWidth, spanText);
-	};
-	printRow(lexemeHeader, typeHeader, spanHeader);
-	printRow(std::string(lexemeWidth, '-'), std::string(typeWidth, '-'), std::string(spanWidth, '-'));
-	for (const auto &row : rows) {
-		printRow(row.lexeme, row.type, row.span);
-	}
-
-	out << "Count: " << tokens.size();
-}
 
 void Lexer::scan() {
 	while (!isAtEnd()) {
@@ -315,10 +248,10 @@ TokenSpan Lexer::cursorSpan() {
 /**
  * @brief Matches the next operator in the source.
  *
- * @return Tokens::Operator The matched operator, or Tokens::o_ERROR if no
+ * @return Operator The matched operator, or o_ERROR if no
  * operator matches.
  */
-Tokens::Operator Lexer::matchOperator() {
+Operator Lexer::matchOperator() {
 	const auto remaining = std::string_view{ source }.substr(current);
 
 	for (const auto &[op, spelling] : OPERATORS) {
@@ -326,7 +259,7 @@ Tokens::Operator Lexer::matchOperator() {
 			continue;
 		}
 
-		if (op == Tokens::o_UNDERSCORE && isIdentifierPart(charAt(remaining, spelling.size()))) {
+		if (op == o_UNDERSCORE && isIdentifierPart(charAt(remaining, spelling.size()))) {
 			continue;
 		}
 
@@ -336,7 +269,7 @@ Tokens::Operator Lexer::matchOperator() {
 		return op;
 	}
 
-	return Tokens::o_ERROR;
+	return o_ERROR;
 }
 
 /**
@@ -380,7 +313,7 @@ void Lexer::scanToken() {
 		return;
 	}
 
-	if (const auto op = matchOperator(); op != Tokens::o_ERROR) {
+	if (const auto op = matchOperator(); op != o_ERROR) {
 		tokens.emplace_back(source.substr(start, current - start), op, span());
 		return;
 	}
@@ -563,7 +496,7 @@ void Lexer::identifier() {
 	}
 
 	const auto text = source.substr(start, current - start);
-	const bool isKeyword = std::any_of(KEYWORDS.begin(), KEYWORDS.end(), [&text](Tokens::Keyword keyword) { return Tokens::to_string(keyword) == text; });
+	const bool isKeyword = std::any_of(KEYWORDS.begin(), KEYWORDS.end(), [&text](Keyword keyword) { return to_string(keyword) == text; });
 
 	addToken(isKeyword ? TokenType::Keyword : TokenType::Identifier, span(), text);
 }
@@ -811,4 +744,6 @@ void Lexer::character() {
 
 	advance();
 	addToken(TokenType::CharacterLiteral, span(), source.substr(start, current - start));
+}
+
 }

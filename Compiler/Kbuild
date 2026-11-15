@@ -1,5 +1,5 @@
-obj-y := clothc.o \
-         file/ClothObject.o \
-         lexer/Lexer.o \
-         token/Token.o \
-         token/Tokens.o
+obj-y := cloth.o \
+         file/source_file.o \
+         lexer/lexer.o \
+         token/token.o \
+         util/pstream.o

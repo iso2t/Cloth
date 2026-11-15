@@ -1,5 +1,6 @@
-#include <file/ClothObject.hpp>
+#include <file/source_file.hpp>
 #include <lexer/Lexer.hpp>
+#include <util/pstream.hpp>
 
 #include <iostream>
 #include <string>
@@ -41,11 +42,11 @@ int main(int argv, char *argc[]) {
 
     )";
 
-	ClothObject co("Main", textSource, Extension::CLOTH_OBJECT);
-	Lexer lexer(co);
+	cloth::SourceFile co("Main", textSource, cloth::Extension::CLOTH_OBJECT);
+	cloth::Lexer lexer(co);
 
 	if (lex_only == 0) {
-		lexer.printTokens(std::cout);
+		cloth::printLexer(lexer, std::cout);
 		return lex_only;
 	}
 

@@ -1,7 +1,7 @@
 #include <functional>
 #include <string>
 
-namespace sys {
+namespace cloth::sys {
 
 struct CompilerFlag {
 	std::string flag;

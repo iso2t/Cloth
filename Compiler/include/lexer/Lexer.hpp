@@ -1,12 +1,11 @@
 #pragma once
 
-#include <file/ClothObject.hpp>
+#include <file/source_file.hpp>
 #include <token/Token.hpp>
-#include <token/Tokens.hpp>
 
-#include <iosfwd>
 #include <vector>
 
+namespace cloth {
 struct Position {
 	size_t line;
 	size_t column;
@@ -18,7 +17,7 @@ class Lexer {
 		: source(src) {
 	}
 
-	Lexer(const ClothObject &co)
+	Lexer(const SourceFile &co)
 		: source(co.contents()) {
 	}
 
@@ -30,14 +29,18 @@ class Lexer {
 		: source(std::string(src, length)) {
 	}
 
-	Lexer(const ClothObject &co, size_t length)
+	Lexer(const SourceFile &co, size_t length)
 		: source(std::string(co.contents(), length)) {
 	}
 
 	~Lexer() = default;
 
 	std::vector<Token> scanTokens();
-	void printTokens(std::ostream &out);
+	void scan();
+
+	std::vector<Token> get_tokens() const {
+		return tokens;
+	}
 
     private:
 	std::string source;
@@ -48,14 +51,13 @@ class Lexer {
 	Position p_start{ 1, 1 };
 	Position p_current{ 1, 1 };
 
-	void scan();
 	char advance();
 	char peek() const;
 	bool isAtEnd() const;
 	void addToken(TokenType type, TokenSpan span, const std::string &lexeme);
 	TokenSpan span();
 	TokenSpan cursorSpan();
-	Tokens::Operator matchOperator();
+	cloth::Operator matchOperator();
 	void scanToken();
 	bool skipComments();
 	void number();
@@ -66,3 +68,4 @@ class Lexer {
 	void string();
 	void character();
 };
+}
