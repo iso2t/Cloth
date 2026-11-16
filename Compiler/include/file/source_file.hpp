@@ -12,34 +12,34 @@ namespace cloth {
 
 enum Extension { CLOTH_OBJECT, LIBRARY };
 
-std::string_view to_string(Extension type);
+std::string_view to_string (Extension type);
 
 class SourceFile {
     public:
-	explicit SourceFile(const std::filesystem::path &path);
+	explicit SourceFile (const std::filesystem::path &path);
 
-	~SourceFile() = default;
+	~SourceFile () = default;
 
-	std::string get_name() const {
+	std::string get_name () const {
 		return s_name;
 	}
 
-	std::string get_contents() const {
+	std::string get_contents () const {
 		return s_contents;
 	}
 
-	Extension get_extension() const {
+	Extension get_extension () const {
 		return e_extension;
 	}
 
     private:
 	const std::string s_name;
-	const Extension e_extension;
+	const Extension	  e_extension;
 	const std::string s_contents;
 
-	std::string source_name(const std::filesystem::path &path);
-	Extension source_extension(const std::filesystem::path &path);
-	std::string read_source(const std::filesystem::path &path);
+	std::string source_name (const std::filesystem::path &path);
+	Extension   source_extension (const std::filesystem::path &path);
+	std::string read_source (const std::filesystem::path &path);
 };
 
 }

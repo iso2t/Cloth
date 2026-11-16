@@ -12,7 +12,7 @@
 
 namespace cloth {
 
-SourceFile::SourceFile(const std::filesystem::path &path)
+SourceFile::SourceFile (const std::filesystem::path &path)
 	: s_name(source_name(path))
 	, e_extension(source_extension(path))
 	, s_contents(read_source(path)) {
@@ -22,7 +22,7 @@ SourceFile::SourceFile(const std::filesystem::path &path)
  * The two supported file types are dictated here.
  * All other file types are rejected.
  */
-std::string_view to_string(Extension type) {
+std::string_view to_string (Extension type) {
 	switch (type) {
 	case CLOTH_OBJECT:
 		return "co";
@@ -33,7 +33,7 @@ std::string_view to_string(Extension type) {
 	}
 }
 
-std::string SourceFile::source_name(const std::filesystem::path &path) {
+std::string SourceFile::source_name (const std::filesystem::path &path) {
 	const std::string s_name = path.stem().string();
 	if (!s_name.empty() || s_name != SEPERATOR) {
 		return s_name;
@@ -41,7 +41,7 @@ std::string SourceFile::source_name(const std::filesystem::path &path) {
 	throw std::invalid_argument("Invalid source file name '" + path.string() + "'");
 }
 
-Extension SourceFile::source_extension(const std::filesystem::path &path) {
+Extension SourceFile::source_extension (const std::filesystem::path &path) {
 	std::string s_suffix = path.extension().string();
 	if (!s_suffix.empty()) {
 		for (char &c : s_suffix) {
@@ -61,7 +61,7 @@ Extension SourceFile::source_extension(const std::filesystem::path &path) {
 	throw std::invalid_argument("Unsupported extension for source file '" + path.string() + "' (expected .co or .clib)");
 }
 
-std::string SourceFile::read_source(const std::filesystem::path &path) {
+std::string SourceFile::read_source (const std::filesystem::path &path) {
 	if (!std::filesystem::is_regular_file(path)) {
 		throw std::runtime_error("Could not open source file '" + path.string() + "': expected a regular file");
 	}
@@ -72,7 +72,7 @@ std::string SourceFile::read_source(const std::filesystem::path &path) {
 	}
 
 	std::string s_contents;
-	char c_buffer[4096];
+	char	    c_buffer[4096];
 	while (ifs_input.read(c_buffer, sizeof(c_buffer))) {
 		s_contents.append(c_buffer, sizeof(c_buffer));
 	}

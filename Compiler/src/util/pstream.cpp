@@ -7,7 +7,7 @@
 
 namespace cloth {
 
-std::string quoteLexeme(std::string_view lexeme) {
+std::string quoteLexeme (std::string_view lexeme) {
 	std::string s_quoted(1, '"');
 	s_quoted.reserve(lexeme.size() + 2);
 	for (const char c_character : lexeme) {
@@ -42,32 +42,32 @@ std::string quoteLexeme(std::string_view lexeme) {
 /**
  * @brief Scans the source and writes a table of its tokens.
  */
-void printLexer(Lexer &lexer, std::ostream &out) {
+void printLexer (Lexer &lexer, std::ostream &out) {
 	lexer.scan();
 
 	constexpr std::string_view s_lexemeHeader = "LEXEME";
-	constexpr std::string_view s_typeHeader = "TYPE";
-	constexpr std::string_view s_spanHeader = "SPAN";
-	size_t st_lexemeWidth = s_lexemeHeader.size();
-	size_t st_typeWidth = s_typeHeader.size();
-	size_t st_spanWidth = s_spanHeader.size();
+	constexpr std::string_view s_typeHeader	  = "TYPE";
+	constexpr std::string_view s_spanHeader	  = "SPAN";
+	size_t			   st_lexemeWidth = s_lexemeHeader.size();
+	size_t			   st_typeWidth	  = s_typeHeader.size();
+	size_t			   st_spanWidth	  = s_spanHeader.size();
 
 	struct Row {
-		std::string lexeme;
+		std::string	 lexeme;
 		std::string_view type;
-		std::string span;
+		std::string	 span;
 	};
 
 	std::vector<Row> v_rows;
 	v_rows.reserve(lexer.get_tokens().size());
 	for (const Token &t_token : lexer.get_tokens()) {
 		const Row &r_row = v_rows.emplace_back(quoteLexeme(t_token.get_lexeme()), t_token.type_name(), t_token.get_span().to_string());
-		st_lexemeWidth = std::max(st_lexemeWidth, r_row.lexeme.size());
-		st_typeWidth = std::max(st_typeWidth, r_row.type.size());
-		st_spanWidth = std::max(st_spanWidth, r_row.span.size());
+		st_lexemeWidth	 = std::max(st_lexemeWidth, r_row.lexeme.size());
+		st_typeWidth	 = std::max(st_typeWidth, r_row.type.size());
+		st_spanWidth	 = std::max(st_spanWidth, r_row.span.size());
 	}
 
-	const auto printRow = [&](std::string_view lexeme, std::string_view type, std::string_view spanText) {
+	const auto printRow = [&] (std::string_view lexeme, std::string_view type, std::string_view spanText) {
 		out << std::format("{:<{}}  {:<{}}  {}\n", lexeme, st_lexemeWidth, type, st_typeWidth, spanText);
 	};
 	printRow(s_lexemeHeader, s_typeHeader, s_spanHeader);

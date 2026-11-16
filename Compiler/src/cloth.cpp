@@ -11,7 +11,7 @@
 #include <system/compiler_options.hpp>
 #include <util/pstream.hpp>
 
-int main(int argc, char *argv[]) try {
+int main (int argc, char *argv[]) try {
 	const cloth::sys::CompilerOptions co_options{ argc, argv };
 
 	if (!co_options.p_sourcePath)

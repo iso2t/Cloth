@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-#include <lexer/Lexer.hpp>
+#include <lexer/lexer.hpp>
 #include <util/utf8.hpp>
 
 namespace cloth {
@@ -34,7 +34,7 @@ const std::string S_RAW_STRING_DELIMITER = std::string(3, to_string(o_DOUBLE_QUO
  * @return OperatorEntry The operator entry containing the type and spelling.
  */
 struct OperatorEntry {
-	Operator op;
+	Operator	 op;
 	std::string_view spelling;
 };
 
@@ -53,7 +53,7 @@ const std::vector<OperatorEntry> V_OPERATORS = [] {
 	}
 
 	std::sort(v_entries.begin(), v_entries.end(),
-		  [](const OperatorEntry &left, const OperatorEntry &right) { return left.spelling.size() > right.spelling.size(); });
+		  [] (const OperatorEntry &left, const OperatorEntry &right) { return left.spelling.size() > right.spelling.size(); });
 
 	return v_entries;
 }();
@@ -84,7 +84,7 @@ const std::vector<Keyword> V_KEYWORDS = [] {
  * @param index The index of the character to retrieve.
  * @return char The character at the specified index, or '\0' if out of bounds.
  */
-char charAt(std::string_view source, std::size_t index) {
+char charAt (std::string_view source, std::size_t index) {
 	return index < source.size() ? source[index] : '\0';
 }
 
@@ -95,7 +95,7 @@ char charAt(std::string_view source, std::size_t index) {
  * @return true If the character is a digit.
  * @return false Otherwise.
  */
-bool isDigit(char c) {
+bool isDigit (char c) {
 	return c >= '0' && c <= '9';
 }
 
@@ -106,7 +106,7 @@ bool isDigit(char c) {
  * @return true If the character is a valid identifier start character.
  * @return false Otherwise.
  */
-bool isIdentifierStart(char c) {
+bool isIdentifierStart (char c) {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
 
@@ -117,7 +117,7 @@ bool isIdentifierStart(char c) {
  * @return true If the character is a valid identifier part character.
  * @return false Otherwise.
  */
-bool isIdentifierPart(char c) {
+bool isIdentifierPart (char c) {
 	return isIdentifierStart(c) || isDigit(c);
 }
 
@@ -128,7 +128,7 @@ bool isIdentifierPart(char c) {
  * @return true If the character is a line break character.
  * @return false Otherwise.
  */
-bool isLineBreak(char c) {
+bool isLineBreak (char c) {
 	return c == '\n' || c == '\r';
 }
 
@@ -139,7 +139,7 @@ bool isLineBreak(char c) {
  * @return true If the character is a valid escape sequence character.
  * @return false Otherwise.
  */
-bool isValidEscape(char c) {
+bool isValidEscape (char c) {
 	return std::string_view{ "nrt0\\'\"" }.find(c) != std::string_view::npos;
 }
 
@@ -150,7 +150,7 @@ bool isValidEscape(char c) {
  * @param position The position in the source where the error occurred.
  * @param message The error message describing the lexer error.
  */
-[[noreturn]] void lexerError(Position position, std::string_view message) {
+[[noreturn]] void lexerError (Position position, std::string_view message) {
 	throw std::runtime_error(std::format("{}:{}: {}", position.line, position.column, message));
 }
 
@@ -161,7 +161,7 @@ bool isValidEscape(char c) {
  *
  * @return char The character that was advanced past.
  */
-char Lexer::advance() {
+char Lexer::advance () {
 	const char c = s_source[i_current++];
 	if (c == '\n') {
 		p_current = { p_current.line + 1, 1 };
@@ -176,7 +176,7 @@ char Lexer::advance() {
  *
  * @return char The current character without advancing the lexer.
  */
-char Lexer::peek() const {
+char Lexer::peek () const {
 	return charAt(s_source, i_current);
 }
 
@@ -186,7 +186,7 @@ char Lexer::peek() const {
  * @return true If the lexer is at the end of the source.
  * @return false Otherwise.
  */
-bool Lexer::isAtEnd() const {
+bool Lexer::isAtEnd () const {
 	return static_cast<std::size_t>(i_current) >= s_source.size();
 }
 
@@ -195,12 +195,12 @@ bool Lexer::isAtEnd() const {
  *
  * @return std::vector<Token> The scanned tokens.
  */
-std::vector<Token> Lexer::scanTokens() {
+std::vector<Token> Lexer::scanTokens () {
 	scan();
 	return v_tokens;
 }
 
-void Lexer::scan() {
+void Lexer::scan () {
 	while (!isAtEnd()) {
 		i_start = i_current;
 		p_start = p_current;
@@ -221,7 +221,7 @@ void Lexer::scan() {
  * @return void Always returns void; adds the token to the list of scanned
  * tokens.
  */
-void Lexer::addToken(TokenType type, TokenSpan span, const std::string &lexeme) {
+void Lexer::addToken (TokenType type, TokenSpan span, const std::string &lexeme) {
 	v_tokens.push_back(Token(lexeme, type, span));
 }
 
@@ -230,7 +230,7 @@ void Lexer::addToken(TokenType type, TokenSpan span, const std::string &lexeme) 
  *
  * @return TokenSpan The span of the current token.
  */
-TokenSpan Lexer::span() {
+TokenSpan Lexer::span () {
 	return { p_start.line, p_start.column, p_current.line, p_current.column };
 }
 
@@ -239,7 +239,7 @@ TokenSpan Lexer::span() {
  *
  * @return TokenSpan The span at the current cursor position.
  */
-TokenSpan Lexer::cursorSpan() {
+TokenSpan Lexer::cursorSpan () {
 	return { p_current.line, p_current.column, p_current.line, p_current.column };
 }
 
@@ -249,7 +249,7 @@ TokenSpan Lexer::cursorSpan() {
  * @return Operator The matched operator, or o_ERROR if no
  * operator matches.
  */
-Operator Lexer::matchOperator() {
+Operator Lexer::matchOperator () {
 	const std::string_view s_remaining = std::string_view{ s_source }.substr(i_current);
 
 	for (const auto &[op, spelling] : V_OPERATORS) {
@@ -275,7 +275,7 @@ Operator Lexer::matchOperator() {
  * tokens.
  * @return void
  */
-void Lexer::scanToken() {
+void Lexer::scanToken () {
 	const std::string_view s_remaining = std::string_view{ s_source }.substr(i_current);
 
 	if (s_remaining.starts_with(S_INTERPOLATION_PREFIX)) {
@@ -342,7 +342,7 @@ void Lexer::scanToken() {
  * @return true If a comment was skipped.
  * @return false If no comment was found.
  */
-bool Lexer::skipComments() {
+bool Lexer::skipComments () {
 	if (peek() != '/') {
 		return false;
 	}
@@ -382,9 +382,9 @@ bool Lexer::skipComments() {
  * @return void Always returns void; adds the numeric token to the list of
  * tokens.
  */
-void Lexer::number() {
+void Lexer::number () {
 	bool b_isFloat = false;
-	int i_radix = 10;
+	int  i_radix   = 10;
 	if (s_source[i_start] == '0') {
 		switch (peek()) {
 		case 'x':
@@ -399,19 +399,19 @@ void Lexer::number() {
 		}
 	}
 
-	const auto digit = [i_radix](char c) {
+	const auto digit = [i_radix] (char c) {
 		if (isDigit(c)) {
 			return c - '0' < i_radix;
 		}
 		return i_radix == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
 	};
 
-	const auto completeSuffix = [this](char lower, char upper) {
+	const auto completeSuffix = [this] (char lower, char upper) {
 		const char suffix = charAt(s_source, i_current + 1);
 		return (suffix == lower || suffix == upper) && !isIdentifierPart(charAt(s_source, i_current + 2));
 	};
 
-	const auto invalid = [this](std::string_view reason) {
+	const auto invalid = [this] (std::string_view reason) {
 		while (isIdentifierPart(peek())) {
 			advance();
 		}
@@ -439,8 +439,8 @@ void Lexer::number() {
 	consumeDigits();
 
 	if (peek() == '.') {
-		const char next = charAt(s_source, i_current + 1);
-		const bool trailingFloat = completeSuffix('f', 'F');
+		const char next		   = charAt(s_source, i_current + 1);
+		const bool trailingFloat   = completeSuffix('f', 'F');
 		const bool trailingInteger = completeSuffix('i', 'I');
 		if (isDigit(next) || trailingFloat || trailingInteger || next == '_') {
 			advance();
@@ -488,13 +488,13 @@ void Lexer::number() {
  * tokens.
  *
  */
-void Lexer::identifier() {
+void Lexer::identifier () {
 	while (isIdentifierPart(peek())) {
 		advance();
 	}
 
-	const std::string s_text = s_source.substr(i_start, i_current - i_start);
-	const bool b_isKeyword = std::any_of(V_KEYWORDS.begin(), V_KEYWORDS.end(), [&s_text](Keyword keyword) { return to_string(keyword) == s_text; });
+	const std::string s_text      = s_source.substr(i_start, i_current - i_start);
+	const bool	  b_isKeyword = std::any_of(V_KEYWORDS.begin(), V_KEYWORDS.end(), [&s_text] (Keyword keyword) { return to_string(keyword) == s_text; });
 
 	addToken(b_isKeyword ? TokenType::Keyword : TokenType::Identifier, span(), s_text);
 }
@@ -506,13 +506,13 @@ void Lexer::identifier() {
  * @return void Always returns void; adds the interpolated string tokens to the
  * list of tokens.
  */
-void Lexer::interpolatedString() {
+void Lexer::interpolatedString () {
 	const Position p_opening = p_start;
-	const auto mark = [this] {
+	const auto     mark	 = [this] {
 		i_start = i_current;
 		p_start = p_current;
 	};
-	const auto emit = [this](TokenType type) { addToken(type, span(), s_source.substr(i_start, i_current - i_start)); };
+	const auto emit = [this] (TokenType type) { addToken(type, span(), s_source.substr(i_start, i_current - i_start)); };
 
 	mark();
 	while (!isAtEnd()) {
@@ -539,8 +539,8 @@ void Lexer::interpolatedString() {
 			mark();
 			advance();
 			emit(TokenType::InterpolationOpen);
-			const auto hole = p_start;
-			int depth = 0;
+			const auto hole	 = p_start;
+			int	   depth = 0;
 			while (!isAtEnd()) {
 				mark();
 				if (peek() == '}' && depth == 0) {
@@ -593,7 +593,7 @@ void Lexer::interpolatedString() {
  * @return void Always returns void; adds the raw string token to the list of
  * tokens.
  */
-void Lexer::rawString() {
+void Lexer::rawString () {
 	while (!isAtEnd()) {
 		if (std::string_view{ s_source }.substr(i_current).starts_with(S_RAW_STRING_DELIMITER)) {
 			for (std::size_t i = 0; i < S_RAW_STRING_DELIMITER.size(); ++i) {
@@ -617,7 +617,7 @@ void Lexer::rawString() {
  * @return void Always returns void; advances the lexer by one UTF-8 scalar
  * value.
  */
-void Lexer::advanceStringScalar() {
+void Lexer::advanceStringScalar () {
 	const auto length = utf8_scalar_length(std::string_view{ s_source }.substr(i_current));
 	if (length == 0) {
 		lexerError(p_current, "Invalid UTF-8 in literal");
@@ -635,7 +635,7 @@ void Lexer::advanceStringScalar() {
  * @return void Always returns void; adds the string token to the list of
  * tokens.
  */
-void Lexer::string() {
+void Lexer::string () {
 	while (!isAtEnd()) {
 		const char c_character = peek();
 		if (c_character == '"') {
@@ -676,7 +676,7 @@ void Lexer::string() {
  * @return void Always returns void; adds the character token to the list of
  * tokens.
  */
-void Lexer::character() {
+void Lexer::character () {
 	if (isAtEnd() || isLineBreak(peek())) {
 		lexerError(p_start, "Unterminated character literal");
 	}

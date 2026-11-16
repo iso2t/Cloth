@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <stdexcept>
 
-#include <parser/Parser.hpp>
-#include <token/token.hpp>
+#include <parser/parser.hpp>
+#include <token/tokent.hpp>
 
 namespace cloth {
 
@@ -14,7 +14,7 @@ namespace cloth {
  * Peeks the next token at a given offset.
  * The offset defaults to the next up token.
  */
-Token Parser::peek(int offset) {
+Token Parser::peek (int offset) {
 	if (v_tokens.empty()) {
 		throw std::out_of_range("Token stream is empty.");
 	}
@@ -31,19 +31,28 @@ Token Parser::peek(int offset) {
 	return v_tokens[static_cast<std::size_t>(i64_target)];
 }
 
-Token Parser::previous() {
+Token Parser::previous () {
 	return v_tokens[i_currentIndex - 1];
 }
 
-Token Parser::advance() {
+Token Parser::advance () {
 	return v_tokens[i_currentIndex++];
 }
 
-SourceUnit Parser::parse() {
+SourceUnit Parser::parse () {
 	return parseDeclarations();
 }
 
-SourceUnit Parser::parseDeclarations() {
+SourceUnit Parser::parseDeclarations () {
 	throw std::logic_error("Not implemented");
+}
+
+bool Parser::startsTypeDeclaration () {
+	return false;
+}
+
+void skipNewLines () {
+	while (peek().get_type() == TokenType::NewLine)
+		advance();
 }
 }

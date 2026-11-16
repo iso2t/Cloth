@@ -15,7 +15,7 @@ struct TokenSpan {
 	size_t endLine;
 	size_t endCol;
 
-	std::string to_string() const {
+	std::string to_string () const {
 		return std::to_string(startLine) + ":" + std::to_string(startCol) + "-" + std::to_string(endLine) + ":" + std::to_string(endCol);
 	}
 };
@@ -41,7 +41,7 @@ enum class TokenType {
 	InterpolationEnd
 };
 
-std::string_view to_string(TokenType type);
+std::string_view to_string (TokenType type);
 
 enum Keyword {
 	k_MOD,
@@ -168,56 +168,56 @@ enum Operator {
 	o_ERROR
 };
 
-std::string_view to_string(Keyword keyword);
-std::string_view to_string(Operator op);
-std::string_view operator_name(Operator op);
+std::string_view to_string (Keyword keyword);
+std::string_view to_string (Operator op);
+std::string_view operator_name (Operator op);
 
 class Token {
     private:
-	TokenSpan t_span;
-	TokenType t_type;
+	TokenSpan	t_span;
+	TokenType	t_type;
 	cloth::Operator o_operator = cloth::Operator::o_ERROR;
-	std::string s_lexeme;
+	std::string	s_lexeme;
 
     public:
-	Token(std::string lexeme, TokenType type, TokenSpan span)
+	Token (std::string lexeme, TokenType type, TokenSpan span)
 		: t_span(span)
 		, t_type(type)
 		, s_lexeme(std::move(lexeme)) {
 	}
 
-	Token(std::string lexeme, cloth::Operator op, TokenSpan span)
+	Token (std::string lexeme, cloth::Operator op, TokenSpan span)
 		: t_span(span)
 		, t_type(TokenType::Operator)
 		, o_operator(op)
 		, s_lexeme(std::move(lexeme)) {
 	}
 
-	Token(char *lexeme, TokenType type, TokenSpan span)
+	Token (char *lexeme, TokenType type, TokenSpan span)
 		: t_span(span)
 		, t_type(type)
 		, s_lexeme(lexeme, sizeof(lexeme)) {
 	}
 
-	Token(const Token &other) = default;
+	Token (const Token &other) = default;
 
-	const std::string &get_lexeme() const {
+	const std::string &get_lexeme () const {
 		return s_lexeme;
 	}
 
-	TokenSpan get_span() const {
+	TokenSpan get_span () const {
 		return t_span;
 	}
 
-	TokenType get_type() const {
+	TokenType get_type () const {
 		return t_type;
 	}
 
-	std::string_view type_name() const {
+	std::string_view type_name () const {
 		return o_operator == cloth::o_ERROR ? cloth::to_string(t_type) : cloth::operator_name(o_operator);
 	}
 
-	std::string to_string() const {
+	std::string to_string () const {
 		return "{ l: " + s_lexeme + " t: " + std::string(type_name()) + " s: " + t_span.to_string() + " }";
 	}
 

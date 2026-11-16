@@ -14,36 +14,36 @@ namespace cloth::sys {
 
 struct CompilerFlag {
 	struct Value {
-		std::string s_description;
+		std::string			      s_description;
 		std::function<void(std::string_view)> f_func;
 	};
 
-	std::string s_flag;
+	std::string				   s_flag;
 	std::variant<std::function<void()>, Value> v_action;
 };
 
 class CompilerOptions {
     public:
-	CompilerOptions(int argc, const char *const argv[]);
+	CompilerOptions (int argc, const char *const argv[]);
 
-	~CompilerOptions() = default;
+	~CompilerOptions () = default;
 
-	std::vector<CompilerFlag> get_flags() const {
+	std::vector<CompilerFlag> get_flags () const {
 		return v_compilerFlags;
 	}
 
-	void add_flag(const CompilerFlag &flag);
-	void build_defaults();
+	void add_flag (const CompilerFlag &flag);
+	void build_defaults ();
 
 	std::optional<std::filesystem::path> p_sourcePath;
 
-	int get_lexer_flag() const {
+	int get_lexer_flag () const {
 		return i_lexer;
 	}
 
     private:
 	std::vector<CompilerFlag> v_compilerFlags;
-	int i_lexer = 0;
+	int			  i_lexer = 0;
 };
 
 }

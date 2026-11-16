@@ -5,9 +5,9 @@
  */
 #include <ostream>
 
-#include <lexer/Lexer.hpp>
+#include <lexer/lexer.hpp>
 
 namespace cloth {
-std::string quoteLexeme(std::string_view lexeme);
-void printLexer(Lexer &lexer, std::ostream &out);
+std::string quoteLexeme (std::string_view lexeme);
+void	    printLexer (Lexer &lexer, std::ostream &out);
 }

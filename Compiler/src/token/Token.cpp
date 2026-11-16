@@ -1,8 +1,8 @@
-#include <token/token.hpp>
+#include <token/tokent.hpp>
 
 namespace cloth {
 
-std::string_view to_string(TokenType type) {
+std::string_view to_string (TokenType type) {
 	switch (type) {
 	case TokenType::EndOfFile:
 		return "EndOfFile";
@@ -40,7 +40,7 @@ std::string_view to_string(TokenType type) {
 	return "Invalid";
 }
 
-std::string_view to_string(Keyword keyword) {
+std::string_view to_string (Keyword keyword) {
 	switch (keyword) {
 	case k_MOD:
 		return "mod";
@@ -149,7 +149,7 @@ struct OperatorInfo {
 	std::string_view name;
 };
 
-OperatorInfo operator_info(Operator op) {
+OperatorInfo operator_info (Operator op) {
 	switch (op) {
 	case o_PLUS:
 		return { "+", "PLUS" };
@@ -257,11 +257,11 @@ OperatorInfo operator_info(Operator op) {
 	return { "error", "ERROR" };
 }
 
-std::string_view to_string(Operator op) {
+std::string_view to_string (Operator op) {
 	return operator_info(op).spelling;
 }
 
-std::string_view operator_name(Operator op) {
+std::string_view operator_name (Operator op) {
 	return operator_info(op).name;
 }
 

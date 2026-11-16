@@ -8,7 +8,7 @@
 namespace cloth {
 
 // Returns the byte length of the first UTF-8 scalar, or zero for invalid input.
-inline std::size_t utf8_scalar_length(std::string_view bytes) {
+inline std::size_t utf8_scalar_length (std::string_view bytes) {
 	if (bytes.empty()) {
 		return 0;
 	}
@@ -20,7 +20,7 @@ inline std::size_t utf8_scalar_length(std::string_view bytes) {
 
 	// Bound the second byte to reject overlong encodings, surrogates and
 	// code points beyond U+10FFFF.
-	std::size_t length;
+	std::size_t   length;
 	unsigned char secondMin = 0x80;
 	unsigned char secondMax = 0xBF;
 	if (first >= 0xC2 && first <= 0xDF) {
