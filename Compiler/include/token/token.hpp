@@ -18,6 +18,10 @@ struct TokenSpan {
 	std::string to_string () const {
 		return std::to_string(startLine) + ":" + std::to_string(startCol) + "-" + std::to_string(endLine) + ":" + std::to_string(endCol);
 	}
+
+	static TokenSpan span_through (TokenSpan start, TokenSpan end) {
+		return { start.startLine, start.startCol, end.endLine, end.endCol };
+	}
 };
 
 enum class TokenType {
@@ -40,8 +44,6 @@ enum class TokenType {
 	InterpolationClose,
 	InterpolationEnd
 };
-
-std::string_view to_string (TokenType type);
 
 enum Keyword {
 	k_MOD,
@@ -171,6 +173,7 @@ enum Operator {
 std::string_view to_string (Keyword keyword);
 std::string_view to_string (Operator op);
 std::string_view operator_name (Operator op);
+std::string_view to_string (TokenType type);
 
 class Token {
     private:

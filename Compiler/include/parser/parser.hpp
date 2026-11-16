@@ -13,6 +13,7 @@
 #include <parser/expr/expression.hpp>
 #include <parser/stmt/statement.hpp>
 #include <parser/subs/expression_parser.hpp>
+#include <parser/type/type_reference.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
