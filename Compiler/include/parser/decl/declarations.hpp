@@ -16,19 +16,19 @@ struct Declaration {
 };
 
 struct TypeDeclaration : Declaration {
-	Token			     name;
-	std::optional<Token>	     visibility = std::nullopt;
+	Token                        name;
+	std::optional<Token>         visibility = std::nullopt;
 	std::vector<TypeDeclaration> nestedTypes;
 };
 
 struct ParameterDeclaration {
-	Token		     name;
-	TokenSpan	     span;
+	Token                name;
+	TokenSpan            span;
 	std::optional<Token> finalKeyword     = std::nullopt;
-	std::optional<Token> optKeyword	      = std::nullopt;
+	std::optional<Token> optKeyword       = std::nullopt;
 	std::optional<Token> defaultDelimiter = std::nullopt;
-	std::optional<Token> optOpening	      = std::nullopt;
-	std::optional<Token> optClosing	      = std::nullopt;
+	std::optional<Token> optOpening       = std::nullopt;
+	std::optional<Token> optClosing       = std::nullopt;
 
 	bool isMutable () const {
 		return !finalKeyword.has_value();
@@ -41,13 +41,13 @@ struct ParameterDeclaration {
 
 /** Single-statement bodies carry an equals token. Brace bodies leave it empty. */
 struct BlockBody {
-	TokenSpan	     span;
+	TokenSpan            span;
 	std::optional<Token> equals = std::nullopt;
 };
 
 /** An equals-prefixed expression supplies an implicit return. */
 struct ExpressionBody {
-	Token	  equals;
+	Token     equals;
 	TokenSpan span;
 };
 
@@ -68,10 +68,10 @@ struct FunctionBody {
 
 /** A callable signature may stand on its own or have an executable body. */
 struct CallableSignature : Declaration {
-	Token				  keyword;
+	Token                             keyword;
 	std::vector<ParameterDeclaration> parameters;
 
-	virtual ~CallableSignature ()	       = default;
+	virtual ~CallableSignature ()          = default;
 	virtual const Token &get_name () const = 0;
 
 	virtual const FunctionBody *executableBody () const {
@@ -79,16 +79,16 @@ struct CallableSignature : Declaration {
 	}
 
     protected:
-	CallableSignature (const Token &keyword, std::vector<ParameterDeclaration> parameters, TokenSpan span)
-		: Declaration{ span }
-		, keyword(keyword)
-		, parameters(std::move(parameters)) {
+	CallableSignature (const Token &keyword, std::vector<ParameterDeclaration> parameters, TokenSpan span) :
+	        Declaration{ span },
+	        keyword(keyword),
+	        parameters(std::move(parameters)) {
 	}
 };
 
 struct ConstructorGuaranteeDeclaration : CallableSignature {
-	ConstructorGuaranteeDeclaration (const Token &keyword, std::vector<ParameterDeclaration> parameters, TokenSpan span)
-		: CallableSignature(keyword, std::move(parameters), span) {
+	ConstructorGuaranteeDeclaration (const Token &keyword, std::vector<ParameterDeclaration> parameters, TokenSpan span) :
+	        CallableSignature(keyword, std::move(parameters), span) {
 	}
 
 	const Token &get_name () const override {
@@ -97,7 +97,7 @@ struct ConstructorGuaranteeDeclaration : CallableSignature {
 };
 
 struct CallableDeclaration : CallableSignature {
-	Token	     name;
+	Token        name;
 	FunctionBody body;
 
 	const Token &get_name () const override {
@@ -109,10 +109,10 @@ struct CallableDeclaration : CallableSignature {
 	}
 
     protected:
-	CallableDeclaration (const Token &keyword, const Token &name, std::vector<ParameterDeclaration> parameters, FunctionBody body, TokenSpan start)
-		: CallableSignature(keyword, std::move(parameters), spanThrough(start, body.get_span()))
-		, name(name)
-		, body(std::move(body)) {
+	CallableDeclaration (const Token &keyword, const Token &name, std::vector<ParameterDeclaration> parameters, FunctionBody body, TokenSpan start) :
+	        CallableSignature(keyword, std::move(parameters), spanThrough(start, body.get_span())),
+	        name(name),
+	        body(std::move(body)) {
 	}
 
     private:
@@ -125,9 +125,9 @@ struct FunctionDeclaration : CallableDeclaration {
 	std::optional<Token> visibility;
 
 	FunctionDeclaration (const Token &keyword, const Token &name, std::vector<ParameterDeclaration> parameters, FunctionBody body,
-			     std::optional<Token> visibility = std::nullopt)
-		: CallableDeclaration(keyword, name, std::move(parameters), std::move(body), (visibility ? *visibility : keyword).get_span())
-		, visibility(std::move(visibility)) {
+	                     std::optional<Token> visibility = std::nullopt) :
+	        CallableDeclaration(keyword, name, std::move(parameters), std::move(body), (visibility ? *visibility : keyword).get_span()),
+	        visibility(std::move(visibility)) {
 	}
 };
 

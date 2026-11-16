@@ -34,7 +34,7 @@ class SourceFile {
 
     private:
 	const std::string s_name;
-	const Extension	  e_extension;
+	const Extension   e_extension;
 	const std::string s_contents;
 
 	std::string source_name (const std::filesystem::path &path);

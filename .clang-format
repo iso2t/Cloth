@@ -5,49 +5,31 @@ AccessModifierOffset: -4
 AlignAfterOpenBracket: Align
 AlignConsecutiveDeclarations: Consecutive
 AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveMacros: Consecutive
 AlignEscapedNewlines: Left
 AlignOperands: true
-AlignTrailingComments: false
+AlignTrailingComments: true
 AllowAllParametersOfDeclarationOnNextLine: false
-AllowShortBlocksOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
 AllowShortCaseLabelsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: None
-AllowShortIfStatementsOnASingleLine: false
-AllowShortLoopsOnASingleLine: false
-AlwaysBreakAfterDefinitionReturnType: None
-AlwaysBreakAfterReturnType: None
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
 AlwaysBreakBeforeMultilineStrings: false
-AlwaysBreakTemplateDeclarations: false
 BinPackArguments: true
 BinPackParameters: true
-BraceWrapping:
-  AfterClass: false
-  AfterControlStatement: false
-  AfterEnum: false
-  AfterFunction: true
-  AfterNamespace: true
-  AfterObjCDeclaration: false
-  AfterStruct: false
-  AfterUnion: false
-  AfterExternBlock: false
-  BeforeCatch: false
-  BeforeElse: false
-  IndentBraces: false
-  SplitEmptyFunction: true
-  SplitEmptyRecord: true
-  SplitEmptyNamespace: true
+BreakAfterReturnType: None
 BreakBeforeBinaryOperators: None
 BreakBeforeBraces: Attach
-BreakBeforeInheritanceComma: false
 BreakBeforeTernaryOperators: false
-BreakConstructorInitializersBeforeComma: false
-BreakConstructorInitializers: BeforeComma
+BreakConstructorInitializers: AfterColon
 BreakAfterJavaFieldAnnotations: false
 BreakStringLiterals: false
+BreakTemplateDeclarations: MultiLine
 ColumnLimit: 160
 CommentPragmas: '^ IWYU pragma:'
 CompactNamespaces: false
-ConstructorInitializerAllOnOneLineOrOnePerLine: false
+PackConstructorInitializers: CurrentLine
 ConstructorInitializerIndentWidth: 8
 ContinuationIndentWidth: 8
 Cpp11BracedListStyle: false
@@ -59,7 +41,7 @@ IncludeBlocks: Regroup
 IncludeCategories:
   - Regex: '^<Compiler/'
     Priority: 1
-  - Regex: '^<([a-z0-9_]+|c[a-z0-9_]+|[a-z0-9_/]+\.h)>'
+  - Regex: '^<([a-z0-9_]+|[a-z0-9_/]+\.h)>'
     Priority: 2
   - Regex: '^<'
     Priority: 3
@@ -85,9 +67,7 @@ ObjCSpaceBeforeProtocolList: true
 # Taken from git's rules
 PenaltyBreakAssignment: 10
 PenaltyBreakBeforeFirstCallParameter: 30
-PenaltyBreakComment: 10
 PenaltyBreakFirstLessLess: 0
-PenaltyBreakString: 10
 PenaltyExcessCharacter: 100
 PenaltyReturnTypeOnItsOwnLine: 60
 
@@ -115,6 +95,6 @@ SpacesInContainerLiterals: false
 SpacesInCStyleCastParentheses: false
 SpacesInParentheses: false
 SpacesInSquareBrackets: false
-Standard: Cpp03
+Standard: Latest
 TabWidth: 8
-UseTab: Always
+UseTab: ForIndentation

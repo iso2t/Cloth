@@ -3,7 +3,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
+#include <vector>
 
+#include <parser/decl/declarations.hpp>
+#include <parser/decl/import_declaration.hpp>
 #include <parser/parser.hpp>
 #include <token/token.hpp>
 
@@ -15,18 +18,12 @@ namespace cloth {
  * The offset defaults to the next up token.
  */
 Token Parser::peek (int offset) {
-	if (v_tokens.empty()) {
-		throw std::out_of_range("Token stream is empty.");
-	}
+	if (v_tokens.empty()) throw std::out_of_range("Token stream is empty.");
 
 	const std::int64_t i64_target = static_cast<std::int64_t>(i_currentIndex) + offset;
-	if (i64_target < 0) {
-		return v_tokens.front();
-	}
+	if (i64_target < 0) return v_tokens.front();
 
-	if (static_cast<std::uint64_t>(i64_target) >= v_tokens.size()) {
-		return v_tokens.back();
-	}
+	if (static_cast<std::uint64_t>(i64_target) >= v_tokens.size()) return v_tokens.back();
 
 	return v_tokens[static_cast<std::size_t>(i64_target)];
 }
@@ -44,15 +41,25 @@ SourceUnit Parser::parse () {
 }
 
 SourceUnit Parser::parseDeclarations () {
-	throw std::logic_error("Not implemented");
+	std::vector<Declaration>       v_declarations;
+	std::vector<ImportDeclaration> v_imports;
+	skipNewLines();
+
+	while (peek().get_type() != TokenType::EndOfFile) {
+		if (atKeyword(Keyword::k_USING)) {
+			if (!v_declarations.empty()) throw std::logic_error("Outside of header!");
+			v_imports.push_back(importParser.parse());
+			skipNewLines();
+			continue;
+		}
+	}
 }
 
 bool Parser::startsTypeDeclaration () {
 	return false;
 }
 
-void skipNewLines () {
-	while (peek().get_type() == TokenType::NewLine)
-		advance();
+void Parser::skipNewLines () {
+	while (peek().get_type() == TokenType::NewLine) advance();
 }
-}
+} // namespace cloth

@@ -12,10 +12,7 @@
 
 namespace cloth {
 
-SourceFile::SourceFile (const std::filesystem::path &path)
-	: s_name(source_name(path))
-	, e_extension(source_extension(path))
-	, s_contents(read_source(path)) {
+SourceFile::SourceFile (const std::filesystem::path &path) : s_name(source_name(path)), e_extension(source_extension(path)), s_contents(read_source(path)) {
 }
 
 /**
@@ -72,7 +69,7 @@ std::string SourceFile::read_source (const std::filesystem::path &path) {
 	}
 
 	std::string s_contents;
-	char	    c_buffer[4096];
+	char        c_buffer[4096];
 	while (ifs_input.read(c_buffer, sizeof(c_buffer))) {
 		s_contents.append(c_buffer, sizeof(c_buffer));
 	}

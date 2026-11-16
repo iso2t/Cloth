@@ -174,29 +174,23 @@ std::string_view operator_name (Operator op);
 
 class Token {
     private:
-	TokenSpan	t_span;
-	TokenType	t_type;
+	TokenSpan       t_span;
+	TokenType       t_type;
 	cloth::Operator o_operator = cloth::Operator::o_ERROR;
-	std::string	s_lexeme;
+	std::string     s_lexeme;
 
     public:
-	Token (std::string lexeme, TokenType type, TokenSpan span)
-		: t_span(span)
-		, t_type(type)
-		, s_lexeme(std::move(lexeme)) {
+	Token (std::string lexeme, TokenType type, TokenSpan span) : t_span(span), t_type(type), s_lexeme(std::move(lexeme)) {
 	}
 
-	Token (std::string lexeme, cloth::Operator op, TokenSpan span)
-		: t_span(span)
-		, t_type(TokenType::Operator)
-		, o_operator(op)
-		, s_lexeme(std::move(lexeme)) {
+	Token (std::string lexeme, cloth::Operator op, TokenSpan span) :
+	        t_span(span),
+	        t_type(TokenType::Operator),
+	        o_operator(op),
+	        s_lexeme(std::move(lexeme)) {
 	}
 
-	Token (char *lexeme, TokenType type, TokenSpan span)
-		: t_span(span)
-		, t_type(type)
-		, s_lexeme(lexeme, sizeof(lexeme)) {
+	Token (char *lexeme, TokenType type, TokenSpan span) : t_span(span), t_type(type), s_lexeme(lexeme, sizeof(lexeme)) {
 	}
 
 	Token (const Token &other) = default;

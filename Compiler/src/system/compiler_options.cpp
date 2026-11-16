@@ -13,7 +13,7 @@ CompilerOptions::CompilerOptions (int argc, const char *const argv[]) {
 
 	for (int index = 1; index < argc; ++index) {
 		const std::string_view s_argument = argv[index];
-		const auto	       bi_flag	  = std::ranges::find(v_compilerFlags, s_argument, &CompilerFlag::s_flag);
+		const auto             bi_flag    = std::ranges::find(v_compilerFlags, s_argument, &CompilerFlag::s_flag);
 		if (bi_flag == v_compilerFlags.end()) {
 			continue;
 		}
@@ -24,7 +24,7 @@ CompilerOptions::CompilerOptions (int argc, const char *const argv[]) {
 			}
 			rr_value->f_func(argv[++index]);
 		} else {
-			std::get<std::function<void()> >(bi_flag->v_action)();
+			std::get<std::function<void()>>(bi_flag->v_action)();
 		}
 	}
 }

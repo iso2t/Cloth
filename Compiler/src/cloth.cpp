@@ -14,8 +14,7 @@
 int main (int argc, char *argv[]) try {
 	const cloth::sys::CompilerOptions co_options{ argc, argv };
 
-	if (!co_options.p_sourcePath)
-		return FAILED;
+	if (!co_options.p_sourcePath) return FAILED;
 
 	cloth::Lexer l_lexer = cloth::Lexer{ cloth::SourceFile{ *co_options.p_sourcePath } };
 	if (co_options.get_lexer_flag() == 1) {

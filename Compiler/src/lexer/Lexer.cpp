@@ -34,7 +34,7 @@ const std::string S_RAW_STRING_DELIMITER = std::string(3, to_string(o_DOUBLE_QUO
  * @return OperatorEntry The operator entry containing the type and spelling.
  */
 struct OperatorEntry {
-	Operator	 op;
+	Operator         op;
 	std::string_view spelling;
 };
 
@@ -53,7 +53,7 @@ const std::vector<OperatorEntry> V_OPERATORS = [] {
 	}
 
 	std::sort(v_entries.begin(), v_entries.end(),
-		  [] (const OperatorEntry &left, const OperatorEntry &right) { return left.spelling.size() > right.spelling.size(); });
+	          [] (const OperatorEntry &left, const OperatorEntry &right) { return left.spelling.size() > right.spelling.size(); });
 
 	return v_entries;
 }();
@@ -439,7 +439,7 @@ void Lexer::number () {
 	consumeDigits();
 
 	if (peek() == '.') {
-		const char next		   = charAt(s_source, i_current + 1);
+		const char next            = charAt(s_source, i_current + 1);
 		const bool trailingFloat   = completeSuffix('f', 'F');
 		const bool trailingInteger = completeSuffix('i', 'I');
 		if (isDigit(next) || trailingFloat || trailingInteger || next == '_') {
@@ -494,7 +494,7 @@ void Lexer::identifier () {
 	}
 
 	const std::string s_text      = s_source.substr(i_start, i_current - i_start);
-	const bool	  b_isKeyword = std::any_of(V_KEYWORDS.begin(), V_KEYWORDS.end(), [&s_text] (Keyword keyword) { return to_string(keyword) == s_text; });
+	const bool        b_isKeyword = std::any_of(V_KEYWORDS.begin(), V_KEYWORDS.end(), [&s_text] (Keyword keyword) { return to_string(keyword) == s_text; });
 
 	addToken(b_isKeyword ? TokenType::Keyword : TokenType::Identifier, span(), s_text);
 }
@@ -508,7 +508,7 @@ void Lexer::identifier () {
  */
 void Lexer::interpolatedString () {
 	const Position p_opening = p_start;
-	const auto     mark	 = [this] {
+	const auto     mark      = [this] {
 		i_start = i_current;
 		p_start = p_current;
 	};
@@ -539,8 +539,8 @@ void Lexer::interpolatedString () {
 			mark();
 			advance();
 			emit(TokenType::InterpolationOpen);
-			const auto hole	 = p_start;
-			int	   depth = 0;
+			const auto hole  = p_start;
+			int        depth = 0;
 			while (!isAtEnd()) {
 				mark();
 				if (peek() == '}' && depth == 0) {

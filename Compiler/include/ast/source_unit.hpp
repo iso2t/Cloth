@@ -4,4 +4,4 @@ namespace cloth {
 
 class SourceUnit {};
 
-}
+} // namespace cloth
