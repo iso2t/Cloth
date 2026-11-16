@@ -17,6 +17,7 @@
 
 namespace cloth {
 
+// TODO: end goal is for this to no longer be needed, as we are still implementing, this is a requirement
 #define NOT_IMPLEMENTED throw std::logic_error("Not Implemented!");
 
 /**

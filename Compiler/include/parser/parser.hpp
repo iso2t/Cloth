@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -21,12 +22,35 @@ class Parser {
 	Parser (Lexer &lexer) : v_tokens(lexer.scanTokens()) {
 	}
 
+	struct BindingBraceSyntax {
+		bool                 hasReturn       = false;
+		bool                 hasSemicolon    = false;
+		std::optional<Token> secondStatement = std::optnull;
+	};
+
     private:
 	std::vector<Token> v_tokens;
 
-	int  i_currentIndex = 0;
-	bool b_inFnBody     = false;
-	bool b_inStateBody  = false;
+	int                               i_currentIndex               = 0;
+	bool                              b_inFnBody                   = false;
+	bool                              b_inStateBody                = false;
+	bool                              b_allowInferredOperatorWidth = false;
+	std::optional<BindingBraceSyntax> bindingBrace                 = std::optnull;
+
+	ExpressionParser  p_expressionParser{ this };
+	TypeParser        p_typeParser{ this };
+	DelimitedParser   p_delimitedParser{ this };
+	ForLoopParser     p_forLoopParser{ this };
+	WhileLoopParser   p_whileLoopParser{ this };
+	DoWhileLoopParser p_doWhileLoopParser{ this };
+	FunctionParser    p_functionParser{ this };
+	IfParser          p_ifParser{ this };
+	BindingParser     p_bindingParser{ this };
+	StructParser      p_structParser{ this };
+	ClassParser       p_classParser{ this };
+	EnumParser        p_enumParser{ this };
+	InterfaceParser   p_interfaceParser{ this };
+	ImportParser      p_importParser{ this };
 
 	Token                            peek (int offset = 0);
 	Token                            previous ();
