@@ -10,6 +10,9 @@
 #include <ast/source_unit.hpp>
 #include <lexer/lexer.hpp>
 #include <parser/decl/declarations.hpp>
+#include <parser/expr/expression.hpp>
+#include <parser/stmt/statement.hpp>
+#include <parser/subs/expression_parser.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -25,7 +28,7 @@ class Parser {
 	struct BindingBraceSyntax {
 		bool                 hasReturn       = false;
 		bool                 hasSemicolon    = false;
-		std::optional<Token> secondStatement = std::optnull;
+		std::optional<Token> secondStatement = std::nullopt;
 	};
 
     private:
@@ -35,7 +38,7 @@ class Parser {
 	bool                              b_inFnBody                   = false;
 	bool                              b_inStateBody                = false;
 	bool                              b_allowInferredOperatorWidth = false;
-	std::optional<BindingBraceSyntax> bindingBrace                 = std::optnull;
+	std::optional<BindingBraceSyntax> bindingBrace                 = std::nullopt;
 
 	ExpressionParser  p_expressionParser{ this };
 	TypeParser        p_typeParser{ this };

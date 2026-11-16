@@ -17,8 +17,10 @@
 
 namespace cloth {
 
+namespace {
 // TODO: end goal is for this to no longer be needed, as we are still implementing, this is a requirement
 #define NOT_IMPLEMENTED throw std::logic_error("Not Implemented!");
+}
 
 /**
  * I may have over engineered this.
@@ -56,7 +58,7 @@ SourceUnit Parser::parseDeclarations () {
 	while (peek().get_type() != TokenType::EndOfFile) {
 		if (atKeyword(Keyword::k_USING)) {
 			if (!v_declarations.empty()) throw std::logic_error("Outside of header!");
-			v_imports.push_back(importParser.parse());
+			v_imports.push_back(p_importParser.parse());
 			skipNewLines();
 			continue;
 		}
