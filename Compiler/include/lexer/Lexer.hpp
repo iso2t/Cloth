@@ -5,7 +5,7 @@
 #include <vector>
 
 #include <file/source_file.hpp>
-#include <token/tokent.hpp>
+#include <token/token.hpp>
 
 namespace cloth {
 struct Position {
