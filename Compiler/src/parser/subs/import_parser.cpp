@@ -25,10 +25,7 @@ ImportDeclaration ImportParser::parse () {
 	if (!onLine(t_keyword)) {
 		throw SyntaxErrors::expected(std::format("'{}' on the same line as the import path", cloth::to_string(Operator::o_COLON)), p_parser.peek());
 	}
-	if (!at(Operator::o_COLON)) {
-		throw SyntaxErrors::expected(std::format("'{}'", cloth::to_string(Operator::o_COLON)), p_parser.peek());
-	}
-	const Token t_colon = p_parser.advance();
+	const Token t_colon = p_parser.expect(Operator::o_COLON);
 	p_parser.skipNewLines();
 	ImportSelection is_selection = at(Operator::o_MULTIPLY) ? ImportSelection{ ImportSelection::Wildcard{ p_parser.advance() } } :
 	                                                          ImportSelection{ names() };

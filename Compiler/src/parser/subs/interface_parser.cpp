@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <format>
-#include <memory>
 #include <optional>
 #include <utility>
 #include <variant>
@@ -45,8 +44,7 @@ std::vector<InterfaceMethodDeclaration> InterfaceParser::parseMembers (std::vect
 	std::vector<InterfaceMethodDeclaration> v_methods;
 	p_parser.skipNewLines();
 	while (p_parser.peek().get_lexeme() != cloth::to_string(Operator::o_BRACE_CLOSE)) {
-		const std::unique_ptr<bool> pb_startsType = p_parser.startsTypeDeclaration();
-		if (pb_startsType && *pb_startsType) {
+		if (p_parser.startsTypeDeclaration()) {
 			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}

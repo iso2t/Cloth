@@ -29,7 +29,6 @@ class StructParser {
 	int                                 memberOffset ();
 	bool                                atMember ();
 	bool                                atEnd ();
-	bool                                startsTypeDeclaration ();
 };
 
 }

@@ -29,7 +29,6 @@ class EnumParser {
 	EnumCaseDeclaration            parseCase ();
 	std::vector<MethodDeclaration> parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes);
 	ExpressionPtr                  value ();
-	bool                           startsTypeDeclaration ();
 	bool                           at (Operator op);
 };
 

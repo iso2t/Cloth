@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <format>
-#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -28,7 +27,7 @@ StructDeclaration StructParser::parse (const Token &keyword, std::optional<Token
 	p_parser.skipNewLines();
 	p_parser.p_delimitedParser.braces([this, &v_nestedTypes, &v_fields, &v_methods] () -> void {
 		p_parser.skipNewLines();
-		while (startsTypeDeclaration()) {
+		while (p_parser.startsTypeDeclaration()) {
 			v_nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 		}
 		if (!atMember()) {
@@ -36,14 +35,10 @@ StructDeclaration StructParser::parse (const Token &keyword, std::optional<Token
 		}
 		if (!v_fields.empty() && !atEnd()) {
 			rejectFunction();
-			const Token t_separator = p_parser.peek();
-			if (!p_parser.isSemiColon(t_separator)) {
-				throw SyntaxErrors::expected(std::format("'{}'", cloth::to_string(Operator::o_SEMICOLON)), t_separator);
-			}
-			p_parser.advance();
+			p_parser.expect(Operator::o_SEMICOLON);
 			p_parser.skipNewLines();
 			rejectFunction();
-			if (!atMember() && !startsTypeDeclaration()) {
+			if (!atMember() && !p_parser.startsTypeDeclaration()) {
 				throw SyntaxErrors::expected(std::format("a '{}', '{}', or '{}' declaration after the fields", cloth::to_string(Keyword::k_MT),
 				                                         cloth::to_string(Keyword::k_OPERATOR), cloth::to_string(Keyword::k_TYPEDEF)),
 				                             p_parser.peek());
@@ -66,7 +61,7 @@ std::vector<StructFieldDeclaration> StructParser::parseFields () {
 	return p_parser.p_delimitedParser.commaSeparated(
 	        Operator::o_BRACE_CLOSE,
 	        [this] () -> bool {
-		        return p_parser.isSemiColon(p_parser.peek()) || atMember() || startsTypeDeclaration() ||
+		        return p_parser.isSemiColon(p_parser.peek()) || atMember() || p_parser.startsTypeDeclaration() ||
 		               p_parser.atKeyword(Keyword::k_FN, memberOffset());
 	        },
 	        [this] () -> StructFieldDeclaration {
@@ -82,7 +77,7 @@ std::vector<StructFieldDeclaration> StructParser::parseFields () {
 std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) {
 	std::vector<MethodDeclaration> v_methods;
 	while (!atEnd()) {
-		if (startsTypeDeclaration()) {
+		if (p_parser.startsTypeDeclaration()) {
 			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}
@@ -132,11 +127,6 @@ bool StructParser::atMember () {
 
 bool StructParser::atEnd () {
 	return p_parser.peek().get_lexeme() == cloth::to_string(Operator::o_BRACE_CLOSE);
-}
-
-bool StructParser::startsTypeDeclaration () {
-	const std::unique_ptr<bool> pb_startsType = p_parser.startsTypeDeclaration();
-	return pb_startsType && *pb_startsType;
 }
 
 }

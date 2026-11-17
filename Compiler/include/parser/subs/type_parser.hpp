@@ -63,7 +63,6 @@ class TypeParser {
 	std::optional<TokenSpan>        nullableMarker ();
 	bool                            isWidthToken (const Token &token) const;
 	bool                            at (Operator op, int offset = 0);
-	Token                           expectOperator (Operator op);
 };
 
 }

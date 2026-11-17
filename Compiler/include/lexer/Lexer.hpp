@@ -24,12 +24,10 @@ class Lexer {
 	Lexer (const char *src) : s_source(src) {
 	}
 
-	Lexer (const char *src, size_t length) :
-	        s_source(std::string(src, length)) {
+	Lexer (const char *src, size_t length) : s_source(std::string(src, length)) {
 	}
 
-	Lexer (const SourceFile &co, size_t length) :
-	        s_source(std::string(co.get_contents(), length)) {
+	Lexer (const SourceFile &co, size_t length) : s_source(std::string(co.get_contents(), length)) {
 	}
 
 	~Lexer () = default;
@@ -53,8 +51,7 @@ class Lexer {
 	char            advance ();
 	char            peek () const;
 	bool            isAtEnd () const;
-	void            addToken (TokenType type, TokenSpan span,
-	                          const std::string &lexeme);
+	void            addToken (TokenType type, TokenSpan span, const std::string &lexeme);
 	TokenSpan       span ();
 	TokenSpan       cursorSpan ();
 	cloth::Operator matchOperator ();

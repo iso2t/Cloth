@@ -74,11 +74,11 @@ class Parser {
 
 	std::vector<Token> v_tokens;
 
-	int                               i_currentIndex               = 0;
-	bool                              b_inFnBody                   = false;
-	bool                              b_inStateBody                = false;
-	bool                              b_allowInferredOperatorWidth = false;
-	BindingBraceSyntax               *bbs_bindingBrace             = nullptr;
+	int                 i_currentIndex               = 0;
+	bool                b_inFnBody                   = false;
+	bool                b_inStateBody                = false;
+	bool                b_allowInferredOperatorWidth = false;
+	BindingBraceSyntax *bbs_bindingBrace             = nullptr;
 
 	ExpressionParser  p_expressionParser{ *this };
 	TypeParser        p_typeParser{ *this };
@@ -95,35 +95,35 @@ class Parser {
 	InterfaceParser   p_interfaceParser{ *this };
 	ImportParser      p_importParser{ *this };
 
-	Token                            peek (int offset = 0);
-	Token                            previous ();
-	Token                            advance ();
-	bool                             startsTypeDeclaration ();
-	TypeDeclarationPtr               parseNestedTypeDeclaration ();
-	DeclarationPtr                   parseTypeDeclaration (bool nested = false);
-	bool                             atKeyword (Keyword keyword, int offset = 0);
-	bool                             at (Operator op, int offset = 0);
-	void                             rejectMethodOutsideType ();
-	BlockBody                        parseBlock ();
-	std::unique_ptr<Expression>      parseBindingBrace (bool allowLiteral, bool allowSingleField,
-	                                                    std::function<std::unique_ptr<FunctionBlockExpression>(BlockBody)> deferred);
-	std::vector<StatementPtr>        parseStatements (BindingBraceSyntax *braceSyntax = nullptr);
-	void                             skipNewLines ();
-	int                              afterNewLines (int offset = 0);
-	bool                             isSemiColon (const Token &token);
-	bool                             isStatementSeparator (const Token &token);
-	StatementPtr                     parseStatement (bool allowWhileTrailer = false, bool multilineResults = false);
-	BlockBody                        parseUnbracedBody (bool allowWhileTrailer = false);
-	TokenSpan                        previousStatementEnd ();
-	ReturnStatement                  returnStatement (bool allowWhileTrailer);
-	bool                             startsAssignmentList ();
-	bool                             isReceivingTarget (const Token &token, bool assignment = false);
-	ReceivingTarget                  parseReceivingTarget (bool assignment = false);
-	ExpressionPtr                    parseResults (ExpressionPtr first = nullptr, std::optional<TokenSpan> start = std::nullopt,
-	                                               bool allowWhileTrailer = false, bool multiline = false);
-	bool                             consumeResultComma (bool multiline);
-	std::vector<TypeReference>       parseTypeList ();
-	Token                            expect (TokenType type, std::string description);
-	Token                            expect (Operator op);
+	Token                       peek (int offset = 0);
+	Token                       previous ();
+	Token                       advance ();
+	bool                        startsTypeDeclaration ();
+	TypeDeclarationPtr          parseNestedTypeDeclaration ();
+	DeclarationPtr              parseTypeDeclaration (bool nested = false);
+	bool                        atKeyword (Keyword keyword, int offset = 0);
+	bool                        at (Operator op, int offset = 0);
+	void                        rejectMethodOutsideType ();
+	BlockBody                   parseBlock ();
+	std::unique_ptr<Expression> parseBindingBrace (bool allowLiteral, bool allowSingleField,
+	                                               std::function<std::unique_ptr<FunctionBlockExpression>(BlockBody)> deferred);
+	std::vector<StatementPtr>   parseStatements (BindingBraceSyntax *braceSyntax = nullptr);
+	void                        skipNewLines ();
+	int                         afterNewLines (int offset = 0);
+	bool                        isSemiColon (const Token &token);
+	bool                        isStatementSeparator (const Token &token);
+	StatementPtr                parseStatement (bool allowWhileTrailer = false, bool multilineResults = false);
+	BlockBody                   parseUnbracedBody (bool allowWhileTrailer = false);
+	TokenSpan                   previousStatementEnd ();
+	ReturnStatement             returnStatement (bool allowWhileTrailer);
+	bool                        startsAssignmentList ();
+	bool                        isReceivingTarget (const Token &token, bool assignment = false);
+	ReceivingTarget             parseReceivingTarget (bool assignment = false);
+	ExpressionPtr               parseResults (ExpressionPtr first = nullptr, std::optional<TokenSpan> start = std::nullopt, bool allowWhileTrailer = false,
+	                                          bool multiline = false);
+	bool                        consumeResultComma (bool multiline);
+	std::vector<TypeReference>  parseTypeList ();
+	Token                       expect (TokenType type, std::string description);
+	Token                       expect (Operator op);
 };
 }

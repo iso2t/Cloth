@@ -11,6 +11,7 @@
 
 #include <parser/decl/declarations.hpp>
 #include <parser/parser.hpp>
+#include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/function_parser.hpp>
 #include <parser/subs/type_parser.hpp>
 #include <parser/type/type_parameters.hpp>
@@ -79,10 +80,10 @@ std::optional<TypeParameterList> TypeParser::parseTypeParameters () {
 		if (at(Operator::o_GREATER)) {
 			break;
 		}
-		expectOperator(Operator::o_COMMA);
+		p_parser.expect(Operator::o_COMMA);
 		p_parser.skipNewLines();
 	}
-	return TypeParameterList{ t_opening, std::move(v_parameters), expectOperator(Operator::o_GREATER) };
+	return TypeParameterList{ t_opening, std::move(v_parameters), p_parser.expect(Operator::o_GREATER) };
 }
 
 std::vector<TypeParameterBound> TypeParser::parseBounds () {
@@ -104,7 +105,7 @@ std::vector<TypeParameterBound> TypeParser::parseBounds () {
 }
 
 TypeArgumentList TypeParser::arguments () {
-	const Token t_opening = expectOperator(Operator::o_LESS);
+	const Token t_opening = p_parser.expect(Operator::o_LESS);
 	if (i_argumentDepth >= MAX_TYPE_ARG_NESTING) {
 		throw GenericErrors::nesting(t_opening.get_span(), MAX_TYPE_ARG_NESTING);
 	}
@@ -139,10 +140,10 @@ TypeArgumentList TypeParser::arguments () {
 		if (at(Operator::o_GREATER)) {
 			break;
 		}
-		expectOperator(Operator::o_COMMA);
+		p_parser.expect(Operator::o_COMMA);
 		p_parser.skipNewLines();
 	}
-	return { t_opening, std::move(v_arguments), expectOperator(Operator::o_GREATER) };
+	return { t_opening, std::move(v_arguments), p_parser.expect(Operator::o_GREATER) };
 }
 
 std::optional<int> TypeParser::angleListEnd (int start) {
@@ -278,9 +279,9 @@ TypeReference TypeParser::parse (bool inCast, bool allowArrays) {
 				opt_application = arguments();
 			}
 		} else if (!inCast || (isWidthToken(p_parser.peek(1)) && at(Operator::o_GREATER, 2))) {
-			expectOperator(Operator::o_LESS);
-			opt_width = isWidthToken(p_parser.peek()) ? p_parser.advance() : p_parser.expect(TokenType::IntegerLiteral, "a numeric type width");
-			expectOperator(Operator::o_GREATER);
+			opt_width = p_parser.p_delimitedParser.angles([this] () -> Token {
+				return isWidthToken(p_parser.peek()) ? p_parser.advance() : p_parser.expect(TokenType::IntegerLiteral, "a numeric type width");
+			});
 		}
 	}
 
@@ -291,7 +292,7 @@ TypeReference TypeParser::parse (bool inCast, bool allowArrays) {
 	while (allowArrays && at(Operator::o_BRACKET_OPEN)) {
 		const Token t_opening = p_parser.advance();
 		vopt_arraySizes.push_back(p_parser.peek().get_type() == TokenType::IntegerLiteral ? std::make_optional(p_parser.advance()) : std::nullopt);
-		const Token t_closing = expectOperator(Operator::o_BRACKET_CLOSE);
+		const Token t_closing = p_parser.expect(Operator::o_BRACKET_CLOSE);
 		v_arraySuffixes.push_back(TokenSpan::span_through(t_opening.get_span(), t_closing.get_span()));
 		vopt_arrayNullability.push_back(nullableMarker());
 	}
@@ -339,14 +340,6 @@ bool TypeParser::startsTypeReceiver (const Token &token) {
 
 bool TypeParser::at (Operator op, int offset) {
 	return p_parser.peek(offset).get_lexeme() == cloth::to_string(op);
-}
-
-Token TypeParser::expectOperator (Operator op) {
-	const Token t_token = p_parser.peek();
-	if (t_token.get_type() != TokenType::Operator || t_token.get_lexeme() != cloth::to_string(op)) {
-		throw SyntaxErrors::expected(std::format("'{}'", cloth::to_string(op)), t_token);
-	}
-	return p_parser.advance();
 }
 
 }

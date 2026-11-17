@@ -125,8 +125,7 @@ std::vector<ClassMember> ClassParser::parseMembers (const Token &owner, std::vec
 	std::vector<ClassMember> v_members;
 	p_parser.skipNewLines();
 	while (!at(Operator::o_BRACE_CLOSE)) {
-		const std::unique_ptr<bool> pb_startsType = p_parser.startsTypeDeclaration();
-		if (pb_startsType && *pb_startsType) {
+		if (p_parser.startsTypeDeclaration()) {
 			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}
@@ -261,8 +260,7 @@ std::vector<StateMemberPtr> ClassParser::parseStateBody (std::vector<TypeDeclara
 		try {
 			p_parser.skipNewLines();
 			while (!at(Operator::o_BRACE_CLOSE)) {
-				const std::unique_ptr<bool> pb_startsType = nestedTypes ? p_parser.startsTypeDeclaration() : nullptr;
-				if (pb_startsType && *pb_startsType) {
+				if (nestedTypes && p_parser.startsTypeDeclaration()) {
 					nestedTypes->emplace_back(p_parser.parseNestedTypeDeclaration());
 					continue;
 				}

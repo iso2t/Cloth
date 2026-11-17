@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <format>
-#include <memory>
 #include <optional>
 #include <utility>
 #include <variant>
@@ -40,11 +39,11 @@ EnumDeclaration EnumParser::parse (const Token &keyword, std::optional<Token> vi
 	p_parser.skipNewLines();
 	p_parser.p_delimitedParser.braces([this, &v_nestedTypes, &v_cases, &v_operators] () -> void {
 		p_parser.skipNewLines();
-		while (startsTypeDeclaration()) {
+		while (p_parser.startsTypeDeclaration()) {
 			v_nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 		}
 		v_cases = p_parser.p_delimitedParser.commaSeparated(
-		        Operator::o_BRACE_CLOSE, [this] () -> bool { return at(Operator::o_SEMICOLON) || startsTypeDeclaration(); },
+		        Operator::o_BRACE_CLOSE, [this] () -> bool { return at(Operator::o_SEMICOLON) || p_parser.startsTypeDeclaration(); },
 		        [this] () -> EnumCaseDeclaration { return parseCase(); });
 		if (v_cases.empty()) {
 			throw SyntaxErrors::expected("at least one enum case", p_parser.peek());
@@ -94,7 +93,7 @@ EnumCaseDeclaration EnumParser::parseCase () {
 std::vector<MethodDeclaration> EnumParser::parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) {
 	std::vector<MethodDeclaration> v_operators;
 	while (!at(Operator::o_BRACE_CLOSE)) {
-		if (startsTypeDeclaration()) {
+		if (p_parser.startsTypeDeclaration()) {
 			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}
@@ -114,11 +113,6 @@ std::vector<MethodDeclaration> EnumParser::parseMembers (std::vector<TypeDeclara
 
 ExpressionPtr EnumParser::value () {
 	return p_parser.p_functionParser.inBody([this] () -> ExpressionPtr { return p_parser.p_expressionParser.parseExpression(); });
-}
-
-bool EnumParser::startsTypeDeclaration () {
-	const std::unique_ptr<bool> pb_startsType = p_parser.startsTypeDeclaration();
-	return pb_startsType && *pb_startsType;
 }
 
 bool EnumParser::at (Operator op) {
