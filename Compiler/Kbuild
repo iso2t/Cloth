@@ -4,6 +4,7 @@ obj-y := cloth.o \
          file/source_file.o \
          lexer/lexer.o \
          parser/decl/class_declaration.o \
+         parser/decl/state_declaration.o \
          parser/expr/expressions.o \
          parser/parser.o \
          parser/subs/expression_parser.o \

@@ -51,7 +51,7 @@ SourceUnit Parser::parse () {
 }
 
 SourceUnit Parser::parseDeclarations () {
-	std::vector<Declaration>       v_declarations;
+	std::vector<DeclarationPtr>    v_declarations;
 	std::vector<ImportDeclaration> v_imports;
 	skipNewLines();
 
@@ -69,7 +69,7 @@ std::unique_ptr<bool> Parser::startsTypeDeclaration (){ NOT_IMPLEMENTED }
 
 std::unique_ptr<TypeDeclaration> Parser::parseNestedTypeDeclaration(){ NOT_IMPLEMENTED }
 
-Declaration Parser::parseTypeDeclaration(bool nested) {
+DeclarationPtr Parser::parseTypeDeclaration(bool nested) {
 	NOT_IMPLEMENTED
 }
 

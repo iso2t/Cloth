@@ -14,7 +14,14 @@ namespace cloth {
 
 struct Declaration {
 	TokenSpan span;
+
+	explicit Declaration (TokenSpan span) : span(span) {
+	}
+
+	virtual ~Declaration () = default;
 };
+
+using DeclarationPtr = std::shared_ptr<const Declaration>;
 
 struct TypeDeclaration;
 using TypeDeclarationPtr = std::shared_ptr<const TypeDeclaration>;

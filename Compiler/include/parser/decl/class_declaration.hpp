@@ -4,10 +4,13 @@
 
 #include <memory>
 #include <optional>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
 #include <parser/decl/declarations.hpp>
+#include <parser/decl/state_declaration.hpp>
+#include <parser/decl/struct_declaration.hpp>
 #include <parser/expr/expression.hpp>
 #include <parser/expr/expressions.hpp>
 #include <parser/type/type_parameters.hpp>
@@ -66,10 +69,18 @@ struct DestructorDeclaration : CallableDeclaration {
 };
 
 struct ClassMember {
-	std::variant<ClassFieldDeclaration, ConstructorDeclaration, DestructorDeclaration> value;
+	std::variant<ClassFieldDeclaration, ConstructorDeclaration, DestructorDeclaration, StateClassMemberPtr, MethodDeclaration> value;
 
 	TokenSpan get_span () const {
-		return std::visit([]<typename Member>(const Member &member) -> TokenSpan { return member.span; }, value);
+		return std::visit(
+		        []<typename Member>(const Member &member) -> TokenSpan {
+			        if constexpr (std::is_same_v<Member, StateClassMemberPtr>) {
+				        return member->get_span();
+			        } else {
+				        return member.span;
+			        }
+		        },
+		        value);
 	}
 };
 

@@ -63,7 +63,7 @@ class Parser {
 	SourceUnit                       parseDeclarations ();
 	std::unique_ptr<bool>            startsTypeDeclaration ();
 	std::unique_ptr<TypeDeclaration> parseNestedTypeDeclaration ();
-	Declaration                      parseTypeDeclaration (bool nested = false);
+	DeclarationPtr                   parseTypeDeclaration (bool nested = false);
 	bool                             atKeyword (Keyword keyword, int offset = 0);
 	void                             rejectMethodOutsideType ();
 	BlockBody                        parseBlock ();
