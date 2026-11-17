@@ -80,7 +80,7 @@ class Parser {
 	bool                             startsAssignmentList ();
 	bool                             isReceivingTarget (Token token, bool assignment = false);
 	ReceivingTarget                  parseReceivingTarget (bool assignment = false);
-	Expression                       parseResults (std::optional<Expression> first, TokenSpan span, bool allowWhileTrailer, bool multiline);
+	ExpressionPtr                    parseResults (ExpressionPtr first, TokenSpan span, bool allowWhileTrailer, bool multiline);
 	std::vector<TypeReference>       parseTypeList ();
 	Token                            expect (TokenType type, std::string description);
 	Token                            expect (Operator op);

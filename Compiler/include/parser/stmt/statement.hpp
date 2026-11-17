@@ -7,5 +7,5 @@
 namespace cloth {
 struct Statement {
 	TokenSpan span;
-}
+};
 }

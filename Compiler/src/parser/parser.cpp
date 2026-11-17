@@ -149,7 +149,7 @@ bool Parser::isReceivingTarget (Token token, bool assignment) {
 
 ReceivingTarget Parser::parseReceivingTarget (bool assignment){ NOT_IMPLEMENTED }
 
-Expression Parser::parseResults(std::optional<Expression> first, TokenSpan span, bool allowWhileTrailer, bool multiline){ NOT_IMPLEMENTED }
+ExpressionPtr Parser::parseResults(ExpressionPtr first, TokenSpan span, bool allowWhileTrailer, bool multiline){ NOT_IMPLEMENTED }
 
 std::vector<TypeReference> Parser::parseTypeList(){ NOT_IMPLEMENTED }
 

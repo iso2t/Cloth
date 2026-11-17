@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <stdexcept>
+#include <utility>
 
 #include <parser/expr/expression.hpp>
 #include <parser/subs/expression_parser.hpp>
@@ -32,30 +33,30 @@ inline const std::unordered_map<Operator, ExpressionParser::OperatorPrecedence> 
 	{ Operator::o_MUL_MUL, { POWER_PRECEDENCE, Associativity::RIGHT } },
 };
 
-Expression ExpressionParser::parseExpression (int minimumPrecedence, bool stopAtAssignment, bool stopAtRange, bool allowWhileTrailer) {
+ExpressionPtr ExpressionParser::parseExpression (int minimumPrecedence, bool stopAtAssignment, bool stopAtRange, bool allowWhileTrailer) {
 	return parseInfix(parseUnary(stopAtRange, allowWhileTrailer), minimumPrecedence, stopAtAssignment, stopAtRange, allowWhileTrailer);
 }
 
-Expression ExpressionParser::continueFromPrimary (Expression primary, bool allowWhileTrailer) {
-	return parseInfix(parsePostfix(primary), 0, false, false, allowWhileTrailer);
+ExpressionPtr ExpressionParser::continueFromPrimary (ExpressionPtr primary, bool allowWhileTrailer) {
+	return parseInfix(parsePostfix(std::move(primary)), 0, false, false, allowWhileTrailer);
 }
 
-Expression ExpressionParser::parseInfix (Expression initial, int minimumPrecedence, bool stopAtAssignment, bool stopAtRange,
-                                         bool allowWhileTrailer){ NOT_IMPLEMENTED }
+ExpressionPtr ExpressionParser::parseInfix (ExpressionPtr initial, int minimumPrecedence, bool stopAtAssignment, bool stopAtRange,
+                                            bool allowWhileTrailer){ NOT_IMPLEMENTED }
 
-Expression ExpressionParser::parseArrowTarget(Expression receiver, Token op){ NOT_IMPLEMENTED }
+ExpressionPtr ExpressionParser::parseArrowTarget(ExpressionPtr receiver, Token op){ NOT_IMPLEMENTED }
 
-Expression ExpressionParser::parseUnary(bool stopAtRange, bool allowWhileTrailer){ NOT_IMPLEMENTED }
+ExpressionPtr ExpressionParser::parseUnary(bool stopAtRange, bool allowWhileTrailer){ NOT_IMPLEMENTED }
 
-Expression ExpressionParser::parsePostfix(Expression primary){ NOT_IMPLEMENTED }
+ExpressionPtr ExpressionParser::parsePostfix(ExpressionPtr primary){ NOT_IMPLEMENTED }
 
-Expression ExpressionParser::parseMember(Expression receiver){ NOT_IMPLEMENTED }
+ExpressionPtr ExpressionParser::parseMember(ExpressionPtr receiver){ NOT_IMPLEMENTED }
 
-Expression ExpressionParser::parseDoubleColon(Expression receiver){ NOT_IMPLEMENTED }
+ExpressionPtr ExpressionParser::parseDoubleColon(ExpressionPtr receiver){ NOT_IMPLEMENTED }
 
-Expression ExpressionParser::parsePrimary(bool allowWhileTrailer){ NOT_IMPLEMENTED }
+ExpressionPtr ExpressionParser::parsePrimary(bool allowWhileTrailer){ NOT_IMPLEMENTED }
 
-Expression ExpressionParser::parseInterpolation(){ NOT_IMPLEMENTED }
+ExpressionPtr ExpressionParser::parseInterpolation(){ NOT_IMPLEMENTED }
 
 std::vector<CallArgument> ExpressionParser::parseArgumentList() {
 	return parseArguments();

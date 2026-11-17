@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <utility>
 #include <variant>
@@ -15,10 +16,22 @@ struct Declaration {
 	TokenSpan span;
 };
 
+struct TypeDeclaration;
+using TypeDeclarationPtr = std::shared_ptr<const TypeDeclaration>;
+
 struct TypeDeclaration : Declaration {
-	Token                        name;
-	std::optional<Token>         visibility = std::nullopt;
-	std::vector<TypeDeclaration> nestedTypes;
+	Token                           name;
+	std::optional<Token>            visibility;
+	std::vector<TypeDeclarationPtr> nestedTypes;
+
+	TypeDeclaration (const Token &name, std::optional<Token> visibility, TokenSpan span, std::vector<TypeDeclarationPtr> nestedTypes = {}) :
+	        Declaration{ span },
+	        name(name),
+	        visibility(std::move(visibility)),
+	        nestedTypes(std::move(nestedTypes)) {
+	}
+
+	virtual ~TypeDeclaration () = default;
 };
 
 struct ParameterDeclaration {
@@ -131,6 +144,5 @@ struct FunctionDeclaration : CallableDeclaration {
 	}
 };
 
-using Declarations = std::variant<TypeDeclaration, ConstructorGuaranteeDeclaration, FunctionDeclaration>;
-
+using Declarations = std::variant<TypeDeclarationPtr, ConstructorGuaranteeDeclaration, FunctionDeclaration>;
 }
