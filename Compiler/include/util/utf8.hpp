@@ -61,4 +61,16 @@ inline std::size_t utf8_scalar_length (std::string_view bytes) {
 	return length;
 }
 
+// Decodes one scalar after utf8_scalar_length has validated its bytes.
+inline char32_t utf8_scalar_value (std::string_view scalar) {
+	const unsigned char c_first = static_cast<unsigned char>(scalar.front());
+	if (scalar.size() == 1) {
+		return c_first;
+	}
+	char32_t c32_value = c_first & (0x7Fu >> scalar.size());
+	for (std::size_t st_index = 1; st_index < scalar.size(); ++st_index) {
+		c32_value = (c32_value << 6) | (static_cast<unsigned char>(scalar[st_index]) & 0x3Fu);
+	}
+	return c32_value;
+}
 }

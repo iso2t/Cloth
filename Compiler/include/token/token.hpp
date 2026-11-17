@@ -3,6 +3,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -172,12 +173,20 @@ enum Operator {
 	o_SEMICOLON,
 	o_UNDERSCORE,
 
+	o_INDEX_READ,
+	o_INDEX_VALIDATE,
+	o_INDEX_WRITE,
+	o_FOREACH,
+
 	o_ERROR
 };
 
 std::string_view to_string (Keyword keyword);
 std::string_view to_string (Operator op);
 std::string_view operator_name (Operator op);
+std::optional<Operator> fromCharacter (std::string_view spelling);
+bool                    isTokenized (Operator op);
+bool                    isUpdate (Operator op);
 Operator compound_assignment_base (std::string_view spelling);
 std::string_view to_string (TokenType type);
 

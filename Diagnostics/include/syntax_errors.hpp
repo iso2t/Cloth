@@ -16,6 +16,7 @@ SyntaxException readOnlyProvider (const cloth::Token &name);
 SyntaxException functionInType (const cloth::Token &keyword);
 SyntaxException methodOutsideType (const cloth::Token &keyword);
 SyntaxException unsupportedOperator (const cloth::Token &token);
+SyntaxException number (const cloth::Token &token, bool floating);
 SyntaxException expression (const cloth::Token &token);
 
 }

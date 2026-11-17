@@ -113,7 +113,6 @@ struct TopLevelStateDeclaration : Declaration, StateBodyDeclaration {
 struct StateMethodContractDeclaration : StateClassMember, CallableSignature {
 	std::optional<Token>             visibility;
 	Token                            name;
-	std::vector<TypeReference>       returnTypes;
 	std::optional<TypeParameterList> typeParameters;
 
 	StateMethodContractDeclaration (const Token &keyword, std::optional<Token> visibility, const Token &name, std::vector<TypeReference> returnTypes,

@@ -30,6 +30,9 @@ int main (int argc, char *argv[]) try {
 	}
 
 	cloth::Parser p_parser = cloth::Parser{ l_lexer };
+	p_parser.parse();
+
+	std::cout << "Success" << std::endl;
 
 	return SUCCESS;
 } catch (const cde::ClothDiagnostic &error) {

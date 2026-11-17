@@ -23,6 +23,7 @@
 #include <parser/subs/type_parser.hpp>
 #include <parser/type/type_reference.hpp>
 #include <syntax_errors.hpp>
+#include <token/numeric_literals.hpp>
 #include <token/token.hpp>
 #include <util/utf8.hpp>
 
@@ -56,15 +57,7 @@ char32_t decodeCharacter (const Token &token) {
 	if (st_length == 0) {
 		throw cde::SyntaxErrors::expression(token);
 	}
-	const unsigned char c_first = static_cast<unsigned char>(s_contents.front());
-	if (st_length == 1) {
-		return c_first;
-	}
-	char32_t c32_value = c_first & (0x7Fu >> st_length);
-	for (std::size_t st_index = 1; st_index < st_length; ++st_index) {
-		c32_value = (c32_value << 6) | (static_cast<unsigned char>(s_contents[st_index]) & 0x3Fu);
-	}
-	return c32_value;
+	return utf8_scalar_value(s_contents.substr(0, st_length));
 }
 
 std::string collapseInterpolationBraces (std::string_view contents) {

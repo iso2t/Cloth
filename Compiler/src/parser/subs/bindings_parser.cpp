@@ -12,6 +12,7 @@
 #include <vector>
 
 #include <parser/decl/declarations.hpp>
+#include <parser/decl/function_declaration.hpp>
 #include <parser/expr/expression.hpp>
 #include <parser/expr/expressions.hpp>
 #include <parser/parser.hpp>

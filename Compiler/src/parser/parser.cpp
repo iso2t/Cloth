@@ -21,6 +21,7 @@
 #include <parser/decl/class_declaration.hpp>
 #include <parser/decl/declarations.hpp>
 #include <parser/decl/enum_declaration.hpp>
+#include <parser/decl/function_declaration.hpp>
 #include <parser/decl/import_declaration.hpp>
 #include <parser/decl/interface_declaration.hpp>
 #include <parser/decl/state_declaration.hpp>

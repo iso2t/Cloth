@@ -2,8 +2,10 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -56,6 +58,7 @@ class Lexer {
 	}
 
 	char            advance ();
+	void            advanceBytes (std::size_t length);
 	char            peek () const;
 	bool            isAtEnd () const;
 	void            addToken (TokenType type, TokenSpan span, const std::string &lexeme);
@@ -65,11 +68,16 @@ class Lexer {
 	void            scanToken ();
 	bool            skipComments ();
 	void            number ();
+	void            consumeNumericDigits (int radix);
 	void            identifier ();
+	void            consumeIdentifierParts ();
 	void            interpolatedString ();
 	void            rawString ();
 	void            advanceStringScalar ();
 	void            string ();
 	void            character ();
+
+	[[noreturn]] void invalidNumber (std::string_view reason);
+	[[noreturn]] void invalidNumericSeparator ();
 };
 }

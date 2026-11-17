@@ -1,5 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+#include <algorithm>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <utility>
 
 #include <token/token.hpp>
@@ -148,9 +154,16 @@ std::string_view to_string (Keyword keyword) {
 	return "";
 }
 
+namespace {
+
 struct OperatorInfo {
 	std::string_view spelling;
 	std::string_view name;
+	bool             tokenized = true;
+};
+
+constexpr std::pair<Operator, Operator> COMPOUND_ASSIGNMENTS[] = {
+	{ o_PLUS_EQUAL, o_PLUS }, { o_MINUS_EQUAL, o_MINUS }, { o_MUL_EQUAL, o_MULTIPLY }, { o_DIV_EQUAL, o_DIVIDE }, { o_MOD_EQUAL, o_MODULO },
 };
 
 OperatorInfo operator_info (Operator op) {
@@ -255,27 +268,53 @@ OperatorInfo operator_info (Operator op) {
 		return { ";", "SEMICOLON" };
 	case o_UNDERSCORE:
 		return { "_", "UNDERSCORE" };
+	case o_INDEX_READ:
+		return { "[]", "INDEX_READ", false };
+	case o_INDEX_VALIDATE:
+		return { "[]?", "INDEX_VALIDATE", false };
+	case o_INDEX_WRITE:
+		return { "[]=", "INDEX_WRITE", false };
+	case o_FOREACH:
+		return { "foreach", "FOREACH", false };
 	case o_ERROR:
 		break;
 	}
-	return { "error", "ERROR" };
+	return { "error", "ERROR", false };
+}
+
 }
 
 std::string_view to_string (Operator op) {
 	return operator_info(op).spelling;
 }
 
+std::optional<Operator> fromCharacter (std::string_view spelling) {
+	static const std::unordered_map<std::string_view, Operator> M_OPERATORS = [] {
+		std::unordered_map<std::string_view, Operator> m_operators;
+		for (int i_value = o_PLUS; i_value < o_ERROR; ++i_value) {
+			const Operator o_operator = static_cast<Operator>(i_value);
+			m_operators.emplace(to_string(o_operator), o_operator);
+		}
+		return m_operators;
+	}();
+
+	const std::unordered_map<std::string_view, Operator>::const_iterator it_operator = M_OPERATORS.find(spelling);
+	return it_operator == M_OPERATORS.end() ? std::nullopt : std::make_optional(it_operator->second);
+}
+
+bool isTokenized (Operator op) {
+	return operator_info(op).tokenized;
+}
+
+bool isUpdate (Operator op) {
+	return op == o_PLUS_PLUS || op == o_MINUS_MINUS ||
+	       std::ranges::any_of(COMPOUND_ASSIGNMENTS, [op] (const std::pair<Operator, Operator> &assignment) { return assignment.first == op; });
+}
+
 Operator compound_assignment_base (std::string_view spelling) {
-	constexpr std::pair<Operator, Operator> assignments[] = {
-		{ o_PLUS_EQUAL, o_PLUS },
-		{ o_MINUS_EQUAL, o_MINUS },
-		{ o_MUL_EQUAL, o_MULTIPLY },
-		{ o_DIV_EQUAL, o_DIVIDE },
-		{ o_MOD_EQUAL, o_MODULO },
-	};
-	for (const auto &[assignment, base] : assignments) {
-		if (spelling == to_string(assignment)) {
-			return base;
+	for (const std::pair<Operator, Operator> &oo_assignment : COMPOUND_ASSIGNMENTS) {
+		if (spelling == to_string(oo_assignment.first)) {
+			return oo_assignment.second;
 		}
 	}
 	throw std::logic_error("Not a compound assignment: " + std::string(spelling));

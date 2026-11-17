@@ -52,10 +52,9 @@ TopLevelStateDeclaration::TopLevelStateDeclaration (const Token &keyword, std::o
 StateMethodContractDeclaration::StateMethodContractDeclaration (const Token &keyword, std::optional<Token> visibility, const Token &name,
                                                                 std::vector<TypeReference> returnTypes, std::vector<ParameterDeclaration> parameters,
                                                                 TokenSpan span, std::optional<TypeParameterList> typeParameters) :
-        CallableSignature(keyword, std::move(parameters), span),
+        CallableSignature(keyword, std::move(parameters), span, std::move(returnTypes)),
         visibility(std::move(visibility)),
         name(name),
-        returnTypes(std::move(returnTypes)),
         typeParameters(std::move(typeParameters)) {
 }
 

@@ -62,6 +62,12 @@ SyntaxException unsupportedOperator (const cloth::Token &token) {
 	return { DiagnosticCode::UNSUPPORTED_OPERATOR, std::format("Unsupported operator '{}'", token.get_lexeme()), token.get_span() };
 }
 
+SyntaxException number (const cloth::Token &token, bool floating) {
+	return { floating ? DiagnosticCode::INVALID_FLOAT : DiagnosticCode::INVALID_INTEGER,
+		 std::format("Invalid or out-of-range {} '{}'", cloth::to_string(floating ? cloth::k_FLOAT : cloth::k_INTEGER), token.get_lexeme()),
+		 token.get_span() };
+}
+
 SyntaxException expression (const cloth::Token &token) {
 	return { DiagnosticCode::EXPECTED_EXPRESSION,
 		 std::format("Expected a number, boolean, character, string, '{}', binding name, '{}', or '{}', got {}",

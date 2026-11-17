@@ -6,11 +6,12 @@
 #include <utility>
 #include <vector>
 
-#include <parser/decl/declarations.hpp>
+#include <parser/decl/function_declaration.hpp>
 #include <parser/expr/expression.hpp>
 #include <parser/expr/expressions.hpp>
 #include <parser/stmt/statement.hpp>
 #include <parser/type/type_reference.hpp>
+#include <token/numeric_literals.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -106,7 +107,7 @@ IfExpression::IfExpression (const Token &keyword, std::vector<ConditionalBranch>
         otherwiseSpan(otherwiseSpan) {
 }
 
-IntegerLiteral::IntegerLiteral (long long value, const Token &token) : value(std::move(value)), token(token) {
+IntegerLiteral::IntegerLiteral (IntegerValue value, const Token &token) : value(std::move(value)), token(token) {
 }
 
 FloatingPointLiteral::FloatingPointLiteral (std::string value, const Token &token) : value(std::move(value)), token(token) {

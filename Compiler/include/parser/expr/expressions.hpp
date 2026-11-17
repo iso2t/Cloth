@@ -7,11 +7,12 @@
 #include <string>
 #include <vector>
 
-#include <parser/decl/declarations.hpp>
+#include <parser/decl/function_declaration.hpp>
 #include <parser/expr/expression.hpp>
 #include <parser/expr/struct_expressions.hpp>
 #include <parser/stmt/statement.hpp>
 #include <parser/type/type_reference.hpp>
+#include <token/numeric_literals.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -224,10 +225,10 @@ struct IfExpression : Expression {
 struct NumberLiteral : Expression {};
 
 struct IntegerLiteral : NumberLiteral {
-	long long value;
-	Token      token;
+	IntegerValue value;
+	Token        token;
 
-	IntegerLiteral (long long value, const Token &token);
+	IntegerLiteral (IntegerValue value, const Token &token);
 
 	TokenSpan get_span () const override {
 		return token.get_span();

@@ -9,6 +9,8 @@
 #include <vector>
 
 #include <lexer/lexer.hpp>
+#include <syntax_exception.hpp>
+#include <token/numeric_literals.hpp>
 #include <util/utf8.hpp>
 
 namespace cloth {
@@ -47,9 +49,11 @@ struct OperatorEntry {
 const std::vector<OperatorEntry> V_OPERATORS = [] {
 	std::vector<OperatorEntry> v_entries;
 
-	for (int value = o_PLUS; value < o_ERROR; ++value) {
-		const auto op = static_cast<Operator>(value);
-		v_entries.push_back({ op, to_string(op) });
+	for (int i_value = o_PLUS; i_value < o_ERROR; ++i_value) {
+		const Operator o_operator = static_cast<Operator>(i_value);
+		if (isTokenized(o_operator)) {
+			v_entries.push_back({ o_operator, to_string(o_operator) });
+		}
 	}
 
 	std::sort(v_entries.begin(), v_entries.end(),
@@ -110,15 +114,22 @@ bool isIdentifierStart (char c) {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
 
-/**
- * @brief Checks if the given character is a valid identifier part character.
- *
- * @param c The character to check.
- * @return true If the character is a valid identifier part character.
- * @return false Otherwise.
- */
-bool isIdentifierPart (char c) {
-	return isIdentifierStart(c) || isDigit(c);
+std::size_t identifierPartLength (std::string_view source, std::size_t offset) {
+	if (offset >= source.size()) {
+		return 0;
+	}
+	return isIdentifierStart(source[offset]) ? 1 : decimalDigit(source.substr(offset)).length;
+}
+
+std::size_t radixDigitLength (std::string_view source, std::size_t offset, int radix) {
+	if (radix == 10) {
+		return decimalDigit(source.substr(offset)).length;
+	}
+	const char c_digit = charAt(source, offset);
+	if (isDigit(c_digit)) {
+		return c_digit - '0' < radix ? 1 : 0;
+	}
+	return radix == 16 && ((c_digit >= 'a' && c_digit <= 'f') || (c_digit >= 'A' && c_digit <= 'F')) ? 1 : 0;
 }
 
 /**
@@ -169,6 +180,12 @@ char Lexer::advance () {
 		++p_current.column;
 	}
 	return c;
+}
+
+void Lexer::advanceBytes (std::size_t length) {
+	for (std::size_t st_byte = 0; st_byte < length; ++st_byte) {
+		advance();
+	}
 }
 
 /**
@@ -257,7 +274,7 @@ Operator Lexer::matchOperator () {
 			continue;
 		}
 
-		if (op == o_UNDERSCORE && isIdentifierPart(charAt(s_remaining, spelling.size()))) {
+		if (op == o_UNDERSCORE && identifierPartLength(s_remaining, spelling.size()) != 0) {
 			continue;
 		}
 
@@ -316,6 +333,11 @@ void Lexer::scanToken () {
 		return;
 	}
 
+	if (decimalDigit(s_remaining).length != 0) {
+		number();
+		return;
+	}
+
 	const char c_character = advance();
 	switch (c_character) {
 	case ' ':
@@ -326,9 +348,7 @@ void Lexer::scanToken () {
 		addToken(TokenType::NewLine, span(), "\n");
 		return;
 	default:
-		if (isDigit(c_character)) {
-			number();
-		} else if (isIdentifierStart(c_character)) {
+		if (isIdentifierStart(c_character)) {
 			identifier();
 		} else {
 			lexerError(p_start, std::format("Unexpected byte 0x{:02X}", static_cast<unsigned char>(c_character)));
@@ -383,78 +403,39 @@ bool Lexer::skipComments () {
  * tokens.
  */
 void Lexer::number () {
+	const std::string_view s_source  = source_text();
+	const int              i_radix   = integerLiteralRadix(s_source.substr(i_current));
 	bool b_isFloat = false;
-	int  i_radix   = 10;
-	if (source_text()[i_start] == '0') {
-		switch (peek()) {
-		case 'x':
-			i_radix = 16;
-			break;
-		case 'b':
-			i_radix = 2;
-			break;
-		case 'o':
-			i_radix = 8;
-			break;
-		}
-	}
-
-	const auto digit = [i_radix] (char c) {
-		if (isDigit(c)) {
-			return c - '0' < i_radix;
-		}
-		return i_radix == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
-	};
-
-	const auto completeSuffix = [this] (char lower, char upper) {
-		const char suffix = charAt(source_text(), i_current + 1);
-		return (suffix == lower || suffix == upper) && !isIdentifierPart(charAt(source_text(), i_current + 2));
-	};
-
-	const auto invalid = [this] (std::string_view reason) {
-		while (isIdentifierPart(peek())) {
-			advance();
-		}
-		lexerError(p_start, std::format("Invalid numeric literal '{}': {}", source_text().substr(i_start, i_current - i_start), reason));
-	};
-
-	const auto consumeDigits = [this, &digit] {
-		while (digit(peek()) || peek() == '_') {
-			if (peek() == '_' && (!digit(source_text()[i_current - 1]) || !digit(charAt(source_text(), i_current + 1)))) {
-				lexerError(p_current, "Numeric separators must appear between digits");
-			}
-			advance();
-		}
-	};
 
 	if (i_radix != 10) {
-		advance();
+		advanceBytes(2);
 		if (peek() == '_') {
-			lexerError(p_current, "Numeric separators must appear between digits");
+			invalidNumericSeparator();
 		}
-		if (!digit(peek())) {
-			invalid(std::format("Expected a base-{} digit after the prefix", i_radix));
+		if (radixDigitLength(s_source, i_current, i_radix) == 0) {
+			invalidNumber(std::format("Expected a base-{} digit after the prefix", i_radix));
 		}
 	}
-	consumeDigits();
+	consumeNumericDigits(i_radix);
 
 	if (peek() == '.') {
-		const char next            = charAt(source_text(), i_current + 1);
-		const bool trailingFloat   = completeSuffix('f', 'F');
-		const bool trailingInteger = completeSuffix('i', 'I');
-		if (isDigit(next) || trailingFloat || trailingInteger || next == '_') {
+		const char c_next            = charAt(s_source, i_current + 1);
+		const bool b_completeSuffix  = identifierPartLength(s_source, i_current + 2) == 0;
+		const bool b_trailingFloat   = b_completeSuffix && (c_next == 'f' || c_next == 'F');
+		const bool b_trailingInteger = b_completeSuffix && (c_next == 'i' || c_next == 'I');
+		if (decimalDigit(s_source.substr(i_current + 1)).length != 0 || b_trailingFloat || b_trailingInteger || c_next == '_') {
 			advance();
 			if (i_radix != 10) {
-				invalid("Base-prefixed literals cannot have a decimal point or suffix");
+				invalidNumber("Base-prefixed literals cannot have a decimal point or suffix");
 			}
-			if (trailingInteger) {
-				invalid("An integer suffix cannot follow a decimal point");
+			if (b_trailingInteger) {
+				invalidNumber("An integer suffix cannot follow a decimal point");
 			}
 			if (peek() == '_') {
-				lexerError(p_current, "Numeric separators must appear between digits");
+				invalidNumericSeparator();
 			}
 			b_isFloat = true;
-			consumeDigits();
+			consumeNumericDigits(i_radix);
 		}
 	}
 
@@ -463,20 +444,48 @@ void Lexer::number () {
 		advance();
 		const bool floatSuffix = suffix == 'f' || suffix == 'F';
 		if (b_isFloat && !floatSuffix) {
-			invalid("An integer suffix cannot follow a decimal point");
+			invalidNumber("An integer suffix cannot follow a decimal point");
 		}
 		b_isFloat = b_isFloat || floatSuffix;
 	}
 
-	if (isIdentifierPart(peek())) {
-		if (i_radix == 10) {
-			invalid("Invalid numeric suffix");
-		} else {
-			invalid(std::format("Invalid base-{} digit or forbidden suffix", i_radix));
-		}
+	if (identifierPartLength(s_source, i_current) != 0) {
+		invalidNumber(i_radix == 10 ? "Invalid numeric suffix" : std::format("Invalid base-{} digit or forbidden suffix", i_radix));
 	}
 
 	addToken(b_isFloat ? TokenType::FloatingPointLiteral : TokenType::IntegerLiteral, span(), source_text().substr(i_start, i_current - i_start));
+}
+
+void Lexer::consumeNumericDigits (int radix) {
+	const std::string_view s_source = source_text();
+	for (std::size_t st_length = radixDigitLength(s_source, i_current, radix); st_length != 0; st_length = radixDigitLength(s_source, i_current, radix)) {
+		advanceBytes(st_length);
+		if (peek() == '_') {
+			if (radixDigitLength(s_source, i_current + 1, radix) == 0) {
+				invalidNumericSeparator();
+			}
+			advance();
+		}
+	}
+}
+
+void Lexer::invalidNumber (std::string_view reason) {
+	consumeIdentifierParts();
+	throw cde::SyntaxException{ cde::DiagnosticCode::INVALID_NUMERIC_LITERAL,
+		                    std::format("Invalid numeric literal '{}': {}", source_text().substr(i_start, i_current - i_start), reason), span() };
+}
+
+void Lexer::invalidNumericSeparator () {
+	TokenSpan ts_separator = cursorSpan();
+	++ts_separator.endCol;
+	throw cde::SyntaxException{ cde::DiagnosticCode::INVALID_SEPARATOR, "Numeric separators must appear between digits", ts_separator };
+}
+
+void Lexer::consumeIdentifierParts () {
+	const std::string_view s_source = source_text();
+	for (std::size_t st_length = identifierPartLength(s_source, i_current); st_length != 0; st_length = identifierPartLength(s_source, i_current)) {
+		advanceBytes(st_length);
+	}
 }
 
 /**
@@ -489,9 +498,7 @@ void Lexer::number () {
  *
  */
 void Lexer::identifier () {
-	while (isIdentifierPart(peek())) {
-		advance();
-	}
+	consumeIdentifierParts();
 
 	const std::string s_text      = source_text().substr(i_start, i_current - i_start);
 	const bool        b_isKeyword = std::any_of(V_KEYWORDS.begin(), V_KEYWORDS.end(), [&s_text] (Keyword keyword) { return to_string(keyword) == s_text; });

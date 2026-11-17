@@ -31,7 +31,6 @@ struct OperatorMember {
 };
 
 struct MethodDeclaration : CallableDeclaration, StateMember {
-	std::vector<TypeReference>       returnTypes;
 	std::optional<Token>             visibility;
 	std::optional<OperatorMember>    operatorMember;
 	std::optional<TokenSpan>         overridePrefix;
@@ -43,8 +42,7 @@ struct MethodDeclaration : CallableDeclaration, StateMember {
 	                   std::optional<TokenSpan> overridePrefix = std::nullopt, std::optional<TokenSpan> virtualPrefix = std::nullopt,
 	                   std::optional<TypeParameterList> typeParameters = std::nullopt) :
 	        CallableDeclaration(keyword, name, std::move(parameters), std::move(body),
-	                            virtualPrefix.value_or(overridePrefix.value_or((visibility ? *visibility : keyword).get_span()))),
-	        returnTypes(std::move(returnTypes)),
+	                            virtualPrefix.value_or(overridePrefix.value_or((visibility ? *visibility : keyword).get_span())), std::move(returnTypes)),
 	        visibility(std::move(visibility)),
 	        operatorMember(std::move(operatorMember)),
 	        overridePrefix(overridePrefix),

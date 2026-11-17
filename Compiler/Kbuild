@@ -26,5 +26,6 @@ obj-y := cloth.o \
          parser/subs/type_parser.o \
          parser/type/type_reference.o \
          system/compiler_options.o \
+         token/numeric_literals.o \
          token/token.o \
          util/pstream.o

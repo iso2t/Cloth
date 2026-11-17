@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <parser/decl/declarations.hpp>
+#include <parser/decl/function_declaration.hpp>
 #include <parser/decl/interface_declaration.hpp>
 #include <parser/decl/struct_declaration.hpp>
 #include <parser/type/type_parameters.hpp>
