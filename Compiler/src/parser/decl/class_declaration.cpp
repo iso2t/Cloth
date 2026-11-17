@@ -7,6 +7,7 @@
 
 #include <parser/decl/class_declaration.hpp>
 #include <parser/decl/declarations.hpp>
+#include <parser/expr/class_expression.hpp>
 #include <parser/type/type_parameters.hpp>
 #include <token/token.hpp>
 

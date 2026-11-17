@@ -97,7 +97,7 @@ TypeCheckExpression::TypeCheckExpression (ExpressionPtr operand, const Token &op
         valueCandidate(std::move(valueCandidate)) {
 }
 
-IfExpression::IfExpression (const Token &keyword, std::vector<ConditionalBranch> branches, std::optional<std::vector<Statement>> otherwise, TokenSpan span,
+IfExpression::IfExpression (const Token &keyword, std::vector<ConditionalBranch> branches, std::optional<std::vector<StatementPtr>> otherwise, TokenSpan span,
                             std::optional<TokenSpan> otherwiseSpan) :
         keyword(keyword),
         branches(std::move(branches)),

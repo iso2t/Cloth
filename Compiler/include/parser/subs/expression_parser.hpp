@@ -3,23 +3,21 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
 #include <parser/expr/expression.hpp>
 #include <parser/expr/expressions.hpp>
-#include <parser/parser.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
 
-#define CAST_PRECEDENCE       9
-#define TYPE_CHECK_PRECEDENCE 7
-#define POWER_PRECEDENCE      30
+class Parser;
 
 class ExpressionParser {
     public:
-	ExpressionParser (Parser &parser) : p_parser(parser) {
+	explicit ExpressionParser (Parser &parser) : p_parser(parser) {
 	}
 
 	enum Associativity { LEFT, RIGHT };
@@ -29,27 +27,32 @@ class ExpressionParser {
 		Associativity associativity = Associativity::LEFT;
 	};
 
-    private:
 	static const std::unordered_map<Operator, OperatorPrecedence> binaryOperators;
-
-	Parser p_parser;
 
 	ExpressionPtr parseExpression (int minimumPrecedence = 0, bool stopAtAssignment = false, bool stopAtRange = false, bool allowWhileTrailer = false);
 	ExpressionPtr continueFromPrimary (ExpressionPtr primary, bool allowWhileTrailer);
-	ExpressionPtr parseInfix (ExpressionPtr initial, int minimumPrecedence, bool stopAtAssignment, bool stopAtRange = false,
-	                          bool allowWhileTrailer = false);
-	ExpressionPtr parseArrowTarget (ExpressionPtr receiver, Token op);
 	ExpressionPtr parseUnary (bool stopAtRange = false, bool allowWhileTrailer = false);
-	ExpressionPtr parsePostfix (ExpressionPtr primary);
-	ExpressionPtr parseMember (ExpressionPtr receiver);
-	ExpressionPtr parseDoubleColon (ExpressionPtr receiver);
 	ExpressionPtr parsePrimary (bool allowWhileTrailer = false);
-	ExpressionPtr parseInterpolation ();
-
 	std::vector<CallArgument> parseArgumentList ();
+
+    private:
+	static constexpr int CAST_PRECEDENCE       = 9;
+	static constexpr int TYPE_CHECK_PRECEDENCE = 7;
+	static constexpr int POWER_PRECEDENCE      = 30;
+
+	Parser &p_parser;
+
+	ExpressionPtr             parseInfix (ExpressionPtr initial, int minimumPrecedence, bool stopAtAssignment, bool stopAtRange, bool allowWhileTrailer);
+	ExpressionPtr             parseTypeCheck (ExpressionPtr operand, const Token &op, bool stopAtRange, bool allowWhileTrailer);
+	ExpressionPtr             parseArrowTarget (ExpressionPtr receiver, const Token &op);
+	ExpressionPtr             parsePostfix (ExpressionPtr primary);
+	ExpressionPtr             parseMember (ExpressionPtr receiver);
+	ExpressionPtr             parseDoubleColon (ExpressionPtr receiver);
+	ExpressionPtr             parseInterpolation ();
 	std::vector<CallArgument> parseArguments ();
-	std::string               decodeString (std::string contents);
-	bool                      isImplicitBinding (Token token);
+	std::string               decodeString (std::string_view contents);
+	bool                      isImplicitBinding (const Token &token) const;
+	bool                      at (Operator op, int offset = 0);
 };
 
 }

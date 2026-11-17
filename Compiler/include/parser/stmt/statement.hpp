@@ -2,10 +2,17 @@
 
 #pragma once
 
+#include <memory>
+
 #include <token/token.hpp>
 
 namespace cloth {
+
 struct Statement {
-	TokenSpan span;
+	virtual ~Statement ()               = default;
+	virtual TokenSpan get_span () const = 0;
 };
+
+using StatementPtr = std::shared_ptr<const Statement>;
+
 }

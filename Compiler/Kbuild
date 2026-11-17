@@ -6,8 +6,24 @@ obj-y := cloth.o \
          parser/decl/class_declaration.o \
          parser/decl/state_declaration.o \
          parser/expr/expressions.o \
+         parser/expr/struct_expressions.o \
          parser/parser.o \
+         parser/stmt/statements.o \
+         parser/subs/bindings_parser.o \
+         parser/subs/class_parser.o \
+         parser/subs/delimited_parser.o \
+         parser/subs/enum_parser.o \
          parser/subs/expression_parser.o \
+         parser/subs/function_parser.o \
+         parser/subs/if_parser.o \
+         parser/subs/import_parser.o \
+         parser/subs/interface_parser.o \
+         parser/subs/loops/do_while_loop_parser.o \
+         parser/subs/loops/for_loop_parser.o \
+         parser/subs/loops/loop_parser.o \
+         parser/subs/loops/while_loop_parser.o \
+         parser/subs/struct_parser.o \
+         parser/subs/type_parser.o \
          parser/type/type_reference.o \
          system/compiler_options.o \
          token/token.o \

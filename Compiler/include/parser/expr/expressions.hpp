@@ -9,13 +9,12 @@
 
 #include <parser/decl/declarations.hpp>
 #include <parser/expr/expression.hpp>
+#include <parser/expr/struct_expressions.hpp>
 #include <parser/stmt/statement.hpp>
 #include <parser/type/type_reference.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
-
-struct FieldAccessExpression;
 
 struct NameExpression : Expression {
 	Token name;
@@ -202,19 +201,19 @@ struct TypeCheckExpression : Expression {
 };
 
 struct ConditionalBranch {
-	ExpressionPtr          condition;
-	std::vector<Statement> statements;
-	TokenSpan              span;
+	ExpressionPtr             condition;
+	std::vector<StatementPtr> statements;
+	TokenSpan                 span;
 };
 
 struct IfExpression : Expression {
-	Token                                 keyword;
-	std::vector<ConditionalBranch>        branches;
-	std::optional<std::vector<Statement>> otherwise;
-	TokenSpan                             span;
-	std::optional<TokenSpan>              otherwiseSpan;
+	Token                                    keyword;
+	std::vector<ConditionalBranch>           branches;
+	std::optional<std::vector<StatementPtr>> otherwise;
+	TokenSpan                                span;
+	std::optional<TokenSpan>                 otherwiseSpan;
 
-	IfExpression (const Token &keyword, std::vector<ConditionalBranch> branches, std::optional<std::vector<Statement>> otherwise, TokenSpan span,
+	IfExpression (const Token &keyword, std::vector<ConditionalBranch> branches, std::optional<std::vector<StatementPtr>> otherwise, TokenSpan span,
 	              std::optional<TokenSpan> otherwiseSpan);
 
 	TokenSpan get_span () const override {

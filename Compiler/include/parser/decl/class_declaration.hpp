@@ -11,6 +11,7 @@
 #include <parser/decl/declarations.hpp>
 #include <parser/decl/state_declaration.hpp>
 #include <parser/decl/struct_declaration.hpp>
+#include <parser/expr/class_expression.hpp>
 #include <parser/expr/expression.hpp>
 #include <parser/expr/expressions.hpp>
 #include <parser/type/type_parameters.hpp>

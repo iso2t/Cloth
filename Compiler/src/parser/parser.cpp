@@ -13,6 +13,7 @@
 #include <parser/decl/declarations.hpp>
 #include <parser/decl/import_declaration.hpp>
 #include <parser/parser.hpp>
+#include <parser/stmt/statements.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -90,7 +91,7 @@ BlockBody Parser::parseBlock (){ NOT_IMPLEMENTED }
 std::unique_ptr<Expression> Parser::parseBindingBrace(bool allowLiteral, bool allowSingleField,
                                                       std::function<std::unique_ptr<FunctionBlockExpression>(BlockBody)> deferred){ NOT_IMPLEMENTED }
 
-std::vector<Statement> Parser::parseStatements(std::optional<BindingBraceSyntax> braceSyntax) {
+std::vector<StatementPtr> Parser::parseStatements(std::optional<BindingBraceSyntax> braceSyntax) {
 	NOT_IMPLEMENTED
 }
 
@@ -106,7 +107,7 @@ bool Parser::isStatementSeparator (Token token) {
 	return token.get_type() == TokenType::NewLine || isSemiColon(token);
 }
 
-Statement Parser::parseStatement (bool allowWhileTrailer, bool multilineResults){ NOT_IMPLEMENTED }
+StatementPtr Parser::parseStatement (bool allowWhileTrailer, bool multilineResults){ NOT_IMPLEMENTED }
 
 BlockBody Parser::parseUnbracedBody(bool allowWhileTrailer){ NOT_IMPLEMENTED }
 

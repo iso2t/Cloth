@@ -41,10 +41,12 @@ IncludeBlocks: Regroup
 IncludeCategories:
   - Regex: '^<Compiler/'
     Priority: 1
-  - Regex: '^<([a-z0-9_]+|[a-z0-9_/]+\.h)>'
+  - Regex: '^<Diagnostics/'
     Priority: 2
-  - Regex: '^<'
+  - Regex: '^<([a-z0-9_]+|[a-z0-9_/]+\.h)>'
     Priority: 3
+  - Regex: '^<'
+    Priority: 4
 
 IncludeIsMainRegex: '(Test)?$'
 IndentCaseLabels: false
