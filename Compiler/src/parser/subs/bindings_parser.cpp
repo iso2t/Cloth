@@ -20,6 +20,7 @@
 #include <parser/subs/bindings_parser.hpp>
 #include <parser/subs/expression_parser.hpp>
 #include <parser/type/type_reference.hpp>
+#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -37,7 +38,7 @@ std::vector<StatementPtr> BindingsParser::parseBindings (bool allowWhileTrailer)
 	const std::string &s_assignment = t_assignment.get_lexeme();
 	const bool         b_isMutable  = s_assignment == cloth::to_string(Operator::o_ASSIGN);
 	if (t_assignment.get_type() != TokenType::Operator || (!b_isMutable && s_assignment != cloth::to_string(Operator::o_FINAL_ASSIGN))) {
-		throw SyntaxErrors::expected(std::format("'{}' or '{}'", cloth::to_string(Operator::o_ASSIGN), cloth::to_string(Operator::o_FINAL_ASSIGN)),
+		throw cde::SyntaxErrors::expected(std::format("'{}' or '{}'", cloth::to_string(Operator::o_ASSIGN), cloth::to_string(Operator::o_FINAL_ASSIGN)),
 		                             t_assignment);
 	}
 	p_parser.advance();

@@ -17,6 +17,7 @@
 #include <vector>
 
 #include <ast/source_unit.hpp>
+#include <import_errors.hpp>
 #include <parser/decl/class_declaration.hpp>
 #include <parser/decl/declarations.hpp>
 #include <parser/decl/enum_declaration.hpp>
@@ -36,6 +37,7 @@
 #include <parser/stmt/statements.hpp>
 #include <parser/stmt/while_statement.hpp>
 #include <parser/type/type_reference.hpp>
+#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -129,7 +131,7 @@ SourceUnit Parser::parseDeclarations () {
 	while (peek().get_type() != TokenType::EndOfFile) {
 		if (atKeyword(Keyword::k_USING)) {
 			if (!v_declarations.empty()) {
-				throw ImportErrors::outsideHeader(peek());
+				throw cde::ImportErrors::outsideHeader(peek());
 			}
 			v_imports.push_back(p_importParser.parse());
 			skipNewLines();
@@ -146,13 +148,13 @@ SourceUnit Parser::parseDeclarations () {
 			advance();
 		} else if (t_next.get_type() != TokenType::NewLine && t_next.get_type() != TokenType::EndOfFile) {
 			if (fb_body && !b_hasEquals) {
-				throw SyntaxErrors::expected("a newline or end of file after a brace-bodied function", t_next);
+				throw cde::SyntaxErrors::expected("a newline or end of file after a brace-bodied function", t_next);
 			}
 			const std::string_view s_description = declarationDescription(*dp_declaration);
 			if (!s_description.empty()) {
-				throw SyntaxErrors::expected(std::format("a newline or end of file after {}", s_description), t_next);
+				throw cde::SyntaxErrors::expected(std::format("a newline or end of file after {}", s_description), t_next);
 			}
-			throw SyntaxErrors::newline(t_next);
+			throw cde::SyntaxErrors::newline(t_next);
 		}
 		v_declarations.push_back(std::move(dp_declaration));
 		skipNewLines();
@@ -179,7 +181,7 @@ TypeDeclarationPtr Parser::parseNestedTypeDeclaration () {
 	}
 	const Token t_next = peek();
 	if (t_next.get_type() != TokenType::NewLine && t_next.get_lexeme() != cloth::to_string(Operator::o_BRACE_CLOSE)) {
-		throw SyntaxErrors::expected(std::format("a newline or '{}' after a nested type declaration", cloth::to_string(Operator::o_BRACE_CLOSE)),
+		throw cde::SyntaxErrors::expected(std::format("a newline or '{}' after a nested type declaration", cloth::to_string(Operator::o_BRACE_CLOSE)),
 		                             t_next);
 	}
 	skipNewLines();
@@ -197,7 +199,7 @@ DeclarationPtr Parser::parseTypeDeclaration (bool nested) {
 			return advance();
 		}
 		if (opt_finalKeyword) {
-			throw SyntaxErrors::expected(std::format("'{}' as the type declaration kind after '{}'", cloth::to_string(Keyword::k_CLASS),
+			throw cde::SyntaxErrors::expected(std::format("'{}' as the type declaration kind after '{}'", cloth::to_string(Keyword::k_CLASS),
 			                                         cloth::to_string(Keyword::k_FINAL)),
 			                             t_start);
 		}
@@ -207,7 +209,7 @@ DeclarationPtr Parser::parseTypeDeclaration (bool nested) {
 		if (!nested && atKeyword(Keyword::k_STATE)) {
 			const Token t_state = advance();
 			if (opt_visibility) {
-				throw SyntaxErrors::expected(std::format("state visibility after the '{}' header", cloth::to_string(Keyword::k_TYPEDEF)),
+				throw cde::SyntaxErrors::expected(std::format("state visibility after the '{}' header", cloth::to_string(Keyword::k_TYPEDEF)),
 				                             *opt_visibility);
 			}
 			opt_payload = p_delimitedParser.angles([this] () -> TypeReference {
@@ -219,12 +221,12 @@ DeclarationPtr Parser::parseTypeDeclaration (bool nested) {
 			return t_state;
 		}
 		if (nested) {
-			throw SyntaxErrors::expected(std::format("'{}', '{}', '{}', or '{}' as the nested type declaration kind",
+			throw cde::SyntaxErrors::expected(std::format("'{}', '{}', '{}', or '{}' as the nested type declaration kind",
 			                                         cloth::to_string(Keyword::k_STRUCT), cloth::to_string(Keyword::k_CLASS),
 			                                         cloth::to_string(Keyword::k_ENUM), cloth::to_string(Keyword::k_INTERFACE)),
 			                             t_start);
 		}
-		throw SyntaxErrors::expected(std::format("'{}', '{}', '{}', '{}', or '{}' as the type declaration kind", cloth::to_string(Keyword::k_STRUCT),
+		throw cde::SyntaxErrors::expected(std::format("'{}', '{}', '{}', '{}', or '{}' as the type declaration kind", cloth::to_string(Keyword::k_STRUCT),
 		                                         cloth::to_string(Keyword::k_CLASS), cloth::to_string(Keyword::k_ENUM),
 		                                         cloth::to_string(Keyword::k_INTERFACE), cloth::to_string(Keyword::k_STATE)),
 		                             t_start);
@@ -258,7 +260,7 @@ bool Parser::at (Operator op, int offset) {
 void Parser::rejectMethodOutsideType () {
 	const int i_offset = atKeyword(Keyword::k_PUBLIC) ? 1 : 0;
 	if (atKeyword(Keyword::k_MT, i_offset)) {
-		throw SyntaxErrors::methodOutsideType(peek(i_offset));
+		throw cde::SyntaxErrors::methodOutsideType(peek(i_offset));
 	}
 }
 
@@ -292,7 +294,7 @@ std::unique_ptr<Expression> Parser::parseBindingBrace (bool allowLiteral, bool a
 		    std::all_of(v_statements.begin(), v_statements.end(),
 		                [] (const StatementPtr &statement) -> bool { return dynamic_cast<const ExpressionStatement *>(statement.get()) != nullptr; })) {
 			if (bbs_syntax.secondStatement) {
-				throw SyntaxErrors::expected(std::format("'{}' between struct field values", cloth::to_string(Operator::o_COMMA)),
+				throw cde::SyntaxErrors::expected(std::format("'{}' between struct field values", cloth::to_string(Operator::o_COMMA)),
 				                             *bbs_syntax.secondStatement);
 			}
 			std::vector<ExpressionPtr> v_fields;
@@ -330,7 +332,7 @@ std::vector<StatementPtr> Parser::parseStatements (BindingBraceSyntax *braceSynt
 		}
 		const Token t_separator = peek();
 		if (!isStatementSeparator(t_separator) && !isBlockEnd(t_separator)) {
-			throw SyntaxErrors::newline(t_separator);
+			throw cde::SyntaxErrors::newline(t_separator);
 		}
 	}
 	return v_statements;
@@ -359,7 +361,7 @@ bool Parser::isStatementSeparator (const Token &token) {
 
 StatementPtr Parser::parseStatement (bool allowWhileTrailer, bool multilineResults) {
 	if (atKeyword(Keyword::k_USING)) {
-		throw ImportErrors::outsideHeader(peek());
+		throw cde::ImportErrors::outsideHeader(peek());
 	}
 	rejectMethodOutsideType();
 	if (atKeyword(Keyword::k_FOR)) {
@@ -384,7 +386,7 @@ StatementPtr Parser::parseStatement (bool allowWhileTrailer, bool multilineResul
 			v_targets.push_back(parseReceivingTarget(/*assignment=*/true));
 		}
 		if (at(Operator::o_FINAL_ASSIGN)) {
-			throw SyntaxErrors::reassignment(peek());
+			throw cde::SyntaxErrors::reassignment(peek());
 		}
 		expect(Operator::o_ASSIGN);
 		return std::make_shared<MultiAssignmentStatement>(std::move(v_targets), parseResults(nullptr, std::nullopt, allowWhileTrailer));
@@ -396,7 +398,7 @@ StatementPtr Parser::parseStatement (bool allowWhileTrailer, bool multilineResul
 	    assignmentOperators.contains(t_following.get_lexeme())) {
 		const Token t_name = advance();
 		if (at(Operator::o_FINAL_ASSIGN)) {
-			throw SyntaxErrors::reassignment(peek());
+			throw cde::SyntaxErrors::reassignment(peek());
 		}
 		const Token t_operator = advance();
 		if (UPDATE_OPERATORS.contains(t_operator.get_lexeme())) {
@@ -406,7 +408,7 @@ StatementPtr Parser::parseStatement (bool allowWhileTrailer, bool multilineResul
 			return std::make_shared<AssignmentStatement>(t_name, parseResults(nullptr, std::nullopt, allowWhileTrailer));
 		}
 		ExpressionPtr  ep_right = p_expressionParser.parseExpression(0, /*stopAtAssignment=*/false, /*stopAtRange=*/false, allowWhileTrailer);
-		const Operator o_base   = compoundAssignmentBase(fromCharacterRequired(t_operator.get_lexeme()));
+		const Operator o_base   = compound_assignment_base(t_operator.get_lexeme());
 		const Token    t_base(std::string(cloth::to_string(o_base)), o_base, t_operator.get_span());
 		ExpressionPtr  ep_value = std::make_shared<BinaryExpression>(std::make_shared<NameExpression>(t_name), t_base, std::move(ep_right));
 		return std::make_shared<AssignmentStatement>(t_name, std::move(ep_value), t_operator);
@@ -417,15 +419,15 @@ StatementPtr Parser::parseStatement (bool allowWhileTrailer, bool multilineResul
 	const std::string &s_operator    = t_operator.get_lexeme();
 	if (assignmentOperators.contains(s_operator)) {
 		if (const ProviderAccessExpression *pae_provider = dynamic_cast<const ProviderAccessExpression *>(ep_expression.get())) {
-			throw SyntaxErrors::readOnlyProvider(pae_provider->name);
+			throw cde::SyntaxErrors::readOnlyProvider(pae_provider->name);
 		}
 		if (s_operator == cloth::to_string(Operator::o_FINAL_ASSIGN)) {
-			throw SyntaxErrors::reassignment(t_operator);
+			throw cde::SyntaxErrors::reassignment(t_operator);
 		}
 		const bool                             b_fieldTarget = hasFieldTarget(*ep_expression);
 		std::shared_ptr<const IndexExpression> iep_index     = std::dynamic_pointer_cast<const IndexExpression>(ep_expression);
 		if (!b_fieldTarget && !iep_index) {
-			throw SyntaxErrors::expected("an indexed array assignment target", t_operator);
+			throw cde::SyntaxErrors::expected("an indexed array assignment target", t_operator);
 		}
 		advance();
 		ExpressionPtr ep_value;
@@ -479,7 +481,7 @@ TokenSpan Parser::previousStatementEnd () {
 
 ReturnStatement Parser::returnStatement (bool allowWhileTrailer) {
 	if (!b_inFnBody) {
-		throw SyntaxErrors::expected("a return inside a function body", peek());
+		throw cde::SyntaxErrors::expected("a return inside a function body", peek());
 	}
 	if (bbs_bindingBrace) {
 		bbs_bindingBrace->hasReturn = true;
@@ -523,7 +525,7 @@ bool Parser::isReceivingTarget (const Token &token, bool assignment) {
 ReceivingTarget Parser::parseReceivingTarget (bool assignment) {
 	const Token t_token = peek();
 	if (!isReceivingTarget(t_token, assignment)) {
-		throw SyntaxErrors::expected(std::format("a binding or assignment target name or '{}'", cloth::to_string(Operator::o_UNDERSCORE)), t_token);
+		throw cde::SyntaxErrors::expected(std::format("a binding or assignment target name or '{}'", cloth::to_string(Operator::o_UNDERSCORE)), t_token);
 	}
 	return ReceivingTarget::of(advance());
 }
@@ -578,7 +580,7 @@ std::vector<TypeReference> Parser::parseTypeList () {
 Token Parser::expect (TokenType type, std::string description) {
 	const Token t_token = peek();
 	if (t_token.get_type() != type) {
-		throw SyntaxErrors::expected(std::move(description), t_token);
+		throw cde::SyntaxErrors::expected(std::move(description), t_token);
 	}
 	return advance();
 }
@@ -586,7 +588,7 @@ Token Parser::expect (TokenType type, std::string description) {
 Token Parser::expect (Operator op) {
 	const Token t_token = peek();
 	if (t_token.get_type() != TokenType::Operator || t_token.get_lexeme() != cloth::to_string(op)) {
-		throw SyntaxErrors::expected(std::format("'{}'", cloth::to_string(op)), t_token);
+		throw cde::SyntaxErrors::expected(std::format("'{}'", cloth::to_string(op)), t_token);
 	}
 	return advance();
 }

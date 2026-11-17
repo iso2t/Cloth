@@ -1,3 +1,7 @@
+#include <stdexcept>
+#include <string>
+#include <utility>
+
 #include <token/token.hpp>
 
 namespace cloth {
@@ -259,6 +263,22 @@ OperatorInfo operator_info (Operator op) {
 
 std::string_view to_string (Operator op) {
 	return operator_info(op).spelling;
+}
+
+Operator compound_assignment_base (std::string_view spelling) {
+	constexpr std::pair<Operator, Operator> assignments[] = {
+		{ o_PLUS_EQUAL, o_PLUS },
+		{ o_MINUS_EQUAL, o_MINUS },
+		{ o_MUL_EQUAL, o_MULTIPLY },
+		{ o_DIV_EQUAL, o_DIVIDE },
+		{ o_MOD_EQUAL, o_MODULO },
+	};
+	for (const auto &[assignment, base] : assignments) {
+		if (spelling == to_string(assignment)) {
+			return base;
+		}
+	}
+	throw std::logic_error("Not a compound assignment: " + std::string(spelling));
 }
 
 std::string_view operator_name (Operator op) {

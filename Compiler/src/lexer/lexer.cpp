@@ -162,7 +162,7 @@ bool isValidEscape (char c) {
  * @return char The character that was advanced past.
  */
 char Lexer::advance () {
-	const char c = s_source[i_current++];
+	const char c = source_text()[i_current++];
 	if (c == '\n') {
 		p_current = { p_current.line + 1, 1 };
 	} else {
@@ -177,7 +177,7 @@ char Lexer::advance () {
  * @return char The current character without advancing the lexer.
  */
 char Lexer::peek () const {
-	return charAt(s_source, i_current);
+	return charAt(source_text(), i_current);
 }
 
 /**
@@ -187,7 +187,7 @@ char Lexer::peek () const {
  * @return false Otherwise.
  */
 bool Lexer::isAtEnd () const {
-	return static_cast<std::size_t>(i_current) >= s_source.size();
+	return static_cast<std::size_t>(i_current) >= source_text().size();
 }
 
 /**
@@ -231,7 +231,7 @@ void Lexer::addToken (TokenType type, TokenSpan span, const std::string &lexeme)
  * @return TokenSpan The span of the current token.
  */
 TokenSpan Lexer::span () {
-	return { p_start.line, p_start.column, p_current.line, p_current.column };
+	return { p_start.line, p_start.column, p_current.line, p_current.column, p_source };
 }
 
 /**
@@ -240,7 +240,7 @@ TokenSpan Lexer::span () {
  * @return TokenSpan The span at the current cursor position.
  */
 TokenSpan Lexer::cursorSpan () {
-	return { p_current.line, p_current.column, p_current.line, p_current.column };
+	return { p_current.line, p_current.column, p_current.line, p_current.column, p_source };
 }
 
 /**
@@ -250,7 +250,7 @@ TokenSpan Lexer::cursorSpan () {
  * operator matches.
  */
 Operator Lexer::matchOperator () {
-	const std::string_view s_remaining = std::string_view{ s_source }.substr(i_current);
+	const std::string_view s_remaining = std::string_view{ source_text() }.substr(i_current);
 
 	for (const auto &[op, spelling] : V_OPERATORS) {
 		if (!s_remaining.starts_with(spelling)) {
@@ -276,13 +276,13 @@ Operator Lexer::matchOperator () {
  * @return void
  */
 void Lexer::scanToken () {
-	const std::string_view s_remaining = std::string_view{ s_source }.substr(i_current);
+	const std::string_view s_remaining = std::string_view{ source_text() }.substr(i_current);
 
 	if (s_remaining.starts_with(S_INTERPOLATION_PREFIX)) {
 		for (std::size_t i = 0; i < S_INTERPOLATION_PREFIX.size(); ++i) {
 			advance();
 		}
-		addToken(TokenType::InterpolationStart, span(), s_source.substr(i_start, i_current - i_start));
+		addToken(TokenType::InterpolationStart, span(), source_text().substr(i_start, i_current - i_start));
 		interpolatedString();
 		return;
 	}
@@ -312,7 +312,7 @@ void Lexer::scanToken () {
 	}
 
 	if (const auto op = matchOperator(); op != o_ERROR) {
-		v_tokens.emplace_back(s_source.substr(i_start, i_current - i_start), op, span());
+		v_tokens.emplace_back(source_text().substr(i_start, i_current - i_start), op, span());
 		return;
 	}
 
@@ -347,7 +347,7 @@ bool Lexer::skipComments () {
 		return false;
 	}
 
-	switch (charAt(s_source, i_current + 1)) {
+	switch (charAt(source_text(), i_current + 1)) {
 	case '/':
 		advance();
 		advance();
@@ -360,7 +360,7 @@ bool Lexer::skipComments () {
 		advance();
 		advance();
 		while (!isAtEnd()) {
-			if (peek() == '*' && charAt(s_source, i_current + 1) == '/') {
+			if (peek() == '*' && charAt(source_text(), i_current + 1) == '/') {
 				advance();
 				advance();
 				return true;
@@ -385,7 +385,7 @@ bool Lexer::skipComments () {
 void Lexer::number () {
 	bool b_isFloat = false;
 	int  i_radix   = 10;
-	if (s_source[i_start] == '0') {
+	if (source_text()[i_start] == '0') {
 		switch (peek()) {
 		case 'x':
 			i_radix = 16;
@@ -407,20 +407,20 @@ void Lexer::number () {
 	};
 
 	const auto completeSuffix = [this] (char lower, char upper) {
-		const char suffix = charAt(s_source, i_current + 1);
-		return (suffix == lower || suffix == upper) && !isIdentifierPart(charAt(s_source, i_current + 2));
+		const char suffix = charAt(source_text(), i_current + 1);
+		return (suffix == lower || suffix == upper) && !isIdentifierPart(charAt(source_text(), i_current + 2));
 	};
 
 	const auto invalid = [this] (std::string_view reason) {
 		while (isIdentifierPart(peek())) {
 			advance();
 		}
-		lexerError(p_start, std::format("Invalid numeric literal '{}': {}", s_source.substr(i_start, i_current - i_start), reason));
+		lexerError(p_start, std::format("Invalid numeric literal '{}': {}", source_text().substr(i_start, i_current - i_start), reason));
 	};
 
 	const auto consumeDigits = [this, &digit] {
 		while (digit(peek()) || peek() == '_') {
-			if (peek() == '_' && (!digit(s_source[i_current - 1]) || !digit(charAt(s_source, i_current + 1)))) {
+			if (peek() == '_' && (!digit(source_text()[i_current - 1]) || !digit(charAt(source_text(), i_current + 1)))) {
 				lexerError(p_current, "Numeric separators must appear between digits");
 			}
 			advance();
@@ -439,7 +439,7 @@ void Lexer::number () {
 	consumeDigits();
 
 	if (peek() == '.') {
-		const char next            = charAt(s_source, i_current + 1);
+		const char next            = charAt(source_text(), i_current + 1);
 		const bool trailingFloat   = completeSuffix('f', 'F');
 		const bool trailingInteger = completeSuffix('i', 'I');
 		if (isDigit(next) || trailingFloat || trailingInteger || next == '_') {
@@ -476,7 +476,7 @@ void Lexer::number () {
 		}
 	}
 
-	addToken(b_isFloat ? TokenType::FloatingPointLiteral : TokenType::IntegerLiteral, span(), s_source.substr(i_start, i_current - i_start));
+	addToken(b_isFloat ? TokenType::FloatingPointLiteral : TokenType::IntegerLiteral, span(), source_text().substr(i_start, i_current - i_start));
 }
 
 /**
@@ -493,7 +493,7 @@ void Lexer::identifier () {
 		advance();
 	}
 
-	const std::string s_text      = s_source.substr(i_start, i_current - i_start);
+	const std::string s_text      = source_text().substr(i_start, i_current - i_start);
 	const bool        b_isKeyword = std::any_of(V_KEYWORDS.begin(), V_KEYWORDS.end(), [&s_text] (Keyword keyword) { return to_string(keyword) == s_text; });
 
 	addToken(b_isKeyword ? TokenType::Keyword : TokenType::Identifier, span(), s_text);
@@ -512,7 +512,7 @@ void Lexer::interpolatedString () {
 		i_start = i_current;
 		p_start = p_current;
 	};
-	const auto emit = [this] (TokenType type) { addToken(type, span(), s_source.substr(i_start, i_current - i_start)); };
+	const auto emit = [this] (TokenType type) { addToken(type, span(), source_text().substr(i_start, i_current - i_start)); };
 
 	mark();
 	while (!isAtEnd()) {
@@ -526,7 +526,7 @@ void Lexer::interpolatedString () {
 		}
 
 		if (c_character == '{' || c_character == '}') {
-			if (charAt(s_source, i_current + 1) == c_character) {
+			if (charAt(source_text(), i_current + 1) == c_character) {
 				advance();
 				advance();
 				continue;
@@ -595,11 +595,11 @@ void Lexer::interpolatedString () {
  */
 void Lexer::rawString () {
 	while (!isAtEnd()) {
-		if (std::string_view{ s_source }.substr(i_current).starts_with(S_RAW_STRING_DELIMITER)) {
+		if (std::string_view{ source_text() }.substr(i_current).starts_with(S_RAW_STRING_DELIMITER)) {
 			for (std::size_t i = 0; i < S_RAW_STRING_DELIMITER.size(); ++i) {
 				advance();
 			}
-			addToken(TokenType::RawStringLiteral, span(), s_source.substr(i_start, i_current - i_start));
+			addToken(TokenType::RawStringLiteral, span(), source_text().substr(i_start, i_current - i_start));
 			return;
 		}
 
@@ -618,7 +618,7 @@ void Lexer::rawString () {
  * value.
  */
 void Lexer::advanceStringScalar () {
-	const auto length = utf8_scalar_length(std::string_view{ s_source }.substr(i_current));
+	const auto length = utf8_scalar_length(std::string_view{ source_text() }.substr(i_current));
 	if (length == 0) {
 		lexerError(p_current, "Invalid UTF-8 in literal");
 	}
@@ -640,7 +640,7 @@ void Lexer::string () {
 		const char c_character = peek();
 		if (c_character == '"') {
 			advance();
-			addToken(TokenType::StringLiteral, span(), s_source.substr(i_start, i_current - i_start));
+			addToken(TokenType::StringLiteral, span(), source_text().substr(i_start, i_current - i_start));
 			return;
 		}
 
@@ -704,7 +704,7 @@ void Lexer::character () {
 	}
 
 	advance();
-	addToken(TokenType::CharacterLiteral, span(), s_source.substr(i_start, i_current - i_start));
+	addToken(TokenType::CharacterLiteral, span(), source_text().substr(i_start, i_current - i_start));
 }
 
 }

@@ -14,6 +14,7 @@
 #include <parser/subs/loops/for_loop_parser.hpp>
 #include <parser/subs/type_parser.hpp>
 #include <parser/type/type_reference.hpp>
+#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -24,7 +25,7 @@ ForStatement ForLoopParser::parseFor (bool allowWhileTrailer) {
 	const Token t_opening = p_parser.expect(Operator::o_PAREN_OPEN);
 	p_parser.skipNewLines();
 	if (!p_parser.atKeyword(Keyword::k_DEF)) {
-		throw SyntaxErrors::expected(std::format("'{}' before a loop binding", cloth::to_string(Keyword::k_DEF)), p_parser.peek());
+		throw cde::SyntaxErrors::expected(std::format("'{}' before a loop binding", cloth::to_string(Keyword::k_DEF)), p_parser.peek());
 	}
 	const Token t_definition = p_parser.advance();
 	p_parser.skipNewLines();
@@ -69,14 +70,14 @@ ForStatement ForLoopParser::parseFor (bool allowWhileTrailer) {
 	p_parser.skipNewLines();
 	std::optional<Token> opt_separator = p_parser.isSemiColon(p_parser.peek()) ? std::make_optional(p_parser.advance()) : std::nullopt;
 	if (opt_separator && !b_isRange) {
-		throw SyntaxErrors::expected(std::format("'{}' after a foreach source; steppers are only allowed on numeric ranges",
+		throw cde::SyntaxErrors::expected(std::format("'{}' after a foreach source; steppers are only allowed on numeric ranges",
 		                                         cloth::to_string(Operator::o_PAREN_CLOSE)),
 		                             *opt_separator);
 	}
 	std::optional<ForStepper> opt_stepper = opt_separator ? std::make_optional(parseForStepper(t_name)) : std::nullopt;
 	p_parser.skipNewLines();
 	if (b_isRange && !opt_separator && p_parser.peek().get_lexeme() != cloth::to_string(Operator::o_PAREN_CLOSE)) {
-		throw SyntaxErrors::expected(std::format("'{}' before a range stepper or '{}' after the range", cloth::to_string(Operator::o_SEMICOLON),
+		throw cde::SyntaxErrors::expected(std::format("'{}' before a range stepper or '{}' after the range", cloth::to_string(Operator::o_SEMICOLON),
 		                                         cloth::to_string(Operator::o_PAREN_CLOSE)),
 		                             p_parser.peek());
 	}
@@ -91,7 +92,7 @@ ForStepper ForLoopParser::parseForStepper (const Token &counter) {
 	const std::string s_description = std::format("the loop counter '{}' as the stepper target", counter.get_lexeme());
 	const Token       t_target      = p_parser.expect(TokenType::Identifier, s_description);
 	if (t_target.get_lexeme() != counter.get_lexeme()) {
-		throw SyntaxErrors::expected(s_description, t_target);
+		throw cde::SyntaxErrors::expected(s_description, t_target);
 	}
 
 	p_parser.skipNewLines();
@@ -99,7 +100,7 @@ ForStepper ForLoopParser::parseForStepper (const Token &counter) {
 	const std::string &s_operator = t_operator.get_lexeme();
 	if (t_operator.get_type() != TokenType::Operator || !Parser::assignmentOperators.contains(s_operator) ||
 	    s_operator == cloth::to_string(Operator::o_FINAL_ASSIGN)) {
-		throw SyntaxErrors::expected(std::format("a counter assignment/update operator ({}, {}, {}, {}, {}, {}, {} or {})",
+		throw cde::SyntaxErrors::expected(std::format("a counter assignment/update operator ({}, {}, {}, {}, {}, {}, {} or {})",
 		                                         cloth::to_string(Operator::o_ASSIGN), cloth::to_string(Operator::o_PLUS_EQUAL),
 		                                         cloth::to_string(Operator::o_MINUS_EQUAL), cloth::to_string(Operator::o_MUL_EQUAL),
 		                                         cloth::to_string(Operator::o_DIV_EQUAL), cloth::to_string(Operator::o_MOD_EQUAL),

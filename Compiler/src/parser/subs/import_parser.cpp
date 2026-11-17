@@ -7,9 +7,11 @@
 #include <utility>
 #include <vector>
 
+#include <import_errors.hpp>
 #include <parser/decl/import_declaration.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/import_parser.hpp>
+#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -23,7 +25,7 @@ ImportDeclaration ImportParser::parse () {
 		v_components.push_back(identifierOnLine(t_keyword));
 	}
 	if (!onLine(t_keyword)) {
-		throw SyntaxErrors::expected(std::format("'{}' on the same line as the import path", cloth::to_string(Operator::o_COLON)), p_parser.peek());
+		throw cde::SyntaxErrors::expected(std::format("'{}' on the same line as the import path", cloth::to_string(Operator::o_COLON)), p_parser.peek());
 	}
 	const Token t_colon = p_parser.expect(Operator::o_COLON);
 	p_parser.skipNewLines();
@@ -35,7 +37,7 @@ ImportDeclaration ImportParser::parse () {
 	const Token          t_next         = p_parser.peek();
 	std::optional<Token> opt_terminator = b_sameLine && p_parser.isSemiColon(t_next) ? std::make_optional(p_parser.advance()) : std::nullopt;
 	if (!opt_terminator && b_sameLine && t_next.get_type() != TokenType::NewLine && t_next.get_type() != TokenType::EndOfFile) {
-		throw SyntaxErrors::newline(t_next);
+		throw cde::SyntaxErrors::newline(t_next);
 	}
 	return { t_keyword, { std::move(v_components), std::move(v_dots) }, t_colon, std::move(is_selection), std::move(opt_terminator) };
 }
@@ -52,7 +54,7 @@ ImportSelection::Names ImportParser::names () {
 		const Token                                t_name      = p_parser.expect(TokenType::Identifier, s_description);
 		const std::pair<SeenNames::iterator, bool> p_insertion = m_seen.try_emplace(t_name.get_lexeme(), t_name);
 		if (!p_insertion.second) {
-			throw ImportErrors::duplicateSelection(p_insertion.first->second, t_name);
+			throw cde::ImportErrors::duplicateSelection(p_insertion.first->second, t_name);
 		}
 		v_names.push_back(t_name);
 		if (!onLine(t_name) || !at(Operator::o_COMMA)) {
@@ -66,7 +68,7 @@ ImportSelection::Names ImportParser::names () {
 
 Token ImportParser::identifierOnLine (const Token &keyword) {
 	if (!onLine(keyword)) {
-		throw SyntaxErrors::expected(std::format("an import path identifier on the same line as '{}'", keyword.get_lexeme()), p_parser.peek());
+		throw cde::SyntaxErrors::expected(std::format("an import path identifier on the same line as '{}'", keyword.get_lexeme()), p_parser.peek());
 	}
 	return p_parser.expect(TokenType::Identifier, "an import path identifier");
 }

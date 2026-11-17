@@ -18,7 +18,7 @@ struct SourceUnit {
 	std::vector<ImportDeclaration> imports = {};
 
 	const SourceFile *get_source () const {
-		return end ? end->source : nullptr;
+		return end ? end->source.get() : nullptr;
 	}
 };
 

@@ -19,7 +19,7 @@ std::shared_ptr<const BinaryExpression> compoundExpression (const ExpressionPtr 
 	if (!value || op.get_lexeme() == cloth::to_string(Operator::o_ASSIGN)) {
 		return nullptr;
 	}
-	const Operator o_base = compoundAssignmentBase(fromCharacterRequired(op.get_lexeme()));
+	const Operator o_base = compound_assignment_base(op.get_lexeme());
 	const Token    t_base(std::string(cloth::to_string(o_base)), op.get_type(), op.get_span());
 	return std::make_shared<BinaryExpression>(target, t_base, value);
 }

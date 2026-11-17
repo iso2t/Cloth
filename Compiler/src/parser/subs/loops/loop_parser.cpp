@@ -8,6 +8,7 @@
 #include <parser/parser.hpp>
 #include <parser/stmt/loop_control.hpp>
 #include <parser/subs/loops/loop_parser.hpp>
+#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -22,7 +23,7 @@ LoopBody LoopParser::parseLoopBody (const Token &keyword, bool allowWhileTrailer
 	}
 	if (t_bodyStart.get_type() == TokenType::EndOfFile || s_lexeme == cloth::to_string(Operator::o_BRACE_CLOSE) ||
 	    s_lexeme == cloth::to_string(Operator::o_SEMICOLON)) {
-		throw SyntaxErrors::expected(
+		throw cde::SyntaxErrors::expected(
 		        std::format("a '{}' loop body ('{}' or a statement)", keyword.get_lexeme(), cloth::to_string(Operator::o_BRACE_OPEN)), t_bodyStart);
 	}
 

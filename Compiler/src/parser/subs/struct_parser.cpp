@@ -14,6 +14,7 @@
 #include <parser/subs/type_parser.hpp>
 #include <parser/type/type_parameters.hpp>
 #include <parser/type/type_reference.hpp>
+#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -39,7 +40,7 @@ StructDeclaration StructParser::parse (const Token &keyword, std::optional<Token
 			p_parser.skipNewLines();
 			rejectFunction();
 			if (!atMember() && !p_parser.startsTypeDeclaration()) {
-				throw SyntaxErrors::expected(std::format("a '{}', '{}', or '{}' declaration after the fields", cloth::to_string(Keyword::k_MT),
+				throw cde::SyntaxErrors::expected(std::format("a '{}', '{}', or '{}' declaration after the fields", cloth::to_string(Keyword::k_MT),
 				                                         cloth::to_string(Keyword::k_OPERATOR), cloth::to_string(Keyword::k_TYPEDEF)),
 				                             p_parser.peek());
 			}
@@ -88,7 +89,7 @@ std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDecla
 		} else if (p_parser.atKeyword(Keyword::k_OPERATOR)) {
 			v_methods.push_back(p_parser.p_functionParser.parseOperator());
 		} else {
-			throw SyntaxErrors::expected(std::format("a '{}' or '{}' declaration with inherited visibility", cloth::to_string(Keyword::k_MT),
+			throw cde::SyntaxErrors::expected(std::format("a '{}' or '{}' declaration with inherited visibility", cloth::to_string(Keyword::k_MT),
 			                                         cloth::to_string(Keyword::k_OPERATOR)),
 			                             p_parser.peek());
 		}
@@ -99,10 +100,10 @@ std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDecla
 			p_parser.advance();
 		} else if (t_next.get_lexeme() != cloth::to_string(Operator::o_BRACE_CLOSE) && t_next.get_type() != TokenType::NewLine) {
 			if (!b_hasEquals) {
-				throw SyntaxErrors::expected(
+				throw cde::SyntaxErrors::expected(
 				        std::format("a newline or '{}' after a brace-bodied method", cloth::to_string(Operator::o_BRACE_CLOSE)), t_next);
 			}
-			throw SyntaxErrors::newline(t_next);
+			throw cde::SyntaxErrors::newline(t_next);
 		}
 		p_parser.skipNewLines();
 	}
@@ -112,7 +113,7 @@ std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDecla
 void StructParser::rejectFunction () {
 	const int i_offset = memberOffset();
 	if (p_parser.atKeyword(Keyword::k_FN, i_offset)) {
-		throw SyntaxErrors::functionInType(p_parser.peek(i_offset));
+		throw cde::SyntaxErrors::functionInType(p_parser.peek(i_offset));
 	}
 }
 

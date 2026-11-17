@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include <generic_errors.hpp>
 #include <parser/decl/declarations.hpp>
 #include <parser/decl/interface_declaration.hpp>
 #include <parser/decl/struct_declaration.hpp>
@@ -22,6 +23,7 @@
 #include <parser/subs/type_parser.hpp>
 #include <parser/type/type_parameters.hpp>
 #include <parser/type/type_reference.hpp>
+#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -60,7 +62,7 @@ bool endsInStatement (const std::vector<StatementPtr> &statements) {
 FunctionDeclaration FunctionParser::parseFunction () {
 	std::optional<Token> opt_visibility = p_parser.atKeyword(Keyword::k_PUBLIC) ? std::make_optional(p_parser.advance()) : std::nullopt;
 	if (!p_parser.atKeyword(Keyword::k_FN)) {
-		throw SyntaxErrors::expected(std::format("a '{}' declaration", cloth::to_string(Keyword::k_FN)), p_parser.peek());
+		throw cde::SyntaxErrors::expected(std::format("a '{}' declaration", cloth::to_string(Keyword::k_FN)), p_parser.peek());
 	}
 	const Token                       t_keyword          = p_parser.advance();
 	std::vector<TypeReference>        v_returnTypes      = p_parser.parseTypeList();
@@ -124,7 +126,7 @@ FunctionParser::MethodHeader FunctionParser::methodHeader (bool allowTypeParamet
 	std::vector<TypeReference> v_returnTypes = p_parser.parseTypeList();
 	const Token                t_name        = p_parser.expect(TokenType::Identifier, "a method name");
 	if (!allowTypeParameters && at(Operator::o_LESS)) {
-		throw GenericErrors::syntax("Method type parameters", p_parser.peek());
+		throw cde::GenericErrors::syntax("Method type parameters", p_parser.peek());
 	}
 	std::optional<TypeParameterList> opt_typeParameters = p_parser.p_typeParser.parseTypeParameters();
 	return { t_keyword, t_name, std::move(v_returnTypes), parseParameters(), std::move(opt_typeParameters) };
@@ -154,7 +156,7 @@ InterfaceMethodDeclaration FunctionParser::parseInterfaceMethod () {
 	if (at(Operator::o_ASSIGN)) {
 		opt_fallback = parseInterfaceFallback();
 	} else if (at(Operator::o_BRACE_OPEN)) {
-		throw SyntaxErrors::expected(std::format("'{} {}' before an interface method body", cloth::to_string(Operator::o_ASSIGN),
+		throw cde::SyntaxErrors::expected(std::format("'{} {}' before an interface method body", cloth::to_string(Operator::o_ASSIGN),
 		                                         cloth::to_string(Keyword::k_DEFAULT)),
 		                             p_parser.peek());
 	} else {
@@ -168,7 +170,7 @@ InterfaceMethodDeclaration FunctionParser::parseInterfaceMethod () {
 InterfaceMethodFallback FunctionParser::parseInterfaceFallback () {
 	const Token t_equals = p_parser.advance();
 	if (!p_parser.atKeyword(Keyword::k_DEFAULT)) {
-		throw SyntaxErrors::expected(std::format("'{}' after '{}' in an interface method", cloth::to_string(Keyword::k_DEFAULT),
+		throw cde::SyntaxErrors::expected(std::format("'{}' after '{}' in an interface method", cloth::to_string(Keyword::k_DEFAULT),
 		                                         cloth::to_string(Operator::o_ASSIGN)),
 		                             p_parser.peek());
 	}
@@ -190,7 +192,7 @@ InterfaceMethodFallback FunctionParser::parseInterfaceFallback () {
 	if (at(Operator::o_BRACE_OPEN)) {
 		return { t_equals, t_keyword, { parseBlockBody() } };
 	}
-	throw SyntaxErrors::expected(std::format("a parenthesized expression or a block after '{}'", cloth::to_string(Keyword::k_DEFAULT)), p_parser.peek());
+	throw cde::SyntaxErrors::expected(std::format("a parenthesized expression or a block after '{}'", cloth::to_string(Keyword::k_DEFAULT)), p_parser.peek());
 }
 
 MethodDeclaration FunctionParser::parseOperator (std::optional<Token> visibility) {
@@ -221,7 +223,7 @@ MethodDeclaration FunctionParser::parseOperator (std::optional<Token> visibility
 			b_rightReceiver = true;
 			p_parser.skipNewLines();
 			if (!at(Operator::o_PAREN_CLOSE)) {
-				throw SyntaxErrors::expected(std::format("'{}' after '{}'", cloth::to_string(Operator::o_PAREN_CLOSE),
+				throw cde::SyntaxErrors::expected(std::format("'{}' after '{}'", cloth::to_string(Operator::o_PAREN_CLOSE),
 				                                         cloth::to_string(Keyword::k_SELF)),
 				                             p_parser.peek());
 			}
@@ -260,7 +262,7 @@ Token FunctionParser::parseOperatorName () {
 		return { t_token.get_lexeme(), Operator::o_FOREACH, t_token.get_span() };
 	}
 	if (t_token.get_type() != TokenType::Operator && !p_parser.atKeyword(Keyword::k_IS)) {
-		throw SyntaxErrors::expected("an operator", t_token);
+		throw cde::SyntaxErrors::expected("an operator", t_token);
 	}
 	p_parser.advance();
 	if (t_token.get_lexeme() != cloth::to_string(Operator::o_BRACKET_OPEN)) {
@@ -290,7 +292,7 @@ FunctionBody FunctionParser::parseBody (std::string_view kind, bool allowStateme
 			return { p_parser.parseBlock() };
 		}
 		if (!at(Operator::o_ASSIGN)) {
-			throw SyntaxErrors::expected(std::format("a {} body ('{}' or '{}')", kind, cloth::to_string(Operator::o_BRACE_OPEN),
+			throw cde::SyntaxErrors::expected(std::format("a {} body ('{}' or '{}')", kind, cloth::to_string(Operator::o_BRACE_OPEN),
 			                                         cloth::to_string(Operator::o_ASSIGN)),
 			                             p_parser.peek());
 		}

@@ -9,6 +9,7 @@
 #include <parser/stmt/loop_control.hpp>
 #include <parser/subs/expression_parser.hpp>
 #include <parser/subs/loops/do_while_loop_parser.hpp>
+#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -19,7 +20,7 @@ DoWhileStatement DoWhileLoopParser::parseDoWhile () {
 
 	p_parser.skipNewLines();
 	if (!p_parser.atKeyword(Keyword::k_WHILE)) {
-		throw SyntaxErrors::expected(std::format("'{}' after a '{}' body", cloth::to_string(Keyword::k_WHILE), cloth::to_string(Keyword::k_DO)),
+		throw cde::SyntaxErrors::expected(std::format("'{}' after a '{}' body", cloth::to_string(Keyword::k_WHILE), cloth::to_string(Keyword::k_DO)),
 		                             p_parser.peek());
 	}
 

@@ -2,6 +2,9 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include <file/source_file.hpp>
@@ -15,19 +18,19 @@ struct Position {
 
 class Lexer {
     public:
-	Lexer (const std::string &src) : s_source(src) {
+	Lexer (std::string src) : Lexer(SourceFile{ "<input>", std::move(src) }) {
 	}
 
-	Lexer (const SourceFile &co) : s_source(co.get_contents()) {
+	Lexer (SourceFile source) : p_source(std::make_shared<const SourceFile>(std::move(source))) {
 	}
 
-	Lexer (const char *src) : s_source(src) {
+	Lexer (const char *src) : Lexer(std::string(src)) {
 	}
 
-	Lexer (const char *src, size_t length) : s_source(std::string(src, length)) {
+	Lexer (const char *src, size_t length) : Lexer(std::string(src, length)) {
 	}
 
-	Lexer (const SourceFile &co, size_t length) : s_source(std::string(co.get_contents(), length)) {
+	Lexer (const SourceFile &source, size_t offset) : Lexer(SourceFile{ source.get_path(), source.get_contents().substr(offset), source.get_extension() }) {
 	}
 
 	~Lexer () = default;
@@ -40,13 +43,17 @@ class Lexer {
 	}
 
     private:
-	std::string        s_source;
-	std::vector<Token> v_tokens;
-	int                i_start   = 0;
-	int                i_current = 0;
+	std::shared_ptr<const SourceFile> p_source;
+	std::vector<Token>                v_tokens;
+	int                               i_start   = 0;
+	int                               i_current = 0;
 
 	Position p_start{ 1, 1 };
 	Position p_current{ 1, 1 };
+
+	const std::string &source_text () const noexcept {
+		return p_source->get_contents();
+	}
 
 	char            advance ();
 	char            peek () const;

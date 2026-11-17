@@ -22,6 +22,7 @@
 #include <parser/subs/if_parser.hpp>
 #include <parser/subs/type_parser.hpp>
 #include <parser/type/type_reference.hpp>
+#include <syntax_errors.hpp>
 #include <token/token.hpp>
 #include <util/utf8.hpp>
 
@@ -53,7 +54,7 @@ char32_t decodeCharacter (const Token &token) {
 
 	const std::size_t st_length = utf8_scalar_length(s_contents);
 	if (st_length == 0) {
-		throw SyntaxErrors::expression(token);
+		throw cde::SyntaxErrors::expression(token);
 	}
 	const unsigned char c_first = static_cast<unsigned char>(s_contents.front());
 	if (st_length == 1) {
@@ -148,7 +149,7 @@ ExpressionPtr ExpressionParser::parseInfix (ExpressionPtr initial, int minimumPr
 
 		const std::unordered_map<Operator, OperatorPrecedence>::const_iterator it_precedence = binaryOperators.find(o_kind);
 		if (!b_isRange && it_precedence == binaryOperators.end()) {
-			throw SyntaxErrors::unsupportedOperator(t_operator);
+			throw cde::SyntaxErrors::unsupportedOperator(t_operator);
 		}
 		const OperatorPrecedence op_precedence = b_isRange ? OperatorPrecedence{ 8 } : it_precedence->second;
 		if (op_precedence.precedence < minimumPrecedence) {
@@ -371,7 +372,7 @@ ExpressionPtr ExpressionParser::parsePrimary (bool allowWhileTrailer) {
 	default:
 		break;
 	}
-	throw SyntaxErrors::expression(t_token);
+	throw cde::SyntaxErrors::expression(t_token);
 }
 
 std::vector<CallArgument> ExpressionParser::parseArgumentList () {

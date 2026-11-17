@@ -2,4 +2,8 @@
 
 diagnostics-obj-y := cloth_diagnostic.o \
                      diagnostic_code.o \
+                     diagnostic_reporter.o \
+                     generic_errors.o \
+                     import_errors.o \
+                     syntax_errors.o \
                      syntax_exception.o

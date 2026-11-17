@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <memory>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -9,18 +10,22 @@
 
 namespace cloth {
 
+class SourceFile;
+
+// Lines and UTF-8 byte columns are one-based. The end position is exclusive.
 struct TokenSpan {
 	size_t startLine;
 	size_t startCol;
 	size_t endLine;
 	size_t endCol;
+	std::shared_ptr<const SourceFile> source = nullptr;
 
 	std::string to_string () const {
 		return std::to_string(startLine) + ":" + std::to_string(startCol) + "-" + std::to_string(endLine) + ":" + std::to_string(endCol);
 	}
 
-	static TokenSpan span_through (TokenSpan start, TokenSpan end) {
-		return { start.startLine, start.startCol, end.endLine, end.endCol };
+	static TokenSpan span_through (const TokenSpan &start, const TokenSpan &end) {
+		return { start.startLine, start.startCol, end.endLine, end.endCol, start.source == end.source ? start.source : nullptr };
 	}
 };
 
@@ -173,6 +178,7 @@ enum Operator {
 std::string_view to_string (Keyword keyword);
 std::string_view to_string (Operator op);
 std::string_view operator_name (Operator op);
+Operator compound_assignment_base (std::string_view spelling);
 std::string_view to_string (TokenType type);
 
 class Token {

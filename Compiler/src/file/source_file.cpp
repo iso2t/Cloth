@@ -6,13 +6,25 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <file/source_file.hpp>
 #include <util/utf8.hpp>
 
 namespace cloth {
 
-SourceFile::SourceFile (const std::filesystem::path &path) : s_name(source_name(path)), e_extension(source_extension(path)), s_contents(read_source(path)) {
+SourceFile::SourceFile (const std::filesystem::path &path) :
+        p_path(path),
+        s_name(source_name(p_path)),
+        e_extension(source_extension(p_path)),
+        s_contents(read_source(p_path)) {
+}
+
+SourceFile::SourceFile (std::filesystem::path path, std::string contents, Extension extension) :
+        p_path(std::move(path)),
+        s_name(source_name(p_path)),
+        e_extension(extension),
+        s_contents(std::move(contents)) {
 }
 
 /**

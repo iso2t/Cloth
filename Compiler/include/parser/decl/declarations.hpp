@@ -137,7 +137,7 @@ struct CallableDeclaration : CallableSignature {
 
     private:
 	static TokenSpan spanThrough (TokenSpan start, TokenSpan end) {
-		return { start.startLine, start.startCol, end.endLine, end.endCol };
+		return TokenSpan::span_through(start, end);
 	}
 };
 

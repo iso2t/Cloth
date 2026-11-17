@@ -15,6 +15,7 @@
 #include <parser/subs/type_parser.hpp>
 #include <parser/type/type_parameters.hpp>
 #include <parser/type/type_reference.hpp>
+#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -50,10 +51,10 @@ std::vector<InterfaceMethodDeclaration> InterfaceParser::parseMembers (std::vect
 		}
 		const int i_functionOffset = p_parser.atKeyword(Keyword::k_PUBLIC) ? 1 : 0;
 		if (p_parser.atKeyword(Keyword::k_FN, i_functionOffset)) {
-			throw SyntaxErrors::functionInType(p_parser.peek(i_functionOffset));
+			throw cde::SyntaxErrors::functionInType(p_parser.peek(i_functionOffset));
 		}
 		if (!p_parser.atKeyword(Keyword::k_MT)) {
-			throw SyntaxErrors::expected(std::format("an interface '{}' declaration", cloth::to_string(Keyword::k_MT)), p_parser.peek());
+			throw cde::SyntaxErrors::expected(std::format("an interface '{}' declaration", cloth::to_string(Keyword::k_MT)), p_parser.peek());
 		}
 		v_methods.push_back(p_parser.p_functionParser.parseInterfaceMethod());
 		const FunctionBody *fb_body = v_methods.back().executableBody();
@@ -63,10 +64,10 @@ std::vector<InterfaceMethodDeclaration> InterfaceParser::parseMembers (std::vect
 			p_parser.advance();
 		} else if (t_next.get_type() != TokenType::NewLine && t_next.get_lexeme() != cloth::to_string(Operator::o_BRACE_CLOSE)) {
 			if (b_block) {
-				throw SyntaxErrors::expected(std::format("a newline or '{}' after a block default", cloth::to_string(Operator::o_BRACE_CLOSE)),
+				throw cde::SyntaxErrors::expected(std::format("a newline or '{}' after a block default", cloth::to_string(Operator::o_BRACE_CLOSE)),
 				                             t_next);
 			}
-			throw SyntaxErrors::newline(t_next);
+			throw cde::SyntaxErrors::newline(t_next);
 		}
 		p_parser.skipNewLines();
 	}

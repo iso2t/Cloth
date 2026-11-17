@@ -6,6 +6,7 @@
 #include <variant>
 #include <vector>
 
+#include <generic_errors.hpp>
 #include <parser/decl/declarations.hpp>
 #include <parser/decl/enum_declaration.hpp>
 #include <parser/decl/struct_declaration.hpp>
@@ -17,6 +18,7 @@
 #include <parser/subs/function_parser.hpp>
 #include <parser/subs/type_parser.hpp>
 #include <parser/type/type_reference.hpp>
+#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -24,7 +26,7 @@ namespace cloth {
 EnumDeclaration EnumParser::parse (const Token &keyword, std::optional<Token> visibility) {
 	const Token t_name = p_parser.expect(TokenType::Identifier, "an enum name");
 	if (at(Operator::o_LESS)) {
-		throw GenericErrors::syntax("Enum type parameters", p_parser.peek());
+		throw cde::GenericErrors::syntax("Enum type parameters", p_parser.peek());
 	}
 	std::vector<EnumFieldDeclaration> v_fields;
 	if (at(Operator::o_PAREN_OPEN)) {
@@ -46,7 +48,7 @@ EnumDeclaration EnumParser::parse (const Token &keyword, std::optional<Token> vi
 		        Operator::o_BRACE_CLOSE, [this] () -> bool { return at(Operator::o_SEMICOLON) || p_parser.startsTypeDeclaration(); },
 		        [this] () -> EnumCaseDeclaration { return parseCase(); });
 		if (v_cases.empty()) {
-			throw SyntaxErrors::expected("at least one enum case", p_parser.peek());
+			throw cde::SyntaxErrors::expected("at least one enum case", p_parser.peek());
 		}
 		if (!at(Operator::o_BRACE_CLOSE)) {
 			p_parser.expect(Operator::o_SEMICOLON);
@@ -61,7 +63,7 @@ EnumDeclaration EnumParser::parse (const Token &keyword, std::optional<Token> vi
 EnumFieldDeclaration EnumParser::parseField () {
 	std::optional<Token> opt_visibility = p_parser.atKeyword(Keyword::k_PUBLIC) ? std::make_optional(p_parser.advance()) : std::nullopt;
 	if (!p_parser.atKeyword(Keyword::k_DEF)) {
-		throw SyntaxErrors::expected(std::format("'{}' for an enum payload field", cloth::to_string(Keyword::k_DEF)), p_parser.peek());
+		throw cde::SyntaxErrors::expected(std::format("'{}' for an enum payload field", cloth::to_string(Keyword::k_DEF)), p_parser.peek());
 	}
 	p_parser.advance();
 	TypeReference tr_type = p_parser.p_delimitedParser.angles([this] () -> TypeReference {
@@ -98,13 +100,13 @@ std::vector<MethodDeclaration> EnumParser::parseMembers (std::vector<TypeDeclara
 			continue;
 		}
 		if (!p_parser.atKeyword(Keyword::k_OPERATOR)) {
-			throw SyntaxErrors::expected(std::format("an '{}' declaration", cloth::to_string(Keyword::k_OPERATOR)), p_parser.peek());
+			throw cde::SyntaxErrors::expected(std::format("an '{}' declaration", cloth::to_string(Keyword::k_OPERATOR)), p_parser.peek());
 		}
 		v_operators.push_back(p_parser.p_functionParser.parseOperator());
 		if (std::holds_alternative<ExpressionBody>(v_operators.back().body.value) && at(Operator::o_SEMICOLON)) {
 			p_parser.advance();
 		} else if (!at(Operator::o_BRACE_CLOSE) && p_parser.peek().get_type() != TokenType::NewLine) {
-			throw SyntaxErrors::newline(p_parser.peek());
+			throw cde::SyntaxErrors::newline(p_parser.peek());
 		}
 		p_parser.skipNewLines();
 	}

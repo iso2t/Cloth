@@ -14,6 +14,7 @@
 #include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/expression_parser.hpp>
 #include <parser/subs/if_parser.hpp>
+#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -68,7 +69,7 @@ BlockBody IfParser::parseBranchBody (bool allowWhileTrailer) {
 	}
 	if (t_start.get_type() == TokenType::EndOfFile || p_parser.atKeyword(Keyword::k_ELSE) || s_lexeme == cloth::to_string(Operator::o_BRACE_CLOSE) ||
 	    s_lexeme == cloth::to_string(Operator::o_SEMICOLON)) {
-		throw SyntaxErrors::expected(std::format("a conditional body ('{}' or a statement)", cloth::to_string(Operator::o_BRACE_OPEN)), t_start);
+		throw cde::SyntaxErrors::expected(std::format("a conditional body ('{}' or a statement)", cloth::to_string(Operator::o_BRACE_OPEN)), t_start);
 	}
 	return p_parser.parseUnbracedBody(allowWhileTrailer);
 }

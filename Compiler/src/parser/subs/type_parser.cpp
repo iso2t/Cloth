@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include <generic_errors.hpp>
 #include <parser/decl/declarations.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/delimited_parser.hpp>
@@ -16,6 +17,7 @@
 #include <parser/subs/type_parser.hpp>
 #include <parser/type/type_parameters.hpp>
 #include <parser/type/type_reference.hpp>
+#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -43,11 +45,11 @@ TypeParser::ParentType TypeParser::parseParent (std::string_view description) {
 	p_parser.skipNewLines();
 	const Token t_next = p_parser.peek();
 	if (t_next.get_type() != TokenType::Identifier) {
-		throw SyntaxErrors::expected(std::string(description), t_next);
+		throw cde::SyntaxErrors::expected(std::string(description), t_next);
 	}
 	TypeReference tr_type = parse();
 	if (tr_type.hasNullability()) {
-		throw SyntaxErrors::expected("a non-nullable parent type", p_parser.previous());
+		throw cde::SyntaxErrors::expected("a non-nullable parent type", p_parser.previous());
 	}
 	return { t_separator, std::move(tr_type) };
 }
@@ -75,7 +77,7 @@ std::optional<TypeParameterList> TypeParser::parseTypeParameters () {
 		v_parameters.push_back({ t_name, std::move(v_bounds), std::move(opt_defaultType) });
 		p_parser.skipNewLines();
 		if (at(Operator::o_ELVIS)) {
-			throw GenericErrors::syntax(std::format("Type defaults written with '{}'", cloth::to_string(Operator::o_ELVIS)), p_parser.peek());
+			throw cde::GenericErrors::syntax(std::format("Type defaults written with '{}'", cloth::to_string(Operator::o_ELVIS)), p_parser.peek());
 		}
 		if (at(Operator::o_GREATER)) {
 			break;
@@ -107,7 +109,7 @@ std::vector<TypeParameterBound> TypeParser::parseBounds () {
 TypeArgumentList TypeParser::arguments () {
 	const Token t_opening = p_parser.expect(Operator::o_LESS);
 	if (i_argumentDepth >= MAX_TYPE_ARG_NESTING) {
-		throw GenericErrors::nesting(t_opening.get_span(), MAX_TYPE_ARG_NESTING);
+		throw cde::GenericErrors::nesting(t_opening.get_span(), MAX_TYPE_ARG_NESTING);
 	}
 
 	struct ArgumentDepth {
@@ -128,7 +130,7 @@ TypeArgumentList TypeParser::arguments () {
 	std::vector<TypeReference> v_arguments;
 	while (true) {
 		if (p_parser.atKeyword(Keyword::k_OPT)) {
-			throw GenericErrors::argument(std::format("Omission-only '{}' wrappers are not value type arguments", cloth::to_string(Keyword::k_OPT)),
+			throw cde::GenericErrors::argument(std::format("Omission-only '{}' wrappers are not value type arguments", cloth::to_string(Keyword::k_OPT)),
 			                              p_parser.peek().get_span());
 		}
 		if (at(Operator::o_UNDERSCORE)) {
@@ -304,7 +306,7 @@ TypeReference TypeParser::parse (bool inCast, bool allowArrays) {
 Token TypeParser::parseName () {
 	const Token t_token = p_parser.peek();
 	if (t_token.get_type() != TokenType::Identifier && !(t_token.get_type() == TokenType::Keyword && isPrimitiveType(t_token.get_lexeme()))) {
-		throw SyntaxErrors::expected("a type name", t_token);
+		throw cde::SyntaxErrors::expected("a type name", t_token);
 	}
 	const Token t_first = p_parser.advance();
 	if (t_first.get_type() != TokenType::Identifier || !at(Operator::o_DOT)) {
@@ -324,7 +326,7 @@ std::optional<TokenSpan> TypeParser::nullableMarker () {
 	}
 	const TokenSpan ts_marker = p_parser.advance().get_span();
 	if (at(Operator::o_QUESTION)) {
-		throw SyntaxErrors::expected(std::format("only one '{}' at this type position", cloth::to_string(Operator::o_QUESTION)), p_parser.peek());
+		throw cde::SyntaxErrors::expected(std::format("only one '{}' at this type position", cloth::to_string(Operator::o_QUESTION)), p_parser.peek());
 	}
 	return ts_marker;
 }
