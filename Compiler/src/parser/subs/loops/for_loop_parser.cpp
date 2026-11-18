@@ -32,8 +32,7 @@ ForStatement ForLoopParser::parseFor (bool allowWhileTrailer) {
 
 	std::optional<TypeReference> opt_type;
 	std::optional<TokenSpan>     opt_annotationSpan;
-	const Token                  t_annotationOpening = p_parser.peek();
-	if (t_annotationOpening.get_lexeme() == to_string(oLess)) {
+	if (const Token t_annotationOpening = p_parser.peek(); t_annotationOpening.get_lexeme() == to_string(oLess)) {
 		opt_type           = get_delimited().angles([this] () -> TypeReference {
                         p_parser.skipNewLines();
                         TypeReference tr_type = p_parser.p_typeParser.parse(/*inCast=*/false, /*allowArrays=*/true);
@@ -45,7 +44,7 @@ ForStatement ForLoopParser::parseFor (bool allowWhileTrailer) {
 
 	p_parser.skipNewLines();
 	const Token t_name = p_parser.expect(TokenType::Identifier, "a loop binding name");
-	ForBinding  fb_binding{ t_definition, std::move(opt_type), t_name, opt_annotationSpan };
+	ForBinding  fb_binding{ .keyword = t_definition, .type = std::move(opt_type), .name = t_name, .annotationSpan = opt_annotationSpan };
 	p_parser.skipNewLines();
 	const Token t_arrow = p_parser.expect(oPointerLeft);
 	p_parser.skipNewLines();
@@ -58,13 +57,15 @@ ForStatement ForLoopParser::parseFor (bool allowWhileTrailer) {
 	const Token        t_afterFirst = p_parser.peek();
 	const std::string &s_afterFirst = t_afterFirst.get_lexeme();
 	const bool         b_isRange    = s_afterFirst == to_string(oRange) || s_afterFirst == to_string(oRangeInclusive);
-	ForSource          fs_source{ ForSource::Elements{ ep_first, ts_firstSpan } };
+	ForSource          fs_source{ ForSource::Elements{ .expression = ep_first, .span = ts_firstSpan } };
 	if (b_isRange) {
 		const Token t_delimiter = p_parser.advance();
 		p_parser.skipNewLines();
 		ExpressionPtr ep_end = p_parser.p_expressionParser.parseExpression(0, /*stopAtAssignment=*/false, /*stopAtRange=*/true);
-		fs_source.value      = ForSource::Range{ std::move(ep_first), t_delimiter, std::move(ep_end),
-                                                    TokenSpan::span_through(ts_sourceStart, p_parser.previous().get_span()) };
+		fs_source.value      = ForSource::Range{ .start     = std::move(ep_first),
+			                                 .delimiter = t_delimiter,
+			                                 .end       = std::move(ep_end),
+			                                 .span      = TokenSpan::span_through(ts_sourceStart, p_parser.previous().get_span()) };
 	}
 
 	p_parser.skipNewLines();
@@ -85,7 +86,7 @@ ForStatement ForLoopParser::parseFor (bool allowWhileTrailer) {
 		 t_closing, std::move(lb_body) };
 }
 
-ForStepper ForLoopParser::parseForStepper (const Token &counter) {
+ForStepper ForLoopParser::parseForStepper (const Token &counter) const {
 	p_parser.skipNewLines();
 	const std::string s_description = std::format("the loop counter '{}' as the stepper target", counter.get_lexeme());
 	const Token       t_target      = p_parser.expect(TokenType::Identifier, s_description);
@@ -109,7 +110,10 @@ ForStepper ForLoopParser::parseForStepper (const Token &counter) {
 		p_parser.skipNewLines();
 		ep_value = p_parser.p_expressionParser.parseExpression();
 	}
-	return { t_target, t_operator, std::move(ep_value), TokenSpan::span_through(t_target.get_span(), p_parser.previous().get_span()) };
+	return { .target = t_target,
+		 .op     = t_operator,
+		 .value  = std::move(ep_value),
+		 .span   = TokenSpan::span_through(t_target.get_span(), p_parser.previous().get_span()) };
 }
 
 }

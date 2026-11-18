@@ -15,12 +15,12 @@ class IfParser {
 	}
 
 	/** An else can follow newlines. A semicolon ends the chain. */
-	IfExpression parseIf (bool allowWhileTrailer = false);
+	IfExpression parseIf (bool allowWhileTrailer = false) const;
 
     private:
 	Parser &p_parser;
 
-	BlockBody parseBranchBody (bool allowWhileTrailer);
+	BlockBody parseBranchBody (bool allowWhileTrailer) const;
 };
 
 }

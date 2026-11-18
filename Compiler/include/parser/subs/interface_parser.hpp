@@ -18,12 +18,12 @@ class InterfaceParser {
 	explicit InterfaceParser (Parser &parser) : p_parser(parser) {
 	}
 
-	InterfaceDeclaration parse (const Token &keyword, const Token &kind, std::optional<Token> visibility);
+	InterfaceDeclaration parse (const Token &keyword, const Token &kind, std::optional<Token> visibility) const;
 
     private:
 	Parser &p_parser;
 
-	std::vector<InterfaceMethodDeclaration> parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes);
+	std::vector<InterfaceMethodDeclaration> parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) const;
 };
 
 }

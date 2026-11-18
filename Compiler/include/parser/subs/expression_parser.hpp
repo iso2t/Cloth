@@ -50,9 +50,9 @@ class ExpressionParser {
 	ExpressionPtr             parseDoubleColon (ExpressionPtr receiver);
 	ExpressionPtr             parseInterpolation ();
 	std::vector<CallArgument> parseArguments ();
-	std::string               decodeString (std::string_view contents);
+	static std::string        decodeString (std::string_view contents);
 	[[nodiscard]] bool        isImplicitBinding (const Token &token) const;
-	bool                      at (Operator op, int offset = 0);
+	bool                      at (Operator op, int offset = 0) const;
 };
 
 }

@@ -18,17 +18,17 @@ class StructParser {
 	explicit StructParser (Parser &parser) : p_parser(parser) {
 	}
 
-	StructDeclaration parse (const Token &keyword, std::optional<Token> visibility);
+	StructDeclaration parse (const Token &keyword, std::optional<Token> visibility) const;
 
     private:
 	Parser &p_parser;
 
-	std::vector<StructFieldDeclaration> parseFields ();
-	std::vector<MethodDeclaration>      parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes);
-	void                                rejectFunction ();
-	int                                 memberOffset ();
-	bool                                atMember ();
-	bool                                atEnd ();
+	std::vector<StructFieldDeclaration> parseFields () const;
+	std::vector<MethodDeclaration>      parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) const;
+	void                                rejectFunction () const;
+	int                                 memberOffset () const;
+	bool                                atMember () const;
+	bool                                atEnd () const;
 };
 
 }

@@ -15,7 +15,7 @@ class BindingsParser {
 	explicit BindingsParser (Parser &parser) : p_parser(parser) {
 	}
 
-	std::vector<StatementPtr> parseBindings (bool allowWhileTrailer = false);
+	std::vector<StatementPtr> parseBindings (bool allowWhileTrailer = false) const;
 
     private:
 	Parser &p_parser;

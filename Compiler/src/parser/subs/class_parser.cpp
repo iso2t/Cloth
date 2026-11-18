@@ -28,12 +28,12 @@
 
 namespace cloth {
 
-TopLevelStateDeclaration ClassParser::parseTopLevelState (const Token &typedefKeyword, const Token &keyword, TypeReference payload) {
+TopLevelStateDeclaration ClassParser::parseTopLevelState (const Token &typedefKeyword, const Token &keyword, TypeReference payload) const {
 	p_parser.skipNewLines();
 	std::optional<Token> opt_visibility = parseVisibility();
 	const Token          t_name         = p_parser.expect(TokenType::Identifier, "a state name");
-	if (!p_parser.atKeyword(Keyword::kFor)) {
-		throw cde::SyntaxErrors::expected(std::format("'{}' before the state host contract", cloth::to_string(Keyword::kFor)), p_parser.peek());
+	if (!p_parser.atKeyword(kFor)) {
+		throw cde::SyntaxErrors::expected(std::format("'{}' before the state host contract", to_string(kFor)), p_parser.peek());
 	}
 	p_parser.advance();
 	TypeReference tr_host = p_parser.p_typeParser.parse(/*inCast=*/false, /*allowArrays=*/true);
@@ -50,30 +50,32 @@ TopLevelStateDeclaration ClassParser::parseTopLevelState (const Token &typedefKe
 		 std::move(v_nestedTypes) };
 }
 
-ClassDeclaration ClassParser::parse (const Token &keyword, std::optional<Token> visibility, std::optional<Token> finalKeyword) {
+ClassDeclaration ClassParser::parse (const Token &keyword, std::optional<Token> visibility, std::optional<Token> finalKeyword) const {
 	const Token                            t_name             = p_parser.expect(TokenType::Identifier, "a class name");
 	std::optional<TypeParameterList>       opt_typeParameters = p_parser.p_typeParser.parseTypeParameters();
 	std::vector<ClassParameterDeclaration> v_parameters;
-	if (at(Operator::oParenOpen)) {
+	if (at(oParenOpen)) {
 		v_parameters = p_parser.p_delimitedParser.parentheses([this] () -> std::vector<ClassParameterDeclaration> {
-			return p_parser.p_delimitedParser.commaSeparated(Operator::oParenClose,
+			return p_parser.p_delimitedParser.commaSeparated(oParenClose,
 			                                                 [this] () -> ClassParameterDeclaration { return parseHeaderParameter(); });
 		});
 	}
 	std::vector<ClassParentClause> v_parents = p_parser.p_typeParser.parseParents(
 	        "a class or interface parent name", [this] (TypeReference type, const Token &separator) -> ClassParentClause {
 		        std::optional<std::vector<CallArgument>> opt_arguments;
-		        if (at(Operator::oParenOpen)) {
+		        if (at(oParenOpen)) {
 			        opt_arguments = p_parser.p_functionParser.inBody(
 			                [this] () -> std::vector<CallArgument> { return p_parser.p_expressionParser.parseArgumentList(); });
 		        }
-		        return { std::move(type), std::move(opt_arguments), TokenSpan::span_through(separator.get_span(), p_parser.previous().get_span()) };
+		        return { .type                 = std::move(type),
+			         .constructorArguments = std::move(opt_arguments),
+			         .span                 = TokenSpan::span_through(separator.get_span(), p_parser.previous().get_span()) };
 	        });
 	const int i_headerEnd = p_parser.i_currentIndex;
 	p_parser.skipNewLines();
 	std::vector<TypeDeclarationPtr> v_nestedTypes;
 	std::vector<ClassMember>        v_members;
-	if (at(Operator::oBraceOpen)) {
+	if (at(oBraceOpen)) {
 		v_members = p_parser.p_delimitedParser.braces(
 		        [this, &t_name, &v_nestedTypes] () -> std::vector<ClassMember> { return parseMembers(t_name, v_nestedTypes); });
 	} else {
@@ -93,22 +95,21 @@ ClassDeclaration ClassParser::parse (const Token &keyword, std::optional<Token> 
 		 std::move(v_nestedTypes) };
 }
 
-ClassParameterDeclaration ClassParser::parseHeaderParameter () {
+ClassParameterDeclaration ClassParser::parseHeaderParameter () const {
 	std::optional<Token> opt_visibility = parseVisibility();
-	if (!p_parser.atKeyword(Keyword::kDef)) {
+	if (!p_parser.atKeyword(kDef)) {
 		if (opt_visibility) {
-			throw cde::SyntaxErrors::expected(std::format("'{}' after '{}' in a class header", cloth::to_string(Keyword::kDef),
-			                                              cloth::to_string(Keyword::kPublic)),
+			throw cde::SyntaxErrors::expected(std::format("'{}' after '{}' in a class header", to_string(kDef), to_string(kPublic)),
 			                                  p_parser.peek());
 		}
-		return { p_parser.p_functionParser.parseParameter() };
+		return { .parameter = p_parser.p_functionParser.parseParameter() };
 	}
 	const Token          t_keyword = p_parser.advance();
 	TypeReference        tr_type   = parseFieldType();
 	const Token          t_name    = p_parser.expect(TokenType::Identifier, "a field parameter name");
 	std::optional<Token> opt_delimiter;
 	ExpressionPtr        ep_fallback;
-	if (at(Operator::oElvis)) {
+	if (at(oElvis)) {
 		opt_delimiter = p_parser.advance();
 		ep_fallback   = p_parser.p_functionParser.inBody([this] () -> ExpressionPtr { return p_parser.p_expressionParser.parseExpression(); });
 	}
@@ -119,75 +120,72 @@ ClassParameterDeclaration ClassParser::parseHeaderParameter () {
 		.defaultDelimiter = std::move(opt_delimiter),
 		.defaultValue     = std::move(ep_fallback),
 	};
-	return { std::move(pd_parameter), t_keyword, std::move(opt_visibility) };
+	return { .parameter = std::move(pd_parameter), .fieldKeyword = t_keyword, .visibility = std::move(opt_visibility) };
 }
 
-std::vector<ClassMember> ClassParser::parseMembers (const Token &owner, std::vector<TypeDeclarationPtr> &nestedTypes) {
+std::vector<ClassMember> ClassParser::parseMembers (const Token &owner, std::vector<TypeDeclarationPtr> &nestedTypes) const {
 	std::vector<ClassMember> v_members;
 	p_parser.skipNewLines();
-	while (!at(Operator::oBraceClose)) {
+	while (!at(oBraceClose)) {
 		if (p_parser.startsTypeDeclaration()) {
 			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}
 		v_members.push_back(parseMember(owner));
-		const ClassMember         &cm_member  = v_members.back();
-		const MethodDeclaration   *md_method  = std::get_if<MethodDeclaration>(&cm_member.value);
-		const StateClassMemberPtr *scmp_state = std::get_if<StateClassMemberPtr>(&cm_member.value);
-		const bool b_allowsTerminator = std::holds_alternative<ClassFieldDeclaration>(cm_member.value) || (md_method && md_method->body.get_equals()) ||
+		const auto &[value]                   = v_members.back();
+		const MethodDeclaration   *md_method  = std::get_if<MethodDeclaration>(&value);
+		const StateClassMemberPtr *scmp_state = std::get_if<StateClassMemberPtr>(&value);
+		const bool b_allowsTerminator         = std::holds_alternative<ClassFieldDeclaration>(value) || (md_method && md_method->body.get_equals()) ||
 		                                (scmp_state && (dynamic_cast<const StateMethodContractDeclaration *>(scmp_state->get()) ||
 		                                                dynamic_cast<const StateAttachmentDeclaration *>(scmp_state->get())));
-		finishMember(b_allowsTerminator, Keyword::kClass);
+		finishMember(b_allowsTerminator, kClass);
 	}
 	return v_members;
 }
 
-ClassMember ClassParser::parseMember (const Token &owner) {
+ClassMember ClassParser::parseMember (const Token &owner) const {
 	std::optional<InitialStatePrefix> opt_initial;
 	std::optional<Keyword>            opt_methodPrefix;
-	if (p_parser.atKeyword(Keyword::kDefault)) {
+	if (p_parser.atKeyword(kDefault)) {
 		opt_initial = parseInitialState();
-	} else if (p_parser.atKeyword(Keyword::kOverride)) {
-		opt_methodPrefix = Keyword::kOverride;
-	} else if (p_parser.atKeyword(Keyword::kVirtual)) {
-		opt_methodPrefix = Keyword::kVirtual;
+	} else if (p_parser.atKeyword(kOverride)) {
+		opt_methodPrefix = kOverride;
+	} else if (p_parser.atKeyword(kVirtual)) {
+		opt_methodPrefix = kVirtual;
 	}
 	std::optional<TokenSpan> opt_prefixSpan;
 	if (opt_methodPrefix) {
 		const Token t_prefix = p_parser.advance();
-		opt_prefixSpan       = TokenSpan::span_through(t_prefix.get_span(), p_parser.expect(Operator::oColon).get_span());
+		opt_prefixSpan       = TokenSpan::span_through(t_prefix.get_span(), p_parser.expect(oColon).get_span());
 		p_parser.skipNewLines();
 	}
 	std::optional<Token> opt_visibility = parseVisibility();
-	if (opt_initial && !p_parser.atKeyword(Keyword::kState)) {
-		throw cde::SyntaxErrors::expected(std::format("a state declaration or attachment after '{}{}'", cloth::to_string(Keyword::kDefault),
-		                                              cloth::to_string(Operator::oColon)),
+	if (opt_initial && !p_parser.atKeyword(kState)) {
+		throw cde::SyntaxErrors::expected(std::format("a state declaration or attachment after '{}{}'", to_string(kDefault), to_string(oColon)),
 		                                  p_parser.peek());
 	}
-	if (opt_methodPrefix && !p_parser.atKeyword(Keyword::kMt)) {
-		throw cde::SyntaxErrors::expected(std::format("a '{}' declaration after '{}{}'", cloth::to_string(Keyword::kMt),
-		                                              cloth::to_string(*opt_methodPrefix), cloth::to_string(Operator::oColon)),
-		                                  p_parser.peek());
+	if (opt_methodPrefix && !p_parser.atKeyword(kMt)) {
+		throw cde::SyntaxErrors::expected(
+		        std::format("a '{}' declaration after '{}{}'", to_string(kMt), to_string(*opt_methodPrefix), to_string(oColon)), p_parser.peek());
 	}
-	if (p_parser.atKeyword(Keyword::kFn)) {
+	if (p_parser.atKeyword(kFn)) {
 		throw cde::SyntaxErrors::functionInType(p_parser.peek());
 	}
-	if (p_parser.atKeyword(Keyword::kDef)) {
+	if (p_parser.atKeyword(kDef)) {
 		return { parseField(std::move(opt_visibility)) };
 	}
-	if (p_parser.atKeyword(Keyword::kMt)) {
-		return { p_parser.p_functionParser.parseMethod(std::move(opt_visibility),
-			                                       opt_methodPrefix == Keyword::kOverride ? opt_prefixSpan : std::nullopt,
-			                                       opt_methodPrefix == Keyword::kVirtual ? opt_prefixSpan : std::nullopt,
+	if (p_parser.atKeyword(kMt)) {
+		return { p_parser.p_functionParser.parseMethod(std::move(opt_visibility), opt_methodPrefix == kOverride ? opt_prefixSpan : std::nullopt,
+			                                       opt_methodPrefix == kVirtual ? opt_prefixSpan : std::nullopt,
 			                                       /*allowIntrinsic=*/true, /*allowTypeParameters=*/true) };
 	}
-	if (p_parser.atKeyword(Keyword::kOperator)) {
+	if (p_parser.atKeyword(kOperator)) {
 		return { p_parser.p_functionParser.parseOperator(std::move(opt_visibility)) };
 	}
-	if (p_parser.atKeyword(Keyword::kState)) {
+	if (p_parser.atKeyword(kState)) {
 		return { parseState(std::move(opt_visibility), std::move(opt_initial)) };
 	}
-	if (!opt_visibility && at(Operator::oTilde)) {
+	if (!opt_visibility && at(oTilde)) {
 		return { parseDestructor(owner) };
 	}
 	if (!opt_visibility && p_parser.peek().get_type() == TokenType::Identifier) {
@@ -196,12 +194,12 @@ ClassMember ClassParser::parseMember (const Token &owner) {
 	throw cde::SyntaxErrors::expected("a class member", p_parser.peek());
 }
 
-InitialStatePrefix ClassParser::parseInitialState () {
+InitialStatePrefix ClassParser::parseInitialState () const {
 	const Token t_keyword = p_parser.advance();
-	const Token t_colon   = p_parser.expect(Operator::oColon);
+	const Token t_colon   = p_parser.expect(oColon);
 	p_parser.skipNewLines();
 	ExpressionPtr ep_payload;
-	if (at(Operator::oParenOpen)) {
+	if (at(oParenOpen)) {
 		ep_payload = p_parser.p_functionParser.inBody([this] () -> ExpressionPtr {
 			return p_parser.p_delimitedParser.parentheses([this] () -> ExpressionPtr {
 				p_parser.skipNewLines();
@@ -213,17 +211,17 @@ InitialStatePrefix ClassParser::parseInitialState () {
 	}
 	const Token t_end = ep_payload ? p_parser.previous() : t_colon;
 	p_parser.skipNewLines();
-	return { t_keyword, std::move(ep_payload), TokenSpan::span_through(t_keyword.get_span(), t_end.get_span()) };
+	return { .keyword = t_keyword, .payload = std::move(ep_payload), .span = TokenSpan::span_through(t_keyword.get_span(), t_end.get_span()) };
 }
 
-StateClassMemberPtr ClassParser::parseState (std::optional<Token> visibility, std::optional<InitialStatePrefix> initial) {
+StateClassMemberPtr ClassParser::parseState (std::optional<Token> visibility, std::optional<InitialStatePrefix> initial) const {
 	const Token     t_keyword   = p_parser.advance();
 	const Token     t_typeStart = p_parser.peek();
 	const TokenSpan ts_start    = initial ? initial->span : (visibility ? *visibility : t_keyword).get_span();
 	if (t_typeStart.get_type() == TokenType::Identifier) {
 		if (visibility) {
-			throw cde::SyntaxErrors::expected(std::format("an explicit payload type or state-method signature after '{} {}'",
-			                                              cloth::to_string(Keyword::kPublic), cloth::to_string(Keyword::kState)),
+			throw cde::SyntaxErrors::expected(std::format("an explicit payload type or state-method signature after '{} {}'", to_string(kPublic),
+			                                              to_string(kState)),
 			                                  t_typeStart);
 		}
 		const Token t_name = p_parser.advance();
@@ -231,7 +229,7 @@ StateClassMemberPtr ClassParser::parseState (std::optional<Token> visibility, st
 		                                                    TokenSpan::span_through(ts_start, t_name.get_span()));
 	}
 	std::vector<TypeReference> v_types = p_parser.parseTypeList();
-	if (at(Operator::oColonColon)) {
+	if (at(oColonColon)) {
 		if (initial) {
 			throw cde::SyntaxErrors::expected("a state name", p_parser.peek());
 		}
@@ -245,8 +243,7 @@ StateClassMemberPtr ClassParser::parseState (std::optional<Token> visibility, st
 	}
 	if (v_types.size() != 1) {
 		const Token &t_unexpected = v_types.size() > 1 ? v_types[1].get_name() : t_typeStart;
-		throw cde::SyntaxErrors::expected(std::format("one payload type in a nested '{}' declaration", cloth::to_string(Keyword::kState)),
-		                                  t_unexpected);
+		throw cde::SyntaxErrors::expected(std::format("one payload type in a nested '{}' declaration", to_string(kState)), t_unexpected);
 	}
 	const Token t_name = p_parser.expect(TokenType::Identifier, "a state name");
 	p_parser.skipNewLines();
@@ -255,37 +252,36 @@ StateClassMemberPtr ClassParser::parseState (std::optional<Token> visibility, st
 	                                                std::move(v_members), TokenSpan::span_through(ts_start, p_parser.previous().get_span()));
 }
 
-std::vector<StateMemberPtr> ClassParser::parseStateBody (std::vector<TypeDeclarationPtr> *nestedTypes) {
+std::vector<StateMemberPtr> ClassParser::parseStateBody (std::vector<TypeDeclarationPtr> *nestedTypes) const {
 	return p_parser.p_delimitedParser.braces([this, nestedTypes] () -> std::vector<StateMemberPtr> {
 		std::vector<StateMemberPtr> v_members;
 		const bool                  b_previousStateBody = std::exchange(p_parser.b_inStateBody, true);
 		try {
 			p_parser.skipNewLines();
-			while (!at(Operator::oBraceClose)) {
+			while (!at(oBraceClose)) {
 				if (nestedTypes && p_parser.startsTypeDeclaration()) {
 					nestedTypes->emplace_back(p_parser.parseNestedTypeDeclaration());
 					continue;
 				}
 				std::optional<Token> opt_visibility = parseVisibility();
-				if (p_parser.atKeyword(Keyword::kFn)) {
+				if (p_parser.atKeyword(kFn)) {
 					throw cde::SyntaxErrors::functionInType(p_parser.peek());
 				}
 				bool b_allowsTerminator = false;
-				if (p_parser.atKeyword(Keyword::kMt)) {
+				if (p_parser.atKeyword(kMt)) {
 					MethodDeclaration md_method = p_parser.p_functionParser.parseMethod(
 					        std::move(opt_visibility), std::nullopt, std::nullopt, /*allowIntrinsic=*/false, /*allowTypeParameters=*/true);
 					b_allowsTerminator = md_method.body.get_equals() != nullptr;
 					v_members.push_back(std::make_shared<MethodDeclaration>(std::move(md_method)));
-				} else if (!opt_visibility && p_parser.atKeyword(Keyword::kInit)) {
+				} else if (!opt_visibility && p_parser.atKeyword(kInit)) {
 					const Token t_keyword = p_parser.advance();
 					v_members.push_back(
 					        std::make_shared<StateInitializerDeclaration>(t_keyword, p_parser.p_functionParser.parseBlockBody()));
 				} else {
-					throw cde::SyntaxErrors::expected(std::format("an '{}' block or a '{}' declaration", cloth::to_string(Keyword::kInit),
-					                                              cloth::to_string(Keyword::kMt)),
+					throw cde::SyntaxErrors::expected(std::format("an '{}' block or a '{}' declaration", to_string(kInit), to_string(kMt)),
 					                                  p_parser.peek());
 				}
-				finishMember(b_allowsTerminator, Keyword::kState);
+				finishMember(b_allowsTerminator, kState);
 			}
 		} catch (...) {
 			p_parser.b_inStateBody = b_previousStateBody;
@@ -296,32 +292,35 @@ std::vector<StateMemberPtr> ClassParser::parseStateBody (std::vector<TypeDeclara
 	});
 }
 
-void ClassParser::finishMember (bool allowsTerminator, Keyword kind) {
-	const Token t_next = p_parser.peek();
-	if (allowsTerminator && p_parser.isSemiColon(t_next)) {
+void ClassParser::finishMember (const bool allowsTerminator, const Keyword kind) const {
+	if (const Token t_next = p_parser.peek(); allowsTerminator && p_parser.isSemiColon(t_next)) {
 		p_parser.advance();
-	} else if (t_next.get_lexeme() != cloth::to_string(Operator::oBraceClose) && t_next.get_type() != TokenType::NewLine) {
+	} else if (t_next.get_lexeme() != to_string(oBraceClose) && t_next.get_type() != TokenType::NewLine) {
 		if (allowsTerminator) {
 			throw cde::SyntaxErrors::newline(t_next);
 		}
-		throw cde::SyntaxErrors::expected(std::format("a newline or '{}' after a brace-bodied {} member", cloth::to_string(Operator::oBraceClose),
-		                                              cloth::to_string(kind)),
+		throw cde::SyntaxErrors::expected(std::format("a newline or '{}' after a brace-bodied {} member", to_string(oBraceClose), to_string(kind)),
 		                                  t_next);
 	}
 	p_parser.skipNewLines();
 }
 
-ClassFieldDeclaration ClassParser::parseField (std::optional<Token> visibility) {
+ClassFieldDeclaration ClassParser::parseField (std::optional<Token> visibility) const {
 	const Token   t_keyword = p_parser.advance();
 	TypeReference tr_type   = parseFieldType();
 	const Token   t_name    = p_parser.expect(TokenType::Identifier, "a class field name");
-	p_parser.expect(Operator::oAssign);
+	p_parser.expect(oAssign);
 	ExpressionPtr   ep_initializer = p_parser.p_functionParser.inBody([this] () -> ExpressionPtr { return p_parser.p_expressionParser.parseExpression(); });
 	const TokenSpan ts_span        = TokenSpan::span_through((visibility ? *visibility : t_keyword).get_span(), p_parser.previous().get_span());
-	return { t_keyword, std::move(tr_type), t_name, std::move(ep_initializer), std::move(visibility), ts_span };
+	return { .keyword     = t_keyword,
+		 .type        = std::move(tr_type),
+		 .name        = t_name,
+		 .initializer = std::move(ep_initializer),
+		 .visibility  = std::move(visibility),
+		 .span        = ts_span };
 }
 
-TypeReference ClassParser::parseFieldType () {
+TypeReference ClassParser::parseFieldType () const {
 	return p_parser.p_delimitedParser.angles([this] () -> TypeReference {
 		p_parser.skipNewLines();
 		TypeReference tr_type = p_parser.p_typeParser.parse(/*inCast=*/false, /*allowArrays=*/true);
@@ -330,36 +329,35 @@ TypeReference ClassParser::parseFieldType () {
 	});
 }
 
-ConstructorDeclaration ClassParser::parseConstructor (const Token &owner) {
+ConstructorDeclaration ClassParser::parseConstructor (const Token &owner) const {
 	const Token                       t_name       = parseMemberName(owner, "constructor");
 	std::vector<ParameterDeclaration> v_parameters = p_parser.p_functionParser.parseParameters();
-	const Token                       t_colon      = p_parser.expect(Operator::oColon);
+	const Token                       t_colon      = p_parser.expect(oColon);
 	std::vector<CallArgument>         v_arguments =
 	        p_parser.p_functionParser.inBody([this] () -> std::vector<CallArgument> { return p_parser.p_expressionParser.parseArgumentList(); });
 	ConstructorDelegation cd_delegation(t_name, std::move(v_arguments), TokenSpan::span_through(t_colon.get_span(), p_parser.previous().get_span()));
 	return { t_name, std::move(v_parameters), std::move(cd_delegation), p_parser.p_functionParser.parseBlockBody() };
 }
 
-DestructorDeclaration ClassParser::parseDestructor (const Token &owner) {
+DestructorDeclaration ClassParser::parseDestructor (const Token &owner) const {
 	const Token t_operator = p_parser.advance();
 	const Token t_name     = parseMemberName(owner, "destructor");
 	return { t_operator, t_name, p_parser.p_functionParser.parseBlockBody() };
 }
 
-Token ClassParser::parseMemberName (const Token &owner, std::string_view kind) {
-	const Token t_name = p_parser.peek();
-	if (t_name.get_type() != TokenType::Identifier || t_name.get_lexeme() != owner.get_lexeme()) {
+Token ClassParser::parseMemberName (const Token &owner, std::string_view kind) const {
+	if (const Token t_name = p_parser.peek(); t_name.get_type() != TokenType::Identifier || t_name.get_lexeme() != owner.get_lexeme()) {
 		throw cde::SyntaxErrors::expected(std::format("'{}' as the {} name", owner.get_lexeme(), kind), t_name);
 	}
 	return p_parser.advance();
 }
 
-std::optional<Token> ClassParser::parseVisibility () {
-	return p_parser.atKeyword(Keyword::kPublic) ? std::make_optional(p_parser.advance()) : std::nullopt;
+std::optional<Token> ClassParser::parseVisibility () const {
+	return p_parser.atKeyword(kPublic) ? std::make_optional(p_parser.advance()) : std::nullopt;
 }
 
-bool ClassParser::at (Operator op) {
-	return p_parser.peek().get_lexeme() == cloth::to_string(op);
+bool ClassParser::at (const Operator op) const {
+	return p_parser.peek().get_lexeme() == to_string(op);
 }
 
 }

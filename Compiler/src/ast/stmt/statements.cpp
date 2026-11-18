@@ -16,11 +16,11 @@ namespace cloth {
 namespace {
 
 std::shared_ptr<const BinaryExpression> compoundExpression (const ExpressionPtr &target, const Token &op, const ExpressionPtr &value) {
-	if (!value || op.get_lexeme() == cloth::to_string(Operator::oAssign)) {
+	if (!value || op.get_lexeme() == to_string(oAssign)) {
 		return nullptr;
 	}
 	const Operator o_base = compound_assignment_base(op.get_lexeme());
-	const Token    t_base(std::string(cloth::to_string(o_base)), op.get_type(), op.get_span());
+	const Token    t_base(std::string(to_string(o_base)), op.get_type(), op.get_span());
 	return std::make_shared<BinaryExpression>(target, t_base, value);
 }
 
@@ -41,20 +41,20 @@ FieldWriteStatement::FieldWriteStatement (ExpressionPtr target, const Token &op,
 }
 
 std::pair<ExpressionPtr, ExpressionPtr> updateOperands (const Statement &statement) {
-	if (const AssignmentStatement *as_assignment = dynamic_cast<const AssignmentStatement *>(&statement)) {
+	if (const auto *as_assignment = dynamic_cast<const AssignmentStatement *>(&statement)) {
 		const BinaryExpression *be_compound = as_assignment->get_compound();
 		if (!be_compound) {
 			throw std::logic_error("Expected a compound assignment.");
 		}
 		return { be_compound->left, be_compound->right };
 	}
-	if (const UpdateStatement *us_update = dynamic_cast<const UpdateStatement *>(&statement)) {
+	if (const auto *us_update = dynamic_cast<const UpdateStatement *>(&statement)) {
 		return { us_update->target, nullptr };
 	}
-	if (const FieldWriteStatement *fws_write = dynamic_cast<const FieldWriteStatement *>(&statement)) {
+	if (const auto *fws_write = dynamic_cast<const FieldWriteStatement *>(&statement)) {
 		return { fws_write->target, fws_write->value };
 	}
-	if (const ElementAssignmentStatement *eas_assignment = dynamic_cast<const ElementAssignmentStatement *>(&statement)) {
+	if (const auto *eas_assignment = dynamic_cast<const ElementAssignmentStatement *>(&statement)) {
 		return { eas_assignment->target, eas_assignment->value };
 	}
 	throw std::logic_error("Expected an update statement.");

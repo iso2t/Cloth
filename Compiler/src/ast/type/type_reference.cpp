@@ -13,7 +13,7 @@
 namespace cloth {
 
 bool TypeArgumentList::hasPlaceholders () const {
-	return std::any_of(arguments.begin(), arguments.end(), [] (const TypeReference &argument) { return argument.is_placeholder(); });
+	return std::ranges::any_of(arguments, [] (const TypeReference &argument) { return argument.is_placeholder(); });
 }
 
 TypeReference::TypeReference (const Token &name, bool isUnsigned, std::optional<Token> width, std::optional<TokenSpan> span,
@@ -25,32 +25,31 @@ TypeReference::TypeReference (const Token &name, bool isUnsigned, std::optional<
         t_span(span.value_or(name.get_span())),
         v_arraySuffixes(std::move(arraySuffixes)),
         vopt_arraySizes(std::move(arraySizes)),
-        opt_nullable(nullable),
+        opt_nullable(std::move(nullable)),
         vopt_arrayNullability(std::move(arrayNullability)),
         opt_application(std::move(application)) {
 }
 
 bool TypeReference::hasNullability () const {
-	return opt_nullable || std::any_of(vopt_arrayNullability.begin(), vopt_arrayNullability.end(),
-	                                   [] (const std::optional<TokenSpan> &nullability) { return nullability.has_value(); });
+	return opt_nullable || std::ranges::any_of(vopt_arrayNullability, [] (const std::optional<TokenSpan> &nullability) { return nullability.has_value(); });
 }
 
 bool TypeReference::is_placeholder () const {
-	return t_name.get_type() == TokenType::Operator && t_name.get_lexeme() == cloth::to_string(Operator::oUnderscore);
+	return t_name.get_type() == TokenType::Operator && t_name.get_lexeme() == to_string(oUnderscore);
 }
 
 bool TypeReference::capturesWidth () const {
-	return opt_width && opt_width->get_lexeme() == cloth::to_string(Keyword::kAuto);
+	return opt_width && opt_width->get_lexeme() == to_string(kAuto);
 }
 
 const std::vector<TypeReference> &TypeReference::get_type_arguments () const {
-	static const std::vector<TypeReference> v_empty;
+	static constexpr std::vector<TypeReference> v_empty;
 	return opt_application ? opt_application->arguments : v_empty;
 }
 
 const Token *TypeReference::get_bare_identifier () const {
-	if (t_name.get_type() == TokenType::Identifier && t_name.get_lexeme().find(cloth::to_string(Operator::oDot)) == std::string::npos && !b_unsigned &&
-	    !opt_width && v_arraySuffixes.empty() && !hasNullability() && !opt_application) {
+	if (t_name.get_type() == TokenType::Identifier && t_name.get_lexeme().find(to_string(oDot)) == std::string::npos && !b_unsigned && !opt_width &&
+	    v_arraySuffixes.empty() && !hasNullability() && !opt_application) {
 		return &t_name;
 	}
 	return nullptr;
@@ -59,42 +58,42 @@ const Token *TypeReference::get_bare_identifier () const {
 std::string TypeReference::get_spelling () const {
 	std::string s_spelling;
 	if (b_unsigned) {
-		s_spelling += cloth::to_string(Keyword::kUnsigned);
+		s_spelling += to_string(kUnsigned);
 		s_spelling += ' ';
 	}
 	s_spelling += t_name.get_lexeme();
 
 	if (opt_width) {
-		s_spelling += cloth::to_string(Operator::oLess);
+		s_spelling += to_string(oLess);
 		s_spelling += opt_width->get_lexeme();
-		s_spelling += cloth::to_string(Operator::oGreater);
+		s_spelling += to_string(oGreater);
 	}
 
 	if (opt_application) {
-		s_spelling += cloth::to_string(Operator::oLess);
+		s_spelling += to_string(oLess);
 		const std::vector<TypeReference> &v_arguments = opt_application->arguments;
 		for (std::size_t st_index = 0; st_index < v_arguments.size(); ++st_index) {
 			if (st_index != 0) {
-				s_spelling += cloth::to_string(Operator::oComma);
+				s_spelling += to_string(oComma);
 				s_spelling += ' ';
 			}
 			s_spelling += v_arguments[st_index].get_spelling();
 		}
-		s_spelling += cloth::to_string(Operator::oGreater);
+		s_spelling += to_string(oGreater);
 	}
 
 	if (opt_nullable) {
-		s_spelling += cloth::to_string(Operator::oQuestion);
+		s_spelling += to_string(oQuestion);
 	}
 
 	for (std::size_t st_index = 0; st_index < v_arraySuffixes.size(); ++st_index) {
-		s_spelling += cloth::to_string(Operator::oBracketOpen);
+		s_spelling += to_string(oBracketOpen);
 		if (st_index < vopt_arraySizes.size() && vopt_arraySizes[st_index]) {
 			s_spelling += vopt_arraySizes[st_index]->get_lexeme();
 		}
-		s_spelling += cloth::to_string(Operator::oBracketClose);
+		s_spelling += to_string(oBracketClose);
 		if (st_index < vopt_arrayNullability.size() && vopt_arrayNullability[st_index]) {
-			s_spelling += cloth::to_string(Operator::oQuestion);
+			s_spelling += to_string(oQuestion);
 		}
 	}
 

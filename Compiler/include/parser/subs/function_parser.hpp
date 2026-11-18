@@ -28,8 +28,9 @@ class FunctionParser {
 	FunctionDeclaration               parseFunction ();
 	std::vector<ParameterDeclaration> parseParameters ();
 	ParameterDeclaration              parseParameter ();
-	MethodDeclaration parseMethod (std::optional<Token> visibility = std::nullopt, std::optional<TokenSpan> overridePrefix = std::nullopt,
-	                               std::optional<TokenSpan> virtualPrefix = std::nullopt, bool allowIntrinsic = false, bool allowTypeParameters = false);
+	MethodDeclaration          parseMethod (std::optional<Token> visibility = std::nullopt, const std::optional<TokenSpan> &overridePrefix = std::nullopt,
+	                                        const std::optional<TokenSpan> &virtualPrefix = std::nullopt, bool allowIntrinsic = false,
+	                                        bool allowTypeParameters = false);
 	InterfaceMethodDeclaration parseInterfaceMethod ();
 	MethodDeclaration          parseOperator (std::optional<Token> visibility = std::nullopt);
 	BlockBody                  parseBlockBody ();
@@ -70,11 +71,11 @@ class FunctionParser {
 
 	MethodHeader            methodHeader (bool allowTypeParameters);
 	InterfaceMethodFallback parseInterfaceFallback ();
-	Token                   parseOperatorName ();
+	Token                   parseOperatorName () const;
 	FunctionBody            parseBody (std::string_view kind, bool allowStatement = false, bool allowIntrinsic = false);
-	FunctionBody            parseVoidBody (const Token &equals);
-	bool                   &functionBodyFlag ();
-	bool                    at (Operator op, int offset = 0);
+	FunctionBody            parseVoidBody (const Token &equals) const;
+	bool                   &functionBodyFlag () const;
+	bool                    at (Operator op, int offset = 0) const;
 };
 
 }

@@ -24,9 +24,9 @@ class TypeParser {
 	TypeReference                    parse (bool inCast = false, bool allowArrays = false);
 	std::optional<TypeParameterList> parseTypeParameters ();
 	TypeArgumentList                 arguments ();
-	bool                             startsCallTypeArguments (int nameOffset = 0);
-	bool                             startsNamedTypeReceiver ();
-	bool                             startsQualifiedTypeCheck ();
+	bool                             startsCallTypeArguments (int nameOffset = 0) const;
+	bool                             startsNamedTypeReceiver () const;
+	bool                             startsQualifiedTypeCheck () const;
 	static bool                      startsTypeReceiver (const Token &token);
 
 	template <typename ParseClause>
@@ -54,15 +54,15 @@ class TypeParser {
 
 	ParentType                      parseParent (std::string_view description);
 	std::vector<TypeParameterBound> parseBounds ();
-	std::optional<int>              angleListEnd (int start);
-	std::optional<int>              applicationEnd (int start);
-	std::optional<int>              suffixEnd (int start);
-	int                             nameEnd ();
-	bool                            typeCanEndAt (int offset);
-	Token                           parseName ();
-	std::optional<TokenSpan>        nullableMarker ();
+	std::optional<int>              angleListEnd (int start) const;
+	std::optional<int>              applicationEnd (int start) const;
+	std::optional<int>              suffixEnd (int start) const;
+	int                             nameEnd () const;
+	bool                            typeCanEndAt (int offset) const;
+	Token                           parseName () const;
+	std::optional<TokenSpan>        nullableMarker () const;
 	[[nodiscard]] bool              isWidthToken (const Token &token) const;
-	bool                            at (Operator op, int offset = 0);
+	bool                            at (Operator op, int offset = 0) const;
 };
 
 }

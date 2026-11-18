@@ -12,7 +12,7 @@ class WhileLoopParser : public LoopParser {
 	WhileLoopParser (Parser &parser, DelimitedParser &delimited) : LoopParser(parser, delimited), p_parser(parser) {
 	}
 
-	WhileStatement parseWhile (bool allowWhileTrailer = false);
+	WhileStatement parseWhile (bool allowWhileTrailer = false) const;
 
     private:
 	Parser &p_parser;

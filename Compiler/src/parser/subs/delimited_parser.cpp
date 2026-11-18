@@ -6,15 +6,15 @@
 
 namespace cloth {
 
-void DelimitedParser::expect (Operator op) {
+void DelimitedParser::expect (const Operator op) const {
 	p_parser.expect(op);
 }
 
-bool DelimitedParser::at (Operator op) {
-	return p_parser.peek().get_lexeme() == cloth::to_string(op);
+bool DelimitedParser::at (const Operator op) const {
+	return p_parser.peek().get_lexeme() == to_string(op);
 }
 
-void DelimitedParser::skipNewLines () {
+void DelimitedParser::skipNewLines () const {
 	p_parser.skipNewLines();
 }
 

@@ -14,15 +14,15 @@ class ImportParser {
 	explicit ImportParser (Parser &parser) : p_parser(parser) {
 	}
 
-	ImportDeclaration parse ();
+	ImportDeclaration parse () const;
 
     private:
 	Parser &p_parser;
 
-	ImportSelection::Names names ();
-	Token                  identifierOnLine (const Token &keyword);
-	bool                   onLine (const Token &token);
-	bool                   at (Operator op);
+	ImportSelection::Names names () const;
+	Token                  identifierOnLine (const Token &keyword) const;
+	bool                   onLine (const Token &token) const;
+	bool                   at (Operator op) const;
 };
 
 }

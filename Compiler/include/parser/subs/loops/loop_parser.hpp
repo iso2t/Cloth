@@ -19,7 +19,7 @@ class LoopParser {
 		return dp_delimited;
 	}
 
-	LoopBody parseLoopBody (const Token &keyword, bool allowWhileTrailer = false);
+	LoopBody parseLoopBody (const Token &keyword, bool allowWhileTrailer = false) const;
 
     private:
 	Parser          &p_parser;

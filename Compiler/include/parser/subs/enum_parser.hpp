@@ -20,16 +20,16 @@ class EnumParser {
 	explicit EnumParser (Parser &parser) : p_parser(parser) {
 	}
 
-	EnumDeclaration parse (const Token &keyword, std::optional<Token> visibility);
+	EnumDeclaration parse (const Token &keyword, std::optional<Token> visibility) const;
 
     private:
 	Parser &p_parser;
 
-	EnumFieldDeclaration           parseField ();
-	EnumCaseDeclaration            parseCase ();
-	std::vector<MethodDeclaration> parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes);
-	ExpressionPtr                  value ();
-	bool                           at (Operator op);
+	EnumFieldDeclaration           parseField () const;
+	EnumCaseDeclaration            parseCase () const;
+	std::vector<MethodDeclaration> parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) const;
+	ExpressionPtr                  value () const;
+	bool                           at (Operator op) const;
 };
 
 }

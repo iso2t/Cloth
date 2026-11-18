@@ -26,21 +26,20 @@
 
 namespace cloth {
 
-std::vector<StatementPtr> BindingsParser::parseBindings (bool allowWhileTrailer) {
-	const Token                  t_keyword = p_parser.advance();
-	std::vector<TypeReference>   v_types   = p_parser.parseTypeList();
-	std::vector<ReceivingTarget> v_targets{ p_parser.parseReceivingTarget() };
-	while (p_parser.peek().get_lexeme() == cloth::to_string(Operator::oComma)) {
+std::vector<StatementPtr> BindingsParser::parseBindings (bool allowWhileTrailer) const {
+	const Token                t_keyword = p_parser.advance();
+	std::vector<TypeReference> v_types   = p_parser.parseTypeList();
+	std::vector                v_targets{ p_parser.parseReceivingTarget() };
+	while (p_parser.peek().get_lexeme() == to_string(oComma)) {
 		p_parser.advance();
 		v_targets.push_back(p_parser.parseReceivingTarget());
 	}
 
 	const Token        t_assignment = p_parser.peek();
 	const std::string &s_assignment = t_assignment.get_lexeme();
-	const bool         b_isMutable  = s_assignment == cloth::to_string(Operator::oAssign);
-	if (t_assignment.get_type() != TokenType::Operator || (!b_isMutable && s_assignment != cloth::to_string(Operator::oFinalAssign))) {
-		throw cde::SyntaxErrors::expected(std::format("'{}' or '{}'", cloth::to_string(Operator::oAssign), cloth::to_string(Operator::oFinalAssign)),
-		                                  t_assignment);
+	const bool         b_isMutable  = s_assignment == to_string(oAssign);
+	if (t_assignment.get_type() != TokenType::Operator || (!b_isMutable && s_assignment != to_string(oFinalAssign))) {
+		throw cde::SyntaxErrors::expected(std::format("'{}' or '{}'", to_string(oAssign), to_string(oFinalAssign)), t_assignment);
 	}
 	p_parser.advance();
 
@@ -48,7 +47,7 @@ std::vector<StatementPtr> BindingsParser::parseBindings (bool allowWhileTrailer)
 	std::optional<TypeReference> opt_type           = v_types.size() == 1 ? std::make_optional(v_types.front()) : std::nullopt;
 	const bool                   b_namedValue       = !v_types.empty() && v_types.front().get_name().get_type() == TokenType::Identifier &&
 	                          v_types.front().get_array_suffixes().empty();
-	const std::function<ExpressionPtr(const Token &)> fn_braces = [this, &t_keyword, &v_types, b_namedValue] (const Token &name) -> ExpressionPtr {
+	const std::function fn_braces = [this, &t_keyword, &v_types, b_namedValue] (const Token &name) -> ExpressionPtr {
 		return ExpressionPtr(p_parser.parseBindingBrace(b_namedValue || v_types.empty(), b_namedValue,
 		                                                [&t_keyword, &v_types, &name] (BlockBody body) -> std::unique_ptr<FunctionBlockExpression> {
 			                                                return std::make_unique<FunctionBlockExpression>(FunctionDeclaration(
@@ -57,13 +56,12 @@ std::vector<StatementPtr> BindingsParser::parseBindings (bool allowWhileTrailer)
 	};
 
 	ExpressionPtr ep_braced;
-	if (p_parser.peek().get_lexeme() == cloth::to_string(Operator::oBraceOpen)) {
+	if (p_parser.peek().get_lexeme() == to_string(oBraceOpen)) {
 		ep_braced = fn_braces(v_targets.front().get_token());
 	}
 	const bool b_functionBlock = dynamic_cast<const FunctionBlockExpression *>(ep_braced.get()) != nullptr;
-	if (b_functionBlock && v_types.size() <= 1 && std::all_of(v_targets.begin(), v_targets.end(), [] (const ReceivingTarget &target) {
-		    return std::holds_alternative<ReceivingTarget::Named>(target.value);
-	    })) {
+	if (b_functionBlock && v_types.size() <= 1 &&
+	    std::ranges::all_of(v_targets, [] (const ReceivingTarget &target) { return std::holds_alternative<ReceivingTarget::Named>(target.value); })) {
 		std::vector<StatementPtr> v_bindings;
 		v_bindings.reserve(v_targets.size());
 		for (std::size_t st_index = 0; st_index < v_targets.size(); ++st_index) {

@@ -20,7 +20,7 @@
 
 namespace cloth {
 
-InterfaceDeclaration InterfaceParser::parse (const Token &keyword, const Token &kind, std::optional<Token> visibility) {
+InterfaceDeclaration InterfaceParser::parse (const Token &keyword, const Token &kind, std::optional<Token> visibility) const {
 	const Token                      t_name         = p_parser.expect(TokenType::Identifier, "an interface name");
 	std::optional<TypeParameterList> opt_parameters = p_parser.p_typeParser.parseTypeParameters();
 	std::vector<TypeReference>       v_parents =
@@ -41,31 +41,28 @@ InterfaceDeclaration InterfaceParser::parse (const Token &keyword, const Token &
 		 std::move(v_nestedTypes) };
 }
 
-std::vector<InterfaceMethodDeclaration> InterfaceParser::parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) {
+std::vector<InterfaceMethodDeclaration> InterfaceParser::parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) const {
 	std::vector<InterfaceMethodDeclaration> v_methods;
 	p_parser.skipNewLines();
-	while (p_parser.peek().get_lexeme() != cloth::to_string(Operator::oBraceClose)) {
+	while (p_parser.peek().get_lexeme() != to_string(oBraceClose)) {
 		if (p_parser.startsTypeDeclaration()) {
 			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}
-		const int i_functionOffset = p_parser.atKeyword(Keyword::kPublic) ? 1 : 0;
-		if (p_parser.atKeyword(Keyword::kFn, i_functionOffset)) {
+		if (const int i_functionOffset = p_parser.atKeyword(kPublic) ? 1 : 0; p_parser.atKeyword(kFn, i_functionOffset)) {
 			throw cde::SyntaxErrors::functionInType(p_parser.peek(i_functionOffset));
 		}
-		if (!p_parser.atKeyword(Keyword::kMt)) {
-			throw cde::SyntaxErrors::expected(std::format("an interface '{}' declaration", cloth::to_string(Keyword::kMt)), p_parser.peek());
+		if (!p_parser.atKeyword(kMt)) {
+			throw cde::SyntaxErrors::expected(std::format("an interface '{}' declaration", to_string(kMt)), p_parser.peek());
 		}
 		v_methods.push_back(p_parser.p_functionParser.parseInterfaceMethod());
 		const FunctionBody *fb_body = v_methods.back().executableBody();
 		const bool          b_block = fb_body && std::holds_alternative<BlockBody>(fb_body->value);
-		const Token         t_next  = p_parser.peek();
-		if (!b_block && p_parser.isSemiColon(t_next)) {
+		if (const Token t_next = p_parser.peek(); !b_block && p_parser.isSemiColon(t_next)) {
 			p_parser.advance();
-		} else if (t_next.get_type() != TokenType::NewLine && t_next.get_lexeme() != cloth::to_string(Operator::oBraceClose)) {
+		} else if (t_next.get_type() != TokenType::NewLine && t_next.get_lexeme() != to_string(oBraceClose)) {
 			if (b_block) {
-				throw cde::SyntaxErrors::expected(
-				        std::format("a newline or '{}' after a block default", cloth::to_string(Operator::oBraceClose)), t_next);
+				throw cde::SyntaxErrors::expected(std::format("a newline or '{}' after a block default", to_string(oBraceClose)), t_next);
 			}
 			throw cde::SyntaxErrors::newline(t_next);
 		}

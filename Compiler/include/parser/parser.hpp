@@ -106,24 +106,24 @@ class Parser {
 	void                        rejectMethodOutsideType ();
 	BlockBody                   parseBlock ();
 	std::unique_ptr<Expression> parseBindingBrace (bool allowLiteral, bool allowSingleField,
-	                                               std::function<std::unique_ptr<FunctionBlockExpression>(BlockBody)> deferred);
+	                                               const std::function<std::unique_ptr<FunctionBlockExpression>(BlockBody)> &deferred);
 	std::vector<StatementPtr>   parseStatements (BindingBraceSyntax *braceSyntax = nullptr);
 	void                        skipNewLines ();
 	int                         afterNewLines (int offset = 0);
-	bool                        isSemiColon (const Token &token);
-	bool                        isStatementSeparator (const Token &token);
+	static bool                 isSemiColon (const Token &token);
+	static bool                 isStatementSeparator (const Token &token);
 	StatementPtr                parseStatement (bool allowWhileTrailer = false, bool multilineResults = false);
 	BlockBody                   parseUnbracedBody (bool allowWhileTrailer = false);
-	TokenSpan                   previousStatementEnd ();
+	TokenSpan                   previousStatementEnd () const;
 	ReturnStatement             returnStatement (bool allowWhileTrailer);
 	bool                        startsAssignmentList ();
-	bool                        isReceivingTarget (const Token &token, bool assignment = false);
+	static bool                 isReceivingTarget (const Token &token, bool assignment = false);
 	ReceivingTarget             parseReceivingTarget (bool assignment = false);
-	ExpressionPtr               parseResults (ExpressionPtr first = nullptr, std::optional<TokenSpan> start = std::nullopt, bool allowWhileTrailer = false,
-	                                          bool multiline = false);
-	bool                        consumeResultComma (bool multiline);
-	std::vector<TypeReference>  parseTypeList ();
-	Token                       expect (TokenType type, std::string description);
-	Token                       expect (Operator op);
+	ExpressionPtr parseResults (ExpressionPtr first = nullptr, const std::optional<TokenSpan> &start = std::nullopt, bool allowWhileTrailer = false,
+	                            bool multiline = false);
+	bool          consumeResultComma (bool multiline);
+	std::vector<TypeReference> parseTypeList ();
+	Token                      expect (TokenType type, const std::string &description);
+	Token                      expect (Operator op);
 };
 }

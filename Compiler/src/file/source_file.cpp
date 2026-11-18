@@ -13,8 +13,8 @@
 
 namespace cloth {
 
-SourceFile::SourceFile (const std::filesystem::path &path) :
-        p_path(path),
+SourceFile::SourceFile (std::filesystem::path path) :
+        p_path(std::move(path)),
         s_name(source_name(p_path)),
         e_extension(source_extension(p_path)),
         s_contents(read_source(p_path)) {
@@ -43,8 +43,7 @@ std::string_view to_string (Extension type) {
 }
 
 std::string SourceFile::source_name (const std::filesystem::path &path) {
-	const std::string s_name = path.stem().string();
-	if (!s_name.empty() || s_name != SEPERATOR) {
+	if (const std::string s_name = path.stem().string(); !s_name.empty() || s_name != SEPERATOR) {
 		return s_name;
 	}
 	throw std::invalid_argument("Invalid source file name '" + path.string() + "'");
@@ -90,7 +89,7 @@ std::string SourceFile::read_source (const std::filesystem::path &path) {
 	}
 	s_contents.append(c_buffer, static_cast<std::size_t>(ifs_input.gcount()));
 
-	for (std::string_view s_bytes = std::string_view{ s_contents }; !s_bytes.empty();) {
+	for (auto s_bytes = std::string_view{ s_contents }; !s_bytes.empty();) {
 		const size_t st_length = utf8_scalar_length(s_bytes);
 		if (st_length == 0) {
 			const auto offset = s_contents.size() - s_bytes.size() + 1;

@@ -19,7 +19,7 @@
 
 namespace cloth {
 
-StructDeclaration StructParser::parse (const Token &keyword, std::optional<Token> visibility) {
+StructDeclaration StructParser::parse (const Token &keyword, std::optional<Token> visibility) const {
 	const Token                         t_name             = p_parser.expect(TokenType::Identifier, "a struct name");
 	std::optional<TypeParameterList>    opt_typeParameters = p_parser.p_typeParser.parseTypeParameters();
 	std::vector<TypeDeclarationPtr>     v_nestedTypes;
@@ -36,13 +36,12 @@ StructDeclaration StructParser::parse (const Token &keyword, std::optional<Token
 		}
 		if (!v_fields.empty() && !atEnd()) {
 			rejectFunction();
-			p_parser.expect(Operator::oSemicolon);
+			p_parser.expect(oSemicolon);
 			p_parser.skipNewLines();
 			rejectFunction();
 			if (!atMember() && !p_parser.startsTypeDeclaration()) {
-				throw cde::SyntaxErrors::expected(std::format("a '{}', '{}', or '{}' declaration after the fields",
-				                                              cloth::to_string(Keyword::kMt), cloth::to_string(Keyword::kOperator),
-				                                              cloth::to_string(Keyword::kTypeDef)),
+				throw cde::SyntaxErrors::expected(std::format("a '{}', '{}', or '{}' declaration after the fields", to_string(kMt),
+				                                              to_string(kOperator), to_string(kTypeDef)),
 				                                  p_parser.peek());
 			}
 		}
@@ -59,24 +58,23 @@ StructDeclaration StructParser::parse (const Token &keyword, std::optional<Token
 		 std::move(v_nestedTypes) };
 }
 
-std::vector<StructFieldDeclaration> StructParser::parseFields () {
+std::vector<StructFieldDeclaration> StructParser::parseFields () const {
 	return p_parser.p_delimitedParser.commaSeparated(
-	        Operator::oBraceClose,
+	        oBraceClose,
 	        [this] () -> bool {
 		        return p_parser.isSemiColon(p_parser.peek()) || atMember() || p_parser.startsTypeDeclaration() ||
-		               p_parser.atKeyword(Keyword::kFn, memberOffset());
+		               p_parser.atKeyword(kFn, memberOffset());
 	        },
 	        [this] () -> StructFieldDeclaration {
 		        rejectFunction();
-		        std::optional<Token> opt_privateKeyword = p_parser.atKeyword(Keyword::kPrivate) ? std::make_optional(p_parser.advance()) :
-		                                                                                           std::nullopt;
+		        std::optional<Token> opt_privateKeyword = p_parser.atKeyword(kPrivate) ? std::make_optional(p_parser.advance()) : std::nullopt;
 		        TypeReference        tr_type            = p_parser.p_typeParser.parse(/*inCast=*/false, /*allowArrays=*/true);
 		        const Token          t_name             = p_parser.expect(TokenType::Identifier, "a struct field name");
-		        return { std::move(tr_type), t_name, std::move(opt_privateKeyword) };
+		        return { .type = std::move(tr_type), .name = t_name, .privateKeyword = std::move(opt_privateKeyword) };
 	        });
 }
 
-std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) {
+std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) const {
 	std::vector<MethodDeclaration> v_methods;
 	while (!atEnd()) {
 		if (p_parser.startsTypeDeclaration()) {
@@ -84,25 +82,22 @@ std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDecla
 			continue;
 		}
 		rejectFunction();
-		if (p_parser.atKeyword(Keyword::kMt)) {
+		if (p_parser.atKeyword(kMt)) {
 			v_methods.push_back(p_parser.p_functionParser.parseMethod(std::nullopt, std::nullopt, std::nullopt, /*allowIntrinsic=*/false,
 			                                                          /*allowTypeParameters=*/true));
-		} else if (p_parser.atKeyword(Keyword::kOperator)) {
+		} else if (p_parser.atKeyword(kOperator)) {
 			v_methods.push_back(p_parser.p_functionParser.parseOperator());
 		} else {
-			throw cde::SyntaxErrors::expected(std::format("a '{}' or '{}' declaration with inherited visibility", cloth::to_string(Keyword::kMt),
-			                                              cloth::to_string(Keyword::kOperator)),
-			                                  p_parser.peek());
+			throw cde::SyntaxErrors::expected(
+			        std::format("a '{}' or '{}' declaration with inherited visibility", to_string(kMt), to_string(kOperator)), p_parser.peek());
 		}
 		const bool b_hasEquals = v_methods.back().body.get_equals() != nullptr;
 		rejectFunction();
-		const Token t_next = p_parser.peek();
-		if (b_hasEquals && p_parser.isSemiColon(t_next)) {
+		if (const Token t_next = p_parser.peek(); b_hasEquals && p_parser.isSemiColon(t_next)) {
 			p_parser.advance();
-		} else if (t_next.get_lexeme() != cloth::to_string(Operator::oBraceClose) && t_next.get_type() != TokenType::NewLine) {
+		} else if (t_next.get_lexeme() != to_string(oBraceClose) && t_next.get_type() != TokenType::NewLine) {
 			if (!b_hasEquals) {
-				throw cde::SyntaxErrors::expected(
-				        std::format("a newline or '{}' after a brace-bodied method", cloth::to_string(Operator::oBraceClose)), t_next);
+				throw cde::SyntaxErrors::expected(std::format("a newline or '{}' after a brace-bodied method", to_string(oBraceClose)), t_next);
 			}
 			throw cde::SyntaxErrors::newline(t_next);
 		}
@@ -111,24 +106,23 @@ std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDecla
 	return v_methods;
 }
 
-void StructParser::rejectFunction () {
-	const int i_offset = memberOffset();
-	if (p_parser.atKeyword(Keyword::kFn, i_offset)) {
+void StructParser::rejectFunction () const {
+	if (const int i_offset = memberOffset(); p_parser.atKeyword(kFn, i_offset)) {
 		throw cde::SyntaxErrors::functionInType(p_parser.peek(i_offset));
 	}
 }
 
-int StructParser::memberOffset () {
-	return p_parser.atKeyword(Keyword::kPublic) ? 1 : 0;
+int StructParser::memberOffset () const {
+	return p_parser.atKeyword(kPublic) ? 1 : 0;
 }
 
-bool StructParser::atMember () {
+bool StructParser::atMember () const {
 	const int i_offset = memberOffset();
-	return p_parser.atKeyword(Keyword::kMt, i_offset) || p_parser.atKeyword(Keyword::kOperator, i_offset);
+	return p_parser.atKeyword(kMt, i_offset) || p_parser.atKeyword(kOperator, i_offset);
 }
 
-bool StructParser::atEnd () {
-	return p_parser.peek().get_lexeme() == cloth::to_string(Operator::oBraceClose);
+bool StructParser::atEnd () const {
+	return p_parser.peek().get_lexeme() == to_string(oBraceClose);
 }
 
 }

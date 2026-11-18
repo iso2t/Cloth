@@ -16,7 +16,7 @@ std::string_view to_string (Extension type);
 
 class SourceFile {
     public:
-	explicit SourceFile (const std::filesystem::path &path);
+	explicit SourceFile (std::filesystem::path path);
 	SourceFile (std::filesystem::path path, std::string contents, Extension extension = CLOTH_OBJECT);
 
 	[[nodiscard]] std::string get_name () const {
@@ -45,9 +45,9 @@ class SourceFile {
 	Extension             e_extension;
 	std::string           s_contents;
 
-	std::string source_name (const std::filesystem::path &path);
-	Extension   source_extension (const std::filesystem::path &path);
-	std::string read_source (const std::filesystem::path &path);
+	static std::string source_name (const std::filesystem::path &path);
+	static Extension   source_extension (const std::filesystem::path &path);
+	static std::string read_source (const std::filesystem::path &path);
 };
 
 }

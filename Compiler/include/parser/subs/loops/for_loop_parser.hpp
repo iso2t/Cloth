@@ -18,7 +18,7 @@ class ForLoopParser : public LoopParser {
     private:
 	Parser &p_parser;
 
-	ForStepper parseForStepper (const Token &counter);
+	ForStepper parseForStepper (const Token &counter) const;
 };
 
 }

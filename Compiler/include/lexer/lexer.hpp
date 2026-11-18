@@ -61,9 +61,9 @@ class Lexer {
 	void               advanceBytes (std::size_t length);
 	[[nodiscard]] char peek () const;
 	[[nodiscard]] bool isAtEnd () const;
-	void               addToken (TokenType type, TokenSpan span, const std::string &lexeme);
-	TokenSpan          span ();
-	TokenSpan          cursorSpan ();
+	void               addToken (TokenType type, const TokenSpan &span, const std::string &lexeme);
+	TokenSpan          span () const;
+	TokenSpan          cursorSpan () const;
 	Operator           matchOperator ();
 	void               scanToken ();
 	bool               skipComments ();
@@ -78,6 +78,6 @@ class Lexer {
 	void               character ();
 
 	[[noreturn]] void invalidNumber (std::string_view reason);
-	[[noreturn]] void invalidNumericSeparator ();
+	[[noreturn]] void invalidNumericSeparator () const;
 };
 }

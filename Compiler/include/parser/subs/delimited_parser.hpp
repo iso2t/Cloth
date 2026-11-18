@@ -76,9 +76,9 @@ class DelimitedParser {
     private:
 	Parser &p_parser;
 
-	void expect (Operator op);
-	bool at (Operator op);
-	void skipNewLines ();
+	void expect (Operator op) const;
+	bool at (Operator op) const;
+	void skipNewLines () const;
 };
 
 }
