@@ -36,9 +36,9 @@
 #include <ast/stmt/statements.hpp>
 #include <ast/stmt/while_statement.hpp>
 #include <ast/type/type_reference.hpp>
-#include <import_errors.hpp>
+#include <cde/import_errors.hpp>
+#include <cde/syntax_errors.hpp>
 #include <parser/parser.hpp>
-#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {

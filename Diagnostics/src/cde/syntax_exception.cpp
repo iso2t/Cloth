@@ -2,7 +2,7 @@
 
 #include <utility>
 
-#include <syntax_exception.hpp>
+#include <cde/syntax_exception.hpp>
 
 namespace cde {
 

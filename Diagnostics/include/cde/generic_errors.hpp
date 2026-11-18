@@ -6,8 +6,8 @@
 #include <string>
 #include <string_view>
 
-#include <cloth_diagnostic.hpp>
-#include <syntax_exception.hpp>
+#include <cde/cloth_diagnostic.hpp>
+#include <cde/syntax_exception.hpp>
 #include <token/token.hpp>
 
 namespace cde::GenericErrors {

@@ -18,10 +18,10 @@
 #include <ast/stmt/statement.hpp>
 #include <ast/stmt/statements.hpp>
 #include <ast/type/type_reference.hpp>
+#include <cde/syntax_errors.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/bindings_parser.hpp>
 #include <parser/subs/expression_parser.hpp>
-#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {

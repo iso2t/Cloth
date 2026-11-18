@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include <syntax_exception.hpp>
+#include <cde/syntax_exception.hpp>
 #include <token/token.hpp>
 
 namespace cde::ImportErrors {

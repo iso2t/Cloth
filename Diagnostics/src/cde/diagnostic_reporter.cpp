@@ -24,8 +24,8 @@
 
 #include <musubi.h>
 
-#include <cloth_diagnostic.hpp>
-#include <diagnostic_reporter.hpp>
+#include <cde/cloth_diagnostic.hpp>
+#include <cde/diagnostic_reporter.hpp>
 #include <file/source_file.hpp>
 
 namespace cde {

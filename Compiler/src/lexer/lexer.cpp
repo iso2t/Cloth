@@ -8,8 +8,8 @@
 #include <string_view>
 #include <vector>
 
+#include <cde/syntax_exception.hpp>
 #include <lexer/lexer.hpp>
-#include <syntax_exception.hpp>
 #include <token/numeric_literals.hpp>
 #include <util/utf8.hpp>
 

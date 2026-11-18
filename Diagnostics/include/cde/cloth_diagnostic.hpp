@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include <diagnostic_code.hpp>
+#include <cde/diagnostic_code.hpp>
 #include <token/token.hpp>
 
 namespace cde {

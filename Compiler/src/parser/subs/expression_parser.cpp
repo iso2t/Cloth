@@ -17,12 +17,12 @@
 #include <ast/expr/provider_expressions.hpp>
 #include <ast/expr/struct_expressions.hpp>
 #include <ast/type/type_reference.hpp>
+#include <cde/syntax_errors.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/expression_parser.hpp>
 #include <parser/subs/if_parser.hpp>
 #include <parser/subs/type_parser.hpp>
-#include <syntax_errors.hpp>
 #include <token/numeric_literals.hpp>
 #include <token/token.hpp>
 #include <util/utf8.hpp>

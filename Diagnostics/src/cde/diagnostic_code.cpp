@@ -2,7 +2,7 @@
 
 #include <format>
 
-#include <diagnostic_code.hpp>
+#include <cde/diagnostic_code.hpp>
 
 namespace cde {
 

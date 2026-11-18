@@ -9,7 +9,7 @@
 #include <string_view>
 #include <system_error>
 
-#include <syntax_errors.hpp>
+#include <cde/syntax_errors.hpp>
 #include <token/numeric_literals.hpp>
 #include <util/utf8.hpp>
 
@@ -102,9 +102,9 @@ IntegerValue integerLiteralValue (const Token &token) {
 	IntegerValue     v_words{ 0 };
 	std::string_view s_remaining = s_digits;
 	while (!s_remaining.empty()) {
-		const std::size_t            st_length = std::min(s_remaining.size(), DIGITS_PER_CHUNK);
-		const char                  *c_end     = s_remaining.data() + st_length;
-		std::uint32_t                u32_chunk;
+		const std::size_t st_length = std::min(s_remaining.size(), DIGITS_PER_CHUNK);
+		const char       *c_end     = s_remaining.data() + st_length;
+		std::uint32_t     u32_chunk;
 		if (const auto [ptr, ec] = std::from_chars(s_remaining.data(), c_end, u32_chunk, i_radix); ec != std::errc{} || ptr != c_end) {
 			throw cde::SyntaxErrors::number(token, /*floating=*/false);
 		}

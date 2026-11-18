@@ -3,7 +3,7 @@
 #include <format>
 #include <utility>
 
-#include <generic_errors.hpp>
+#include <cde/generic_errors.hpp>
 
 namespace cde::GenericErrors {
 

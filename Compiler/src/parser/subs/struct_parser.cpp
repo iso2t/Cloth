@@ -9,12 +9,12 @@
 #include <ast/decl/struct_declaration.hpp>
 #include <ast/type/type_parameters.hpp>
 #include <ast/type/type_reference.hpp>
+#include <cde/syntax_errors.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/function_parser.hpp>
 #include <parser/subs/struct_parser.hpp>
 #include <parser/subs/type_parser.hpp>
-#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {

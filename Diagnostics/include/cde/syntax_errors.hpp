@@ -4,7 +4,7 @@
 
 #include <string_view>
 
-#include <syntax_exception.hpp>
+#include <cde/syntax_exception.hpp>
 #include <token/token.hpp>
 
 namespace cde::SyntaxErrors {

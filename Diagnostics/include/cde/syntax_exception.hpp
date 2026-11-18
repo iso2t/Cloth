@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include <cloth_diagnostic.hpp>
+#include <cde/cloth_diagnostic.hpp>
 #include <token/token.hpp>
 
 namespace cde {

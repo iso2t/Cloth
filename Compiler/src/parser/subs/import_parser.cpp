@@ -8,10 +8,10 @@
 #include <vector>
 
 #include <ast/decl/import_declaration.hpp>
-#include <import_errors.hpp>
+#include <cde/import_errors.hpp>
+#include <cde/syntax_errors.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/import_parser.hpp>
-#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -34,7 +34,7 @@ ImportDeclaration ImportParser::parse () const {
 	const Token          t_last         = p_parser.previous();
 	const bool           b_sameLine     = onLine(t_last);
 	const Token          t_next         = p_parser.peek();
-	std::optional<Token> opt_terminator = b_sameLine && p_parser.isSemiColon(t_next) ? std::make_optional(p_parser.advance()) : std::nullopt;
+	std::optional<Token> opt_terminator = b_sameLine && Parser::isSemiColon(t_next) ? std::make_optional(p_parser.advance()) : std::nullopt;
 	if (!opt_terminator && b_sameLine && t_next.get_type() != TokenType::NewLine && t_next.get_type() != TokenType::EndOfFile) {
 		throw cde::SyntaxErrors::newline(t_next);
 	}

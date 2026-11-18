@@ -5,8 +5,8 @@
 #include <ostream>
 #include <tuple>
 
-#include <cloth_diagnostic.hpp>
-#include <diagnostic_reporter.hpp>
+#include <cde/cloth_diagnostic.hpp>
+#include <cde/diagnostic_reporter.hpp>
 #include <errors/cloth_errors.hpp>
 #include <file/source_file.hpp>
 #include <lexer/lexer.hpp>

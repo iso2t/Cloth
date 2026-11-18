@@ -6,9 +6,9 @@
 
 #include <ast/decl/declarations.hpp>
 #include <ast/stmt/loop_control.hpp>
+#include <cde/syntax_errors.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/loops/loop_parser.hpp>
-#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {

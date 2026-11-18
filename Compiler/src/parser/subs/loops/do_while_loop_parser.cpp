@@ -6,10 +6,10 @@
 #include <ast/expr/expression.hpp>
 #include <ast/stmt/do_while_statement.hpp>
 #include <ast/stmt/loop_control.hpp>
+#include <cde/syntax_errors.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/expression_parser.hpp>
 #include <parser/subs/loops/do_while_loop_parser.hpp>
-#include <syntax_errors.hpp>
 #include <token/token.hpp>
 
 namespace cloth {

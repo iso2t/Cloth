@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-diagnostics-obj-y := cloth_diagnostic.o \
-                     diagnostic_code.o \
-                     diagnostic_reporter.o \
-                     generic_errors.o \
-                     import_errors.o \
-                     syntax_errors.o \
-                     syntax_exception.o
+diagnostics-obj-y := cde/cloth_diagnostic.o \
+                     cde/diagnostic_code.o \
+                     cde/diagnostic_reporter.o \
+                     cde/generic_errors.o \
+                     cde/import_errors.o \
+                     cde/syntax_errors.o \
+                     cde/syntax_exception.o

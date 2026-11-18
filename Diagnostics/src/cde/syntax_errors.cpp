@@ -3,7 +3,7 @@
 #include <format>
 #include <string>
 
-#include <syntax_errors.hpp>
+#include <cde/syntax_errors.hpp>
 
 namespace cde::SyntaxErrors {
 
@@ -69,11 +69,7 @@ SyntaxException number (const cloth::Token &token, bool floating) {
 }
 
 SyntaxException expression (const cloth::Token &token) {
-	return { DiagnosticCode::EXPECTED_EXPRESSION,
-		 std::format("Expected a number, boolean, character, string, '{}', binding name, '{}', or '{}', got {}",
-		             cloth::to_string(cloth::Keyword::kNull), cloth::to_string(cloth::Keyword::kIf), cloth::to_string(cloth::Operator::oParenOpen),
-		             found(token)),
-		 token.get_span() };
+	return { DiagnosticCode::EXPECTED_EXPRESSION, std::format("Unexpected token {}", found(token)), token.get_span() };
 }
 
 }

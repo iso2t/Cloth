@@ -2,7 +2,7 @@
 
 #include <utility>
 
-#include <cloth_diagnostic.hpp>
+#include <cde/cloth_diagnostic.hpp>
 
 namespace cde {
 
