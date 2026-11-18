@@ -27,7 +27,7 @@ struct FunctionDeclaration : CallableDeclaration {
 	        typeParameters(std::move(typeParameters)) {
 	}
 
-	const TypeReference *get_return_type () const {
+	[[nodiscard]] const TypeReference *get_return_type () const {
 		return returnTypes.size() == 1 ? &returnTypes.front() : nullptr;
 	}
 };

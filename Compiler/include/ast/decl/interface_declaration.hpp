@@ -25,7 +25,7 @@ struct InterfaceMethodDeclaration : CallableSignature {
 	std::optional<TypeParameterList>       typeParameters;
 
 	InterfaceMethodDeclaration (const Token &keyword, const Token &name, std::vector<TypeReference> returnTypes,
-	                            std::vector<ParameterDeclaration> parameters, std::optional<InterfaceMethodFallback> fallback, TokenSpan span,
+	                            std::vector<ParameterDeclaration> parameters, std::optional<InterfaceMethodFallback> fallback, const TokenSpan &span,
 	                            std::optional<TypeParameterList> typeParameters = std::nullopt) :
 	        CallableSignature(keyword, std::move(parameters), span, std::move(returnTypes)),
 	        name(name),
@@ -33,11 +33,11 @@ struct InterfaceMethodDeclaration : CallableSignature {
 	        typeParameters(std::move(typeParameters)) {
 	}
 
-	const Token &get_name () const override {
+	[[nodiscard]] const Token &get_name () const override {
 		return name;
 	}
 
-	const FunctionBody *executableBody () const override {
+	[[nodiscard]] const FunctionBody *executableBody () const override {
 		return fallback ? &fallback->body : nullptr;
 	}
 };
@@ -52,7 +52,7 @@ struct InterfaceDeclaration : TypeDeclaration {
 	InterfaceDeclaration (const Token &keyword, const Token &kind, const Token &name, std::optional<Token> visibility,
 	                      std::optional<TypeParameterList> typeParameters, std::vector<TypeReference> parents,
 	                      std::vector<InterfaceMethodDeclaration> methods, TokenSpan span, std::vector<TypeDeclarationPtr> nestedTypes = {}) :
-	        TypeDeclaration(name, std::move(visibility), span, std::move(nestedTypes)),
+	        TypeDeclaration(name, std::move(visibility), std::move(span), std::move(nestedTypes)),
 	        keyword(keyword),
 	        kind(kind),
 	        typeParameters(std::move(typeParameters)),

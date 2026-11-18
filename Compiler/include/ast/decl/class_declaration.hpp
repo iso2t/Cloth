@@ -32,7 +32,7 @@ struct ClassParameterDeclaration {
 	std::optional<Token> fieldKeyword = std::nullopt;
 	std::optional<Token> visibility   = std::nullopt;
 
-	TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan get_span () const {
 		const std::optional<Token> &opt_modifier = visibility ? visibility : fieldKeyword;
 		return opt_modifier ? TokenSpan::span_through(opt_modifier->get_span(), parameter.span) : parameter.span;
 	}
@@ -52,7 +52,7 @@ struct ConstructorDeclaration : CallableDeclaration {
 
 	ConstructorDeclaration (const Token &name, std::vector<ParameterDeclaration> parameters, ConstructorDelegation delegation, BlockBody body);
 
-	std::vector<TypeReference> get_return_types () const {
+	static std::vector<TypeReference> get_return_types () {
 		return {};
 	}
 };
@@ -60,11 +60,11 @@ struct ConstructorDeclaration : CallableDeclaration {
 struct DestructorDeclaration : CallableDeclaration {
 	DestructorDeclaration (const Token &op, const Token &name, BlockBody body);
 
-	const Token &get_operator () const {
+	[[nodiscard]] const Token &get_operator () const {
 		return keyword;
 	}
 
-	std::vector<TypeReference> get_return_types () const {
+	static std::vector<TypeReference> get_return_types () {
 		return {};
 	}
 };
@@ -72,7 +72,7 @@ struct DestructorDeclaration : CallableDeclaration {
 struct ClassMember {
 	std::variant<ClassFieldDeclaration, ConstructorDeclaration, DestructorDeclaration, StateClassMemberPtr, MethodDeclaration> value;
 
-	TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan get_span () const {
 		return std::visit(
 		        []<typename Member>(const Member &member) -> TokenSpan {
 			        if constexpr (std::is_same_v<Member, StateClassMemberPtr>) {
@@ -104,7 +104,7 @@ struct PrimaryConstructorDeclaration : CallableDeclaration {
 
 	explicit PrimaryConstructorDeclaration (std::shared_ptr<const ClassDeclaration> owner);
 
-	std::vector<TypeReference> get_return_types () const {
+	static std::vector<TypeReference> get_return_types () {
 		return {};
 	}
 };

@@ -15,9 +15,9 @@
 namespace cloth {
 
 struct StateClassMember {
-	virtual ~StateClassMember ()              = default;
-	virtual const Token &get_keyword () const = 0;
-	virtual TokenSpan    get_span () const    = 0;
+	virtual ~StateClassMember ()                            = default;
+	[[nodiscard]] virtual const Token &get_keyword () const = 0;
+	[[nodiscard]] virtual TokenSpan    get_span () const    = 0;
 };
 
 using StateClassMemberPtr = std::shared_ptr<const StateClassMember>;
@@ -31,15 +31,15 @@ struct InitialStatePrefix {
 struct StateSelectionDeclaration : StateClassMember {
 	std::optional<InitialStatePrefix> initial;
 
-	virtual const Token &get_name () const = 0;
+	[[nodiscard]] virtual const Token &get_name () const = 0;
 
     protected:
 	explicit StateSelectionDeclaration (std::optional<InitialStatePrefix> initial);
 };
 
 struct StateMember {
-	virtual ~StateMember ()             = default;
-	virtual TokenSpan get_span () const = 0;
+	virtual ~StateMember ()                           = default;
+	[[nodiscard]] virtual TokenSpan get_span () const = 0;
 };
 
 using StateMemberPtr = std::shared_ptr<const StateMember>;
@@ -51,8 +51,8 @@ struct StateBodyDeclaration {
 	TypeReference               payloadType;
 	std::vector<StateMemberPtr> members;
 
-	virtual ~StateBodyDeclaration ()    = default;
-	virtual TokenSpan get_span () const = 0;
+	virtual ~StateBodyDeclaration ()                  = default;
+	[[nodiscard]] virtual TokenSpan get_span () const = 0;
 
     protected:
 	StateBodyDeclaration (const Token &keyword, std::optional<Token> visibility, const Token &name, TypeReference payloadType,
@@ -65,15 +65,15 @@ struct NestedStateDeclaration : StateSelectionDeclaration, StateBodyDeclaration 
 	NestedStateDeclaration (const Token &keyword, std::optional<Token> visibility, const Token &name, TypeReference payloadType,
 	                        std::optional<InitialStatePrefix> initial, std::vector<StateMemberPtr> members, TokenSpan span);
 
-	const Token &get_keyword () const override {
+	[[nodiscard]] const Token &get_keyword () const override {
 		return keyword;
 	}
 
-	const Token &get_name () const override {
+	[[nodiscard]] const Token &get_name () const override {
 		return name;
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return span;
 	}
 };
@@ -85,15 +85,15 @@ struct StateAttachmentDeclaration : StateSelectionDeclaration {
 
 	StateAttachmentDeclaration (const Token &keyword, const Token &name, std::optional<InitialStatePrefix> initial, TokenSpan span);
 
-	const Token &get_keyword () const override {
+	[[nodiscard]] const Token &get_keyword () const override {
 		return keyword;
 	}
 
-	const Token &get_name () const override {
+	[[nodiscard]] const Token &get_name () const override {
 		return name;
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return span;
 	}
 };
@@ -105,7 +105,7 @@ struct TopLevelStateDeclaration : Declaration, StateBodyDeclaration {
 	TopLevelStateDeclaration (const Token &keyword, std::optional<Token> visibility, const Token &name, TypeReference payloadType, TypeReference host,
 	                          std::vector<StateMemberPtr> members, TokenSpan span, std::vector<TypeDeclarationPtr> nestedTypes = {});
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return span;
 	}
 };
@@ -119,15 +119,15 @@ struct StateMethodContractDeclaration : StateClassMember, CallableSignature {
 	                                std::vector<ParameterDeclaration> parameters, TokenSpan span,
 	                                std::optional<TypeParameterList> typeParameters = std::nullopt);
 
-	const Token &get_keyword () const override {
+	[[nodiscard]] const Token &get_keyword () const override {
 		return keyword;
 	}
 
-	const Token &get_name () const override {
+	[[nodiscard]] const Token &get_name () const override {
 		return name;
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return span;
 	}
 };
@@ -138,7 +138,7 @@ struct StateInitializerDeclaration : StateMember {
 
 	StateInitializerDeclaration (const Token &keyword, BlockBody body);
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return TokenSpan::span_through(keyword.get_span(), body.get_span());
 	}
 };
@@ -149,15 +149,15 @@ struct StateActivationDeclaration : CallableSignature {
 
 	StateActivationDeclaration (const Token &name, StateInitializerDeclaration initializer);
 
-	const Token &get_name () const override {
+	[[nodiscard]] const Token &get_name () const override {
 		return name;
 	}
 
-	std::vector<TypeReference> get_return_types () const {
+	static std::vector<TypeReference> get_return_types () {
 		return {};
 	}
 
-	const FunctionBody *executableBody () const override {
+	[[nodiscard]] const FunctionBody *executableBody () const override {
 		return &initializer.body;
 	}
 };
@@ -168,15 +168,15 @@ struct StateInitialPayloadDeclaration : CallableSignature {
 
 	StateInitialPayloadDeclaration (const Token &name, InitialStatePrefix prefix);
 
-	const Token &get_name () const override {
+	[[nodiscard]] const Token &get_name () const override {
 		return name;
 	}
 
-	std::vector<TypeReference> get_return_types () const {
+	static std::vector<TypeReference> get_return_types () {
 		return {};
 	}
 
-	const ExpressionPtr &get_expression () const;
+	[[nodiscard]] const ExpressionPtr &get_expression () const;
 };
 
 }

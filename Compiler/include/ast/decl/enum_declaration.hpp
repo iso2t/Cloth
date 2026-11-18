@@ -33,7 +33,7 @@ struct EnumDeclaration : TypeDeclaration {
 	std::vector<MethodDeclaration>    operators;
 
 	EnumDeclaration (const Token &keyword, const Token &name, std::optional<Token> visibility, std::vector<EnumFieldDeclaration> fields,
-	                 std::vector<EnumCaseDeclaration> cases, std::vector<MethodDeclaration> operators, TokenSpan span,
+	                 std::vector<EnumCaseDeclaration> cases, std::vector<MethodDeclaration> operators, const TokenSpan &span,
 	                 std::vector<TypeDeclarationPtr> nestedTypes = {}) :
 	        TypeDeclaration(name, std::move(visibility), span, std::move(nestedTypes)),
 	        keyword(keyword),
