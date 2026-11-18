@@ -5,10 +5,10 @@
 #include <optional>
 #include <vector>
 
-#include <parser/decl/declarations.hpp>
-#include <parser/decl/enum_declaration.hpp>
-#include <parser/decl/struct_declaration.hpp>
-#include <parser/expr/expression.hpp>
+#include <ast/decl/declarations.hpp>
+#include <ast/decl/enum_declaration.hpp>
+#include <ast/decl/struct_declaration.hpp>
+#include <ast/expr/expression.hpp>
 #include <token/token.hpp>
 
 namespace cloth {

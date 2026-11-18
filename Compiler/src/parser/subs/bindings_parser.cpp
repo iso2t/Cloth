@@ -11,16 +11,16 @@
 #include <variant>
 #include <vector>
 
-#include <parser/decl/declarations.hpp>
-#include <parser/decl/function_declaration.hpp>
-#include <parser/expr/expression.hpp>
-#include <parser/expr/expressions.hpp>
+#include <ast/decl/declarations.hpp>
+#include <ast/decl/function_declaration.hpp>
+#include <ast/expr/expression.hpp>
+#include <ast/expr/expressions.hpp>
+#include <ast/stmt/statement.hpp>
+#include <ast/stmt/statements.hpp>
+#include <ast/type/type_reference.hpp>
 #include <parser/parser.hpp>
-#include <parser/stmt/statement.hpp>
-#include <parser/stmt/statements.hpp>
 #include <parser/subs/bindings_parser.hpp>
 #include <parser/subs/expression_parser.hpp>
-#include <parser/type/type_reference.hpp>
 #include <syntax_errors.hpp>
 #include <token/token.hpp>
 
@@ -40,7 +40,7 @@ std::vector<StatementPtr> BindingsParser::parseBindings (bool allowWhileTrailer)
 	const bool         b_isMutable  = s_assignment == cloth::to_string(Operator::o_ASSIGN);
 	if (t_assignment.get_type() != TokenType::Operator || (!b_isMutable && s_assignment != cloth::to_string(Operator::o_FINAL_ASSIGN))) {
 		throw cde::SyntaxErrors::expected(std::format("'{}' or '{}'", cloth::to_string(Operator::o_ASSIGN), cloth::to_string(Operator::o_FINAL_ASSIGN)),
-		                             t_assignment);
+		                                  t_assignment);
 	}
 	p_parser.advance();
 

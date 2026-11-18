@@ -8,21 +8,21 @@
 #include <variant>
 #include <vector>
 
-#include <parser/decl/class_declaration.hpp>
-#include <parser/decl/declarations.hpp>
-#include <parser/decl/state_declaration.hpp>
-#include <parser/decl/struct_declaration.hpp>
-#include <parser/expr/class_expression.hpp>
-#include <parser/expr/expression.hpp>
-#include <parser/expr/expressions.hpp>
+#include <ast/decl/class_declaration.hpp>
+#include <ast/decl/declarations.hpp>
+#include <ast/decl/state_declaration.hpp>
+#include <ast/decl/struct_declaration.hpp>
+#include <ast/expr/class_expression.hpp>
+#include <ast/expr/expression.hpp>
+#include <ast/expr/expressions.hpp>
+#include <ast/type/type_parameters.hpp>
+#include <ast/type/type_reference.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/class_parser.hpp>
 #include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/expression_parser.hpp>
 #include <parser/subs/function_parser.hpp>
 #include <parser/subs/type_parser.hpp>
-#include <parser/type/type_parameters.hpp>
-#include <parser/type/type_reference.hpp>
 #include <syntax_errors.hpp>
 #include <token/token.hpp>
 
@@ -98,8 +98,8 @@ ClassParameterDeclaration ClassParser::parseHeaderParameter () {
 	if (!p_parser.atKeyword(Keyword::k_DEF)) {
 		if (opt_visibility) {
 			throw cde::SyntaxErrors::expected(std::format("'{}' after '{}' in a class header", cloth::to_string(Keyword::k_DEF),
-			                                         cloth::to_string(Keyword::k_PUBLIC)),
-			                             p_parser.peek());
+			                                              cloth::to_string(Keyword::k_PUBLIC)),
+			                                  p_parser.peek());
 		}
 		return { p_parser.p_functionParser.parseParameter() };
 	}
@@ -161,13 +161,13 @@ ClassMember ClassParser::parseMember (const Token &owner) {
 	std::optional<Token> opt_visibility = parseVisibility();
 	if (opt_initial && !p_parser.atKeyword(Keyword::k_STATE)) {
 		throw cde::SyntaxErrors::expected(std::format("a state declaration or attachment after '{}{}'", cloth::to_string(Keyword::k_DEFAULT),
-		                                         cloth::to_string(Operator::o_COLON)),
-		                             p_parser.peek());
+		                                              cloth::to_string(Operator::o_COLON)),
+		                                  p_parser.peek());
 	}
 	if (opt_methodPrefix && !p_parser.atKeyword(Keyword::k_MT)) {
 		throw cde::SyntaxErrors::expected(std::format("a '{}' declaration after '{}{}'", cloth::to_string(Keyword::k_MT),
-		                                         cloth::to_string(*opt_methodPrefix), cloth::to_string(Operator::o_COLON)),
-		                             p_parser.peek());
+		                                              cloth::to_string(*opt_methodPrefix), cloth::to_string(Operator::o_COLON)),
+		                                  p_parser.peek());
 	}
 	if (p_parser.atKeyword(Keyword::k_FN)) {
 		throw cde::SyntaxErrors::functionInType(p_parser.peek());
@@ -223,8 +223,8 @@ StateClassMemberPtr ClassParser::parseState (std::optional<Token> visibility, st
 	if (t_typeStart.get_type() == TokenType::Identifier) {
 		if (visibility) {
 			throw cde::SyntaxErrors::expected(std::format("an explicit payload type or state-method signature after '{} {}'",
-			                                         cloth::to_string(Keyword::k_PUBLIC), cloth::to_string(Keyword::k_STATE)),
-			                             t_typeStart);
+			                                              cloth::to_string(Keyword::k_PUBLIC), cloth::to_string(Keyword::k_STATE)),
+			                                  t_typeStart);
 		}
 		const Token t_name = p_parser.advance();
 		return std::make_shared<StateAttachmentDeclaration>(t_keyword, t_name, std::move(initial),
@@ -245,7 +245,8 @@ StateClassMemberPtr ClassParser::parseState (std::optional<Token> visibility, st
 	}
 	if (v_types.size() != 1) {
 		const Token &t_unexpected = v_types.size() > 1 ? v_types[1].get_name() : t_typeStart;
-		throw cde::SyntaxErrors::expected(std::format("one payload type in a nested '{}' declaration", cloth::to_string(Keyword::k_STATE)), t_unexpected);
+		throw cde::SyntaxErrors::expected(std::format("one payload type in a nested '{}' declaration", cloth::to_string(Keyword::k_STATE)),
+		                                  t_unexpected);
 	}
 	const Token t_name = p_parser.expect(TokenType::Identifier, "a state name");
 	p_parser.skipNewLines();
@@ -281,8 +282,8 @@ std::vector<StateMemberPtr> ClassParser::parseStateBody (std::vector<TypeDeclara
 					        std::make_shared<StateInitializerDeclaration>(t_keyword, p_parser.p_functionParser.parseBlockBody()));
 				} else {
 					throw cde::SyntaxErrors::expected(std::format("an '{}' block or a '{}' declaration", cloth::to_string(Keyword::k_INIT),
-					                                         cloth::to_string(Keyword::k_MT)),
-					                             p_parser.peek());
+					                                              cloth::to_string(Keyword::k_MT)),
+					                                  p_parser.peek());
 				}
 				finishMember(b_allowsTerminator, Keyword::k_STATE);
 			}
@@ -304,8 +305,8 @@ void ClassParser::finishMember (bool allowsTerminator, Keyword kind) {
 			throw cde::SyntaxErrors::newline(t_next);
 		}
 		throw cde::SyntaxErrors::expected(std::format("a newline or '{}' after a brace-bodied {} member", cloth::to_string(Operator::o_BRACE_CLOSE),
-		                                         cloth::to_string(kind)),
-		                             t_next);
+		                                              cloth::to_string(kind)),
+		                                  t_next);
 	}
 	p_parser.skipNewLines();
 }

@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include <parser/decl/import_declaration.hpp>
+#include <ast/decl/import_declaration.hpp>
 #include <token/token.hpp>
 
 namespace cloth {

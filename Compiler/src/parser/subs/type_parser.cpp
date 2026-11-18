@@ -9,14 +9,14 @@
 #include <utility>
 #include <vector>
 
+#include <ast/decl/declarations.hpp>
+#include <ast/type/type_parameters.hpp>
+#include <ast/type/type_reference.hpp>
 #include <generic_errors.hpp>
-#include <parser/decl/declarations.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/function_parser.hpp>
 #include <parser/subs/type_parser.hpp>
-#include <parser/type/type_parameters.hpp>
-#include <parser/type/type_reference.hpp>
 #include <syntax_errors.hpp>
 #include <token/token.hpp>
 
@@ -130,8 +130,9 @@ TypeArgumentList TypeParser::arguments () {
 	std::vector<TypeReference> v_arguments;
 	while (true) {
 		if (p_parser.atKeyword(Keyword::k_OPT)) {
-			throw cde::GenericErrors::argument(std::format("Omission-only '{}' wrappers are not value type arguments", cloth::to_string(Keyword::k_OPT)),
-			                              p_parser.peek().get_span());
+			throw cde::GenericErrors::argument(std::format("Omission-only '{}' wrappers are not value type arguments",
+			                                               cloth::to_string(Keyword::k_OPT)),
+			                                   p_parser.peek().get_span());
 		}
 		if (at(Operator::o_UNDERSCORE)) {
 			v_arguments.emplace_back(p_parser.advance());

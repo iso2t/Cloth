@@ -4,7 +4,7 @@
 
 #include <vector>
 
-#include <parser/stmt/statement.hpp>
+#include <ast/stmt/statement.hpp>
 
 namespace cloth {
 

@@ -2,8 +2,8 @@
 
 #pragma once
 
-#include <parser/decl/declarations.hpp>
-#include <parser/expr/expressions.hpp>
+#include <ast/decl/declarations.hpp>
+#include <ast/expr/expressions.hpp>
 
 namespace cloth {
 

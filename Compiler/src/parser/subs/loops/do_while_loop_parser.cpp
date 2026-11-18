@@ -3,10 +3,10 @@
 #include <format>
 #include <utility>
 
-#include <parser/expr/expression.hpp>
+#include <ast/expr/expression.hpp>
+#include <ast/stmt/do_while_statement.hpp>
+#include <ast/stmt/loop_control.hpp>
 #include <parser/parser.hpp>
-#include <parser/stmt/do_while_statement.hpp>
-#include <parser/stmt/loop_control.hpp>
 #include <parser/subs/expression_parser.hpp>
 #include <parser/subs/loops/do_while_loop_parser.hpp>
 #include <syntax_errors.hpp>
@@ -21,7 +21,7 @@ DoWhileStatement DoWhileLoopParser::parseDoWhile () {
 	p_parser.skipNewLines();
 	if (!p_parser.atKeyword(Keyword::k_WHILE)) {
 		throw cde::SyntaxErrors::expected(std::format("'{}' after a '{}' body", cloth::to_string(Keyword::k_WHILE), cloth::to_string(Keyword::k_DO)),
-		                             p_parser.peek());
+		                                  p_parser.peek());
 	}
 
 	const Token t_whileKeyword = p_parser.advance();

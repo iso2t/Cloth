@@ -6,18 +6,18 @@
 #include <variant>
 #include <vector>
 
+#include <ast/decl/declarations.hpp>
+#include <ast/decl/enum_declaration.hpp>
+#include <ast/decl/struct_declaration.hpp>
+#include <ast/expr/expression.hpp>
+#include <ast/type/type_reference.hpp>
 #include <generic_errors.hpp>
-#include <parser/decl/declarations.hpp>
-#include <parser/decl/enum_declaration.hpp>
-#include <parser/decl/struct_declaration.hpp>
-#include <parser/expr/expression.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/enum_parser.hpp>
 #include <parser/subs/expression_parser.hpp>
 #include <parser/subs/function_parser.hpp>
 #include <parser/subs/type_parser.hpp>
-#include <parser/type/type_reference.hpp>
 #include <syntax_errors.hpp>
 #include <token/token.hpp>
 

@@ -7,8 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include <parser/expr/expression.hpp>
-#include <parser/expr/expressions.hpp>
+#include <ast/expr/expression.hpp>
+#include <ast/expr/expressions.hpp>
 #include <token/token.hpp>
 
 namespace cloth {

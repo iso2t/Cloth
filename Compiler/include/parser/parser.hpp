@@ -11,12 +11,13 @@
 #include <utility>
 #include <vector>
 
+#include <ast/decl/declarations.hpp>
+#include <ast/expr/expression.hpp>
 #include <ast/source_unit.hpp>
+#include <ast/stmt/statement.hpp>
+#include <ast/stmt/statements.hpp>
+#include <ast/type/type_reference.hpp>
 #include <lexer/lexer.hpp>
-#include <parser/decl/declarations.hpp>
-#include <parser/expr/expression.hpp>
-#include <parser/stmt/statement.hpp>
-#include <parser/stmt/statements.hpp>
 #include <parser/subs/bindings_parser.hpp>
 #include <parser/subs/class_parser.hpp>
 #include <parser/subs/delimited_parser.hpp>
@@ -31,7 +32,6 @@
 #include <parser/subs/loops/while_loop_parser.hpp>
 #include <parser/subs/struct_parser.hpp>
 #include <parser/subs/type_parser.hpp>
-#include <parser/type/type_reference.hpp>
 #include <token/token.hpp>
 
 namespace cloth {

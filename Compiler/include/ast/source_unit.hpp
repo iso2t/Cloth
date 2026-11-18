@@ -5,9 +5,9 @@
 #include <optional>
 #include <vector>
 
+#include <ast/decl/declarations.hpp>
+#include <ast/decl/import_declaration.hpp>
 #include <file/source_file.hpp>
-#include <parser/decl/declarations.hpp>
-#include <parser/decl/import_declaration.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -17,7 +17,7 @@ struct SourceUnit {
 	std::optional<TokenSpan>       end     = std::nullopt;
 	std::vector<ImportDeclaration> imports = {};
 
-	const SourceFile *get_source () const {
+	[[nodiscard]] const SourceFile *get_source () const {
 		return end ? end->source.get() : nullptr;
 	}
 };

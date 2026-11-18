@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include <parser/stmt/do_while_statement.hpp>
+#include <ast/stmt/do_while_statement.hpp>
 #include <parser/subs/loops/loop_parser.hpp>
 
 namespace cloth {

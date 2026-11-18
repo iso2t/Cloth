@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include <parser/stmt/loop_control.hpp>
+#include <ast/stmt/loop_control.hpp>
 #include <token/token.hpp>
 
 namespace cloth {

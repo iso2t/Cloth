@@ -5,8 +5,8 @@
 #include <optional>
 #include <vector>
 
-#include <parser/decl/declarations.hpp>
-#include <parser/decl/struct_declaration.hpp>
+#include <ast/decl/declarations.hpp>
+#include <ast/decl/struct_declaration.hpp>
 #include <token/token.hpp>
 
 namespace cloth {

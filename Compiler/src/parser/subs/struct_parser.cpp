@@ -5,15 +5,15 @@
 #include <utility>
 #include <vector>
 
-#include <parser/decl/declarations.hpp>
-#include <parser/decl/struct_declaration.hpp>
+#include <ast/decl/declarations.hpp>
+#include <ast/decl/struct_declaration.hpp>
+#include <ast/type/type_parameters.hpp>
+#include <ast/type/type_reference.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/function_parser.hpp>
 #include <parser/subs/struct_parser.hpp>
 #include <parser/subs/type_parser.hpp>
-#include <parser/type/type_parameters.hpp>
-#include <parser/type/type_reference.hpp>
 #include <syntax_errors.hpp>
 #include <token/token.hpp>
 
@@ -40,9 +40,10 @@ StructDeclaration StructParser::parse (const Token &keyword, std::optional<Token
 			p_parser.skipNewLines();
 			rejectFunction();
 			if (!atMember() && !p_parser.startsTypeDeclaration()) {
-				throw cde::SyntaxErrors::expected(std::format("a '{}', '{}', or '{}' declaration after the fields", cloth::to_string(Keyword::k_MT),
-				                                         cloth::to_string(Keyword::k_OPERATOR), cloth::to_string(Keyword::k_TYPEDEF)),
-				                             p_parser.peek());
+				throw cde::SyntaxErrors::expected(std::format("a '{}', '{}', or '{}' declaration after the fields",
+				                                              cloth::to_string(Keyword::k_MT), cloth::to_string(Keyword::k_OPERATOR),
+				                                              cloth::to_string(Keyword::k_TYPEDEF)),
+				                                  p_parser.peek());
 			}
 		}
 		v_methods = parseMembers(v_nestedTypes);
@@ -90,8 +91,8 @@ std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDecla
 			v_methods.push_back(p_parser.p_functionParser.parseOperator());
 		} else {
 			throw cde::SyntaxErrors::expected(std::format("a '{}' or '{}' declaration with inherited visibility", cloth::to_string(Keyword::k_MT),
-			                                         cloth::to_string(Keyword::k_OPERATOR)),
-			                             p_parser.peek());
+			                                              cloth::to_string(Keyword::k_OPERATOR)),
+			                                  p_parser.peek());
 		}
 		const bool b_hasEquals = v_methods.back().body.get_equals() != nullptr;
 		rejectFunction();

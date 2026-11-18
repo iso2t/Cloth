@@ -16,28 +16,28 @@
 #include <utility>
 #include <vector>
 
+#include <ast/decl/class_declaration.hpp>
+#include <ast/decl/declarations.hpp>
+#include <ast/decl/enum_declaration.hpp>
+#include <ast/decl/function_declaration.hpp>
+#include <ast/decl/import_declaration.hpp>
+#include <ast/decl/interface_declaration.hpp>
+#include <ast/decl/state_declaration.hpp>
+#include <ast/decl/struct_declaration.hpp>
+#include <ast/expr/expression.hpp>
+#include <ast/expr/expressions.hpp>
+#include <ast/expr/provider_expressions.hpp>
+#include <ast/expr/struct_expressions.hpp>
 #include <ast/source_unit.hpp>
+#include <ast/stmt/do_while_statement.hpp>
+#include <ast/stmt/for_statement.hpp>
+#include <ast/stmt/loop_control.hpp>
+#include <ast/stmt/statement.hpp>
+#include <ast/stmt/statements.hpp>
+#include <ast/stmt/while_statement.hpp>
+#include <ast/type/type_reference.hpp>
 #include <import_errors.hpp>
-#include <parser/decl/class_declaration.hpp>
-#include <parser/decl/declarations.hpp>
-#include <parser/decl/enum_declaration.hpp>
-#include <parser/decl/function_declaration.hpp>
-#include <parser/decl/import_declaration.hpp>
-#include <parser/decl/interface_declaration.hpp>
-#include <parser/decl/state_declaration.hpp>
-#include <parser/decl/struct_declaration.hpp>
-#include <parser/expr/expression.hpp>
-#include <parser/expr/expressions.hpp>
-#include <parser/expr/provider_expressions.hpp>
-#include <parser/expr/struct_expressions.hpp>
 #include <parser/parser.hpp>
-#include <parser/stmt/do_while_statement.hpp>
-#include <parser/stmt/for_statement.hpp>
-#include <parser/stmt/loop_control.hpp>
-#include <parser/stmt/statement.hpp>
-#include <parser/stmt/statements.hpp>
-#include <parser/stmt/while_statement.hpp>
-#include <parser/type/type_reference.hpp>
 #include <syntax_errors.hpp>
 #include <token/token.hpp>
 
@@ -183,7 +183,7 @@ TypeDeclarationPtr Parser::parseNestedTypeDeclaration () {
 	const Token t_next = peek();
 	if (t_next.get_type() != TokenType::NewLine && t_next.get_lexeme() != cloth::to_string(Operator::o_BRACE_CLOSE)) {
 		throw cde::SyntaxErrors::expected(std::format("a newline or '{}' after a nested type declaration", cloth::to_string(Operator::o_BRACE_CLOSE)),
-		                             t_next);
+		                                  t_next);
 	}
 	skipNewLines();
 	return tdp_type;
@@ -195,43 +195,44 @@ DeclarationPtr Parser::parseTypeDeclaration (bool nested) {
 	const Token                  t_keyword        = advance();
 	std::optional<TypeReference> opt_payload;
 	const Token                  t_kind = p_delimitedParser.angles([this, &opt_visibility, &opt_finalKeyword, &opt_payload, nested] () -> Token {
-		const Token t_start = peek();
-		if (atKeyword(Keyword::k_CLASS)) {
-			return advance();
-		}
-		if (opt_finalKeyword) {
-			throw cde::SyntaxErrors::expected(std::format("'{}' as the type declaration kind after '{}'", cloth::to_string(Keyword::k_CLASS),
-			                                         cloth::to_string(Keyword::k_FINAL)),
-			                             t_start);
-		}
-		if (atKeyword(Keyword::k_STRUCT) || atKeyword(Keyword::k_ENUM) || atKeyword(Keyword::k_INTERFACE)) {
-			return advance();
-		}
-		if (!nested && atKeyword(Keyword::k_STATE)) {
-			const Token t_state = advance();
-			if (opt_visibility) {
-				throw cde::SyntaxErrors::expected(std::format("state visibility after the '{}' header", cloth::to_string(Keyword::k_TYPEDEF)),
-				                             *opt_visibility);
-			}
-			opt_payload = p_delimitedParser.angles([this] () -> TypeReference {
-				skipNewLines();
-				TypeReference tr_payload = p_typeParser.parse(/*inCast=*/false, /*allowArrays=*/true);
-				skipNewLines();
-				return tr_payload;
-			});
-			return t_state;
-		}
-		if (nested) {
-			throw cde::SyntaxErrors::expected(std::format("'{}', '{}', '{}', or '{}' as the nested type declaration kind",
-			                                         cloth::to_string(Keyword::k_STRUCT), cloth::to_string(Keyword::k_CLASS),
-			                                         cloth::to_string(Keyword::k_ENUM), cloth::to_string(Keyword::k_INTERFACE)),
-			                             t_start);
-		}
-		throw cde::SyntaxErrors::expected(std::format("'{}', '{}', '{}', '{}', or '{}' as the type declaration kind", cloth::to_string(Keyword::k_STRUCT),
-		                                         cloth::to_string(Keyword::k_CLASS), cloth::to_string(Keyword::k_ENUM),
-		                                         cloth::to_string(Keyword::k_INTERFACE), cloth::to_string(Keyword::k_STATE)),
-		                             t_start);
-	});
+                const Token t_start = peek();
+                if (atKeyword(Keyword::k_CLASS)) {
+                        return advance();
+                }
+                if (opt_finalKeyword) {
+                        throw cde::SyntaxErrors::expected(std::format("'{}' as the type declaration kind after '{}'", cloth::to_string(Keyword::k_CLASS),
+			                                                               cloth::to_string(Keyword::k_FINAL)),
+			                                                   t_start);
+                }
+                if (atKeyword(Keyword::k_STRUCT) || atKeyword(Keyword::k_ENUM) || atKeyword(Keyword::k_INTERFACE)) {
+                        return advance();
+                }
+                if (!nested && atKeyword(Keyword::k_STATE)) {
+                        const Token t_state = advance();
+                        if (opt_visibility) {
+                                throw cde::SyntaxErrors::expected(std::format("state visibility after the '{}' header", cloth::to_string(Keyword::k_TYPEDEF)),
+				                                                   *opt_visibility);
+                        }
+                        opt_payload = p_delimitedParser.angles([this] () -> TypeReference {
+                                skipNewLines();
+                                TypeReference tr_payload = p_typeParser.parse(/*inCast=*/false, /*allowArrays=*/true);
+                                skipNewLines();
+                                return tr_payload;
+                        });
+                        return t_state;
+                }
+                if (nested) {
+                        throw cde::SyntaxErrors::expected(std::format("'{}', '{}', '{}', or '{}' as the nested type declaration kind",
+			                                                               cloth::to_string(Keyword::k_STRUCT), cloth::to_string(Keyword::k_CLASS),
+			                                                               cloth::to_string(Keyword::k_ENUM), cloth::to_string(Keyword::k_INTERFACE)),
+			                                                   t_start);
+                }
+                throw cde::SyntaxErrors::expected(std::format("'{}', '{}', '{}', '{}', or '{}' as the type declaration kind",
+		                                                               cloth::to_string(Keyword::k_STRUCT), cloth::to_string(Keyword::k_CLASS),
+		                                                               cloth::to_string(Keyword::k_ENUM), cloth::to_string(Keyword::k_INTERFACE),
+		                                                               cloth::to_string(Keyword::k_STATE)),
+		                                                   t_start);
+        });
 
 	const std::string &s_kind = t_kind.get_lexeme();
 	if (s_kind == cloth::to_string(Keyword::k_CLASS)) {
@@ -296,7 +297,7 @@ std::unique_ptr<Expression> Parser::parseBindingBrace (bool allowLiteral, bool a
 		                [] (const StatementPtr &statement) -> bool { return dynamic_cast<const ExpressionStatement *>(statement.get()) != nullptr; })) {
 			if (bbs_syntax.secondStatement) {
 				throw cde::SyntaxErrors::expected(std::format("'{}' between struct field values", cloth::to_string(Operator::o_COMMA)),
-				                             *bbs_syntax.secondStatement);
+				                                  *bbs_syntax.secondStatement);
 			}
 			std::vector<ExpressionPtr> v_fields;
 			if (ep_expression) {
@@ -526,7 +527,8 @@ bool Parser::isReceivingTarget (const Token &token, bool assignment) {
 ReceivingTarget Parser::parseReceivingTarget (bool assignment) {
 	const Token t_token = peek();
 	if (!isReceivingTarget(t_token, assignment)) {
-		throw cde::SyntaxErrors::expected(std::format("a binding or assignment target name or '{}'", cloth::to_string(Operator::o_UNDERSCORE)), t_token);
+		throw cde::SyntaxErrors::expected(std::format("a binding or assignment target name or '{}'", cloth::to_string(Operator::o_UNDERSCORE)),
+		                                  t_token);
 	}
 	return ReceivingTarget::of(advance());
 }

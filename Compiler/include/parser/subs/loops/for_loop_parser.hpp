@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include <parser/stmt/for_statement.hpp>
+#include <ast/stmt/for_statement.hpp>
 #include <parser/subs/loops/loop_parser.hpp>
 #include <token/token.hpp>
 

@@ -6,15 +6,15 @@
 #include <variant>
 #include <vector>
 
-#include <parser/decl/declarations.hpp>
-#include <parser/decl/interface_declaration.hpp>
+#include <ast/decl/declarations.hpp>
+#include <ast/decl/interface_declaration.hpp>
+#include <ast/type/type_parameters.hpp>
+#include <ast/type/type_reference.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/function_parser.hpp>
 #include <parser/subs/interface_parser.hpp>
 #include <parser/subs/type_parser.hpp>
-#include <parser/type/type_parameters.hpp>
-#include <parser/type/type_reference.hpp>
 #include <syntax_errors.hpp>
 #include <token/token.hpp>
 
@@ -64,8 +64,8 @@ std::vector<InterfaceMethodDeclaration> InterfaceParser::parseMembers (std::vect
 			p_parser.advance();
 		} else if (t_next.get_type() != TokenType::NewLine && t_next.get_lexeme() != cloth::to_string(Operator::o_BRACE_CLOSE)) {
 			if (b_block) {
-				throw cde::SyntaxErrors::expected(std::format("a newline or '{}' after a block default", cloth::to_string(Operator::o_BRACE_CLOSE)),
-				                             t_next);
+				throw cde::SyntaxErrors::expected(
+				        std::format("a newline or '{}' after a block default", cloth::to_string(Operator::o_BRACE_CLOSE)), t_next);
 			}
 			throw cde::SyntaxErrors::newline(t_next);
 		}

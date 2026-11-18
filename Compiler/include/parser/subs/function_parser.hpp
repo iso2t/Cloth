@@ -8,12 +8,12 @@
 #include <utility>
 #include <vector>
 
-#include <parser/decl/declarations.hpp>
-#include <parser/decl/function_declaration.hpp>
-#include <parser/decl/interface_declaration.hpp>
-#include <parser/decl/struct_declaration.hpp>
-#include <parser/type/type_parameters.hpp>
-#include <parser/type/type_reference.hpp>
+#include <ast/decl/declarations.hpp>
+#include <ast/decl/function_declaration.hpp>
+#include <ast/decl/interface_declaration.hpp>
+#include <ast/decl/struct_declaration.hpp>
+#include <ast/type/type_parameters.hpp>
+#include <ast/type/type_reference.hpp>
 #include <token/token.hpp>
 
 namespace cloth {

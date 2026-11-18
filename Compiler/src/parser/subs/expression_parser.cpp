@@ -10,18 +10,18 @@
 #include <utility>
 #include <vector>
 
-#include <parser/expr/class_expression.hpp>
-#include <parser/expr/expression.hpp>
-#include <parser/expr/expressions.hpp>
-#include <parser/expr/member_call_expression.hpp>
-#include <parser/expr/provider_expressions.hpp>
-#include <parser/expr/struct_expressions.hpp>
+#include <ast/expr/class_expression.hpp>
+#include <ast/expr/expression.hpp>
+#include <ast/expr/expressions.hpp>
+#include <ast/expr/member_call_expression.hpp>
+#include <ast/expr/provider_expressions.hpp>
+#include <ast/expr/struct_expressions.hpp>
+#include <ast/type/type_reference.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/expression_parser.hpp>
 #include <parser/subs/if_parser.hpp>
 #include <parser/subs/type_parser.hpp>
-#include <parser/type/type_reference.hpp>
 #include <syntax_errors.hpp>
 #include <token/numeric_literals.hpp>
 #include <token/token.hpp>
@@ -166,8 +166,8 @@ ExpressionPtr ExpressionParser::parseTypeCheck (ExpressionPtr operand, const Tok
 	const Token        t_next            = p_parser.peek(1);
 	const std::string &s_next            = t_next.get_lexeme();
 	const bool         b_hasValuePostfix = s_next == cloth::to_string(Operator::o_PAREN_OPEN) || s_next == cloth::to_string(Operator::o_DOT) ||
-	                                       s_next == cloth::to_string(Operator::o_SAFE_DOT) || s_next == cloth::to_string(Operator::o_COLON_COLON) ||
-	                                       s_next == cloth::to_string(Operator::o_BRACKET_OPEN);
+	                               s_next == cloth::to_string(Operator::o_SAFE_DOT) || s_next == cloth::to_string(Operator::o_COLON_COLON) ||
+	                               s_next == cloth::to_string(Operator::o_BRACKET_OPEN);
 	const bool b_valueTarget = t_target.get_lexeme() == cloth::to_string(Operator::o_PAREN_OPEN) || isImplicitBinding(t_target) ||
 	                           (t_target.get_type() == TokenType::Identifier && (b_hasValuePostfix || p_parser.p_typeParser.startsCallTypeArguments()));
 	if (!b_valueTarget || p_parser.p_typeParser.startsQualifiedTypeCheck()) {
@@ -197,14 +197,14 @@ ExpressionPtr ExpressionParser::parseArrowTarget (ExpressionPtr receiver, const 
 	}
 	const Token     t_target   = p_parser.advance();
 	ExpressionPtr   ep_payload = p_parser.p_delimitedParser.parentheses([this] () -> ExpressionPtr {
-		p_parser.skipNewLines();
-		if (at(Operator::o_PAREN_CLOSE)) {
-			return nullptr;
-		}
-		ExpressionPtr ep_expression = parseExpression();
-		p_parser.skipNewLines();
-		return ep_expression;
-	});
+                p_parser.skipNewLines();
+                if (at(Operator::o_PAREN_CLOSE)) {
+                        return nullptr;
+                }
+                ExpressionPtr ep_expression = parseExpression();
+                p_parser.skipNewLines();
+                return ep_expression;
+        });
 	const TokenSpan ts_span    = TokenSpan::span_through(receiver->get_span(), p_parser.previous().get_span());
 	return std::make_shared<StateTransitionExpression>(std::move(receiver), op, t_target, std::move(ep_payload), ts_span);
 }

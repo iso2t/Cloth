@@ -8,8 +8,8 @@
 #include <utility>
 #include <vector>
 
-#include <parser/type/type_parameters.hpp>
-#include <parser/type/type_reference.hpp>
+#include <ast/type/type_parameters.hpp>
+#include <ast/type/type_reference.hpp>
 #include <token/token.hpp>
 
 namespace cloth {

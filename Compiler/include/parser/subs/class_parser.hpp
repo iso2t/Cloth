@@ -6,10 +6,10 @@
 #include <string_view>
 #include <vector>
 
-#include <parser/decl/class_declaration.hpp>
-#include <parser/decl/declarations.hpp>
-#include <parser/decl/state_declaration.hpp>
-#include <parser/type/type_reference.hpp>
+#include <ast/decl/class_declaration.hpp>
+#include <ast/decl/declarations.hpp>
+#include <ast/decl/state_declaration.hpp>
+#include <ast/type/type_reference.hpp>
 #include <token/token.hpp>
 
 namespace cloth {

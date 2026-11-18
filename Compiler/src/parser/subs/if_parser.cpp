@@ -6,11 +6,11 @@
 #include <utility>
 #include <vector>
 
-#include <parser/decl/declarations.hpp>
-#include <parser/expr/expression.hpp>
-#include <parser/expr/expressions.hpp>
+#include <ast/decl/declarations.hpp>
+#include <ast/expr/expression.hpp>
+#include <ast/expr/expressions.hpp>
+#include <ast/stmt/statement.hpp>
 #include <parser/parser.hpp>
-#include <parser/stmt/statement.hpp>
 #include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/expression_parser.hpp>
 #include <parser/subs/if_parser.hpp>

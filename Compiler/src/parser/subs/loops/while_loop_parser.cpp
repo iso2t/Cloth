@@ -2,9 +2,9 @@
 
 #include <utility>
 
-#include <parser/expr/expression.hpp>
+#include <ast/expr/expression.hpp>
+#include <ast/stmt/while_statement.hpp>
 #include <parser/parser.hpp>
-#include <parser/stmt/while_statement.hpp>
 #include <parser/subs/expression_parser.hpp>
 #include <parser/subs/loops/while_loop_parser.hpp>
 #include <token/token.hpp>

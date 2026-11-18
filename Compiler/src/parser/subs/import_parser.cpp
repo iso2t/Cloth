@@ -7,8 +7,8 @@
 #include <utility>
 #include <vector>
 
+#include <ast/decl/import_declaration.hpp>
 #include <import_errors.hpp>
-#include <parser/decl/import_declaration.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/import_parser.hpp>
 #include <syntax_errors.hpp>
@@ -25,7 +25,8 @@ ImportDeclaration ImportParser::parse () {
 		v_components.push_back(identifierOnLine(t_keyword));
 	}
 	if (!onLine(t_keyword)) {
-		throw cde::SyntaxErrors::expected(std::format("'{}' on the same line as the import path", cloth::to_string(Operator::o_COLON)), p_parser.peek());
+		throw cde::SyntaxErrors::expected(std::format("'{}' on the same line as the import path", cloth::to_string(Operator::o_COLON)),
+		                                  p_parser.peek());
 	}
 	const Token t_colon = p_parser.expect(Operator::o_COLON);
 	p_parser.skipNewLines();
