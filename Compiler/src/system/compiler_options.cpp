@@ -8,7 +8,9 @@
 
 namespace cloth::sys {
 
-CompilerOptions::CompilerOptions (int argc, const char *const argv[]) {
+CompilerOptions::CompilerOptions (const int argc, const char *const argv[]) {
+	this->args = argc;
+	this->argv = argv;
 	build_defaults();
 
 	for (int index = 1; index < argc; ++index) {
@@ -37,6 +39,10 @@ void CompilerOptions::build_defaults () {
 	add_flag({ "-l", [this] () { i_lexer = 1; } });
 	add_flag({ "-L", [this] () { i_lexer = 2; } });
 	add_flag({ "--src", CompilerFlag::Value{ "a file path", [this] (std::string_view path) { p_sourcePath.emplace(path); } } });
+}
+
+bool CompilerOptions::is_empty () const {
+	return args < 2;
 }
 
 }

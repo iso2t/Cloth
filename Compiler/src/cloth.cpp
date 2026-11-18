@@ -16,6 +16,9 @@
 
 int main (const int argc, char *argv[]) try {
 	const cloth::sys::CompilerOptions co_options{ argc, argv };
+	if (co_options.is_empty()) {
+		std::fprintf(stderr, "incorrect usage: cloth <args>");
+	}
 
 	if (!co_options.p_sourcePath) return FAILED;
 

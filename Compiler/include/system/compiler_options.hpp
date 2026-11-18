@@ -28,7 +28,7 @@ class CompilerOptions {
 
 	~CompilerOptions () = default;
 
-	std::vector<CompilerFlag> get_flags () const {
+	[[nodiscard]] std::vector<CompilerFlag> get_flags () const {
 		return v_compilerFlags;
 	}
 
@@ -37,13 +37,17 @@ class CompilerOptions {
 
 	std::optional<std::filesystem::path> p_sourcePath;
 
-	int get_lexer_flag () const {
+	[[nodiscard]] int get_lexer_flag () const {
 		return i_lexer;
 	}
+
+	[[nodiscard]] bool is_empty () const;
 
     private:
 	std::vector<CompilerFlag> v_compilerFlags;
 	int                       i_lexer = 0;
+	int                       args{};
+	const char *const        *argv{};
 };
 
 }
