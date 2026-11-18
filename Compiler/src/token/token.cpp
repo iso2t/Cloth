@@ -50,7 +50,7 @@ std::string_view to_string (const TokenType type) {
 	return "Invalid";
 }
 
-std::string_view to_string (Keyword keyword) {
+std::string_view to_string (const Keyword keyword) {
 	switch (keyword) {
 	case kMod:
 		return "mod";
@@ -279,7 +279,7 @@ OperatorInfo operator_info (Operator op) {
 	case oError:
 		break;
 	}
-	return { "error", "ERROR", false };
+	return { .spelling = "error", .name = "ERROR", .tokenized = false };
 }
 
 }
