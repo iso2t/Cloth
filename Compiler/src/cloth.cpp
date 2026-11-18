@@ -4,6 +4,7 @@
 #include <iostream>
 #include <ostream>
 #include <tuple>
+#include <utility>
 
 #include <cde/cloth_diagnostic.hpp>
 #include <cde/diagnostic_reporter.hpp>
@@ -11,6 +12,8 @@
 #include <file/source_file.hpp>
 #include <lexer/lexer.hpp>
 #include <parser/parser.hpp>
+#include <semantic/checked_program.hpp>
+#include <semantic/symbol_table.hpp>
 #include <system/compiler_options.hpp>
 #include <util/pstream.hpp>
 
@@ -35,8 +38,9 @@ int main (const int argc, char *argv[]) try {
 		return PRINT_LEXED_ONLY;
 	}
 
-	auto p_parser = cloth::Parser{ l_lexer };
-	std::ignore   = backend::BackendObject{ p_parser.parse() };
+	cloth::Parser      p_parser{ l_lexer };
+	cloth::SymbolTable st_symbols{ p_parser.parse() };
+	std::ignore = backend::BackendObject{ cloth::CheckedProgram{ std::move(st_symbols) } };
 
 	return SUCCESS;
 } catch (const cde::ClothDiagnostic &error) {

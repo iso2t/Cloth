@@ -10,6 +10,7 @@
 #include <lexer/lexer.hpp>
 #include <parser/parser.hpp>
 #include <token/numeric_literals.hpp>
+#include <token/token.hpp>
 
 namespace cloth {
 namespace {
@@ -27,10 +28,10 @@ TEST (ParserPrecedence, PowerBindsBeforeUnaryMinus) {
 
 	const UnaryExpression *ue_minus = dynamic_cast<const UnaryExpression *>(eb_body->expression.get());
 	ASSERT_NE(ue_minus, nullptr) << "Expected unary minus at the root of -2 ** 2";
-	EXPECT_EQ(ue_minus->op.get_lexeme(), "-");
+	EXPECT_EQ(ue_minus->op.get_operator(), oMinus);
 	const BinaryExpression *be_power = dynamic_cast<const BinaryExpression *>(ue_minus->operand.get());
 	ASSERT_NE(be_power, nullptr);
-	EXPECT_EQ(be_power->op.get_lexeme(), "**");
+	EXPECT_EQ(be_power->op.get_operator(), oMulMul);
 
 	const IntegerLiteral *il_base     = dynamic_cast<const IntegerLiteral *>(be_power->left.get());
 	const IntegerLiteral *il_exponent = dynamic_cast<const IntegerLiteral *>(be_power->right.get());

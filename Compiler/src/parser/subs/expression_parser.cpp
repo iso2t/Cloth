@@ -48,7 +48,8 @@ char decodeEscape (const char escaped) {
 
 char32_t decodeCharacter (const Token &token) {
 	const std::string_view s_lexeme   = token.get_lexeme();
-	const std::string_view s_contents = s_lexeme.substr(1, s_lexeme.size() - 2);
+	const std::size_t      st_quote   = to_string(oQuotation).size();
+	const std::string_view s_contents = s_lexeme.substr(st_quote, s_lexeme.size() - 2 * st_quote);
 	if (s_contents.starts_with('\\')) {
 		return static_cast<unsigned char>(decodeEscape(s_contents.at(1)));
 	}
@@ -60,21 +61,23 @@ char32_t decodeCharacter (const Token &token) {
 	return utf8_scalar_value(s_contents.substr(0, st_length));
 }
 
-std::string collapseInterpolationBraces (const std::string_view contents) {
-	const char  c_open  = to_string(oBraceOpen).front();
-	const char  c_close = to_string(oBraceClose).front();
+std::string collapseInterpolationBraces (std::string_view contents) {
+	const std::string_view s_open  = to_string(oBraceOpen);
+	const std::string_view s_close = to_string(oBraceClose);
 	std::string s_result;
 	s_result.reserve(contents.size());
-	for (std::size_t st_index = 0; st_index < contents.size();) {
-		const char c_character = contents[st_index++];
-		s_result.push_back(c_character);
-		if ((c_character == c_open || c_character == c_close) && st_index < contents.size() && contents[st_index] == c_character) {
-			++st_index;
+	while (!contents.empty()) {
+		const std::string_view s_brace = contents.starts_with(s_open) ? s_open : s_close;
+		if (contents.starts_with(s_brace) && contents.substr(s_brace.size()).starts_with(s_brace)) {
+			s_result += s_brace;
+			contents.remove_prefix(2 * s_brace.size());
+		} else {
+			s_result.push_back(contents.front());
+			contents.remove_prefix(1);
 		}
 	}
 	return s_result;
 }
-
 }
 
 const std::unordered_map<Operator, ExpressionParser::OperatorPrecedence> ExpressionParser::binaryOperators = {
@@ -126,7 +129,7 @@ ExpressionPtr ExpressionParser::parseInfix (ExpressionPtr initial, const int min
 			break;
 		}
 
-		const Operator o_kind    = fromCharacter(s_operator).value_or(oError);
+		const Operator o_kind    = t_operator.get_operator();
 		const bool     b_isRange = o_kind == oRange || o_kind == oRangeInclusive;
 		// The loop parser consumes an outer range delimiter.
 		if ((stopAtRange && b_isRange) || o_kind == oParenClose || o_kind == oBraceClose || o_kind == oBracketClose || o_kind == oComma ||
@@ -346,7 +349,7 @@ ExpressionPtr ExpressionParser::parsePrimary (bool allowWhileTrailer) {
 	case TokenType::RawStringLiteral: {
 		p_parser.advance();
 		const bool             b_raw      = t_token.get_type() == TokenType::RawStringLiteral;
-		const std::size_t      st_quotes  = b_raw ? 3 : 1;
+		const std::size_t      st_quotes  = b_raw ? rawStringDelimiter().size() : to_string(oDoubleQuotation).size();
 		const std::string_view s_contents = std::string_view(s_lexeme).substr(st_quotes, s_lexeme.size() - 2 * st_quotes);
 		return std::make_shared<StringLiteral>(b_raw ? std::string(s_contents) : decodeString(s_contents), t_token.get_span());
 	}

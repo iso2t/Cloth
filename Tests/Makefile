@@ -15,6 +15,8 @@ gtest_source := $(gtest_dir)/src/gtest-all.cc
 
 unit_sources := Compiler/Lexer/Unit/token_test.cpp \
                 Compiler/Parser/Unit/precedence_test.cpp \
+                Compiler/Semantic/Unit/symbol_table_test.cpp \
+                Compiler/Semantic/Unit/checked_program_test.cpp \
                 Diagnostics/Unit/import_test.cpp
 unit_obj_dir := $(BUILD_DIR)/obj/Tests
 unit_objects := $(addprefix $(unit_obj_dir)/,$(unit_sources:.cpp=.o))
@@ -40,9 +42,10 @@ $(unit_program): $(unit_objects) $(gtest_objects) $(unit_cloth_objects) Makefile
 
 -include $(unit_objects:.o=.d) $(gtest_objects:.o=.d)
 
-.PHONY: test test-driver test-lexer test-parser test-diagnostics test-file test-unit
+.PHONY: test test-build test-driver test-lexer test-parser test-diagnostics test-file test-unit
 .PHONY: lit-all lit-lexer lit-diagnostics unit-all unit-lexer unit-diagnostics
 
+test-build: $(program) $(unit_program)
 test: lit-all unit-all
 test-lexer: lit-lexer unit-lexer
 test-diagnostics: lit-diagnostics unit-diagnostics

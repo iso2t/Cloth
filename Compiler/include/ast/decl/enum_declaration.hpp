@@ -24,6 +24,7 @@ struct EnumFieldDeclaration {
 struct EnumCaseDeclaration {
 	Token                      name;
 	std::vector<ExpressionPtr> values;
+	std::optional<Token>       visibility = std::nullopt;
 };
 
 struct EnumDeclaration : TypeDeclaration {

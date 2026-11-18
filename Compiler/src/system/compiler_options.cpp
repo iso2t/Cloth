@@ -35,10 +35,14 @@ void CompilerOptions::add_flag (const CompilerFlag &flag) {
 	v_compilerFlags.push_back(flag);
 }
 
+// TODO: Allow comma separated lists of source files to use all at the same time? ie "path1","path2"
+// TODO: "path1","path" "path3" fails as path3 is seen as another arg. 
 void CompilerOptions::build_defaults () {
 	add_flag({ .s_flag = "-l", .v_action = [this] () { i_lexer = 1; } });
 	add_flag({ .s_flag = "-L", .v_action = [this] () { i_lexer = 2; } });
-	add_flag({ .s_flag = "--src", .v_action = CompilerFlag::Value{ "a file path", [this] (std::string_view path) { p_sourcePath.emplace(path); } } });
+	add_flag({ .s_flag = "--src", .v_action = CompilerFlag::Value{ .s_description = "a file path", .f_func = [this] (std::string_view path) {
+		                                                              p_sourcePath.emplace(path);
+	                                                              } } });
 }
 
 bool CompilerOptions::is_empty () const {

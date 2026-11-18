@@ -61,7 +61,7 @@ EnumDeclaration EnumParser::parse (const Token &keyword, std::optional<Token> vi
 }
 
 EnumFieldDeclaration EnumParser::parseField () const {
-	std::optional<Token> opt_visibility = p_parser.atKeyword(kPublic) ? std::make_optional(p_parser.advance()) : std::nullopt;
+	std::optional<Token> opt_visibility = p_parser.parseVisibility();
 	if (!p_parser.atKeyword(kDef)) {
 		throw cde::SyntaxErrors::expected(std::format("'{}' for an enum payload field", to_string(kDef)), p_parser.peek());
 	}
@@ -82,14 +82,15 @@ EnumFieldDeclaration EnumParser::parseField () const {
 }
 
 EnumCaseDeclaration EnumParser::parseCase () const {
-	const Token                t_name = p_parser.expect(TokenType::Identifier, "an enum case");
+	std::optional<Token>       opt_visibility = p_parser.parseVisibility();
+	const Token                t_name         = p_parser.expect(TokenType::Identifier, "an enum case");
 	std::vector<ExpressionPtr> v_values;
 	if (at(oParenOpen)) {
 		v_values = p_parser.p_delimitedParser.parentheses([this] () -> std::vector<ExpressionPtr> {
 			return p_parser.p_delimitedParser.commaSeparated(oParenClose, [this] () -> ExpressionPtr { return value(); });
 		});
 	}
-	return { .name = t_name, .values = std::move(v_values) };
+	return { .name = t_name, .values = std::move(v_values), .visibility = std::move(opt_visibility) };
 }
 
 std::vector<MethodDeclaration> EnumParser::parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) const {
@@ -99,10 +100,11 @@ std::vector<MethodDeclaration> EnumParser::parseMembers (std::vector<TypeDeclara
 			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}
+		std::optional<Token> opt_visibility = p_parser.parseVisibility();
 		if (!p_parser.atKeyword(kOperator)) {
 			throw cde::SyntaxErrors::expected(std::format("an '{}' declaration", to_string(kOperator)), p_parser.peek());
 		}
-		v_operators.push_back(p_parser.p_functionParser.parseOperator());
+		v_operators.push_back(p_parser.p_functionParser.parseOperator(std::move(opt_visibility)));
 		if (std::holds_alternative<ExpressionBody>(v_operators.back().body.value) && at(oSemicolon)) {
 			p_parser.advance();
 		} else if (!at(oBraceClose) && p_parser.peek().get_type() != TokenType::NewLine) {

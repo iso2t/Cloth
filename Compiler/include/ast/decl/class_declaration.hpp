@@ -50,7 +50,8 @@ struct ClassFieldDeclaration {
 struct ConstructorDeclaration : CallableDeclaration {
 	ConstructorDelegation delegation;
 
-	ConstructorDeclaration (const Token &name, std::vector<ParameterDeclaration> parameters, ConstructorDelegation delegation, BlockBody body);
+	ConstructorDeclaration (const Token &name, std::vector<ParameterDeclaration> parameters, ConstructorDelegation delegation, BlockBody body,
+	                        const std::optional<Token> &visibility = std::nullopt);
 
 	static std::vector<TypeReference> get_return_types () {
 		return {};
@@ -58,7 +59,7 @@ struct ConstructorDeclaration : CallableDeclaration {
 };
 
 struct DestructorDeclaration : CallableDeclaration {
-	DestructorDeclaration (const Token &op, const Token &name, BlockBody body);
+	DestructorDeclaration (const Token &op, const Token &name, BlockBody body, const std::optional<Token> &visibility = std::nullopt);
 
 	[[nodiscard]] const Token &get_operator () const {
 		return keyword;

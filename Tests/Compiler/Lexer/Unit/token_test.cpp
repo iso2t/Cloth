@@ -50,5 +50,51 @@ TEST (LexerSpans, Utf8StringUsesByteColumns) {
 	expectToken(v_tokens[2], TokenType::EndOfFile, "", 7, 7);
 }
 
+TEST (LexerSpans, LiteralAndInterpolationDelimiters) {
+	Lexer                    l_lexer(R"co("""raw""" #"{{{1}}}" 'x')co");
+	const std::vector<Token> v_tokens = l_lexer.scanTokens();
+	ASSERT_EQ(v_tokens.size(), 10u);
+	expectToken(v_tokens[0], TokenType::RawStringLiteral, R"co("""raw""")co", 1, 10);
+	expectToken(v_tokens[1], TokenType::InterpolationStart, R"co(#")co", 11, 13);
+	expectToken(v_tokens[2], TokenType::StringSegment, "{{", 13, 15);
+	expectToken(v_tokens[3], TokenType::InterpolationOpen, "{", 15, 16);
+	expectToken(v_tokens[4], TokenType::IntegerLiteral, "1", 16, 17);
+	expectToken(v_tokens[5], TokenType::InterpolationClose, "}", 17, 18);
+	expectToken(v_tokens[6], TokenType::StringSegment, "}}", 18, 20);
+	expectToken(v_tokens[7], TokenType::InterpolationEnd, R"co(")co", 20, 21);
+	expectToken(v_tokens[8], TokenType::CharacterLiteral, "'x'", 22, 25);
+	expectToken(v_tokens[9], TokenType::EndOfFile, "", 25, 25);
+}
+
+TEST (LexerKeywords, JoinsKeywordSpellingsInSourceOrder) {
+	EXPECT_TRUE(to_stringmulti({}).empty());
+	EXPECT_EQ(to_stringmulti({ kPublic }), "pub");
+	EXPECT_EQ(to_stringmulti({ kPublic, kFinal, kTypeDef }), "pub final typedef");
+}
+
+TEST (LexerKeywords, ContextualWordsRemainIdentifiers) {
+	Lexer                    l_lexer("auto intrinsic private");
+	const std::vector<Token> v_tokens = l_lexer.scanTokens();
+	ASSERT_EQ(v_tokens.size(), 4u);
+	expectToken(v_tokens[0], TokenType::Identifier, "auto", 1, 5);
+	expectToken(v_tokens[1], TokenType::Identifier, "intrinsic", 6, 15);
+	expectToken(v_tokens[2], TokenType::Identifier, "private", 16, 23);
+}
+
+TEST (LexerOperators, ResolvesBothScannedAndSynthesizedOperators) {
+	Lexer                    l_lexer("+");
+	const std::vector<Token> v_tokens = l_lexer.scanTokens();
+	ASSERT_EQ(v_tokens.size(), 2u);
+	EXPECT_EQ(v_tokens.front().get_operator(), oPlus);
+
+	const TokenSpan ts_span{ 1, 1, 1, 2 };
+	const Token     t_operator("+", TokenType::Operator, ts_span);
+	EXPECT_EQ(t_operator.get_lexeme(), "+");
+	EXPECT_EQ(t_operator.get_operator(), oPlus);
+	const Token t_name("longIdentifier", TokenType::Identifier, ts_span);
+	EXPECT_EQ(t_name.get_lexeme(), "longIdentifier");
+	EXPECT_EQ(t_name.get_operator(), oError);
+}
+
 }
 }

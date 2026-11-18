@@ -15,15 +15,13 @@
 namespace cloth {
 
 struct FunctionDeclaration : CallableDeclaration {
-	std::optional<Token>             visibility;
 	std::optional<TypeParameterList> typeParameters;
 
 	FunctionDeclaration (const Token &keyword, const Token &name, std::vector<TypeReference> returnTypes, std::vector<ParameterDeclaration> parameters,
 	                     FunctionBody body, std::optional<Token> visibility = std::nullopt,
 	                     std::optional<TypeParameterList> typeParameters = std::nullopt) :
 	        CallableDeclaration(keyword, name, std::move(parameters), std::move(body), (visibility ? *visibility : keyword).get_span(),
-	                            std::move(returnTypes)),
-	        visibility(std::move(visibility)),
+	                            std::move(returnTypes), visibility),
 	        typeParameters(std::move(typeParameters)) {
 	}
 

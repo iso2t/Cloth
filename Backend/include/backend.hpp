@@ -2,17 +2,17 @@
 
 #pragma once
 
-#include <ast/source_unit.hpp>
+#include <semantic/checked_program.hpp>
 
 namespace backend {
 
 class BackendObject {
     public:
-	explicit BackendObject (const cloth::SourceUnit &ast);
+	explicit BackendObject (cloth::CheckedProgram program);
 	~BackendObject () = default;
 
     private:
-	cloth::SourceUnit ast;
+	cloth::CheckedProgram cp_program;
 };
 
 }

@@ -21,26 +21,25 @@ class ClassParser {
 	explicit ClassParser (Parser &parser) : p_parser(parser) {
 	}
 
-	TopLevelStateDeclaration parseTopLevelState (const Token &typedefKeyword, const Token &keyword, TypeReference payload) const;
-	ClassDeclaration         parse (const Token &keyword, std::optional<Token> visibility, std::optional<Token> finalKeyword) const;
+	[[nodiscard]] TopLevelStateDeclaration parseTopLevelState (const Token &typedefKeyword, const Token &keyword, TypeReference payload) const;
+	[[nodiscard]] ClassDeclaration         parse (const Token &keyword, std::optional<Token> visibility, std::optional<Token> finalKeyword) const;
 
     private:
 	Parser &p_parser;
 
-	ClassParameterDeclaration   parseHeaderParameter () const;
-	std::vector<ClassMember>    parseMembers (const Token &owner, std::vector<TypeDeclarationPtr> &nestedTypes) const;
-	ClassMember                 parseMember (const Token &owner) const;
-	InitialStatePrefix          parseInitialState () const;
-	StateClassMemberPtr         parseState (std::optional<Token> visibility, std::optional<InitialStatePrefix> initial) const;
-	std::vector<StateMemberPtr> parseStateBody (std::vector<TypeDeclarationPtr> *nestedTypes = nullptr) const;
-	void                        finishMember (bool allowsTerminator, Keyword kind) const;
-	ClassFieldDeclaration       parseField (std::optional<Token> visibility) const;
-	TypeReference               parseFieldType () const;
-	ConstructorDeclaration      parseConstructor (const Token &owner) const;
-	DestructorDeclaration       parseDestructor (const Token &owner) const;
-	Token                       parseMemberName (const Token &owner, std::string_view kind) const;
-	std::optional<Token>        parseVisibility () const;
-	bool                        at (Operator op) const;
+	[[nodiscard]] ClassParameterDeclaration parseHeaderParameter () const;
+	std::vector<ClassMember>                parseMembers (const Token &owner, std::vector<TypeDeclarationPtr> &nestedTypes) const;
+	[[nodiscard]] ClassMember               parseMember (const Token &owner) const;
+	[[nodiscard]] InitialStatePrefix        parseInitialState () const;
+	[[nodiscard]] StateClassMemberPtr       parseState (std::optional<Token> visibility, std::optional<InitialStatePrefix> initial) const;
+	std::vector<StateMemberPtr>             parseStateBody (std::vector<TypeDeclarationPtr> *nestedTypes = nullptr) const;
+	void                                    finishMember (bool allowsTerminator, Keyword kind) const;
+	[[nodiscard]] ClassFieldDeclaration     parseField (std::optional<Token> visibility) const;
+	[[nodiscard]] TypeReference             parseFieldType () const;
+	[[nodiscard]] ConstructorDeclaration    parseConstructor (const Token &owner, const std::optional<Token> &visibility) const;
+	[[nodiscard]] DestructorDeclaration     parseDestructor (const Token &owner, const std::optional<Token> &visibility) const;
+	[[nodiscard]] Token                     parseMemberName (const Token &owner, std::string_view kind) const;
+	[[nodiscard]] bool                      at (Operator op) const;
 };
 
 }

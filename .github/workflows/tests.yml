@@ -1,0 +1,86 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: Tests
+on: [push, pull_request]
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            make: make
+            shell: bash
+            filecheck: /usr/lib/llvm-18/bin/FileCheck
+          - os: windows-2025
+            make: mingw32-make
+            # Preserve the UCRT64 DLL search path for the linker and test binaries.
+            shell: pwsh
+            filecheck: FileCheck.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    env:
+      FILECHECK: ${{ matrix.filecheck }}
+      LIT: lit
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install LLVM FileCheck
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y llvm-18-tools=1:18.1.3-1ubuntu1
+      - name: Install MinGW and LLVM FileCheck
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        id: msys2
+        with:
+          msystem: UCRT64
+          install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-make mingw-w64-ucrt-x86_64-llvm
+      - name: Select native MinGW tools
+        if: runner.os == 'Windows'
+        env:
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: Add-Content $env:GITHUB_PATH "$env:MSYS2_ROOT\ucrt64\bin"
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: Tests/Support/requirements-ci.txt
+      - run: python -m pip install -r Tests/Support/requirements-ci.txt
+      - name: Cache GoogleTest sources
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/Tests/deps
+          key: googletest-${{ runner.os }}-${{ hashFiles('Tests/Makefile', 'Tests/Support/fetch_googletest.py') }}
+      - name: Build compiler and unit tests
+        id: build
+        run: |
+          python -c "from pathlib import Path; Path('build/Tests/reports').mkdir(parents=True, exist_ok=True)"
+          ${{ matrix.make }} -j2 test-build 2>&1 | tee build/Tests/reports/build.log
+      - name: Run the full suite
+        env:
+          LIT_OPTS: >-
+            -j2 --order=lexical --timeout=60
+            --output=build/Tests/reports/lit.json
+            --xunit-xml-output=build/Tests/reports/lit.xml
+          GTEST_OUTPUT: xml:build/Tests/reports/unit.xml
+        run: ${{ matrix.make }} -k test 2>&1 | tee build/Tests/reports/test.log
+      - name: Summarize test results
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: python Tests/Support/ci_summary.py build/Tests/reports
+      - name: Upload reports and failure output
+        if: ${{ !cancelled() && steps.build.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results-${{ runner.os }}-${{ github.run_attempt }}
+          path: |
+            build/Tests/reports/
+            build/Tests/run-*/
+          retention-days: 14
+          if-no-files-found: error

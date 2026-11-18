@@ -1,0 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+using math.ops: twice
+pub fn<int> identity(int x) = x
+fn<int> run() = twice(4)

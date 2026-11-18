@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <algorithm>
+#include <format>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -100,8 +101,6 @@ std::string_view to_string (const Keyword keyword) {
 		return "fn";
 	case kPublic:
 		return "pub";
-	case kPrivate:
-		return "private";
 	case kBoolean:
 		return "bool";
 	case kString:
@@ -148,10 +147,38 @@ std::string_view to_string (const Keyword keyword) {
 		return "continue";
 	case kBreak:
 		return "break";
+	case kIntrinsic:
+		return "intrinsic";
 	default:
 		return "error";
 	}
 	return "";
+}
+
+std::string to_stringmulti (const std::vector<Keyword> &keywords) {
+	if (keywords.empty()) {
+		return {};
+	}
+
+	std::size_t st_total = keywords.size() - 1;
+	for (const Keyword k_keyword : keywords) {
+		st_total += to_string(k_keyword).size();
+	}
+
+	std::string s_result;
+	s_result.reserve(st_total);
+	for (const Keyword k_keyword : keywords) {
+		if (!s_result.empty()) {
+			s_result += ' ';
+		}
+		s_result += to_string(k_keyword);
+	}
+
+	return s_result;
+}
+
+bool isReserved (Keyword keyword) {
+	return keyword != kAuto && keyword != kIntrinsic && keyword != kError;
 }
 
 namespace {
@@ -288,6 +315,11 @@ std::string_view to_string (Operator op) {
 	return operator_info(op).spelling;
 }
 
+std::string_view rawStringDelimiter () {
+	static const std::string S_DELIMITER = std::format("{0}{0}{0}", to_string(oDoubleQuotation));
+	return S_DELIMITER;
+}
+
 std::optional<Operator> fromCharacter (const std::string_view spelling) {
 	static const std::unordered_map<std::string_view, Operator> M_OPERATORS = [] {
 		std::unordered_map<std::string_view, Operator> m_operators;
@@ -309,6 +341,14 @@ bool isTokenized (const Operator op) {
 bool isUpdate (Operator op) {
 	return op == oPlusPlus || op == oMinusMinus ||
 	       std::ranges::any_of(COMPOUND_ASSIGNMENTS, [op] (const std::pair<Operator, Operator> &assignment) { return assignment.first == op; });
+}
+
+bool isEquality (Operator op) {
+	return op == oEqual || op == oNotEqual || op == oIdentity;
+}
+
+bool isComparison (Operator op) {
+	return isEquality(op) || op == oLess || op == oGreater || op == oLessEqual || op == oGreaterEqual;
 }
 
 Operator compound_assignment_base (std::string_view spelling) {

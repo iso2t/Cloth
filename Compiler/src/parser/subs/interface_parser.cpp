@@ -49,13 +49,14 @@ std::vector<InterfaceMethodDeclaration> InterfaceParser::parseMembers (std::vect
 			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}
-		if (const int i_functionOffset = p_parser.atKeyword(kPublic) ? 1 : 0; p_parser.atKeyword(kFn, i_functionOffset)) {
-			throw cde::SyntaxErrors::functionInType(p_parser.peek(i_functionOffset));
+		std::optional<Token> opt_visibility = p_parser.parseVisibility();
+		if (p_parser.atKeyword(kFn)) {
+			throw cde::SyntaxErrors::functionInType(p_parser.peek());
 		}
 		if (!p_parser.atKeyword(kMt)) {
 			throw cde::SyntaxErrors::expected(std::format("an interface '{}' declaration", to_string(kMt)), p_parser.peek());
 		}
-		v_methods.push_back(p_parser.p_functionParser.parseInterfaceMethod());
+		v_methods.push_back(p_parser.p_functionParser.parseInterfaceMethod(std::move(opt_visibility)));
 		const FunctionBody *fb_body = v_methods.back().executableBody();
 		const bool          b_block = fb_body && std::holds_alternative<BlockBody>(fb_body->value);
 		if (const Token t_next = p_parser.peek(); !b_block && p_parser.isSemiColon(t_next)) {

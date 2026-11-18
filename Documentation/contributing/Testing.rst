@@ -91,3 +91,46 @@ Pass the compiler's full status constant to ``%expect_exit``. The helper
 handles the low eight bits visible on POSIX. For example, silent lexing
 success and a compiler error both produce status ``1`` on Linux. Check
 the expected streams or diagnostic along with that status.
+
+Continuous integration
+----------------------
+
+On each push and pull request, GitHub Actions runs the whole suite on
+Ubuntu 24.04 with GCC and Windows Server 2025 with MinGW. Each job builds
+the compiler and unit-test executable once with ``make -j2 test-build``,
+then runs ``make -k test``. Lit uses two workers and a 60-second timeout
+per fixture. A failure on either host leaves the other job running.
+
+The job summary shows each runner's executed count, elapsed time, result
+codes, and slowest case. A missing report or a runner with zero executed
+cases fails the job. The ``test-results-<OS>-<attempt>`` artifact retains
+the build and test logs, lit JSON and xUnit results, GoogleTest XML, and
+any failed lit run directories for 14 days. To rerun a lit failure, prefix
+the path after ``Cloth ::`` with ``Tests/`` and pass it to ``test-file``.
+Use GoogleTest's ``Suite.Case`` name with ``test-unit``.
+See the `test workflow <../../.github/workflows/tests.yml>`_.
+
+Checking shard coverage
+~~~~~~~~~~~~~~~~~~~~~~~
+
+CI runs the full set of fixtures on each host. To try two shards locally,
+use the same compiler build, suite, and lexical order for all three runs.
+The shard commands can run concurrently after the build finishes.
+
+.. code-block:: console
+
+   make test-build
+   make lit-all LIT_OPTS="--order=lexical -o build/Tests/all.json"
+   make lit-all LIT_OPTS="--order=lexical --num-shards=2 --run-shard=1 -o build/Tests/part-1.json"
+   make lit-all LIT_OPTS="--order=lexical --num-shards=2 --run-shard=2 -o build/Tests/part-2.json"
+
+Compare the ``name`` fields under ``tests`` in the JSON reports. Every
+name in the complete run should occur exactly once across the two shard
+reports. Each lit invocation creates its own scratch directory.
+
+To include native tests in the trial, use ``make test`` and set
+``GTEST_TOTAL_SHARDS=2`` on both workers. Pair lit shard 1 with
+``GTEST_SHARD_INDEX=0`` and lit shard 2 with ``GTEST_SHARD_INDEX=1``.
+Give each run its own ``GTEST_OUTPUT=xml:<path>`` and compare the
+``classname`` and ``name`` pairs of executed cases against the unsharded
+GoogleTest report.

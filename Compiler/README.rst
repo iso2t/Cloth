@@ -5,10 +5,30 @@ The compiler's front end starts with **lexing**, which turns Cloth source text
 into tokens such as keywords, identifiers, and operators. **Parsing** builds a
 syntax tree from those tokens to represent the structure of the program.
 
-**Semantic analysis** checks that the parsed program follows the rules of
-Cloth. This includes resolving names and checking that types are used
-consistently.
+**Declaration collection** builds the source unit's symbol table before body
+checking. Top-level functions and types enter the file scope. Each type or
+state has a scope for its own members and nested declarations. Callable
+overloads retain their signatures for later name resolution and type checking.
 
-The compiler translates the checked program into LLVM intermediate
-representation (IR). LLVM then lowers that IR to assembly for the target
-architecture.
+Declarations are private by default. Each public declaration needs its own
+``pub``, including members of a public type. ``private`` is an ordinary
+identifier. Write ``int pin`` for a private struct field and ``pub int pin``
+for a public one.
+
+**Semantic checking** resolves declaration signatures across the entry file
+and its imports before checking any bodies. This lets functions call later
+declarations and each other. A dotted ``using`` path is relative to the entry
+file's directory and selects a ``.co`` or ``.clib`` file. Imports expose only
+declarations marked ``pub``. A private top-level name is visible throughout
+its file, and a private member is visible inside its declaring type.
+
+Inside a body, parameters and local bindings take precedence over members
+and file-level names. Overload resolution uses argument labels, parameter
+types, generic arguments and optional parameters. Exact matches take
+priority over assignable matches and contextual literal conversions. The
+checker validates assignments, conditions and return values, including
+whether a value-returning function can reach its closing brace.
+
+The backend receives a ``CheckedProgram`` with resolved declarations, chosen
+overloads, argument bindings and expression result types. LLVM emission is
+still pending.

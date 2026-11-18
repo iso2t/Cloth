@@ -33,11 +33,13 @@ NestedStateDeclaration::NestedStateDeclaration (const Token &keyword, std::optio
         span(std::move(span)) {
 }
 
-StateAttachmentDeclaration::StateAttachmentDeclaration (const Token &keyword, const Token &name, std::optional<InitialStatePrefix> initial, TokenSpan span) :
+StateAttachmentDeclaration::StateAttachmentDeclaration (const Token &keyword, const Token &name, std::optional<InitialStatePrefix> initial, TokenSpan span,
+                                                        std::optional<Token> visibility) :
         StateSelectionDeclaration(std::move(initial)),
         keyword(keyword),
         name(name),
-        span(std::move(span)) {
+        span(std::move(span)),
+        visibility(std::move(visibility)) {
 }
 
 TopLevelStateDeclaration::TopLevelStateDeclaration (const Token &keyword, std::optional<Token> visibility, const Token &name, TypeReference payloadType,
@@ -52,17 +54,19 @@ TopLevelStateDeclaration::TopLevelStateDeclaration (const Token &keyword, std::o
 StateMethodContractDeclaration::StateMethodContractDeclaration (const Token &keyword, std::optional<Token> visibility, const Token &name,
                                                                 std::vector<TypeReference> returnTypes, std::vector<ParameterDeclaration> parameters,
                                                                 TokenSpan span, std::optional<TypeParameterList> typeParameters) :
-        CallableSignature(keyword, std::move(parameters), span, std::move(returnTypes)),
-        visibility(std::move(visibility)),
+        CallableSignature(keyword, std::move(parameters), span, std::move(returnTypes), std::move(visibility)),
         name(name),
         typeParameters(std::move(typeParameters)) {
 }
 
-StateInitializerDeclaration::StateInitializerDeclaration (const Token &keyword, BlockBody body) : keyword(keyword), body{ std::move(body) } {
+StateInitializerDeclaration::StateInitializerDeclaration (const Token &keyword, BlockBody body, std::optional<Token> visibility) :
+        keyword(keyword),
+        body{ std::move(body) },
+        visibility(std::move(visibility)) {
 }
 
 StateActivationDeclaration::StateActivationDeclaration (const Token &name, StateInitializerDeclaration initializer) :
-        CallableSignature(initializer.keyword, {}, initializer.get_span()),
+        CallableSignature(initializer.keyword, {}, initializer.get_span(), {}, initializer.visibility),
         name(name),
         initializer(std::move(initializer)) {
 }

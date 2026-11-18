@@ -194,6 +194,7 @@ enum class DiagnosticCode : std::uint16_t {
 	GENERIC_INFERENCE_FAILED           = 3137,
 	INVALID_COLLECTION_OWNERSHIP       = 3138,
 	INVALID_RANGE_VALUE                = 3139,
+	DUPLICATE_DECLARATION              = 3140,
 
 	UNSUPPORTED_TARGET       = 4000,
 	TOOLCHAIN_OPTIONS        = 4001,

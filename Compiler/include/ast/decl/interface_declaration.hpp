@@ -26,8 +26,8 @@ struct InterfaceMethodDeclaration : CallableSignature {
 
 	InterfaceMethodDeclaration (const Token &keyword, const Token &name, std::vector<TypeReference> returnTypes,
 	                            std::vector<ParameterDeclaration> parameters, std::optional<InterfaceMethodFallback> fallback, const TokenSpan &span,
-	                            std::optional<TypeParameterList> typeParameters = std::nullopt) :
-	        CallableSignature(keyword, std::move(parameters), span, std::move(returnTypes)),
+	                            std::optional<TypeParameterList> typeParameters = std::nullopt, std::optional<Token> visibility = std::nullopt) :
+	        CallableSignature(keyword, std::move(parameters), span, std::move(returnTypes), std::move(visibility)),
 	        name(name),
 	        fallback(std::move(fallback)),
 	        typeParameters(std::move(typeParameters)) {

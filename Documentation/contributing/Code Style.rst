@@ -6,6 +6,19 @@ Code Style
 Follow this guide when adding or editing C++ code for the Cloth
 compiler.
 
+Cloth keywords and operators
+---------------------------
+
+Keep the spelling of each Cloth keyword and operator in the token module.
+Use the ``Keyword`` and ``Operator`` enumerators when making decisions about
+syntax. When matching or emitting source text, obtain the spelling with
+``to_string``. Use ``to_stringmulti`` for a known, space-separated sequence of
+keywords. Apply the same rule to synthesized tokens, type names, and
+diagnostics that show the programmer what to write.
+
+Source fixtures and tests that verify the public spelling should contain
+literal Cloth text so they can catch unintended language changes.
+
 Explicit types
 --------------
 

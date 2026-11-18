@@ -79,11 +79,13 @@ struct NestedStateDeclaration : StateSelectionDeclaration, StateBodyDeclaration 
 };
 
 struct StateAttachmentDeclaration : StateSelectionDeclaration {
-	Token     keyword;
-	Token     name;
-	TokenSpan span;
+	Token                keyword;
+	Token                name;
+	TokenSpan            span;
+	std::optional<Token> visibility;
 
-	StateAttachmentDeclaration (const Token &keyword, const Token &name, std::optional<InitialStatePrefix> initial, TokenSpan span);
+	StateAttachmentDeclaration (const Token &keyword, const Token &name, std::optional<InitialStatePrefix> initial, TokenSpan span,
+	                            std::optional<Token> visibility = std::nullopt);
 
 	[[nodiscard]] const Token &get_keyword () const override {
 		return keyword;
@@ -111,7 +113,6 @@ struct TopLevelStateDeclaration : Declaration, StateBodyDeclaration {
 };
 
 struct StateMethodContractDeclaration : StateClassMember, CallableSignature {
-	std::optional<Token>             visibility;
 	Token                            name;
 	std::optional<TypeParameterList> typeParameters;
 
@@ -133,13 +134,14 @@ struct StateMethodContractDeclaration : StateClassMember, CallableSignature {
 };
 
 struct StateInitializerDeclaration : StateMember {
-	Token        keyword;
-	FunctionBody body;
+	Token                keyword;
+	FunctionBody         body;
+	std::optional<Token> visibility;
 
-	StateInitializerDeclaration (const Token &keyword, BlockBody body);
+	StateInitializerDeclaration (const Token &keyword, BlockBody body, std::optional<Token> visibility = std::nullopt);
 
 	[[nodiscard]] TokenSpan get_span () const override {
-		return TokenSpan::span_through(keyword.get_span(), body.get_span());
+		return TokenSpan::span_through((visibility ? *visibility : keyword).get_span(), body.get_span());
 	}
 };
 

@@ -11,22 +11,17 @@
 #include <cde/syntax_exception.hpp>
 #include <lexer/lexer.hpp>
 #include <token/numeric_literals.hpp>
+#include <token/token.hpp>
 #include <util/utf8.hpp>
 
 namespace cloth {
 namespace {
 
-/**
- * @brief Represents the prefix used for string interpolation.
- * @param INTERPOLATION_PREFIX The prefix used for string interpolation.
- */
-const std::string S_INTERPOLATION_PREFIX = std::format("{}{}", to_string(oPound), to_string(oDoubleQuotation));
-
-/**
- * @brief Represents the prefix used for string interpolation.
- * @param INTERPOLATION_PREFIX The prefix used for string interpolation.
- */
-const auto S_RAW_STRING_DELIMITER = std::string(3, to_string(oDoubleQuotation).front());
+const std::string_view S_STRING_QUOTE         = to_string(oDoubleQuotation);
+const std::string_view S_CHARACTER_QUOTE      = to_string(oQuotation);
+const std::string_view S_INTERPOLATION_OPEN   = to_string(oBraceOpen);
+const std::string_view S_INTERPOLATION_CLOSE  = to_string(oBraceClose);
+const std::string      S_INTERPOLATION_PREFIX = std::format("{}{}", to_string(oPound), S_STRING_QUOTE);
 
 /**
  * @brief Represents an entry for an operator, including its type and spelling.
@@ -60,17 +55,13 @@ const std::vector<OperatorEntry> V_OPERATORS = [] {
 	return v_entries;
 }();
 
-/**
- * @brief Returns a list of all keywords except for 'auto'.
- *
- * @return std::vector<Keyword> The list of keywords excluding 'auto'.
- */
+// Contextual keywords keep their identifier token outside the grammar that recognizes them.
 const std::vector<Keyword> V_KEYWORDS = [] {
 	std::vector<Keyword> v_entries;
 
-	for (int value = kMod; value < kError; ++value) {
-		if (const auto keyword = static_cast<Keyword>(value); keyword != kAuto) {
-			v_entries.push_back(keyword);
+	for (int i_value = kMod; i_value < kError; ++i_value) {
+		if (const Keyword k_keyword = static_cast<Keyword>(i_value); isReserved(k_keyword)) {
+			v_entries.push_back(k_keyword);
 		}
 	}
 
@@ -148,7 +139,7 @@ bool isLineBreak (const char c) {
  * @return false Otherwise.
  */
 bool isValidEscape (const char c) {
-	return std::string_view{ "nrt0\\'\"" }.find(c) != std::string_view::npos;
+	return c == S_STRING_QUOTE.front() || c == S_CHARACTER_QUOTE.front() || std::string_view{ "nrt0\\" }.find(c) != std::string_view::npos;
 }
 
 /**
@@ -192,6 +183,10 @@ void Lexer::advanceBytes (const std::size_t length) {
  */
 char Lexer::peek () const {
 	return charAt(source_text(), i_current);
+}
+
+bool Lexer::startsWith (std::string_view spelling) const {
+	return std::string_view(source_text()).substr(i_current).starts_with(spelling);
 }
 
 /**
@@ -293,30 +288,26 @@ void Lexer::scanToken () {
 	const std::string_view s_remaining = std::string_view{ source_text() }.substr(i_current);
 
 	if (s_remaining.starts_with(S_INTERPOLATION_PREFIX)) {
-		for (std::size_t i = 0; i < S_INTERPOLATION_PREFIX.size(); ++i) {
-			advance();
-		}
+		advanceBytes(S_INTERPOLATION_PREFIX.size());
 		addToken(TokenType::InterpolationStart, span(), source_text().substr(i_start, i_current - i_start));
 		interpolatedString();
 		return;
 	}
 
-	if (s_remaining.starts_with(S_RAW_STRING_DELIMITER)) {
-		for (std::size_t i = 0; i < S_RAW_STRING_DELIMITER.size(); ++i) {
-			advance();
-		}
+	if (s_remaining.starts_with(rawStringDelimiter())) {
+		advanceBytes(rawStringDelimiter().size());
 		rawString();
 		return;
 	}
 
-	if (peek() == '"') {
-		advance();
+	if (s_remaining.starts_with(S_STRING_QUOTE)) {
+		advanceBytes(S_STRING_QUOTE.size());
 		string();
 		return;
 	}
 
-	if (peek() == '\'') {
-		advance();
+	if (s_remaining.starts_with(S_CHARACTER_QUOTE)) {
+		advanceBytes(S_CHARACTER_QUOTE.size());
 		character();
 		return;
 	}
@@ -519,39 +510,40 @@ void Lexer::interpolatedString () {
 	mark();
 	while (!isAtEnd()) {
 		const char c_character = peek();
-		if (c_character == '"') {
+		if (startsWith(S_STRING_QUOTE)) {
 			emit(TokenType::StringSegment);
 			mark();
-			advance();
+			advanceBytes(S_STRING_QUOTE.size());
 			emit(TokenType::InterpolationEnd);
 			return;
 		}
 
-		if (c_character == '{' || c_character == '}') {
-			if (charAt(source_text(), i_current + 1) == c_character) {
-				advance();
-				advance();
+		const bool b_open = startsWith(S_INTERPOLATION_OPEN);
+		if (b_open || startsWith(S_INTERPOLATION_CLOSE)) {
+			const std::string_view s_brace = b_open ? S_INTERPOLATION_OPEN : S_INTERPOLATION_CLOSE;
+			if (std::string_view(source_text()).substr(i_current + s_brace.size()).starts_with(s_brace)) {
+				advanceBytes(2 * s_brace.size());
 				continue;
 			}
-			if (c_character == '}') {
-				lexerError(p_current, "Expected '}}' for a literal closing brace");
+			if (!b_open) {
+				lexerError(p_current, std::format("Expected '{0}{0}' for a literal closing brace", s_brace));
 			}
 
 			emit(TokenType::StringSegment);
 			mark();
-			advance();
+			advanceBytes(S_INTERPOLATION_OPEN.size());
 			emit(TokenType::InterpolationOpen);
 			const auto hole  = p_start;
 			int        depth = 0;
 			while (!isAtEnd()) {
 				mark();
-				if (peek() == '}' && depth == 0) {
-					break;
-				}
-				if (peek() == '{') {
-					++depth;
-				} else if (peek() == '}') {
+				if (startsWith(S_INTERPOLATION_CLOSE)) {
+					if (depth == 0) {
+						break;
+					}
 					--depth;
+				} else if (startsWith(S_INTERPOLATION_OPEN)) {
+					++depth;
 				}
 				scanToken();
 			}
@@ -559,7 +551,7 @@ void Lexer::interpolatedString () {
 				lexerError(hole, "Unterminated interpolation");
 			}
 
-			advance();
+			advanceBytes(S_INTERPOLATION_CLOSE.size());
 			emit(TokenType::InterpolationClose);
 			mark();
 			continue;
@@ -596,10 +588,8 @@ void Lexer::interpolatedString () {
  */
 void Lexer::rawString () {
 	while (!isAtEnd()) {
-		if (std::string_view{ source_text() }.substr(i_current).starts_with(S_RAW_STRING_DELIMITER)) {
-			for (std::size_t i = 0; i < S_RAW_STRING_DELIMITER.size(); ++i) {
-				advance();
-			}
+		if (startsWith(rawStringDelimiter())) {
+			advanceBytes(rawStringDelimiter().size());
 			addToken(TokenType::RawStringLiteral, span(), source_text().substr(i_start, i_current - i_start));
 			return;
 		}
@@ -639,8 +629,8 @@ void Lexer::advanceStringScalar () {
 void Lexer::string () {
 	while (!isAtEnd()) {
 		const char c_character = peek();
-		if (c_character == '"') {
-			advance();
+		if (startsWith(S_STRING_QUOTE)) {
+			advanceBytes(S_STRING_QUOTE.size());
 			addToken(TokenType::StringLiteral, span(), source_text().substr(i_start, i_current - i_start));
 			return;
 		}
@@ -681,7 +671,7 @@ void Lexer::character () {
 		lexerError(p_start, "Unterminated character literal");
 	}
 
-	if (peek() == '\'') {
+	if (startsWith(S_CHARACTER_QUOTE)) {
 		lexerError(p_start, "Empty character literal");
 	}
 
@@ -698,11 +688,11 @@ void Lexer::character () {
 		advanceStringScalar();
 	}
 
-	if (peek() != '\'') {
+	if (!startsWith(S_CHARACTER_QUOTE)) {
 		lexerError(p_start, "Character literal must contain exactly one character");
 	}
 
-	advance();
+	advanceBytes(S_CHARACTER_QUOTE.size());
 	addToken(TokenType::CharacterLiteral, span(), source_text().substr(i_start, i_current - i_start));
 }
 

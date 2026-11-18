@@ -102,6 +102,7 @@ class Parser {
 	TypeDeclarationPtr          parseNestedTypeDeclaration ();
 	DeclarationPtr              parseTypeDeclaration (bool nested = false);
 	bool                        atKeyword (Keyword keyword, int offset = 0);
+	std::optional<Token>        parseVisibility ();
 	bool                        at (Operator op, int offset = 0);
 	void                        rejectMethodOutsideType ();
 	BlockBody                   parseBlock ();
@@ -114,7 +115,7 @@ class Parser {
 	static bool                 isStatementSeparator (const Token &token);
 	StatementPtr                parseStatement (bool allowWhileTrailer = false, bool multilineResults = false);
 	BlockBody                   parseUnbracedBody (bool allowWhileTrailer = false);
-	TokenSpan                   previousStatementEnd () const;
+	[[nodiscard]] TokenSpan     previousStatementEnd () const;
 	ReturnStatement             returnStatement (bool allowWhileTrailer);
 	bool                        startsAssignmentList ();
 	static bool                 isReceivingTarget (const Token &token, bool assignment = false);

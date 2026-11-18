@@ -32,7 +32,7 @@ class Lexer {
 	Lexer (const char *src, const size_t length) : Lexer(std::string(src, length)) {
 	}
 
-	Lexer (const SourceFile &source, size_t offset) : Lexer(SourceFile{ source.get_path(), source.get_contents().substr(offset), source.get_extension() }) {
+	Lexer (const SourceFile &source, const size_t offset) : Lexer(SourceFile{ source.get_path(), source.get_contents().substr(offset), source.get_extension() }) {
 	}
 
 	~Lexer () = default;
@@ -57,25 +57,26 @@ class Lexer {
 		return p_source->get_contents();
 	}
 
-	char               advance ();
-	void               advanceBytes (std::size_t length);
-	[[nodiscard]] char peek () const;
-	[[nodiscard]] bool isAtEnd () const;
-	void               addToken (TokenType type, const TokenSpan &span, const std::string &lexeme);
-	TokenSpan          span () const;
-	TokenSpan          cursorSpan () const;
-	Operator           matchOperator ();
-	void               scanToken ();
-	bool               skipComments ();
-	void               number ();
-	void               consumeNumericDigits (int radix);
-	void               identifier ();
-	void               consumeIdentifierParts ();
-	void               interpolatedString ();
-	void               rawString ();
-	void               advanceStringScalar ();
-	void               string ();
-	void               character ();
+	char                    advance ();
+	void                    advanceBytes (std::size_t length);
+	[[nodiscard]] char      peek () const;
+	[[nodiscard]] bool      startsWith (std::string_view spelling) const;
+	[[nodiscard]] bool      isAtEnd () const;
+	void                    addToken (TokenType type, const TokenSpan &span, const std::string &lexeme);
+	[[nodiscard]] TokenSpan span () const;
+	[[nodiscard]] TokenSpan cursorSpan () const;
+	Operator                matchOperator ();
+	void                    scanToken ();
+	bool                    skipComments ();
+	void                    number ();
+	void                    consumeNumericDigits (int radix);
+	void                    identifier ();
+	void                    consumeIdentifierParts ();
+	void                    interpolatedString ();
+	void                    rawString ();
+	void                    advanceStringScalar ();
+	void                    string ();
+	void                    character ();
 
 	[[noreturn]] void invalidNumber (std::string_view reason);
 	[[noreturn]] void invalidNumericSeparator () const;

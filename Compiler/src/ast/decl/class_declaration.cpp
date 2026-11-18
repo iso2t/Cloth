@@ -27,13 +27,13 @@ std::vector<ParameterDeclaration> collectPrimaryParameters (const ClassDeclarati
 }
 
 ConstructorDeclaration::ConstructorDeclaration (const Token &name, std::vector<ParameterDeclaration> parameters, ConstructorDelegation delegation,
-                                                BlockBody body) :
-        CallableDeclaration(name, name, std::move(parameters), FunctionBody{ std::move(body) }, name.get_span()),
+                                                BlockBody body, const std::optional<Token> &visibility) :
+        CallableDeclaration(name, name, std::move(parameters), FunctionBody{ std::move(body) }, (visibility ? *visibility : name).get_span(), {}, visibility),
         delegation(std::move(delegation)) {
 }
 
-DestructorDeclaration::DestructorDeclaration (const Token &op, const Token &name, BlockBody body) :
-        CallableDeclaration(op, name, {}, FunctionBody{ std::move(body) }, op.get_span()) {
+DestructorDeclaration::DestructorDeclaration (const Token &op, const Token &name, BlockBody body, const std::optional<Token> &visibility) :
+        CallableDeclaration(op, name, {}, FunctionBody{ std::move(body) }, (visibility ? *visibility : op).get_span(), {}, visibility) {
 }
 
 ClassDeclaration::ClassDeclaration (const Token &keyword, const Token &name, std::optional<Token> visibility, std::optional<Token> finalKeyword,

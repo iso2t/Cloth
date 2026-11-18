@@ -7,6 +7,7 @@ obj-y := cloth.o \
          ast/decl/state_declaration.o \
          ast/expr/expressions.o \
          ast/expr/struct_expressions.o \
+         ast/type/type_reference.o \
          parser/parser.o \
          ast/stmt/statements.o \
          parser/subs/bindings_parser.o \
@@ -24,7 +25,12 @@ obj-y := cloth.o \
          parser/subs/loops/while_loop_parser.o \
          parser/subs/struct_parser.o \
          parser/subs/type_parser.o \
-         ast/type/type_reference.o \
+         semantic/bodies.o \
+         semantic/calls.o \
+         semantic/checked_program.o \
+         semantic/expressions.o \
+         semantic/symbol_table.o \
+         semantic/types.o \
          system/compiler_options.o \
          token/numeric_literals.o \
          token/token.o \

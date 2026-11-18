@@ -60,7 +60,7 @@ bool endsInStatement (const std::vector<StatementPtr> &statements) {
 }
 
 FunctionDeclaration FunctionParser::parseFunction () {
-	std::optional<Token> opt_visibility = p_parser.atKeyword(kPublic) ? std::make_optional(p_parser.advance()) : std::nullopt;
+	std::optional<Token> opt_visibility = p_parser.parseVisibility();
 	if (!p_parser.atKeyword(kFn)) {
 		throw cde::SyntaxErrors::expected(std::format("a '{}' declaration", to_string(kFn)), p_parser.peek());
 	}
@@ -144,7 +144,7 @@ MethodDeclaration FunctionParser::parseMethod (std::optional<Token> visibility, 
 		 std::nullopt, overridePrefix, virtualPrefix,          std::move(typeParameters) };
 }
 
-InterfaceMethodDeclaration FunctionParser::parseInterfaceMethod () {
+InterfaceMethodDeclaration FunctionParser::parseInterfaceMethod (std::optional<Token> visibility) {
 	auto [keyword, name, returnTypes, parameters, typeParameters] = methodHeader(/*allowTypeParameters=*/true);
 	const int i_signatureEnd                                      = p_parser.i_currentIndex;
 	p_parser.skipNewLines();
@@ -157,8 +157,10 @@ InterfaceMethodDeclaration FunctionParser::parseInterfaceMethod () {
 	} else {
 		p_parser.i_currentIndex = i_signatureEnd;
 	}
-	const TokenSpan ts_span = TokenSpan::span_through(keyword.get_span(), p_parser.previous().get_span());
-	return { keyword, name, std::move(returnTypes), std::move(parameters), std::move(opt_fallback), ts_span, std::move(typeParameters) };
+	const TokenSpan ts_span = TokenSpan::span_through((visibility ? *visibility : keyword).get_span(), p_parser.previous().get_span());
+	return {
+		keyword, name, std::move(returnTypes), std::move(parameters), std::move(opt_fallback), ts_span, std::move(typeParameters), std::move(visibility)
+	};
 }
 
 InterfaceMethodFallback FunctionParser::parseInterfaceFallback () {
@@ -236,9 +238,9 @@ MethodDeclaration FunctionParser::parseOperator (std::optional<Token> visibility
 		p_parser.advance();
 		v_returnTypes.push_back(p_parser.p_typeParser.parse(/*inCast=*/false, /*allowArrays=*/true));
 	}
-	const std::optional<Operator> opt_operation    = fromCharacter(t_name.get_lexeme());
-	const bool                    b_allowStatement = opt_operation == oIndexWrite || (opt_operation && isUpdate(*opt_operation));
-	FunctionBody                  fb_body          = parseBody("operator", b_allowStatement);
+	const Operator o_operation      = t_name.get_operator();
+	const bool     b_allowStatement = o_operation == oIndexWrite || isUpdate(o_operation);
+	FunctionBody   fb_body          = parseBody(to_string(kOperator), b_allowStatement);
 	return { t_keyword,
 		 t_name,
 		 std::move(v_returnTypes),
@@ -290,7 +292,7 @@ FunctionBody FunctionParser::parseBody (std::string_view kind, bool allowStateme
 		}
 		const Token t_equals = p_parser.advance();
 		const Token t_next   = p_parser.peek();
-		if (allowIntrinsic && t_next.get_type() == TokenType::Identifier && t_next.get_lexeme() == "intrinsic" &&
+		if (allowIntrinsic && t_next.get_type() == TokenType::Identifier && t_next.get_lexeme() == to_string(kIntrinsic) &&
 		    p_parser.peek(1).get_type() == TokenType::StringLiteral) {
 			p_parser.advance();
 			return { IntrinsicBody(t_equals, p_parser.advance()) };

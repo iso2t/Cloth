@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace cloth {
 
@@ -79,7 +80,6 @@ enum Keyword {
 	kAuto,
 	kFn,
 	kPublic,
-	kPrivate,
 
 	kBoolean,
 	kString,
@@ -108,6 +108,7 @@ enum Keyword {
 	kContinue,
 	kBreak,
 
+	kIntrinsic,
 	kError
 
 };
@@ -182,13 +183,18 @@ enum Operator {
 };
 
 std::string_view        to_string (Keyword keyword);
+std::string             to_stringmulti (const std::vector<Keyword> &keywords);
+bool                    isReserved (Keyword keyword);
 std::string_view        to_string (Operator op);
 std::string_view        operator_name (Operator op);
 std::optional<Operator> fromCharacter (std::string_view spelling);
 bool                    isTokenized (Operator op);
 bool                    isUpdate (Operator op);
+bool                    isEquality (Operator op);
+bool                    isComparison (Operator op);
 Operator                compound_assignment_base (std::string_view spelling);
 std::string_view        to_string (TokenType type);
+std::string_view        rawStringDelimiter ();
 
 class Token {
 	TokenSpan   t_span;
@@ -207,9 +213,6 @@ class Token {
 	        s_lexeme(std::move(lexeme)) {
 	}
 
-	Token (const char *lexeme, const TokenType type, TokenSpan span) : t_span(std::move(span)), t_type(type), s_lexeme(lexeme, sizeof(lexeme)) {
-	}
-
 	Token (const Token &other) = default;
 
 	[[nodiscard]] const std::string &get_lexeme () const {
@@ -222,6 +225,13 @@ class Token {
 
 	[[nodiscard]] TokenType get_type () const {
 		return t_type;
+	}
+
+	[[nodiscard]] Operator get_operator () const {
+		if (o_operator == oError && t_type == TokenType::Operator) {
+			return fromCharacter(s_lexeme).value_or(oError);
+		}
+		return o_operator;
 	}
 
 	[[nodiscard]] std::string_view type_name () const {

@@ -67,10 +67,10 @@ std::vector<StructFieldDeclaration> StructParser::parseFields () const {
 	        },
 	        [this] () -> StructFieldDeclaration {
 		        rejectFunction();
-		        std::optional<Token> opt_privateKeyword = p_parser.atKeyword(kPrivate) ? std::make_optional(p_parser.advance()) : std::nullopt;
-		        TypeReference        tr_type            = p_parser.p_typeParser.parse(/*inCast=*/false, /*allowArrays=*/true);
-		        const Token          t_name             = p_parser.expect(TokenType::Identifier, "a struct field name");
-		        return { .type = std::move(tr_type), .name = t_name, .privateKeyword = std::move(opt_privateKeyword) };
+		        std::optional<Token> opt_visibility = p_parser.parseVisibility();
+		        TypeReference        tr_type        = p_parser.p_typeParser.parse(/*inCast=*/false, /*allowArrays=*/true);
+		        const Token          t_name         = p_parser.expect(TokenType::Identifier, "a struct field name");
+		        return { .type = std::move(tr_type), .name = t_name, .visibility = std::move(opt_visibility) };
 	        });
 }
 
@@ -82,14 +82,15 @@ std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDecla
 			continue;
 		}
 		rejectFunction();
+		std::optional<Token> opt_visibility = p_parser.parseVisibility();
 		if (p_parser.atKeyword(kMt)) {
-			v_methods.push_back(p_parser.p_functionParser.parseMethod(std::nullopt, std::nullopt, std::nullopt, /*allowIntrinsic=*/false,
+			v_methods.push_back(p_parser.p_functionParser.parseMethod(std::move(opt_visibility), std::nullopt, std::nullopt,
+			                                                          /*allowIntrinsic=*/false,
 			                                                          /*allowTypeParameters=*/true));
 		} else if (p_parser.atKeyword(kOperator)) {
-			v_methods.push_back(p_parser.p_functionParser.parseOperator());
+			v_methods.push_back(p_parser.p_functionParser.parseOperator(std::move(opt_visibility)));
 		} else {
-			throw cde::SyntaxErrors::expected(
-			        std::format("a '{}' or '{}' declaration with inherited visibility", to_string(kMt), to_string(kOperator)), p_parser.peek());
+			throw cde::SyntaxErrors::expected(std::format("a '{}' or '{}' declaration", to_string(kMt), to_string(kOperator)), p_parser.peek());
 		}
 		const bool b_hasEquals = v_methods.back().body.get_equals() != nullptr;
 		rejectFunction();

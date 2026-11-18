@@ -185,7 +185,7 @@ TypeDeclarationPtr Parser::parseNestedTypeDeclaration () {
 }
 
 DeclarationPtr Parser::parseTypeDeclaration (bool nested) {
-	std::optional<Token>         opt_visibility   = atKeyword(kPublic) ? std::make_optional(advance()) : std::nullopt;
+	std::optional<Token>         opt_visibility   = parseVisibility();
 	std::optional<Token>         opt_finalKeyword = atKeyword(kFinal) ? std::make_optional(advance()) : std::nullopt;
 	const Token                  t_keyword        = advance();
 	std::optional<TypeReference> opt_payload;
@@ -243,6 +243,10 @@ DeclarationPtr Parser::parseTypeDeclaration (bool nested) {
 bool Parser::atKeyword (const Keyword keyword, const int offset) {
 	const Token t_offset = peek(offset);
 	return t_offset.get_type() == TokenType::Keyword && t_offset.get_lexeme() == to_string(keyword);
+}
+
+std::optional<Token> Parser::parseVisibility () {
+	return atKeyword(kPublic) ? std::make_optional(advance()) : std::nullopt;
 }
 
 bool Parser::at (const Operator op, const int offset) {
@@ -468,7 +472,7 @@ TokenSpan Parser::previousStatementEnd () const {
 
 ReturnStatement Parser::returnStatement (const bool allowWhileTrailer) {
 	if (!b_inFnBody) {
-		throw cde::SyntaxErrors::expected("a return inside a function body", peek());
+		throw cde::SyntaxErrors::expected(std::format("a {} inside a function body", to_string(kReturn)), peek());
 	}
 	if (bbs_bindingBrace) {
 		bbs_bindingBrace->hasReturn = true;

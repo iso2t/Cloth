@@ -101,7 +101,11 @@ struct IntrinsicBody {
 
 	[[nodiscard]] std::string_view get_id () const {
 		const std::string_view s_name = operation.get_lexeme();
-		return s_name.size() >= 2 && s_name.starts_with('"') && s_name.ends_with('"') ? s_name.substr(1, s_name.size() - 2) : s_name;
+		const std::string_view s_quote = to_string(oDoubleQuotation);
+		if (s_name.size() >= 2 * s_quote.size() && s_name.starts_with(s_quote) && s_name.ends_with(s_quote)) {
+			return s_name.substr(s_quote.size(), s_name.size() - 2 * s_quote.size());
+		}
+		return s_name;
 	}
 };
 
@@ -128,6 +132,7 @@ struct FunctionBody {
 /** A callable signature may stand on its own or have an executable body. */
 struct CallableSignature : Declaration {
 	Token                             keyword;
+	std::optional<Token>              visibility;
 	std::vector<TypeReference>        returnTypes;
 	std::vector<ParameterDeclaration> parameters;
 
@@ -140,9 +145,10 @@ struct CallableSignature : Declaration {
 
     protected:
 	CallableSignature (const Token &keyword, std::vector<ParameterDeclaration> parameters, const TokenSpan &span,
-	                   std::vector<TypeReference> returnTypes = {}) :
+	                   std::vector<TypeReference> returnTypes = {}, std::optional<Token> visibility = std::nullopt) :
 	        Declaration{ span },
 	        keyword(keyword),
+	        visibility(std::move(visibility)),
 	        returnTypes(std::move(returnTypes)),
 	        parameters(std::move(parameters)) {
 	}
@@ -172,8 +178,8 @@ struct CallableDeclaration : CallableSignature {
 
     protected:
 	CallableDeclaration (const Token &keyword, const Token &name, std::vector<ParameterDeclaration> parameters, FunctionBody body, const TokenSpan &start,
-	                     std::vector<TypeReference> returnTypes = {}) :
-	        CallableSignature(keyword, std::move(parameters), TokenSpan::span_through(start, body.get_span()), std::move(returnTypes)),
+	                     std::vector<TypeReference> returnTypes = {}, const std::optional<Token> &visibility = std::nullopt) :
+	        CallableSignature(keyword, std::move(parameters), TokenSpan::span_through(start, body.get_span()), std::move(returnTypes), visibility),
 	        name(name),
 	        body(std::move(body)) {
 	}

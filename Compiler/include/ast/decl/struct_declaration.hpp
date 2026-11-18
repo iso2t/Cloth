@@ -17,10 +17,10 @@ namespace cloth {
 struct StructFieldDeclaration {
 	TypeReference        type;
 	Token                name;
-	std::optional<Token> privateKeyword = std::nullopt;
+	std::optional<Token> visibility = std::nullopt;
 
 	[[nodiscard]] TokenSpan get_span () const {
-		return TokenSpan::span_through(privateKeyword ? privateKeyword->get_span() : type.get_span(), name.get_span());
+		return TokenSpan::span_through(visibility ? visibility->get_span() : type.get_span(), name.get_span());
 	}
 };
 
@@ -31,7 +31,6 @@ struct OperatorMember {
 };
 
 struct MethodDeclaration : CallableDeclaration, StateMember {
-	std::optional<Token>             visibility;
 	std::optional<OperatorMember>    operatorMember;
 	std::optional<TokenSpan>         overridePrefix;
 	std::optional<TokenSpan>         virtualPrefix;
@@ -42,8 +41,8 @@ struct MethodDeclaration : CallableDeclaration, StateMember {
 	                   const std::optional<TokenSpan> &overridePrefix = std::nullopt, const std::optional<TokenSpan> &virtualPrefix = std::nullopt,
 	                   std::optional<TypeParameterList> typeParameters = std::nullopt) :
 	        CallableDeclaration(keyword, name, std::move(parameters), std::move(body),
-	                            virtualPrefix.value_or(overridePrefix.value_or((visibility ? *visibility : keyword).get_span())), std::move(returnTypes)),
-	        visibility(std::move(visibility)),
+	                            virtualPrefix.value_or(overridePrefix.value_or((visibility ? *visibility : keyword).get_span())), std::move(returnTypes),
+	                            visibility),
 	        operatorMember(std::move(operatorMember)),
 	        overridePrefix(overridePrefix),
 	        virtualPrefix(virtualPrefix),
