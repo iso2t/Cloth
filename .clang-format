@@ -43,10 +43,12 @@ IncludeCategories:
     Priority: 1
   - Regex: '^<Diagnostics/'
     Priority: 2
-  - Regex: '^<([a-z0-9_]+|[a-z0-9_/]+\.h)>'
+  - Regex: '^<Backend/'
     Priority: 3
-  - Regex: '^<'
+  - Regex: '^<([a-z0-9_]+|[a-z0-9_/]+\.h)>'
     Priority: 4
+  - Regex: '^<'
+    Priority: 5
 
 IncludeIsMainRegex: '(Test)?$'
 IndentCaseLabels: false

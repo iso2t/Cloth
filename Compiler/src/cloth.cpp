@@ -14,6 +14,8 @@
 #include <system/compiler_options.hpp>
 #include <util/pstream.hpp>
 
+#include "../../Backend/include/backend.hpp"
+
 int main (const int argc, char *argv[]) try {
 	const cloth::sys::CompilerOptions co_options{ argc, argv };
 	if (co_options.is_empty()) {
@@ -34,8 +36,7 @@ int main (const int argc, char *argv[]) try {
 	}
 
 	auto p_parser = cloth::Parser{ l_lexer };
-	p_parser.parse();
-	std::cout << "Success!" << std::endl;
+	std::ignore   = backend::BackendObject{ p_parser.parse() };
 
 	return SUCCESS;
 } catch (const cde::ClothDiagnostic &error) {

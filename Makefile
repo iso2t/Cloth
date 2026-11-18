@@ -9,6 +9,7 @@ BUILD_DIR ?= build
 
 include Compiler/Kbuild
 include Diagnostics/Kbuild
+include Backend/Kbuild
 
 ifeq ($(OS),Windows_NT)
 ifneq ($(filter default undefined,$(origin CC)),)
@@ -26,6 +27,7 @@ CC ?= cc
 musubi_object := $(BUILD_DIR)/obj/ThirdParty/musubi/musubi_impl.o
 objects := $(addprefix $(BUILD_DIR)/obj/,$(obj-y)) \
            $(addprefix $(BUILD_DIR)/obj/Diagnostics/,$(diagnostics-obj-y)) \
+           $(addprefix $(BUILD_DIR)/obj/Backend/,$(backend-obj-y)) \
            $(musubi_object)
 program := $(BUILD_DIR)/cloth$(exe_suffix)
 
@@ -35,7 +37,7 @@ all: $(program)
 run: $(program)
 	"$(run_path)"
 
-$(program): $(objects) Makefile Compiler/Kbuild Diagnostics/Kbuild
+$(program): $(objects) Makefile Compiler/Kbuild Diagnostics/Kbuild Backend/Kbuild
 	$(CXX) $(LDFLAGS) $(objects) $(LDLIBS) -o "$@"
 
 $(BUILD_DIR)/obj/%.o: Compiler/src/%.cpp Makefile compile_flags.txt
@@ -45,6 +47,10 @@ $(BUILD_DIR)/obj/%.o: Compiler/src/%.cpp Makefile compile_flags.txt
 $(BUILD_DIR)/obj/Diagnostics/cde/diagnostic_reporter.o: private override CPPFLAGS += -IThirdParty/musubi -DMU_API=
 
 $(BUILD_DIR)/obj/Diagnostics/%.o: Diagnostics/src/%.cpp Makefile compile_flags.txt
+	@$(make_dir)
+	$(CXX) @compile_flags.txt $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c "$<" -o "$@"
+
+$(BUILD_DIR)/obj/Backend/%.o: Backend/src/%.cpp Makefile compile_flags.txt
 	@$(make_dir)
 	$(CXX) @compile_flags.txt $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c "$<" -o "$@"
 
