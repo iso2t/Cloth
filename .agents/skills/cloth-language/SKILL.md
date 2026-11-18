@@ -1,0 +1,36 @@
+---
+name: cloth-language
+description: Write and review Cloth source accepted by the C++ parser, including imports, functions, types and states, expressions, bindings, and control flow.
+---
+
+# Cloth syntax
+
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+
+Use the C++ parser to answer what can be written in a Cloth source file. A successful `--src` invocation reaches the parsed syntax tree. Name resolution, type checking, and execution require further backend work. [Parser entry](../../../Compiler/src/parser/parser.cpp) · [Backend handoff](../../../Compiler/src/cloth.cpp)
+
+## Source files and functions
+
+~~~cloth
+using geometry.points: Point, Grid
+
+public fn<int> offset(int x, final opt<int> step ?: 1) = x + step
+fn<int, int> neighbors(int x) = x - 1, x + 1
+
+fn main() {
+    def<int, int> low, high = neighbors(8)
+    def next := offset(low, step = 2)
+}
+~~~
+
+- Put `using` imports in the file header. Write a dotted module path followed by `:` and either `*` or a comma-separated list of distinct names. Keep the path and colon on the same line. The parser records the import in the source unit. [Import parser](../../../Compiler/src/parser/subs/import_parser.cpp)
+- Write a top-level function as `fn`, an optional angle-bracketed result type or type list, its name, parameters, and a body. Type parameters follow the name, as in `fn<T> first<T>(T value) = value`. Parameters use `Type name`. The optional-argument spelling is `opt<Type> name ?: expression`, and `final` can precede a parameter. Named call arguments use `name = expression`. [Function parser](../../../Compiler/src/parser/subs/function_parser.cpp) · [Call arguments](../../../Compiler/src/parser/subs/expression_parser.cpp)
+- Use a block or an equals body. A top-level block-bodied function or type declaration ends at a newline or end of file. An equals-bodied function also accepts a semicolon terminator. Source files may consist entirely of helper functions or type declarations. [File grammar](../../../Compiler/src/parser/parser.cpp)
+
+## More syntax
+
+- For type spellings, generics, classes, structs, enums, interfaces, operators, and state declarations, read [Types and members](references/types-and-members.md).
+- For literals, calls, indexing, interpolation, guarded access, providers, casts, and operator grouping, read [Expressions](references/expressions.md).
+- For bindings, result lists, assignments, conditionals, and loop headers, read [Statements and control flow](references/statements.md).
+
+For a spelling question, check the scanner's keyword and operator tables, then follow the grammar that consumes the token. Use the ordinary driver invocation for a parser check. [Token spellings](../../../Compiler/src/token/token.cpp) · [Frontend internals](../cloth-frontend/SKILL.md) · [Build and invocation](../cloth-repository/SKILL.md)
