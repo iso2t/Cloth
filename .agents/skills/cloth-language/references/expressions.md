@@ -21,7 +21,7 @@ fn<string> describe(int? count) {
 ## Calls, access, and casts
 
 ~~~cloth
-typedef<class> Box(public def<int> value) {
+typedef<class> Box(pub def<int> value) {
     mt<int> read() = self.value
 }
 

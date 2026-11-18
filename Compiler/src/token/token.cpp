@@ -99,11 +99,11 @@ std::string_view to_string (Keyword keyword) {
 	case kFn:
 		return "fn";
 	case kPublic:
-		return "public";
+		return "pub";
 	case kPrivate:
 		return "private";
 	case kBoolean:
-		return "boolean";
+		return "bool";
 	case kString:
 		return "string";
 	case kFloat:

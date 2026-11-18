@@ -14,7 +14,7 @@ Use the C++ parser to answer what can be written in a Cloth source file. A succe
 ~~~cloth
 using geometry.points: Point, Grid
 
-public fn<int> offset(int x, final opt<int> step ?: 1) = x + step
+pub fn<int> offset(int x, final opt<int> step ?: 1) = x + step
 fn<int, int> neighbors(int x) = x - 1, x + 1
 
 fn main() {
