@@ -27,15 +27,15 @@ struct WhileStatement : LoopStatement {
 	        body(std::move(body)) {
 	}
 
-	const LoopTargetPtr &get_loop_target () const override {
+	[[nodiscard]] const LoopTargetPtr &get_loop_target () const override {
 		return loopTarget;
 	}
 
-	TokenSpan get_header_span () const {
+	[[nodiscard]] TokenSpan get_header_span () const {
 		return TokenSpan::span_through(keyword.get_span(), closing.get_span());
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return TokenSpan::span_through(keyword.get_span(), body.span);
 	}
 };

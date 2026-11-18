@@ -22,7 +22,7 @@ struct ExpressionStatement : Statement {
 	explicit ExpressionStatement (ExpressionPtr expression) : expression(std::move(expression)) {
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return expression->get_span();
 	}
 };
@@ -34,8 +34,8 @@ struct BindingDeclaration : Statement {
 	bool                         isMutable;
 	TokenSpan                    span;
 
-	BindingDeclaration (std::optional<TypeReference> type, const Token &name, ExpressionPtr initializer, bool isMutable,
-	                    std::optional<TokenSpan> span = std::nullopt) :
+	BindingDeclaration (std::optional<TypeReference> type, const Token &name, ExpressionPtr initializer, const bool isMutable,
+	                    const std::optional<TokenSpan> &span = std::nullopt) :
 	        type(std::move(type)),
 	        name(name),
 	        initializer(std::move(initializer)),
@@ -43,7 +43,7 @@ struct BindingDeclaration : Statement {
 	        span(span ? *span : TokenSpan::span_through(this->type ? this->type->get_span() : name.get_span(), this->initializer->get_span())) {
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return span;
 	}
 };
@@ -60,17 +60,17 @@ struct ReceivingTarget {
 	std::variant<Named, Discard> value;
 
 	static ReceivingTarget of (const Token &token) {
-		if (token.get_lexeme() == cloth::to_string(Operator::o_UNDERSCORE)) {
+		if (token.get_lexeme() == to_string(o_UNDERSCORE)) {
 			return { Discard{ token } };
 		}
 		return { Named{ token } };
 	}
 
-	const Token &get_token () const {
+	[[nodiscard]] const Token &get_token () const {
 		return std::visit([]<typename Target>(const Target &target) -> const Token & { return target.token; }, value);
 	}
 
-	TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan get_span () const {
 		return get_token().get_span();
 	}
 };
@@ -82,16 +82,16 @@ struct BindingGroupDeclaration : Statement {
 	bool                         isMutable;
 	TokenSpan                    span;
 
-	BindingGroupDeclaration (std::vector<TypeReference> types, std::vector<ReceivingTarget> targets, ExpressionPtr initializer, bool isMutable,
+	BindingGroupDeclaration (std::vector<TypeReference> types, std::vector<ReceivingTarget> targets, ExpressionPtr initializer, const bool isMutable,
 	                         TokenSpan span) :
 	        types(std::move(types)),
 	        targets(std::move(targets)),
 	        initializer(std::move(initializer)),
 	        isMutable(isMutable),
-	        span(span) {
+	        span(std::move(span)) {
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return span;
 	}
 };
@@ -107,11 +107,11 @@ struct AssignmentStatement : Statement {
 	        compoundOperator(std::move(compoundOperator)) {
 	}
 
-	const BinaryExpression *get_compound () const {
+	[[nodiscard]] const BinaryExpression *get_compound () const {
 		return compoundOperator ? &dynamic_cast<const BinaryExpression &>(*value) : nullptr;
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return TokenSpan::span_through(name.get_span(), value->get_span());
 	}
 };
@@ -123,7 +123,7 @@ struct MultiAssignmentStatement : Statement {
 	MultiAssignmentStatement (std::vector<ReceivingTarget> targets, ExpressionPtr value) : targets(std::move(targets)), value(std::move(value)) {
 	}
 
-	std::vector<Token> get_names () const {
+	[[nodiscard]] std::vector<Token> get_names () const {
 		std::vector<Token> v_names;
 		v_names.reserve(targets.size());
 		for (const ReceivingTarget &rt_target : targets) {
@@ -132,7 +132,7 @@ struct MultiAssignmentStatement : Statement {
 		return v_names;
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return TokenSpan::span_through(targets.at(0).get_span(), value->get_span());
 	}
 };
@@ -145,7 +145,7 @@ struct ElementAssignmentStatement : Statement {
 
 	ElementAssignmentStatement (std::shared_ptr<const IndexExpression> target, const Token &op, ExpressionPtr value);
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return TokenSpan::span_through(target->get_span(), value ? value->get_span() : op.get_span());
 	}
 };
@@ -158,7 +158,7 @@ struct FieldWriteStatement : Statement {
 
 	FieldWriteStatement (ExpressionPtr target, const Token &op, ExpressionPtr value);
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return TokenSpan::span_through(target->get_span(), value ? value->get_span() : op.get_span());
 	}
 };
@@ -171,7 +171,7 @@ struct UpdateStatement : Statement {
 	UpdateStatement (const Token &name, const Token &op) : name(name), op(op), target(std::make_shared<NameExpression>(name)) {
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return TokenSpan::span_through(name.get_span(), op.get_span());
 	}
 };
@@ -183,7 +183,7 @@ struct ReturnStatement : Statement {
 	ExpressionPtr value;
 	TokenSpan     span;
 
-	ReturnStatement (const Token &keyword, ExpressionPtr value, std::optional<TokenSpan> span = std::nullopt) :
+	ReturnStatement (const Token &keyword, ExpressionPtr value, const std::optional<TokenSpan> &span = std::nullopt) :
 	        keyword(keyword),
 	        value(std::move(value)),
 	        span(span.value_or(keyword.get_span())) {
@@ -192,7 +192,7 @@ struct ReturnStatement : Statement {
 		}
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return span;
 	}
 };

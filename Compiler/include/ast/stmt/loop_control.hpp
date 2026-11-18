@@ -22,7 +22,7 @@ struct LoopBody {
 };
 
 struct LoopStatement : Statement {
-	virtual const LoopTargetPtr &get_loop_target () const = 0;
+	[[nodiscard]] virtual const LoopTargetPtr &get_loop_target () const = 0;
 };
 
 struct LoopJumpStatement : Statement {
@@ -31,11 +31,11 @@ struct LoopJumpStatement : Statement {
 	explicit LoopJumpStatement (const Token &keyword) : keyword(keyword) {
 	}
 
-	bool isContinue () const {
-		return keyword.get_lexeme() == cloth::to_string(Keyword::k_CONTINUE);
+	[[nodiscard]] bool isContinue () const {
+		return keyword.get_lexeme() == to_string(k_CONTINUE);
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return keyword.get_span();
 	}
 };

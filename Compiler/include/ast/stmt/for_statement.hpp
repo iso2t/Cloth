@@ -20,7 +20,7 @@ struct ForBinding {
 	Token                        name;
 	std::optional<TokenSpan>     annotationSpan;
 
-	TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan get_span () const {
 		return TokenSpan::span_through(keyword.get_span(), name.get_span());
 	}
 };
@@ -32,8 +32,8 @@ struct ForSource {
 		ExpressionPtr end;
 		TokenSpan     span;
 
-		bool isInclusive () const {
-			return delimiter.get_lexeme() == cloth::to_string(Operator::o_RANGE_INCLUSIVE);
+		[[nodiscard]] bool isInclusive () const {
+			return delimiter.get_lexeme() == to_string(o_RANGE_INCLUSIVE);
 		}
 	};
 
@@ -44,7 +44,7 @@ struct ForSource {
 
 	std::variant<Range, Elements> value;
 
-	TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan get_span () const {
 		return std::visit([]<typename Source>(const Source &source) -> TokenSpan { return source.span; }, value);
 	}
 };
@@ -83,15 +83,15 @@ struct ForStatement : LoopStatement {
 	        body(std::move(body)) {
 	}
 
-	const LoopTargetPtr &get_loop_target () const override {
+	[[nodiscard]] const LoopTargetPtr &get_loop_target () const override {
 		return loopTarget;
 	}
 
-	TokenSpan get_header_span () const {
+	[[nodiscard]] TokenSpan get_header_span () const {
 		return TokenSpan::span_through(keyword.get_span(), closing.get_span());
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return TokenSpan::span_through(keyword.get_span(), body.span);
 	}
 };
