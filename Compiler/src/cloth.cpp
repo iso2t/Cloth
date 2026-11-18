@@ -2,6 +2,7 @@
 
 #include <exception>
 #include <iostream>
+#include <ostream>
 #include <tuple>
 
 #include <cloth_diagnostic.hpp>
@@ -13,12 +14,12 @@
 #include <system/compiler_options.hpp>
 #include <util/pstream.hpp>
 
-int main (int argc, char *argv[]) try {
+int main (const int argc, char *argv[]) try {
 	const cloth::sys::CompilerOptions co_options{ argc, argv };
 
 	if (!co_options.p_sourcePath) return FAILED;
 
-	cloth::Lexer l_lexer = cloth::Lexer{ cloth::SourceFile{ *co_options.p_sourcePath } };
+	auto l_lexer = cloth::Lexer{ cloth::SourceFile{ *co_options.p_sourcePath } };
 	if (co_options.get_lexer_flag() == 1) {
 		std::ignore = l_lexer.scanTokens(); // discards result, not capturing the vector.
 		return LEXED_ONLY;
@@ -29,10 +30,9 @@ int main (int argc, char *argv[]) try {
 		return PRINT_LEXED_ONLY;
 	}
 
-	cloth::Parser p_parser = cloth::Parser{ l_lexer };
+	auto p_parser = cloth::Parser{ l_lexer };
 	p_parser.parse();
-
-	std::cout << "Success" << std::endl;
+	std::cout << "Success!" << std::endl;
 
 	return SUCCESS;
 } catch (const cde::ClothDiagnostic &error) {
