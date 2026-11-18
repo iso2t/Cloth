@@ -33,3 +33,5 @@ submitting contributions are set out in the project's
   `RFC Process <contributing/RFC%20Process.rst>`_.
 * Follow the C++ naming, formatting, and license header conventions in
   `Code Style <contributing/Code%20Style.rst>`_.
+* Run the regression suite or a focused case with the commands in
+  `Testing <contributing/Testing.rst>`_.

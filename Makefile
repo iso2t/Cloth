@@ -31,6 +31,8 @@ objects := $(addprefix $(BUILD_DIR)/obj/,$(obj-y)) \
            $(musubi_object)
 program := $(BUILD_DIR)/cloth$(exe_suffix)
 
+include Tests/Makefile
+
 .PHONY: all run
 all: $(program)
 
