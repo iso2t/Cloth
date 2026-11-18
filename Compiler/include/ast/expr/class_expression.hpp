@@ -16,13 +16,13 @@ struct ClassCreationExpression : CallSite {
 	ExpressionPtr receiver;
 	TokenSpan     span;
 
-	ClassCreationExpression (ExpressionPtr receiver, const Token &name, std::vector<CallArgument> suppliedArguments, TokenSpan span) :
+	ClassCreationExpression (ExpressionPtr receiver, const Token &name, std::vector<CallArgument> suppliedArguments, const TokenSpan &span) :
 	        CallSite(name, std::move(suppliedArguments)),
 	        receiver(std::move(receiver)),
 	        span(span) {
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return span;
 	}
 };
@@ -34,7 +34,7 @@ struct ClassDeletionExpression : Expression {
 	ClassDeletionExpression (ExpressionPtr receiver, const Token &keyword) : receiver(std::move(receiver)), keyword(keyword) {
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return TokenSpan::span_through(receiver->get_span(), keyword.get_span());
 	}
 };
@@ -52,10 +52,10 @@ struct StateTransitionExpression : Expression {
 	        op(op),
 	        target(target),
 	        payload(std::move(payload)),
-	        span(span) {
+	        span(std::move(span)) {
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return span;
 	}
 };
@@ -66,15 +66,15 @@ struct ConstructorDelegation : CallSite {
 
 	ConstructorDelegation (const Token &name, std::vector<CallArgument> suppliedArguments, TokenSpan span, TypeReference type) :
 	        CallSite(name, std::move(suppliedArguments)),
-	        span(span),
+	        span(std::move(span)),
 	        type(std::move(type)) {
 	}
 
-	ConstructorDelegation (const Token &name, std::vector<CallArgument> suppliedArguments, TokenSpan span) :
+	ConstructorDelegation (const Token &name, std::vector<CallArgument> suppliedArguments, const TokenSpan &span) :
 	        ConstructorDelegation(name, std::move(suppliedArguments), span, TypeReference(name)) {
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return span;
 	}
 };

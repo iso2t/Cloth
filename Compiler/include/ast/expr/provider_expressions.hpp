@@ -19,7 +19,7 @@ struct TypeReceiverExpression : Expression {
 	explicit TypeReceiverExpression (TypeReference annotation) : annotation(std::move(annotation)) {
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return annotation.get_span();
 	}
 };
@@ -31,7 +31,7 @@ struct ProviderAccessExpression : Expression {
 	ProviderAccessExpression (ExpressionPtr receiver, const Token &name) : receiver(std::move(receiver)), name(name) {
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return TokenSpan::span_through(receiver->get_span(), name.get_span());
 	}
 };
@@ -45,11 +45,11 @@ struct StateCallExpression : CallSite {
 	                     std::optional<TypeArgumentList> typeArguments = std::nullopt) :
 	        CallSite(name, std::move(suppliedArguments)),
 	        receiver(std::move(receiver)),
-	        span(span),
+	        span(std::move(span)),
 	        typeArguments(std::move(typeArguments)) {
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return span;
 	}
 };

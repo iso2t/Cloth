@@ -22,11 +22,11 @@ struct MemberCallExpression : CallSite {
 	                      std::optional<TypeArgumentList> typeArguments = std::nullopt) :
 	        CallSite(name, std::move(suppliedArguments)),
 	        receiver(std::move(receiver)),
-	        span(span),
+	        span(std::move(span)),
 	        typeArguments(std::move(typeArguments)) {
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return span;
 	}
 };

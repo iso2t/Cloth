@@ -16,10 +16,10 @@ struct StructLiteral : Expression {
 	std::vector<ExpressionPtr> fields;
 	TokenSpan                  span;
 
-	StructLiteral (std::vector<ExpressionPtr> fields, TokenSpan span) : fields(std::move(fields)), span(span) {
+	StructLiteral (std::vector<ExpressionPtr> fields, TokenSpan span) : fields(std::move(fields)), span(std::move(span)) {
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return span;
 	}
 };
@@ -31,7 +31,7 @@ struct FieldAccessExpression : Expression {
 	FieldAccessExpression (ExpressionPtr receiver, const Token &name) : receiver(std::move(receiver)), name(name) {
 	}
 
-	TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan get_span () const override {
 		return TokenSpan::span_through(receiver->get_span(), name.get_span());
 	}
 };
