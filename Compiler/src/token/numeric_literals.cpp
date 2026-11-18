@@ -17,7 +17,7 @@ namespace cloth {
 
 namespace {
 
-// Decimal-digit ranges in the BMP, matching the Kotlin lexer's Char-based scanning.
+// Decimal-digit ranges in the BMP
 constexpr char32_t DECIMAL_ZEROES[] = {
 	0x0660, 0x06F0, 0x07C0, 0x0966, 0x09E6, 0x0A66, 0x0AE6, 0x0B66, 0x0BE6, 0x0C66, 0x0CE6, 0x0D66, 0x0DE6, 0x0E50, 0x0ED0, 0x0F20, 0x1040, 0x1090,
 	0x17E0, 0x1810, 0x1946, 0x19D0, 0x1A80, 0x1A90, 0x1B50, 0x1BB0, 0x1C40, 0x1C50, 0xA620, 0xA8D0, 0xA900, 0xA9D0, 0xA9F0, 0xAA50, 0xABF0, 0xFF10,
@@ -28,16 +28,15 @@ constexpr int         WORD_BITS        = std::numeric_limits<std::uint32_t>::dig
 // Seven hex digits keep the chunk radix within one word.
 constexpr std::size_t DIGITS_PER_CHUNK = 7;
 
-std::string normalizedNumber (std::string_view text, bool decimal) {
+std::string normalizedNumber (std::string_view text, const bool decimal) {
 	std::string s_result;
 	s_result.reserve(text.size());
 	while (!text.empty()) {
 		const char c_first = text.front();
 		if (decimal && static_cast<unsigned char>(c_first) >= 0x80) {
-			const DecimalDigit dd_digit = decimalDigit(text);
-			if (dd_digit.length != 0) {
-				s_result.push_back(dd_digit.ascii);
-				text.remove_prefix(dd_digit.length);
+			if (const auto [ascii, length] = decimalDigit(text); length != 0) {
+				s_result.push_back(ascii);
+				text.remove_prefix(length);
 				continue;
 			}
 		}
@@ -51,13 +50,12 @@ std::string normalizedNumber (std::string_view text, bool decimal) {
 
 }
 
-DecimalDigit decimalDigit (std::string_view text) {
+DecimalDigit decimalDigit (const std::string_view text) {
 	if (text.empty()) {
 		return {};
 	}
-	const unsigned char c_first = static_cast<unsigned char>(text.front());
-	if (c_first < 0x80) {
-		return c_first >= '0' && c_first <= '9' ? DecimalDigit{ static_cast<char>(c_first), 1 } : DecimalDigit{};
+	if (const auto c_first = static_cast<unsigned char>(text.front()); c_first < 0x80) {
+		return c_first >= '0' && c_first <= '9' ? DecimalDigit{ .ascii = static_cast<char>(c_first), .length = 1 } : DecimalDigit{};
 	}
 	const std::size_t st_length = utf8_scalar_length(text);
 	if (st_length == 0 || st_length > 3) {
@@ -66,13 +64,13 @@ DecimalDigit decimalDigit (std::string_view text) {
 	const char32_t c32_digit = utf8_scalar_value(text.substr(0, st_length));
 	for (const char32_t c32_zero : DECIMAL_ZEROES) {
 		if (c32_digit >= c32_zero && c32_digit <= c32_zero + 9) {
-			return { static_cast<char>('0' + (c32_digit - c32_zero)), st_length };
+			return { .ascii = static_cast<char>('0' + (c32_digit - c32_zero)), .length = st_length };
 		}
 	}
 	return {};
 }
 
-int integerLiteralRadix (std::string_view spelling) {
+int integerLiteralRadix (const std::string_view spelling) {
 	if (spelling.starts_with("0x")) {
 		return 16;
 	}
@@ -107,8 +105,7 @@ IntegerValue integerLiteralValue (const Token &token) {
 		const std::size_t            st_length = std::min(s_remaining.size(), DIGITS_PER_CHUNK);
 		const char                  *c_end     = s_remaining.data() + st_length;
 		std::uint32_t                u32_chunk;
-		const std::from_chars_result fcr_chunk = std::from_chars(s_remaining.data(), c_end, u32_chunk, i_radix);
-		if (fcr_chunk.ec != std::errc{} || fcr_chunk.ptr != c_end) {
+		if (const auto [ptr, ec] = std::from_chars(s_remaining.data(), c_end, u32_chunk, i_radix); ec != std::errc{} || ptr != c_end) {
 			throw cde::SyntaxErrors::number(token, /*floating=*/false);
 		}
 		std::uint32_t u32_scale = 1;

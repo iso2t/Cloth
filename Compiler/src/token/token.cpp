@@ -12,7 +12,7 @@
 
 namespace cloth {
 
-std::string_view to_string (TokenType type) {
+std::string_view to_string (const TokenType type) {
 	switch (type) {
 	case TokenType::EndOfFile:
 		return "EndOfFile";
@@ -288,21 +288,21 @@ std::string_view to_string (Operator op) {
 	return operator_info(op).spelling;
 }
 
-std::optional<Operator> fromCharacter (std::string_view spelling) {
+std::optional<Operator> fromCharacter (const std::string_view spelling) {
 	static const std::unordered_map<std::string_view, Operator> M_OPERATORS = [] {
 		std::unordered_map<std::string_view, Operator> m_operators;
 		for (int i_value = oPlus; i_value < oError; ++i_value) {
-			const Operator o_operator = static_cast<Operator>(i_value);
+			const auto o_operator = static_cast<Operator>(i_value);
 			m_operators.emplace(to_string(o_operator), o_operator);
 		}
 		return m_operators;
 	}();
 
-	const std::unordered_map<std::string_view, Operator>::const_iterator it_operator = M_OPERATORS.find(spelling);
+	const auto it_operator = M_OPERATORS.find(spelling);
 	return it_operator == M_OPERATORS.end() ? std::nullopt : std::make_optional(it_operator->second);
 }
 
-bool isTokenized (Operator op) {
+bool isTokenized (const Operator op) {
 	return operator_info(op).tokenized;
 }
 

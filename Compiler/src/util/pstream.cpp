@@ -7,7 +7,7 @@
 
 namespace cloth {
 
-std::string quoteLexeme (std::string_view lexeme) {
+std::string quoteLexeme (const std::string_view lexeme) {
 	std::string s_quoted(1, '"');
 	s_quoted.reserve(lexeme.size() + 2);
 	for (const char c_character : lexeme) {
@@ -27,7 +27,7 @@ std::string quoteLexeme (std::string_view lexeme) {
 			s_quoted += "\\t";
 			break;
 		default:
-			const unsigned char c_byte = static_cast<unsigned char>(c_character);
+			const auto c_byte = static_cast<unsigned char>(c_character);
 			if (c_byte < 0x20 || c_byte >= 0x7F) {
 				s_quoted += std::format("\\x{:02X}", c_byte);
 			} else {
@@ -72,8 +72,8 @@ void printLexer (Lexer &lexer, std::ostream &out) {
 	};
 	printRow(s_lexemeHeader, s_typeHeader, s_spanHeader);
 	printRow(std::string(st_lexemeWidth, '-'), std::string(st_typeWidth, '-'), std::string(st_spanWidth, '-'));
-	for (const Row &r_row : v_rows) {
-		printRow(r_row.lexeme, r_row.type, r_row.span);
+	for (const auto &[lexeme, type, span] : v_rows) {
+		printRow(lexeme, type, span);
 	}
 
 	out << "Count: " << lexer.get_tokens().size();

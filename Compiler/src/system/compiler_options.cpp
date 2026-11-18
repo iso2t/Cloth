@@ -36,9 +36,9 @@ void CompilerOptions::add_flag (const CompilerFlag &flag) {
 }
 
 void CompilerOptions::build_defaults () {
-	add_flag({ "-l", [this] () { i_lexer = 1; } });
-	add_flag({ "-L", [this] () { i_lexer = 2; } });
-	add_flag({ "--src", CompilerFlag::Value{ "a file path", [this] (std::string_view path) { p_sourcePath.emplace(path); } } });
+	add_flag({ .s_flag = "-l", .v_action = [this] () { i_lexer = 1; } });
+	add_flag({ .s_flag = "-L", .v_action = [this] () { i_lexer = 2; } });
+	add_flag({ .s_flag = "--src", .v_action = CompilerFlag::Value{ "a file path", [this] (std::string_view path) { p_sourcePath.emplace(path); } } });
 }
 
 bool CompilerOptions::is_empty () const {
