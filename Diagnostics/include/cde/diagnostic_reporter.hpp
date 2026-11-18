@@ -5,7 +5,7 @@
 // MSVC flags it as unsafe due to SDL (Security Development Lifecycle) best practices.
 // It does risk thread safety due to raw pointers and undefined behaviors as it returns
 // a non-const char*
-#pragma warning(disable : 4996)
+// #pragma warning(disable : 4996)
 
 #include <iosfwd>
 

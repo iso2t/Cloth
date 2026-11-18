@@ -37,8 +37,7 @@ struct TerminalStyle {
 };
 
 TerminalStyle terminal_style (const std::ostream &output) {
-	const char *s_term = std::getenv("TERM");
-	if (&output != &std::cerr || (s_term && std::string_view(s_term) == "dumb")) {
+	if (const char *s_term = std::getenv("TERM"); &output != &std::cerr || (s_term && std::string_view(s_term) == "dumb")) {
 		return {};
 	}
 
@@ -119,17 +118,17 @@ struct DisplaySource {
 		}
 	}
 
-	std::optional<std::size_t> byte_offset (std::size_t line, std::size_t column) const {
+	[[nodiscard]] std::optional<std::size_t> byte_offset (const std::size_t line, const std::size_t column) const {
 		if (line == 0 || line > lines.size() || column == 0) {
 			return std::nullopt;
 		}
-		const auto &source_line = lines[line - 1];
+		const auto &[oft, length, crlf] = lines[line - 1];
 		const auto  byte        = column - 1;
-		if (byte > source_line.length + source_line.crlf) {
+		if (byte > length + crlf) {
 			return std::nullopt;
 		}
 		// Positions on either byte of CRLF map to the display newline.
-		const auto offset = source_line.offset + std::min(byte, source_line.length);
+		const auto offset = oft + std::min(byte, length);
 		if (offset < text.size() && (static_cast<unsigned char>(text[offset]) & 0xc0) == 0x80) {
 			return std::nullopt;
 		}
@@ -163,7 +162,7 @@ int append_output (void *output, const char *text, std::size_t length) noexcept 
 	}
 }
 
-std::optional<std::string> render (const ClothDiagnostic &diagnostic, std::string_view code, ReportLevel level, TerminalStyle style) {
+std::optional<std::string> render (const ClothDiagnostic &diagnostic, const std::string_view code, const ReportLevel &level, const TerminalStyle style) {
 	std::unordered_map<const cloth::SourceFile *, DisplaySource> sources;
 	std::string                                                  output;
 	mu_Config                                                    config;
