@@ -19,23 +19,23 @@ class SourceFile {
 	explicit SourceFile (const std::filesystem::path &path);
 	SourceFile (std::filesystem::path path, std::string contents, Extension extension = CLOTH_OBJECT);
 
-	std::string get_name () const {
+	[[nodiscard]] std::string get_name () const {
 		return s_name;
 	}
 
-	const std::filesystem::path &get_path () const noexcept {
+	[[nodiscard]] const std::filesystem::path &get_path () const noexcept {
 		return p_path;
 	}
 
-	const std::string &get_contents () const & noexcept {
+	[[nodiscard]] const std::string &get_contents () const & noexcept {
 		return s_contents;
 	}
 
-	std::string get_contents () const && {
+	[[nodiscard]] std::string get_contents () const && {
 		return s_contents;
 	}
 
-	Extension get_extension () const {
+	[[nodiscard]] Extension get_extension () const {
 		return e_extension;
 	}
 

@@ -103,7 +103,7 @@ struct TopLevelStateDeclaration : Declaration, StateBodyDeclaration {
 	std::vector<TypeDeclarationPtr> nestedTypes;
 
 	TopLevelStateDeclaration (const Token &keyword, std::optional<Token> visibility, const Token &name, TypeReference payloadType, TypeReference host,
-	                          std::vector<StateMemberPtr> members, TokenSpan span, std::vector<TypeDeclarationPtr> nestedTypes = {});
+	                          std::vector<StateMemberPtr> members, const TokenSpan &span, std::vector<TypeDeclarationPtr> nestedTypes = {});
 
 	[[nodiscard]] TokenSpan get_span () const override {
 		return span;

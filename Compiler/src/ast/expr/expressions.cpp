@@ -41,17 +41,20 @@ std::vector<ExpressionPtr> CallSite::get_arguments () const {
 
 CallExpression::CallExpression (const Token &name, std::vector<CallArgument> suppliedArguments, TokenSpan span, std::optional<TypeArgumentList> typeArguments) :
         CallSite(name, std::move(suppliedArguments)),
-        span(span),
+        span(std::move(span)),
         typeArguments(std::move(typeArguments)) {
 }
 
-ArrayLiteral::ArrayLiteral (std::vector<ExpressionPtr> elements, TokenSpan span) : elements(std::move(elements)), span(span) {
+ArrayLiteral::ArrayLiteral (std::vector<ExpressionPtr> elements, TokenSpan span) : elements(std::move(elements)), span(std::move(span)) {
 }
 
-ResultListExpression::ResultListExpression (std::vector<ExpressionPtr> values, TokenSpan span) : values(std::move(values)), span(span) {
+ResultListExpression::ResultListExpression (std::vector<ExpressionPtr> values, TokenSpan span) : values(std::move(values)), span(std::move(span)) {
 }
 
-IndexExpression::IndexExpression (ExpressionPtr array, ExpressionPtr index, TokenSpan span) : array(std::move(array)), index(std::move(index)), span(span) {
+IndexExpression::IndexExpression (ExpressionPtr array, ExpressionPtr index, TokenSpan span) :
+        array(std::move(array)),
+        index(std::move(index)),
+        span(std::move(span)) {
 }
 
 UnaryExpression::UnaryExpression (const Token &op, ExpressionPtr operand) : op(op), operand(std::move(operand)) {
@@ -61,12 +64,12 @@ BinaryExpression::BinaryExpression (ExpressionPtr left, const Token &op, Express
 }
 
 const BinaryExpression *rangeOrNull (const Expression &expression) {
-	const BinaryExpression *be_binary = dynamic_cast<const BinaryExpression *>(&expression);
+	const auto be_binary = dynamic_cast<const BinaryExpression *>(&expression);
 	if (!be_binary) {
 		return nullptr;
 	}
 	const std::string &s_operator = be_binary->op.get_lexeme();
-	if (s_operator == cloth::to_string(Operator::o_RANGE) || s_operator == cloth::to_string(Operator::o_RANGE_INCLUSIVE)) {
+	if (s_operator == to_string(oRange) || s_operator == to_string(oRangeInclusive)) {
 		return be_binary;
 	}
 	return nullptr;
@@ -84,7 +87,7 @@ GuardedAccessExpression::GuardedAccessExpression (const Token &op, std::shared_p
         continuation(std::move(continuation)) {
 }
 
-NullLiteral::NullLiteral (TokenSpan span) : span(span) {
+NullLiteral::NullLiteral (TokenSpan span) : span(std::move(span)) {
 }
 
 CastExpression::CastExpression (ExpressionPtr operand, const Token &op, TypeReference target) : operand(std::move(operand)), op(op), target(std::move(target)) {
@@ -103,8 +106,8 @@ IfExpression::IfExpression (const Token &keyword, std::vector<ConditionalBranch>
         keyword(keyword),
         branches(std::move(branches)),
         otherwise(std::move(otherwise)),
-        span(span),
-        otherwiseSpan(otherwiseSpan) {
+        span(std::move(span)),
+        otherwiseSpan(std::move(otherwiseSpan)) {
 }
 
 IntegerLiteral::IntegerLiteral (IntegerValue value, const Token &token) : value(std::move(value)), token(token) {
@@ -113,16 +116,16 @@ IntegerLiteral::IntegerLiteral (IntegerValue value, const Token &token) : value(
 FloatingPointLiteral::FloatingPointLiteral (std::string value, const Token &token) : value(std::move(value)), token(token) {
 }
 
-BooleanLiteral::BooleanLiteral (bool value, TokenSpan span) : value(value), span(span) {
+BooleanLiteral::BooleanLiteral (bool value, TokenSpan span) : value(value), span(std::move(span)) {
 }
 
-CharacterLiteral::CharacterLiteral (char32_t value, TokenSpan span) : value(value), span(span) {
+CharacterLiteral::CharacterLiteral (char32_t value, TokenSpan span) : value(value), span(std::move(span)) {
 }
 
-StringLiteral::StringLiteral (std::string value, TokenSpan span) : value(std::move(value)), span(span) {
+StringLiteral::StringLiteral (std::string value, TokenSpan span) : value(std::move(value)), span(std::move(span)) {
 }
 
-InterpolatedString::InterpolatedString (std::vector<ExpressionPtr> parts, TokenSpan span) : parts(std::move(parts)), span(span) {
+InterpolatedString::InterpolatedString (std::vector<ExpressionPtr> parts, TokenSpan span) : parts(std::move(parts)), span(std::move(span)) {
 }
 
 }

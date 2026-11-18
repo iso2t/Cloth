@@ -44,17 +44,17 @@ InterfaceDeclaration InterfaceParser::parse (const Token &keyword, const Token &
 std::vector<InterfaceMethodDeclaration> InterfaceParser::parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) {
 	std::vector<InterfaceMethodDeclaration> v_methods;
 	p_parser.skipNewLines();
-	while (p_parser.peek().get_lexeme() != cloth::to_string(Operator::o_BRACE_CLOSE)) {
+	while (p_parser.peek().get_lexeme() != cloth::to_string(Operator::oBraceClose)) {
 		if (p_parser.startsTypeDeclaration()) {
 			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}
-		const int i_functionOffset = p_parser.atKeyword(Keyword::k_PUBLIC) ? 1 : 0;
-		if (p_parser.atKeyword(Keyword::k_FN, i_functionOffset)) {
+		const int i_functionOffset = p_parser.atKeyword(Keyword::kPublic) ? 1 : 0;
+		if (p_parser.atKeyword(Keyword::kFn, i_functionOffset)) {
 			throw cde::SyntaxErrors::functionInType(p_parser.peek(i_functionOffset));
 		}
-		if (!p_parser.atKeyword(Keyword::k_MT)) {
-			throw cde::SyntaxErrors::expected(std::format("an interface '{}' declaration", cloth::to_string(Keyword::k_MT)), p_parser.peek());
+		if (!p_parser.atKeyword(Keyword::kMt)) {
+			throw cde::SyntaxErrors::expected(std::format("an interface '{}' declaration", cloth::to_string(Keyword::kMt)), p_parser.peek());
 		}
 		v_methods.push_back(p_parser.p_functionParser.parseInterfaceMethod());
 		const FunctionBody *fb_body = v_methods.back().executableBody();
@@ -62,10 +62,10 @@ std::vector<InterfaceMethodDeclaration> InterfaceParser::parseMembers (std::vect
 		const Token         t_next  = p_parser.peek();
 		if (!b_block && p_parser.isSemiColon(t_next)) {
 			p_parser.advance();
-		} else if (t_next.get_type() != TokenType::NewLine && t_next.get_lexeme() != cloth::to_string(Operator::o_BRACE_CLOSE)) {
+		} else if (t_next.get_type() != TokenType::NewLine && t_next.get_lexeme() != cloth::to_string(Operator::oBraceClose)) {
 			if (b_block) {
 				throw cde::SyntaxErrors::expected(
-				        std::format("a newline or '{}' after a block default", cloth::to_string(Operator::o_BRACE_CLOSE)), t_next);
+				        std::format("a newline or '{}' after a block default", cloth::to_string(Operator::oBraceClose)), t_next);
 			}
 			throw cde::SyntaxErrors::newline(t_next);
 		}

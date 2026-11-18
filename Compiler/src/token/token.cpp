@@ -52,101 +52,101 @@ std::string_view to_string (TokenType type) {
 
 std::string_view to_string (Keyword keyword) {
 	switch (keyword) {
-	case k_MOD:
+	case kMod:
 		return "mod";
-	case k_DEF:
+	case kDef:
 		return "def";
-	case k_TYPEDEF:
+	case kTypeDef:
 		return "typedef";
-	case k_USING:
+	case kUsing:
 		return "using";
-	case k_SELF:
+	case kSelf:
 		return "self";
-	case k_RETURN:
+	case kReturn:
 		return "return";
-	case k_CONST:
+	case kConst:
 		return "const";
-	case k_DEFAULT:
+	case kDefault:
 		return "default";
-	case k_INTEROP:
+	case kInterop:
 		return "interop";
-	case k_NEW:
+	case kNew:
 		return "new";
-	case k_DELETE:
+	case kDelete:
 		return "delete";
-	case k_FINAL:
+	case kFinal:
 		return "final";
-	case k_OPT:
+	case kOpt:
 		return "opt";
-	case k_CLASS:
+	case kClass:
 		return "class";
-	case k_STRUCT:
+	case kStruct:
 		return "struct";
-	case k_ENUM:
+	case kEnum:
 		return "enum";
-	case k_INTERFACE:
+	case kInterface:
 		return "interface";
-	case k_MT:
+	case kMt:
 		return "mt";
-	case k_OVERRIDE:
+	case kOverride:
 		return "override";
-	case k_VIRTUAL:
+	case kVirtual:
 		return "virtual";
-	case k_OPERATOR:
+	case kOperator:
 		return "operator";
-	case k_AUTO:
+	case kAuto:
 		return "auto";
-	case k_FN:
+	case kFn:
 		return "fn";
-	case k_PUBLIC:
+	case kPublic:
 		return "public";
-	case k_PRIVATE:
+	case kPrivate:
 		return "private";
-	case k_BOOLEAN:
+	case kBoolean:
 		return "boolean";
-	case k_STRING:
+	case kString:
 		return "string";
-	case k_FLOAT:
+	case kFloat:
 		return "float";
-	case k_INTEGER:
+	case kInteger:
 		return "int";
-	case k_CHARACTER:
+	case kCharacter:
 		return "char";
-	case k_VOID:
+	case kVoid:
 		return "void";
-	case k_TYPEINFO:
+	case kTypeinfo:
 		return "typeinfo";
-	case k_STATE:
+	case kState:
 		return "state";
-	case k_TRUE:
+	case kTrue:
 		return "true";
-	case k_FALSE:
+	case kFalse:
 		return "false";
-	case k_NULL:
+	case kNull:
 		return "null";
-	case k_UNSIGNED:
+	case kUnsigned:
 		return "unsigned";
-	case k_USIZE:
+	case kUsize:
 		return "usize";
-	case k_ISIZE:
+	case kIsize:
 		return "isize";
-	case k_INIT:
+	case kInit:
 		return "init";
-	case k_IF:
+	case kIf:
 		return "if";
-	case k_ELSE:
+	case kElse:
 		return "else";
-	case k_IS:
+	case kIs:
 		return "is";
-	case k_FOR:
+	case kFor:
 		return "for";
-	case k_WHILE:
+	case kWhile:
 		return "while";
-	case k_DO:
+	case kDo:
 		return "do";
-	case k_CONTINUE:
+	case kContinue:
 		return "continue";
-	case k_BREAK:
+	case kBreak:
 		return "break";
 	default:
 		return "error";
@@ -163,120 +163,120 @@ struct OperatorInfo {
 };
 
 constexpr std::pair<Operator, Operator> COMPOUND_ASSIGNMENTS[] = {
-	{ o_PLUS_EQUAL, o_PLUS }, { o_MINUS_EQUAL, o_MINUS }, { o_MUL_EQUAL, o_MULTIPLY }, { o_DIV_EQUAL, o_DIVIDE }, { o_MOD_EQUAL, o_MODULO },
+	{ oPlusEqual, oPlus }, { oMinusEqual, oMinus }, { oMulEqual, oMul }, { oDivEqual, oDiv }, { oModEqual, oMod },
 };
 
 OperatorInfo operator_info (Operator op) {
 	switch (op) {
-	case o_PLUS:
+	case oPlus:
 		return { "+", "PLUS" };
-	case o_PLUS_PLUS:
+	case oPlusPlus:
 		return { "++", "PLUS_PLUS" };
-	case o_PLUS_EQUAL:
+	case oPlusEqual:
 		return { "+=", "PLUS_EQUAL" };
-	case o_MINUS:
+	case oMinus:
 		return { "-", "MINUS" };
-	case o_MINUS_MINUS:
+	case oMinusMinus:
 		return { "--", "MINUS_MINUS" };
-	case o_MINUS_EQUAL:
+	case oMinusEqual:
 		return { "-=", "MINUS_EQUAL" };
-	case o_MULTIPLY:
+	case oMul:
 		return { "*", "MULTIPLY" };
-	case o_MUL_MUL:
+	case oMulMul:
 		return { "**", "MUL_MUL" };
-	case o_MUL_EQUAL:
+	case oMulEqual:
 		return { "*=", "MUL_EQUAL" };
-	case o_DIVIDE:
+	case oDiv:
 		return { "/", "DIVIDE" };
-	case o_DIV_EQUAL:
+	case oDivEqual:
 		return { "/=", "DIV_EQUAL" };
-	case o_MODULO:
+	case oMod:
 		return { "%", "MODULO" };
-	case o_MOD_EQUAL:
+	case oModEqual:
 		return { "%=", "MOD_EQUAL" };
-	case o_ASSIGN:
+	case oAssign:
 		return { "=", "ASSIGN" };
-	case o_FINAL_ASSIGN:
+	case oFinalAssign:
 		return { ":=", "FINAL_ASSIGN" };
-	case o_EQUAL:
+	case oEqual:
 		return { "==", "EQUAL" };
-	case o_IDENTITY:
+	case oIdentity:
 		return { "===", "IDENTITY" };
-	case o_NOT_EQUAL:
+	case oNotEqual:
 		return { "!=", "NOT_EQUAL" };
-	case o_NOT:
+	case oNot:
 		return { "!", "NOT" };
-	case o_AND:
+	case oAnd:
 		return { "&&", "AND" };
-	case o_AMPERSAND:
+	case oAmpersand:
 		return { "&", "AMPERSAND" };
-	case o_OR:
+	case oOr:
 		return { "||", "OR" };
-	case o_GREATER:
+	case oGreater:
 		return { ">", "GREATER" };
-	case o_LESS:
+	case oLess:
 		return { "<", "LESS" };
-	case o_GREATER_EQUAL:
+	case oGreaterEqual:
 		return { ">=", "GREATER_EQUAL" };
-	case o_LESS_EQUAL:
+	case oLessEqual:
 		return { "<=", "LESS_EQUAL" };
-	case o_POINTER_RIGHT:
+	case oPointerRight:
 		return { "->", "POINTER_RIGHT" };
-	case o_POINTER_LEFT:
+	case oPointerLeft:
 		return { "<-", "POINTER_LEFT" };
-	case o_QUESTION:
+	case oQuestion:
 		return { "?", "QUESTION" };
-	case o_SAFE_DOT:
+	case oSafeDot:
 		return { "?.", "SAFE_DOT" };
-	case o_ELVIS:
+	case oElvis:
 		return { "?:", "ELVIS" };
-	case o_RANGE:
+	case oRange:
 		return { "..", "RANGE" };
-	case o_RANGE_INCLUSIVE:
+	case oRangeInclusive:
 		return { "..=", "RANGE_INCLUSIVE" };
-	case o_PAREN_OPEN:
+	case oParenOpen:
 		return { "(", "PAREN_OPEN" };
-	case o_PAREN_CLOSE:
+	case oParenClose:
 		return { ")", "PAREN_CLOSE" };
-	case o_BRACE_OPEN:
+	case oBraceOpen:
 		return { "{", "BRACE_OPEN" };
-	case o_BRACE_CLOSE:
+	case oBraceClose:
 		return { "}", "BRACE_CLOSE" };
-	case o_BRACKET_OPEN:
+	case oBracketOpen:
 		return { "[", "BRACKET_OPEN" };
-	case o_BRACKET_CLOSE:
+	case oBracketClose:
 		return { "]", "BRACKET_CLOSE" };
-	case o_COMMA:
+	case oComma:
 		return { ",", "COMMA" };
-	case o_DOT:
+	case oDot:
 		return { ".", "DOT" };
-	case o_COLON:
+	case oColon:
 		return { ":", "COLON" };
-	case o_BACKTICK:
+	case oBacktick:
 		return { "`", "BACKTICK" };
-	case o_QUOTATION:
+	case oQuotation:
 		return { "'", "QUOTATION" };
-	case o_DOUBLE_QUOTATION:
+	case oDoubleQuotation:
 		return { "\"", "DOUBLE_QUOTATION" };
-	case o_TILDE:
+	case oTilde:
 		return { "~", "TILDE" };
-	case o_POUND:
+	case oPound:
 		return { "#", "POUND" };
-	case o_COLON_COLON:
+	case oColonColon:
 		return { "::", "COLON_COLON" };
-	case o_SEMICOLON:
+	case oSemicolon:
 		return { ";", "SEMICOLON" };
-	case o_UNDERSCORE:
+	case oUnderscore:
 		return { "_", "UNDERSCORE" };
-	case o_INDEX_READ:
+	case oIndexRead:
 		return { "[]", "INDEX_READ", false };
-	case o_INDEX_VALIDATE:
+	case oIndexValidate:
 		return { "[]?", "INDEX_VALIDATE", false };
-	case o_INDEX_WRITE:
+	case oIndexWrite:
 		return { "[]=", "INDEX_WRITE", false };
-	case o_FOREACH:
+	case oForeach:
 		return { "foreach", "FOREACH", false };
-	case o_ERROR:
+	case oError:
 		break;
 	}
 	return { "error", "ERROR", false };
@@ -291,7 +291,7 @@ std::string_view to_string (Operator op) {
 std::optional<Operator> fromCharacter (std::string_view spelling) {
 	static const std::unordered_map<std::string_view, Operator> M_OPERATORS = [] {
 		std::unordered_map<std::string_view, Operator> m_operators;
-		for (int i_value = o_PLUS; i_value < o_ERROR; ++i_value) {
+		for (int i_value = oPlus; i_value < oError; ++i_value) {
 			const Operator o_operator = static_cast<Operator>(i_value);
 			m_operators.emplace(to_string(o_operator), o_operator);
 		}
@@ -307,7 +307,7 @@ bool isTokenized (Operator op) {
 }
 
 bool isUpdate (Operator op) {
-	return op == o_PLUS_PLUS || op == o_MINUS_MINUS ||
+	return op == oPlusPlus || op == oMinusMinus ||
 	       std::ranges::any_of(COMPOUND_ASSIGNMENTS, [op] (const std::pair<Operator, Operator> &assignment) { return assignment.first == op; });
 }
 

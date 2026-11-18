@@ -36,11 +36,11 @@ bool TypeReference::hasNullability () const {
 }
 
 bool TypeReference::is_placeholder () const {
-	return t_name.get_type() == TokenType::Operator && t_name.get_lexeme() == cloth::to_string(Operator::o_UNDERSCORE);
+	return t_name.get_type() == TokenType::Operator && t_name.get_lexeme() == cloth::to_string(Operator::oUnderscore);
 }
 
 bool TypeReference::capturesWidth () const {
-	return opt_width && opt_width->get_lexeme() == cloth::to_string(Keyword::k_AUTO);
+	return opt_width && opt_width->get_lexeme() == cloth::to_string(Keyword::kAuto);
 }
 
 const std::vector<TypeReference> &TypeReference::get_type_arguments () const {
@@ -49,7 +49,7 @@ const std::vector<TypeReference> &TypeReference::get_type_arguments () const {
 }
 
 const Token *TypeReference::get_bare_identifier () const {
-	if (t_name.get_type() == TokenType::Identifier && t_name.get_lexeme().find(cloth::to_string(Operator::o_DOT)) == std::string::npos && !b_unsigned &&
+	if (t_name.get_type() == TokenType::Identifier && t_name.get_lexeme().find(cloth::to_string(Operator::oDot)) == std::string::npos && !b_unsigned &&
 	    !opt_width && v_arraySuffixes.empty() && !hasNullability() && !opt_application) {
 		return &t_name;
 	}
@@ -59,42 +59,42 @@ const Token *TypeReference::get_bare_identifier () const {
 std::string TypeReference::get_spelling () const {
 	std::string s_spelling;
 	if (b_unsigned) {
-		s_spelling += cloth::to_string(Keyword::k_UNSIGNED);
+		s_spelling += cloth::to_string(Keyword::kUnsigned);
 		s_spelling += ' ';
 	}
 	s_spelling += t_name.get_lexeme();
 
 	if (opt_width) {
-		s_spelling += cloth::to_string(Operator::o_LESS);
+		s_spelling += cloth::to_string(Operator::oLess);
 		s_spelling += opt_width->get_lexeme();
-		s_spelling += cloth::to_string(Operator::o_GREATER);
+		s_spelling += cloth::to_string(Operator::oGreater);
 	}
 
 	if (opt_application) {
-		s_spelling += cloth::to_string(Operator::o_LESS);
+		s_spelling += cloth::to_string(Operator::oLess);
 		const std::vector<TypeReference> &v_arguments = opt_application->arguments;
 		for (std::size_t st_index = 0; st_index < v_arguments.size(); ++st_index) {
 			if (st_index != 0) {
-				s_spelling += cloth::to_string(Operator::o_COMMA);
+				s_spelling += cloth::to_string(Operator::oComma);
 				s_spelling += ' ';
 			}
 			s_spelling += v_arguments[st_index].get_spelling();
 		}
-		s_spelling += cloth::to_string(Operator::o_GREATER);
+		s_spelling += cloth::to_string(Operator::oGreater);
 	}
 
 	if (opt_nullable) {
-		s_spelling += cloth::to_string(Operator::o_QUESTION);
+		s_spelling += cloth::to_string(Operator::oQuestion);
 	}
 
 	for (std::size_t st_index = 0; st_index < v_arraySuffixes.size(); ++st_index) {
-		s_spelling += cloth::to_string(Operator::o_BRACKET_OPEN);
+		s_spelling += cloth::to_string(Operator::oBracketOpen);
 		if (st_index < vopt_arraySizes.size() && vopt_arraySizes[st_index]) {
 			s_spelling += vopt_arraySizes[st_index]->get_lexeme();
 		}
-		s_spelling += cloth::to_string(Operator::o_BRACKET_CLOSE);
+		s_spelling += cloth::to_string(Operator::oBracketClose);
 		if (st_index < vopt_arrayNullability.size() && vopt_arrayNullability[st_index]) {
-			s_spelling += cloth::to_string(Operator::o_QUESTION);
+			s_spelling += cloth::to_string(Operator::oQuestion);
 		}
 	}
 

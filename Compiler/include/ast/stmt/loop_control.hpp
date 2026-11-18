@@ -32,7 +32,7 @@ struct LoopJumpStatement : Statement {
 	}
 
 	[[nodiscard]] bool isContinue () const {
-		return keyword.get_lexeme() == to_string(k_CONTINUE);
+		return keyword.get_lexeme() == to_string(kContinue);
 	}
 
 	[[nodiscard]] TokenSpan get_span () const override {

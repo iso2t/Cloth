@@ -33,13 +33,13 @@ class TypeParser {
 	std::vector<std::invoke_result_t<ParseClause &, TypeReference, const Token &>> parseParents (std::string_view description, ParseClause &&parseClause) {
 		using Clause = std::invoke_result_t<ParseClause &, TypeReference, const Token &>;
 		std::vector<Clause> v_parents;
-		if (!at(Operator::o_COLON)) {
+		if (!at(oColon)) {
 			return v_parents;
 		}
 		do {
-			ParentType pt_parent = parseParent(description);
-			v_parents.push_back(parseClause(std::move(pt_parent.type), std::as_const(pt_parent.separator)));
-		} while (at(Operator::o_COMMA));
+			auto [separator, type] = parseParent(description);
+			v_parents.push_back(parseClause(std::move(type), std::as_const(separator)));
+		} while (at(oComma));
 		return v_parents;
 	}
 
@@ -61,7 +61,7 @@ class TypeParser {
 	bool                            typeCanEndAt (int offset);
 	Token                           parseName ();
 	std::optional<TokenSpan>        nullableMarker ();
-	bool                            isWidthToken (const Token &token) const;
+	[[nodiscard]] bool              isWidthToken (const Token &token) const;
 	bool                            at (Operator op, int offset = 0);
 };
 

@@ -15,7 +15,7 @@ class LoopParser {
 	LoopParser (Parser &parser, DelimitedParser &delimited) : p_parser(parser), dp_delimited(delimited) {
 	}
 
-	DelimitedParser &get_delimited () const {
+	[[nodiscard]] DelimitedParser &get_delimited () const {
 		return dp_delimited;
 	}
 

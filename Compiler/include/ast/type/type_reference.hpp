@@ -17,11 +17,11 @@ struct TypeArgumentList {
 	std::vector<TypeReference> arguments;
 	Token                      closing;
 
-	TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan get_span () const {
 		return TokenSpan::span_through(opening.get_span(), closing.get_span());
 	}
 
-	bool hasPlaceholders () const;
+	[[nodiscard]] bool hasPlaceholders () const;
 };
 
 class TypeReference {
@@ -31,48 +31,48 @@ class TypeReference {
 	                        std::vector<std::optional<Token>> arraySizes = {}, std::optional<TokenSpan> nullable = std::nullopt,
 	                        std::vector<std::optional<TokenSpan>> arrayNullability = {}, std::optional<TypeArgumentList> application = std::nullopt);
 
-	const Token &get_name () const {
+	[[nodiscard]] const Token &get_name () const {
 		return t_name;
 	}
 
-	bool isUnsigned () const {
+	[[nodiscard]] bool isUnsigned () const {
 		return b_unsigned;
 	}
 
-	const std::optional<Token> &get_width () const {
+	[[nodiscard]] const std::optional<Token> &get_width () const {
 		return opt_width;
 	}
 
-	TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan get_span () const {
 		return t_span;
 	}
 
-	const std::vector<TokenSpan> &get_array_suffixes () const {
+	[[nodiscard]] const std::vector<TokenSpan> &get_array_suffixes () const {
 		return v_arraySuffixes;
 	}
 
-	const std::vector<std::optional<Token>> &get_array_sizes () const {
+	[[nodiscard]] const std::vector<std::optional<Token>> &get_array_sizes () const {
 		return vopt_arraySizes;
 	}
 
-	const std::optional<TokenSpan> &get_nullable () const {
+	[[nodiscard]] const std::optional<TokenSpan> &get_nullable () const {
 		return opt_nullable;
 	}
 
-	const std::vector<std::optional<TokenSpan>> &get_array_nullability () const {
+	[[nodiscard]] const std::vector<std::optional<TokenSpan>> &get_array_nullability () const {
 		return vopt_arrayNullability;
 	}
 
-	const std::optional<TypeArgumentList> &get_application () const {
+	[[nodiscard]] const std::optional<TypeArgumentList> &get_application () const {
 		return opt_application;
 	}
 
-	bool                              hasNullability () const;
-	bool                              is_placeholder () const;
-	bool                              capturesWidth () const;
-	const std::vector<TypeReference> &get_type_arguments () const;
-	const Token                      *get_bare_identifier () const;
-	std::string                       get_spelling () const;
+	[[nodiscard]] bool                              hasNullability () const;
+	[[nodiscard]] bool                              is_placeholder () const;
+	[[nodiscard]] bool                              capturesWidth () const;
+	[[nodiscard]] const std::vector<TypeReference> &get_type_arguments () const;
+	[[nodiscard]] const Token                      *get_bare_identifier () const;
+	[[nodiscard]] std::string                       get_spelling () const;
 
     private:
 	Token                                 t_name;

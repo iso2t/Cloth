@@ -40,14 +40,14 @@ IfExpression IfParser::parseIf (bool allowWhileTrailer) {
 		while (p_parser.peek(i_elseOffset).get_type() == TokenType::NewLine) {
 			++i_elseOffset;
 		}
-		if (!p_parser.atKeyword(Keyword::k_ELSE, i_elseOffset)) {
+		if (!p_parser.atKeyword(Keyword::kElse, i_elseOffset)) {
 			break;
 		}
 		for (int i_skipped = 0; i_skipped <= i_elseOffset; ++i_skipped) {
 			p_parser.advance();
 		}
 		p_parser.skipNewLines();
-		if (!p_parser.atKeyword(Keyword::k_IF)) {
+		if (!p_parser.atKeyword(Keyword::kIf)) {
 			BlockBody bb_otherwise = parseBranchBody(allowWhileTrailer);
 			opt_otherwise          = std::move(bb_otherwise.statements);
 			opt_otherwiseSpan      = bb_otherwise.span;
@@ -64,12 +64,12 @@ IfExpression IfParser::parseIf (bool allowWhileTrailer) {
 BlockBody IfParser::parseBranchBody (bool allowWhileTrailer) {
 	const Token        t_start  = p_parser.peek();
 	const std::string &s_lexeme = t_start.get_lexeme();
-	if (s_lexeme == cloth::to_string(Operator::o_BRACE_OPEN)) {
+	if (s_lexeme == cloth::to_string(Operator::oBraceOpen)) {
 		return p_parser.parseBlock();
 	}
-	if (t_start.get_type() == TokenType::EndOfFile || p_parser.atKeyword(Keyword::k_ELSE) || s_lexeme == cloth::to_string(Operator::o_BRACE_CLOSE) ||
-	    s_lexeme == cloth::to_string(Operator::o_SEMICOLON)) {
-		throw cde::SyntaxErrors::expected(std::format("a conditional body ('{}' or a statement)", cloth::to_string(Operator::o_BRACE_OPEN)), t_start);
+	if (t_start.get_type() == TokenType::EndOfFile || p_parser.atKeyword(Keyword::kElse) || s_lexeme == cloth::to_string(Operator::oBraceClose) ||
+	    s_lexeme == cloth::to_string(Operator::oSemicolon)) {
+		throw cde::SyntaxErrors::expected(std::format("a conditional body ('{}' or a statement)", cloth::to_string(Operator::oBraceOpen)), t_start);
 	}
 	return p_parser.parseUnbracedBody(allowWhileTrailer);
 }

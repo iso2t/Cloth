@@ -30,18 +30,18 @@ NestedStateDeclaration::NestedStateDeclaration (const Token &keyword, std::optio
                                                 std::optional<InitialStatePrefix> initial, std::vector<StateMemberPtr> members, TokenSpan span) :
         StateSelectionDeclaration(std::move(initial)),
         StateBodyDeclaration(keyword, std::move(visibility), name, std::move(payloadType), std::move(members)),
-        span(span) {
+        span(std::move(span)) {
 }
 
 StateAttachmentDeclaration::StateAttachmentDeclaration (const Token &keyword, const Token &name, std::optional<InitialStatePrefix> initial, TokenSpan span) :
         StateSelectionDeclaration(std::move(initial)),
         keyword(keyword),
         name(name),
-        span(span) {
+        span(std::move(span)) {
 }
 
 TopLevelStateDeclaration::TopLevelStateDeclaration (const Token &keyword, std::optional<Token> visibility, const Token &name, TypeReference payloadType,
-                                                    TypeReference host, std::vector<StateMemberPtr> members, TokenSpan span,
+                                                    TypeReference host, std::vector<StateMemberPtr> members, const TokenSpan &span,
                                                     std::vector<TypeDeclarationPtr> nestedTypes) :
         Declaration{ span },
         StateBodyDeclaration(keyword, std::move(visibility), name, std::move(payloadType), std::move(members)),

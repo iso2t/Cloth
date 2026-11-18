@@ -20,17 +20,17 @@ ImportDeclaration ImportParser::parse () {
 	const Token        t_keyword = p_parser.advance();
 	std::vector<Token> v_components{ identifierOnLine(t_keyword) };
 	std::vector<Token> v_dots;
-	while (at(Operator::o_DOT) && onLine(t_keyword)) {
+	while (at(Operator::oDot) && onLine(t_keyword)) {
 		v_dots.push_back(p_parser.advance());
 		v_components.push_back(identifierOnLine(t_keyword));
 	}
 	if (!onLine(t_keyword)) {
-		throw cde::SyntaxErrors::expected(std::format("'{}' on the same line as the import path", cloth::to_string(Operator::o_COLON)),
+		throw cde::SyntaxErrors::expected(std::format("'{}' on the same line as the import path", cloth::to_string(Operator::oColon)),
 		                                  p_parser.peek());
 	}
-	const Token t_colon = p_parser.expect(Operator::o_COLON);
+	const Token t_colon = p_parser.expect(Operator::oColon);
 	p_parser.skipNewLines();
-	ImportSelection is_selection = at(Operator::o_MULTIPLY) ? ImportSelection{ ImportSelection::Wildcard{ p_parser.advance() } } :
+	ImportSelection is_selection = at(Operator::oMul) ? ImportSelection{ ImportSelection::Wildcard{ p_parser.advance() } } :
 	                                                          ImportSelection{ names() };
 
 	const Token          t_last         = p_parser.previous();
@@ -50,15 +50,15 @@ ImportSelection::Names ImportParser::names () {
 	SeenNames          m_seen;
 	while (true) {
 		const std::string s_description =
-		        v_names.empty() ? std::format("an imported declaration name or '{}' as the entire selection", cloth::to_string(Operator::o_MULTIPLY)) :
-		                          std::format("an imported declaration name after '{}'", cloth::to_string(Operator::o_COMMA));
+		        v_names.empty() ? std::format("an imported declaration name or '{}' as the entire selection", cloth::to_string(Operator::oMul)) :
+		                          std::format("an imported declaration name after '{}'", cloth::to_string(Operator::oComma));
 		const Token                                t_name      = p_parser.expect(TokenType::Identifier, s_description);
 		const std::pair<SeenNames::iterator, bool> p_insertion = m_seen.try_emplace(t_name.get_lexeme(), t_name);
 		if (!p_insertion.second) {
 			throw cde::ImportErrors::duplicateSelection(p_insertion.first->second, t_name);
 		}
 		v_names.push_back(t_name);
-		if (!onLine(t_name) || !at(Operator::o_COMMA)) {
+		if (!onLine(t_name) || !at(Operator::oComma)) {
 			break;
 		}
 		v_commas.push_back(p_parser.advance());

@@ -40,7 +40,7 @@ ClassDeclaration::ClassDeclaration (const Token &keyword, const Token &name, std
                                     std::vector<ClassParameterDeclaration> parameters, std::vector<ClassMember> members, TokenSpan span,
                                     std::vector<ClassParentClause> parents, std::optional<TypeParameterList> typeParameters,
                                     std::vector<TypeDeclarationPtr> nestedTypes) :
-        TypeDeclaration(name, std::move(visibility), span, std::move(nestedTypes)),
+        TypeDeclaration(name, std::move(visibility), std::move(span), std::move(nestedTypes)),
         keyword(keyword),
         finalKeyword(std::move(finalKeyword)),
         parameters(std::move(parameters)),

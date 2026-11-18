@@ -63,7 +63,7 @@ inline std::size_t utf8_scalar_length (std::string_view bytes) {
 
 // Decodes one scalar after utf8_scalar_length has validated its bytes.
 inline char32_t utf8_scalar_value (std::string_view scalar) {
-	const unsigned char c_first = static_cast<unsigned char>(scalar.front());
+	const auto c_first = static_cast<unsigned char>(scalar.front());
 	if (scalar.size() == 1) {
 		return c_first;
 	}

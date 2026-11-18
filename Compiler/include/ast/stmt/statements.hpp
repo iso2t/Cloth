@@ -60,7 +60,7 @@ struct ReceivingTarget {
 	std::variant<Named, Discard> value;
 
 	static ReceivingTarget of (const Token &token) {
-		if (token.get_lexeme() == to_string(o_UNDERSCORE)) {
+		if (token.get_lexeme() == to_string(oUnderscore)) {
 			return { Discard{ token } };
 		}
 		return { Named{ token } };

@@ -38,10 +38,10 @@ namespace cloth {
 
 class Parser {
     public:
-	Parser (std::vector<Token> tokens) : v_tokens(std::move(tokens)) {
+	explicit Parser (std::vector<Token> tokens) : v_tokens(std::move(tokens)) {
 	}
 
-	Parser (Lexer &lexer) : v_tokens(lexer.scanTokens()) {
+	explicit Parser (Lexer &lexer) : v_tokens(lexer.scanTokens()) {
 	}
 
 	SourceUnit parse ();

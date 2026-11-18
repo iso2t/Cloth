@@ -24,7 +24,7 @@ class ExpressionParser {
 
 	struct OperatorPrecedence {
 		int           precedence;
-		Associativity associativity = Associativity::LEFT;
+		Associativity associativity = LEFT;
 	};
 
 	static const std::unordered_map<Operator, OperatorPrecedence> binaryOperators;
@@ -51,7 +51,7 @@ class ExpressionParser {
 	ExpressionPtr             parseInterpolation ();
 	std::vector<CallArgument> parseArguments ();
 	std::string               decodeString (std::string_view contents);
-	bool                      isImplicitBinding (const Token &token) const;
+	[[nodiscard]] bool        isImplicitBinding (const Token &token) const;
 	bool                      at (Operator op, int offset = 0);
 };
 

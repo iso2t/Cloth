@@ -3,7 +3,7 @@
 /**
  * Cloth print streams
  */
-#include <ostream>
+#pragma once
 
 #include <lexer/lexer.hpp>
 

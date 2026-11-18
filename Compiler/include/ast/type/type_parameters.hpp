@@ -16,7 +16,7 @@ namespace cloth {
 struct ConstructorBound {
 	ConstructorGuaranteeDeclaration declaration;
 
-	TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan get_span () const {
 		return declaration.span;
 	}
 };
@@ -24,7 +24,7 @@ struct ConstructorBound {
 struct TypeParameterBound {
 	std::variant<ConstructorBound, TypeReference> value;
 
-	TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan get_span () const {
 		return std::visit([]<typename Bound>(const Bound &bound) -> TokenSpan { return bound.get_span(); }, value);
 	}
 };
@@ -34,8 +34,8 @@ struct TypeParameterDeclaration {
 	std::vector<TypeParameterBound> bounds      = {};
 	std::optional<TypeReference>    defaultType = std::nullopt;
 
-	TokenSpan get_span () const {
-		const TokenSpan ts_name = name.get_span();
+	[[nodiscard]] TokenSpan get_span () const {
+		TokenSpan ts_name = name.get_span();
 		if (defaultType) {
 			return TokenSpan::span_through(ts_name, defaultType->get_span());
 		}
@@ -45,7 +45,7 @@ struct TypeParameterDeclaration {
 		return ts_name;
 	}
 
-	std::vector<TypeReference> get_type_bounds () const {
+	[[nodiscard]] std::vector<TypeReference> get_type_bounds () const {
 		std::vector<TypeReference> v_typeBounds;
 		for (const TypeParameterBound &tpb_bound : bounds) {
 			if (const TypeReference *tr_reference = std::get_if<TypeReference>(&tpb_bound.value)) {
@@ -61,7 +61,7 @@ struct TypeParameterList {
 	std::vector<TypeParameterDeclaration> parameters;
 	Token                                 closing;
 
-	TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan get_span () const {
 		return TokenSpan::span_through(opening.get_span(), closing.get_span());
 	}
 };

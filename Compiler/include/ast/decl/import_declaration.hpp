@@ -25,7 +25,7 @@ struct ImportPath {
 		std::string s_spelling;
 		for (std::size_t st_index = 0; st_index < components.size(); ++st_index) {
 			if (st_index != 0) {
-				s_spelling += to_string(o_DOT);
+				s_spelling += to_string(oDot);
 			}
 			s_spelling += components[st_index].get_lexeme();
 		}

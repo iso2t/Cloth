@@ -31,7 +31,7 @@ namespace cloth {
 namespace {
 
 bool isVoidReturn (const std::vector<TypeReference> &returnTypes) {
-	return returnTypes.empty() || (returnTypes.size() == 1 && returnTypes.front().get_spelling() == cloth::to_string(Keyword::k_VOID));
+	return returnTypes.empty() || (returnTypes.size() == 1 && returnTypes.front().get_spelling() == cloth::to_string(Keyword::kVoid));
 }
 
 bool endsInStatement (const std::vector<StatementPtr> &statements);
@@ -61,9 +61,9 @@ bool endsInStatement (const std::vector<StatementPtr> &statements) {
 }
 
 FunctionDeclaration FunctionParser::parseFunction () {
-	std::optional<Token> opt_visibility = p_parser.atKeyword(Keyword::k_PUBLIC) ? std::make_optional(p_parser.advance()) : std::nullopt;
-	if (!p_parser.atKeyword(Keyword::k_FN)) {
-		throw cde::SyntaxErrors::expected(std::format("a '{}' declaration", cloth::to_string(Keyword::k_FN)), p_parser.peek());
+	std::optional<Token> opt_visibility = p_parser.atKeyword(Keyword::kPublic) ? std::make_optional(p_parser.advance()) : std::nullopt;
+	if (!p_parser.atKeyword(Keyword::kFn)) {
+		throw cde::SyntaxErrors::expected(std::format("a '{}' declaration", cloth::to_string(Keyword::kFn)), p_parser.peek());
 	}
 	const Token                       t_keyword          = p_parser.advance();
 	std::vector<TypeReference>        v_returnTypes      = p_parser.parseTypeList();
@@ -82,29 +82,29 @@ FunctionDeclaration FunctionParser::parseFunction () {
 
 std::vector<ParameterDeclaration> FunctionParser::parseParameters () {
 	return p_parser.p_delimitedParser.parentheses([this] () -> std::vector<ParameterDeclaration> {
-		return p_parser.p_delimitedParser.commaSeparated(Operator::o_PAREN_CLOSE, [this] () -> ParameterDeclaration { return parseParameter(); });
+		return p_parser.p_delimitedParser.commaSeparated(Operator::oParenClose, [this] () -> ParameterDeclaration { return parseParameter(); });
 	});
 }
 
 ParameterDeclaration FunctionParser::parseParameter () {
-	std::optional<Token> opt_finalKeyword    = p_parser.atKeyword(Keyword::k_FINAL) ? std::make_optional(p_parser.advance()) : std::nullopt;
-	std::optional<Token> opt_optionalKeyword = p_parser.atKeyword(Keyword::k_OPT) ? std::make_optional(p_parser.advance()) : std::nullopt;
+	std::optional<Token> opt_finalKeyword    = p_parser.atKeyword(Keyword::kFinal) ? std::make_optional(p_parser.advance()) : std::nullopt;
+	std::optional<Token> opt_optionalKeyword = p_parser.atKeyword(Keyword::kOpt) ? std::make_optional(p_parser.advance()) : std::nullopt;
 	std::optional<Token> opt_opening;
 	if (opt_optionalKeyword) {
-		opt_opening = p_parser.expect(Operator::o_LESS);
+		opt_opening = p_parser.expect(Operator::oLess);
 		p_parser.skipNewLines();
 	}
 	TypeReference        tr_type = p_parser.p_typeParser.parse(/*inCast=*/false, /*allowArrays=*/true);
 	std::optional<Token> opt_closing;
 	if (opt_optionalKeyword) {
 		p_parser.skipNewLines();
-		opt_closing = p_parser.expect(Operator::o_GREATER);
+		opt_closing = p_parser.expect(Operator::oGreater);
 	}
 	const Token          t_name = p_parser.expect(TokenType::Identifier, "a parameter name");
 	std::optional<Token> opt_delimiter;
 	ExpressionPtr        ep_fallback;
 	if (opt_optionalKeyword) {
-		opt_delimiter = p_parser.expect(Operator::o_ELVIS);
+		opt_delimiter = p_parser.expect(Operator::oElvis);
 		ep_fallback   = inBody([this] () -> ExpressionPtr { return p_parser.p_expressionParser.parseExpression(); });
 	}
 	const TokenSpan ts_start = opt_finalKeyword ? opt_finalKeyword->get_span() : opt_optionalKeyword ? opt_optionalKeyword->get_span() : tr_type.get_span();
@@ -126,7 +126,7 @@ FunctionParser::MethodHeader FunctionParser::methodHeader (bool allowTypeParamet
 	const Token                t_keyword     = p_parser.advance();
 	std::vector<TypeReference> v_returnTypes = p_parser.parseTypeList();
 	const Token                t_name        = p_parser.expect(TokenType::Identifier, "a method name");
-	if (!allowTypeParameters && at(Operator::o_LESS)) {
+	if (!allowTypeParameters && at(Operator::oLess)) {
 		throw cde::GenericErrors::syntax("Method type parameters", p_parser.peek());
 	}
 	std::optional<TypeParameterList> opt_typeParameters = p_parser.p_typeParser.parseTypeParameters();
@@ -154,11 +154,11 @@ InterfaceMethodDeclaration FunctionParser::parseInterfaceMethod () {
 	const int    i_signatureEnd = p_parser.i_currentIndex;
 	p_parser.skipNewLines();
 	std::optional<InterfaceMethodFallback> opt_fallback;
-	if (at(Operator::o_ASSIGN)) {
+	if (at(Operator::oAssign)) {
 		opt_fallback = parseInterfaceFallback();
-	} else if (at(Operator::o_BRACE_OPEN)) {
-		throw cde::SyntaxErrors::expected(std::format("'{} {}' before an interface method body", cloth::to_string(Operator::o_ASSIGN),
-		                                              cloth::to_string(Keyword::k_DEFAULT)),
+	} else if (at(Operator::oBraceOpen)) {
+		throw cde::SyntaxErrors::expected(std::format("'{} {}' before an interface method body", cloth::to_string(Operator::oAssign),
+		                                              cloth::to_string(Keyword::kDefault)),
 		                                  p_parser.peek());
 	} else {
 		p_parser.i_currentIndex = i_signatureEnd;
@@ -170,14 +170,14 @@ InterfaceMethodDeclaration FunctionParser::parseInterfaceMethod () {
 
 InterfaceMethodFallback FunctionParser::parseInterfaceFallback () {
 	const Token t_equals = p_parser.advance();
-	if (!p_parser.atKeyword(Keyword::k_DEFAULT)) {
-		throw cde::SyntaxErrors::expected(std::format("'{}' after '{}' in an interface method", cloth::to_string(Keyword::k_DEFAULT),
-		                                              cloth::to_string(Operator::o_ASSIGN)),
+	if (!p_parser.atKeyword(Keyword::kDefault)) {
+		throw cde::SyntaxErrors::expected(std::format("'{}' after '{}' in an interface method", cloth::to_string(Keyword::kDefault),
+		                                              cloth::to_string(Operator::oAssign)),
 		                                  p_parser.peek());
 	}
 	const Token t_keyword = p_parser.advance();
 	p_parser.skipNewLines();
-	if (at(Operator::o_PAREN_OPEN)) {
+	if (at(Operator::oParenOpen)) {
 		ExpressionPtr   ep_expression = inBody([this] () -> ExpressionPtr {
                         return p_parser.p_delimitedParser.parentheses([this] () -> ExpressionPtr {
                                 p_parser.skipNewLines();
@@ -190,16 +190,16 @@ InterfaceMethodFallback FunctionParser::parseInterfaceFallback () {
 		const TokenSpan ts_span       = TokenSpan::span_through(t_equals.get_span(), p_parser.previous().get_span());
 		return { t_equals, t_keyword, { ExpressionBody{ .equals = t_equals, .expression = std::move(ep_expression), .span = ts_span } } };
 	}
-	if (at(Operator::o_BRACE_OPEN)) {
+	if (at(Operator::oBraceOpen)) {
 		return { t_equals, t_keyword, { parseBlockBody() } };
 	}
-	throw cde::SyntaxErrors::expected(std::format("a parenthesized expression or a block after '{}'", cloth::to_string(Keyword::k_DEFAULT)),
+	throw cde::SyntaxErrors::expected(std::format("a parenthesized expression or a block after '{}'", cloth::to_string(Keyword::kDefault)),
 	                                  p_parser.peek());
 }
 
 MethodDeclaration FunctionParser::parseOperator (std::optional<Token> visibility) {
 	const Token       t_keyword     = p_parser.advance();
-	const bool        b_hasSelector = at(Operator::o_LESS) && !at(Operator::o_PAREN_OPEN, 1);
+	const bool        b_hasSelector = at(Operator::oLess) && !at(Operator::oParenOpen, 1);
 	const RestoreFlag rf_width(p_parser.b_allowInferredOperatorWidth, false);
 	p_parser.b_allowInferredOperatorWidth = b_hasSelector;
 
@@ -209,7 +209,7 @@ MethodDeclaration FunctionParser::parseOperator (std::optional<Token> visibility
 		        [this] () -> TypeReference { return p_parser.p_typeParser.parse(/*inCast=*/false, /*allowArrays=*/true); });
 	}
 	p_parser.b_allowInferredOperatorWidth = opt_selector && opt_selector->capturesWidth();
-	const bool b_provider                 = at(Operator::o_COLON_COLON);
+	const bool b_provider                 = at(Operator::oColonColon);
 	if (b_provider) {
 		p_parser.advance();
 	}
@@ -217,16 +217,16 @@ MethodDeclaration FunctionParser::parseOperator (std::optional<Token> visibility
 	bool        b_rightReceiver = false;
 	using OptionalParameters    = std::vector<std::optional<ParameterDeclaration>>;
 	OptionalParameters                v_parsedParameters = p_parser.p_delimitedParser.parentheses([this, &b_rightReceiver] () -> OptionalParameters {
-                return p_parser.p_delimitedParser.commaSeparated(Operator::o_PAREN_CLOSE, [this, &b_rightReceiver] () -> std::optional<ParameterDeclaration> {
-                        if (!p_parser.atKeyword(Keyword::k_SELF)) {
+                return p_parser.p_delimitedParser.commaSeparated(Operator::oParenClose, [this, &b_rightReceiver] () -> std::optional<ParameterDeclaration> {
+                        if (!p_parser.atKeyword(Keyword::kSelf)) {
                                 return parseParameter();
                         }
                         p_parser.advance();
                         b_rightReceiver = true;
                         p_parser.skipNewLines();
-                        if (!at(Operator::o_PAREN_CLOSE)) {
-                                throw cde::SyntaxErrors::expected(std::format("'{}' after '{}'", cloth::to_string(Operator::o_PAREN_CLOSE),
-				                                                             cloth::to_string(Keyword::k_SELF)),
+                        if (!at(Operator::oParenClose)) {
+                                throw cde::SyntaxErrors::expected(std::format("'{}' after '{}'", cloth::to_string(Operator::oParenClose),
+				                                                             cloth::to_string(Keyword::kSelf)),
 				                                                 p_parser.peek());
                         }
                         return std::nullopt;
@@ -241,12 +241,12 @@ MethodDeclaration FunctionParser::parseOperator (std::optional<Token> visibility
 	}
 
 	std::vector<TypeReference> v_returnTypes;
-	if (at(Operator::o_POINTER_RIGHT)) {
+	if (at(Operator::oPointerRight)) {
 		p_parser.advance();
 		v_returnTypes.push_back(p_parser.p_typeParser.parse(/*inCast=*/false, /*allowArrays=*/true));
 	}
 	const std::optional<Operator> opt_operation    = fromCharacter(t_name.get_lexeme());
-	const bool                    b_allowStatement = opt_operation == Operator::o_INDEX_WRITE || (opt_operation && isUpdate(*opt_operation));
+	const bool                    b_allowStatement = opt_operation == Operator::oIndexWrite || (opt_operation && isUpdate(*opt_operation));
 	FunctionBody                  fb_body          = parseBody("operator", b_allowStatement);
 	return { t_keyword,
 		 t_name,
@@ -259,26 +259,26 @@ MethodDeclaration FunctionParser::parseOperator (std::optional<Token> visibility
 
 Token FunctionParser::parseOperatorName () {
 	const Token t_token = p_parser.peek();
-	if (t_token.get_type() == TokenType::Identifier && t_token.get_lexeme() == cloth::to_string(Operator::o_FOREACH)) {
+	if (t_token.get_type() == TokenType::Identifier && t_token.get_lexeme() == cloth::to_string(Operator::oForeach)) {
 		p_parser.advance();
-		return { t_token.get_lexeme(), Operator::o_FOREACH, t_token.get_span() };
+		return { t_token.get_lexeme(), Operator::oForeach, t_token.get_span() };
 	}
-	if (t_token.get_type() != TokenType::Operator && !p_parser.atKeyword(Keyword::k_IS)) {
+	if (t_token.get_type() != TokenType::Operator && !p_parser.atKeyword(Keyword::kIs)) {
 		throw cde::SyntaxErrors::expected("an operator", t_token);
 	}
 	p_parser.advance();
-	if (t_token.get_lexeme() != cloth::to_string(Operator::o_BRACKET_OPEN)) {
+	if (t_token.get_lexeme() != cloth::to_string(Operator::oBracketOpen)) {
 		return t_token;
 	}
 
-	const Token t_closing   = p_parser.expect(Operator::o_BRACKET_CLOSE);
-	Operator    o_operation = Operator::o_INDEX_READ;
-	if (at(Operator::o_QUESTION)) {
-		o_operation = Operator::o_INDEX_VALIDATE;
-	} else if (at(Operator::o_ASSIGN)) {
-		o_operation = Operator::o_INDEX_WRITE;
+	const Token t_closing   = p_parser.expect(Operator::oBracketClose);
+	Operator    o_operation = Operator::oIndexRead;
+	if (at(Operator::oQuestion)) {
+		o_operation = Operator::oIndexValidate;
+	} else if (at(Operator::oAssign)) {
+		o_operation = Operator::oIndexWrite;
 	}
-	const Token t_end = o_operation == Operator::o_INDEX_READ ? t_closing : p_parser.advance();
+	const Token t_end = o_operation == Operator::oIndexRead ? t_closing : p_parser.advance();
 	return { std::string(cloth::to_string(o_operation)), o_operation, TokenSpan::span_through(t_token.get_span(), t_end.get_span()) };
 }
 
@@ -290,12 +290,12 @@ BlockBody FunctionParser::parseBlockBody () {
 FunctionBody FunctionParser::parseBody (std::string_view kind, bool allowStatement, bool allowIntrinsic) {
 	p_parser.skipNewLines();
 	return inBody([this, kind, allowStatement, allowIntrinsic] () -> FunctionBody {
-		if (at(Operator::o_BRACE_OPEN)) {
+		if (at(Operator::oBraceOpen)) {
 			return { p_parser.parseBlock() };
 		}
-		if (!at(Operator::o_ASSIGN)) {
-			throw cde::SyntaxErrors::expected(std::format("a {} body ('{}' or '{}')", kind, cloth::to_string(Operator::o_BRACE_OPEN),
-			                                              cloth::to_string(Operator::o_ASSIGN)),
+		if (!at(Operator::oAssign)) {
+			throw cde::SyntaxErrors::expected(std::format("a {} body ('{}' or '{}')", kind, cloth::to_string(Operator::oBraceOpen),
+			                                              cloth::to_string(Operator::oAssign)),
 			                                  p_parser.peek());
 		}
 		const Token t_equals = p_parser.advance();
@@ -315,7 +315,7 @@ FunctionBody FunctionParser::parseBody (std::string_view kind, bool allowStateme
 }
 
 FunctionBody FunctionParser::parseVoidBody (const Token &equals) {
-	const bool                 b_startsWithIf = p_parser.atKeyword(Keyword::k_IF);
+	const bool                 b_startsWithIf = p_parser.atKeyword(Keyword::kIf);
 	BlockBody                  bb_body        = p_parser.parseUnbracedBody();
 	const TokenSpan            ts_span        = TokenSpan::span_through(equals.get_span(), bb_body.span);
 	const ExpressionStatement *es_statement = bb_body.statements.size() == 1 ? dynamic_cast<const ExpressionStatement *>(bb_body.statements.front().get()) :

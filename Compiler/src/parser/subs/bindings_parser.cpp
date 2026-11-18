@@ -30,16 +30,16 @@ std::vector<StatementPtr> BindingsParser::parseBindings (bool allowWhileTrailer)
 	const Token                  t_keyword = p_parser.advance();
 	std::vector<TypeReference>   v_types   = p_parser.parseTypeList();
 	std::vector<ReceivingTarget> v_targets{ p_parser.parseReceivingTarget() };
-	while (p_parser.peek().get_lexeme() == cloth::to_string(Operator::o_COMMA)) {
+	while (p_parser.peek().get_lexeme() == cloth::to_string(Operator::oComma)) {
 		p_parser.advance();
 		v_targets.push_back(p_parser.parseReceivingTarget());
 	}
 
 	const Token        t_assignment = p_parser.peek();
 	const std::string &s_assignment = t_assignment.get_lexeme();
-	const bool         b_isMutable  = s_assignment == cloth::to_string(Operator::o_ASSIGN);
-	if (t_assignment.get_type() != TokenType::Operator || (!b_isMutable && s_assignment != cloth::to_string(Operator::o_FINAL_ASSIGN))) {
-		throw cde::SyntaxErrors::expected(std::format("'{}' or '{}'", cloth::to_string(Operator::o_ASSIGN), cloth::to_string(Operator::o_FINAL_ASSIGN)),
+	const bool         b_isMutable  = s_assignment == cloth::to_string(Operator::oAssign);
+	if (t_assignment.get_type() != TokenType::Operator || (!b_isMutable && s_assignment != cloth::to_string(Operator::oFinalAssign))) {
+		throw cde::SyntaxErrors::expected(std::format("'{}' or '{}'", cloth::to_string(Operator::oAssign), cloth::to_string(Operator::oFinalAssign)),
 		                                  t_assignment);
 	}
 	p_parser.advance();
@@ -57,7 +57,7 @@ std::vector<StatementPtr> BindingsParser::parseBindings (bool allowWhileTrailer)
 	};
 
 	ExpressionPtr ep_braced;
-	if (p_parser.peek().get_lexeme() == cloth::to_string(Operator::o_BRACE_OPEN)) {
+	if (p_parser.peek().get_lexeme() == cloth::to_string(Operator::oBraceOpen)) {
 		ep_braced = fn_braces(v_targets.front().get_token());
 	}
 	const bool b_functionBlock = dynamic_cast<const FunctionBlockExpression *>(ep_braced.get()) != nullptr;

@@ -15,13 +15,13 @@ class SourceFile;
 
 // Lines and UTF-8 byte columns are one-based. The end position is exclusive.
 struct TokenSpan {
-	size_t startLine;
-	size_t startCol;
-	size_t endLine;
-	size_t endCol;
+	size_t                            startLine;
+	size_t                            startCol;
+	size_t                            endLine;
+	size_t                            endCol;
 	std::shared_ptr<const SourceFile> source = nullptr;
 
-	std::string to_string () const {
+	[[nodiscard]] std::string to_string () const {
 		return std::to_string(startLine) + ":" + std::to_string(startCol) + "-" + std::to_string(endLine) + ":" + std::to_string(endCol);
 	}
 
@@ -52,184 +52,183 @@ enum class TokenType {
 };
 
 enum Keyword {
-	k_MOD,
-	k_DEF,
-	k_TYPEDEF,
-	k_USING,
-	k_SELF,
-	k_RETURN,
-	k_CONST,
-	k_DEFAULT,
-	k_INTEROP,
+	kMod,
+	kDef,
+	kTypeDef,
+	kUsing,
+	kSelf,
+	kReturn,
+	kConst,
+	kDefault,
+	kInterop,
 
-	k_NEW,
-	k_DELETE,
-	k_FINAL,
-	k_OPT,
+	kNew,
+	kDelete,
+	kFinal,
+	kOpt,
 
-	k_CLASS,
-	k_STRUCT,
-	k_ENUM,
-	k_INTERFACE,
+	kClass,
+	kStruct,
+	kEnum,
+	kInterface,
 
-	k_MT,
-	k_OVERRIDE,
-	k_VIRTUAL,
-	k_OPERATOR,
-	k_AUTO,
-	k_FN,
-	k_PUBLIC,
-	k_PRIVATE,
+	kMt,
+	kOverride,
+	kVirtual,
+	kOperator,
+	kAuto,
+	kFn,
+	kPublic,
+	kPrivate,
 
-	k_BOOLEAN,
-	k_STRING,
-	k_FLOAT,
-	k_INTEGER,
-	k_CHARACTER,
-	k_VOID,
-	k_TYPEINFO,
-	k_STATE,
-	k_TRUE,
-	k_FALSE,
-	k_NULL,
-	k_UNSIGNED,
-	k_USIZE,
-	k_ISIZE,
+	kBoolean,
+	kString,
+	kFloat,
+	kInteger,
+	kCharacter,
+	kVoid,
+	kTypeinfo,
+	kState,
+	kTrue,
+	kFalse,
+	kNull,
+	kUnsigned,
+	kUsize,
+	kIsize,
 
-	k_INIT,
+	kInit,
 
-	k_IF,
-	k_ELSE,
-	k_IS,
+	kIf,
+	kElse,
+	kIs,
 
-	k_FOR,
-	k_WHILE,
-	k_DO,
-	k_CONTINUE,
-	k_BREAK,
+	kFor,
+	kWhile,
+	kDo,
+	kContinue,
+	kBreak,
 
-	k_ERROR
+	kError
 
 };
 
 enum Operator {
-	o_PLUS,
-	o_PLUS_PLUS,
-	o_PLUS_EQUAL,
+	oPlus,
+	oPlusPlus,
+	oPlusEqual,
 
-	o_MINUS,
-	o_MINUS_MINUS,
-	o_MINUS_EQUAL,
+	oMinus,
+	oMinusMinus,
+	oMinusEqual,
 
-	o_MULTIPLY,
-	o_MUL_MUL,
-	o_MUL_EQUAL,
-	o_DIVIDE,
-	o_DIV_EQUAL,
-	o_MODULO,
-	o_MOD_EQUAL,
+	oMul,
+	oMulMul,
+	oMulEqual,
+	oDiv,
+	oDivEqual,
+	oMod,
+	oModEqual,
 
-	o_ASSIGN,
-	o_FINAL_ASSIGN,
+	oAssign,
+	oFinalAssign,
 
-	o_EQUAL,
-	o_IDENTITY,
-	o_NOT_EQUAL,
-	o_NOT,
-	o_AND,
-	o_AMPERSAND,
-	o_OR,
+	oEqual,
+	oIdentity,
+	oNotEqual,
+	oNot,
+	oAnd,
+	oAmpersand,
+	oOr,
 
-	o_GREATER,
-	o_LESS,
-	o_GREATER_EQUAL,
-	o_LESS_EQUAL,
+	oGreater,
+	oLess,
+	oGreaterEqual,
+	oLessEqual,
 
-	o_POINTER_RIGHT,
-	o_POINTER_LEFT,
+	oPointerRight,
+	oPointerLeft,
 
-	o_QUESTION,
-	o_SAFE_DOT,
-	o_ELVIS,
-	o_RANGE,
-	o_RANGE_INCLUSIVE,
+	oQuestion,
+	oSafeDot,
+	oElvis,
+	oRange,
+	oRangeInclusive,
 
-	o_PAREN_OPEN,
-	o_PAREN_CLOSE,
-	o_BRACE_OPEN,
-	o_BRACE_CLOSE,
-	o_BRACKET_OPEN,
-	o_BRACKET_CLOSE,
+	oParenOpen,
+	oParenClose,
+	oBraceOpen,
+	oBraceClose,
+	oBracketOpen,
+	oBracketClose,
 
-	o_COMMA,
-	o_DOT,
-	o_COLON,
-	o_BACKTICK,
-	o_QUOTATION,
-	o_DOUBLE_QUOTATION,
-	o_TILDE,
-	o_POUND,
-	o_COLON_COLON,
-	o_SEMICOLON,
-	o_UNDERSCORE,
+	oComma,
+	oDot,
+	oColon,
+	oBacktick,
+	oQuotation,
+	oDoubleQuotation,
+	oTilde,
+	oPound,
+	oColonColon,
+	oSemicolon,
+	oUnderscore,
 
-	o_INDEX_READ,
-	o_INDEX_VALIDATE,
-	o_INDEX_WRITE,
-	o_FOREACH,
+	oIndexRead,
+	oIndexValidate,
+	oIndexWrite,
+	oForeach,
 
-	o_ERROR
+	oError
 };
 
-std::string_view to_string (Keyword keyword);
-std::string_view to_string (Operator op);
-std::string_view operator_name (Operator op);
+std::string_view        to_string (Keyword keyword);
+std::string_view        to_string (Operator op);
+std::string_view        operator_name (Operator op);
 std::optional<Operator> fromCharacter (std::string_view spelling);
 bool                    isTokenized (Operator op);
 bool                    isUpdate (Operator op);
-Operator compound_assignment_base (std::string_view spelling);
-std::string_view to_string (TokenType type);
+Operator                compound_assignment_base (std::string_view spelling);
+std::string_view        to_string (TokenType type);
 
 class Token {
-    private:
-	TokenSpan       t_span;
-	TokenType       t_type;
-	cloth::Operator o_operator = cloth::Operator::o_ERROR;
-	std::string     s_lexeme;
+	TokenSpan   t_span;
+	TokenType   t_type;
+	Operator    o_operator = oError;
+	std::string s_lexeme;
 
     public:
-	Token (std::string lexeme, TokenType type, TokenSpan span) : t_span(span), t_type(type), s_lexeme(std::move(lexeme)) {
+	Token (std::string lexeme, const TokenType type, TokenSpan span) : t_span(std::move(span)), t_type(type), s_lexeme(std::move(lexeme)) {
 	}
 
-	Token (std::string lexeme, cloth::Operator op, TokenSpan span) :
-	        t_span(span),
+	Token (std::string lexeme, const Operator op, TokenSpan span) :
+	        t_span(std::move(span)),
 	        t_type(TokenType::Operator),
 	        o_operator(op),
 	        s_lexeme(std::move(lexeme)) {
 	}
 
-	Token (char *lexeme, TokenType type, TokenSpan span) : t_span(span), t_type(type), s_lexeme(lexeme, sizeof(lexeme)) {
+	Token (const char *lexeme, const TokenType type, TokenSpan span) : t_span(std::move(span)), t_type(type), s_lexeme(lexeme, sizeof(lexeme)) {
 	}
 
 	Token (const Token &other) = default;
 
-	const std::string &get_lexeme () const {
+	[[nodiscard]] const std::string &get_lexeme () const {
 		return s_lexeme;
 	}
 
-	TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan get_span () const {
 		return t_span;
 	}
 
-	TokenType get_type () const {
+	[[nodiscard]] TokenType get_type () const {
 		return t_type;
 	}
 
-	std::string_view type_name () const {
-		return o_operator == cloth::o_ERROR ? cloth::to_string(t_type) : cloth::operator_name(o_operator);
+	[[nodiscard]] std::string_view type_name () const {
+		return o_operator == oError ? cloth::to_string(t_type) : operator_name(o_operator);
 	}
 
-	std::string to_string () const {
+	[[nodiscard]] std::string to_string () const {
 		return "{ l: " + s_lexeme + " t: " + std::string(type_name()) + " s: " + t_span.to_string() + " }";
 	}
 

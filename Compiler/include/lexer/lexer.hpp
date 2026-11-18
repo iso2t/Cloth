@@ -20,16 +20,16 @@ struct Position {
 
 class Lexer {
     public:
-	Lexer (std::string src) : Lexer(SourceFile{ "<input>", std::move(src) }) {
+	explicit Lexer (std::string src) : Lexer(SourceFile{ "<input>", std::move(src) }) {
 	}
 
-	Lexer (SourceFile source) : p_source(std::make_shared<const SourceFile>(std::move(source))) {
+	explicit Lexer (SourceFile source) : p_source(std::make_shared<const SourceFile>(std::move(source))) {
 	}
 
-	Lexer (const char *src) : Lexer(std::string(src)) {
+	explicit Lexer (const char *src) : Lexer(std::string(src)) {
 	}
 
-	Lexer (const char *src, size_t length) : Lexer(std::string(src, length)) {
+	Lexer (const char *src, const size_t length) : Lexer(std::string(src, length)) {
 	}
 
 	Lexer (const SourceFile &source, size_t offset) : Lexer(SourceFile{ source.get_path(), source.get_contents().substr(offset), source.get_extension() }) {
@@ -40,7 +40,7 @@ class Lexer {
 	std::vector<Token> scanTokens ();
 	void               scan ();
 
-	std::vector<Token> get_tokens () const {
+	[[nodiscard]] std::vector<Token> get_tokens () const {
 		return v_tokens;
 	}
 
@@ -53,29 +53,29 @@ class Lexer {
 	Position p_start{ 1, 1 };
 	Position p_current{ 1, 1 };
 
-	const std::string &source_text () const noexcept {
+	[[nodiscard]] const std::string &source_text () const noexcept {
 		return p_source->get_contents();
 	}
 
-	char            advance ();
-	void            advanceBytes (std::size_t length);
-	char            peek () const;
-	bool            isAtEnd () const;
-	void            addToken (TokenType type, TokenSpan span, const std::string &lexeme);
-	TokenSpan       span ();
-	TokenSpan       cursorSpan ();
-	cloth::Operator matchOperator ();
-	void            scanToken ();
-	bool            skipComments ();
-	void            number ();
-	void            consumeNumericDigits (int radix);
-	void            identifier ();
-	void            consumeIdentifierParts ();
-	void            interpolatedString ();
-	void            rawString ();
-	void            advanceStringScalar ();
-	void            string ();
-	void            character ();
+	char               advance ();
+	void               advanceBytes (std::size_t length);
+	[[nodiscard]] char peek () const;
+	[[nodiscard]] bool isAtEnd () const;
+	void               addToken (TokenType type, TokenSpan span, const std::string &lexeme);
+	TokenSpan          span ();
+	TokenSpan          cursorSpan ();
+	Operator           matchOperator ();
+	void               scanToken ();
+	bool               skipComments ();
+	void               number ();
+	void               consumeNumericDigits (int radix);
+	void               identifier ();
+	void               consumeIdentifierParts ();
+	void               interpolatedString ();
+	void               rawString ();
+	void               advanceStringScalar ();
+	void               string ();
+	void               character ();
 
 	[[noreturn]] void invalidNumber (std::string_view reason);
 	[[noreturn]] void invalidNumericSeparator ();

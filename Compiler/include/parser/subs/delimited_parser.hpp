@@ -18,7 +18,7 @@ class DelimitedParser {
 	explicit DelimitedParser (Parser &parser) : p_parser(parser) {
 	}
 
-	template <typename ParseContents> std::invoke_result_t<ParseContents> parse (Operator open, Operator close, ParseContents &&parseContents) {
+	template <typename ParseContents> std::invoke_result_t<ParseContents> parse (const Operator open, const Operator close, ParseContents &&parseContents) {
 		using ParsedContents = std::invoke_result_t<ParseContents>;
 		expect(open);
 		if constexpr (std::is_void_v<ParsedContents>) {
@@ -32,19 +32,19 @@ class DelimitedParser {
 	}
 
 	template <typename ParseContents> std::invoke_result_t<ParseContents> angles (ParseContents &&parseContents) {
-		return parse(Operator::o_LESS, Operator::o_GREATER, std::forward<ParseContents>(parseContents));
+		return parse(oLess, oGreater, std::forward<ParseContents>(parseContents));
 	}
 
 	template <typename ParseContents> std::invoke_result_t<ParseContents> parentheses (ParseContents &&parseContents) {
-		return parse(Operator::o_PAREN_OPEN, Operator::o_PAREN_CLOSE, std::forward<ParseContents>(parseContents));
+		return parse(oParenOpen, oParenClose, std::forward<ParseContents>(parseContents));
 	}
 
 	template <typename ParseContents> std::invoke_result_t<ParseContents> brackets (ParseContents &&parseContents) {
-		return parse(Operator::o_BRACKET_OPEN, Operator::o_BRACKET_CLOSE, std::forward<ParseContents>(parseContents));
+		return parse(oBracketOpen, oBracketClose, std::forward<ParseContents>(parseContents));
 	}
 
 	template <typename ParseContents> std::invoke_result_t<ParseContents> braces (ParseContents &&parseContents) {
-		return parse(Operator::o_BRACE_OPEN, Operator::o_BRACE_CLOSE, std::forward<ParseContents>(parseContents));
+		return parse(oBraceOpen, oBraceClose, std::forward<ParseContents>(parseContents));
 	}
 
 	/** Parses zero or more items and leaves the closing token for the caller. */
@@ -67,7 +67,7 @@ class DelimitedParser {
 			if (at(close) || endAfterItem()) {
 				break;
 			}
-			expect(Operator::o_COMMA);
+			expect(oComma);
 			skipNewLines();
 		}
 		return v_items;

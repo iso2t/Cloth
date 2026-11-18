@@ -25,13 +25,13 @@ namespace cloth {
 
 EnumDeclaration EnumParser::parse (const Token &keyword, std::optional<Token> visibility) {
 	const Token t_name = p_parser.expect(TokenType::Identifier, "an enum name");
-	if (at(Operator::o_LESS)) {
+	if (at(Operator::oLess)) {
 		throw cde::GenericErrors::syntax("Enum type parameters", p_parser.peek());
 	}
 	std::vector<EnumFieldDeclaration> v_fields;
-	if (at(Operator::o_PAREN_OPEN)) {
+	if (at(Operator::oParenOpen)) {
 		v_fields = p_parser.p_delimitedParser.parentheses([this] () -> std::vector<EnumFieldDeclaration> {
-			return p_parser.p_delimitedParser.commaSeparated(Operator::o_PAREN_CLOSE, [this] () -> EnumFieldDeclaration { return parseField(); });
+			return p_parser.p_delimitedParser.commaSeparated(Operator::oParenClose, [this] () -> EnumFieldDeclaration { return parseField(); });
 		});
 	}
 
@@ -45,13 +45,13 @@ EnumDeclaration EnumParser::parse (const Token &keyword, std::optional<Token> vi
 			v_nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 		}
 		v_cases = p_parser.p_delimitedParser.commaSeparated(
-		        Operator::o_BRACE_CLOSE, [this] () -> bool { return at(Operator::o_SEMICOLON) || p_parser.startsTypeDeclaration(); },
+		        Operator::oBraceClose, [this] () -> bool { return at(Operator::oSemicolon) || p_parser.startsTypeDeclaration(); },
 		        [this] () -> EnumCaseDeclaration { return parseCase(); });
 		if (v_cases.empty()) {
 			throw cde::SyntaxErrors::expected("at least one enum case", p_parser.peek());
 		}
-		if (!at(Operator::o_BRACE_CLOSE)) {
-			p_parser.expect(Operator::o_SEMICOLON);
+		if (!at(Operator::oBraceClose)) {
+			p_parser.expect(Operator::oSemicolon);
 			p_parser.skipNewLines();
 			v_operators = parseMembers(v_nestedTypes);
 		}
@@ -61,9 +61,9 @@ EnumDeclaration EnumParser::parse (const Token &keyword, std::optional<Token> vi
 }
 
 EnumFieldDeclaration EnumParser::parseField () {
-	std::optional<Token> opt_visibility = p_parser.atKeyword(Keyword::k_PUBLIC) ? std::make_optional(p_parser.advance()) : std::nullopt;
-	if (!p_parser.atKeyword(Keyword::k_DEF)) {
-		throw cde::SyntaxErrors::expected(std::format("'{}' for an enum payload field", cloth::to_string(Keyword::k_DEF)), p_parser.peek());
+	std::optional<Token> opt_visibility = p_parser.atKeyword(Keyword::kPublic) ? std::make_optional(p_parser.advance()) : std::nullopt;
+	if (!p_parser.atKeyword(Keyword::kDef)) {
+		throw cde::SyntaxErrors::expected(std::format("'{}' for an enum payload field", cloth::to_string(Keyword::kDef)), p_parser.peek());
 	}
 	p_parser.advance();
 	TypeReference tr_type = p_parser.p_delimitedParser.angles([this] () -> TypeReference {
@@ -74,7 +74,7 @@ EnumFieldDeclaration EnumParser::parseField () {
 	});
 	const Token   t_name  = p_parser.expect(TokenType::Identifier, "an enum payload field name");
 	ExpressionPtr ep_defaultValue;
-	if (at(Operator::o_ASSIGN)) {
+	if (at(Operator::oAssign)) {
 		p_parser.advance();
 		ep_defaultValue = value();
 	}
@@ -84,9 +84,9 @@ EnumFieldDeclaration EnumParser::parseField () {
 EnumCaseDeclaration EnumParser::parseCase () {
 	const Token                t_name = p_parser.expect(TokenType::Identifier, "an enum case");
 	std::vector<ExpressionPtr> v_values;
-	if (at(Operator::o_PAREN_OPEN)) {
+	if (at(Operator::oParenOpen)) {
 		v_values = p_parser.p_delimitedParser.parentheses([this] () -> std::vector<ExpressionPtr> {
-			return p_parser.p_delimitedParser.commaSeparated(Operator::o_PAREN_CLOSE, [this] () -> ExpressionPtr { return value(); });
+			return p_parser.p_delimitedParser.commaSeparated(Operator::oParenClose, [this] () -> ExpressionPtr { return value(); });
 		});
 	}
 	return { t_name, std::move(v_values) };
@@ -94,18 +94,18 @@ EnumCaseDeclaration EnumParser::parseCase () {
 
 std::vector<MethodDeclaration> EnumParser::parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) {
 	std::vector<MethodDeclaration> v_operators;
-	while (!at(Operator::o_BRACE_CLOSE)) {
+	while (!at(Operator::oBraceClose)) {
 		if (p_parser.startsTypeDeclaration()) {
 			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}
-		if (!p_parser.atKeyword(Keyword::k_OPERATOR)) {
-			throw cde::SyntaxErrors::expected(std::format("an '{}' declaration", cloth::to_string(Keyword::k_OPERATOR)), p_parser.peek());
+		if (!p_parser.atKeyword(Keyword::kOperator)) {
+			throw cde::SyntaxErrors::expected(std::format("an '{}' declaration", cloth::to_string(Keyword::kOperator)), p_parser.peek());
 		}
 		v_operators.push_back(p_parser.p_functionParser.parseOperator());
-		if (std::holds_alternative<ExpressionBody>(v_operators.back().body.value) && at(Operator::o_SEMICOLON)) {
+		if (std::holds_alternative<ExpressionBody>(v_operators.back().body.value) && at(Operator::oSemicolon)) {
 			p_parser.advance();
-		} else if (!at(Operator::o_BRACE_CLOSE) && p_parser.peek().get_type() != TokenType::NewLine) {
+		} else if (!at(Operator::oBraceClose) && p_parser.peek().get_type() != TokenType::NewLine) {
 			throw cde::SyntaxErrors::newline(p_parser.peek());
 		}
 		p_parser.skipNewLines();

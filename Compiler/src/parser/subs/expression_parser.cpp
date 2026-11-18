@@ -61,8 +61,8 @@ char32_t decodeCharacter (const Token &token) {
 }
 
 std::string collapseInterpolationBraces (std::string_view contents) {
-	const char  c_open  = cloth::to_string(Operator::o_BRACE_OPEN).front();
-	const char  c_close = cloth::to_string(Operator::o_BRACE_CLOSE).front();
+	const char  c_open  = cloth::to_string(Operator::oBraceOpen).front();
+	const char  c_close = cloth::to_string(Operator::oBraceClose).front();
 	std::string s_result;
 	s_result.reserve(contents.size());
 	for (std::size_t st_index = 0; st_index < contents.size();) {
@@ -78,22 +78,22 @@ std::string collapseInterpolationBraces (std::string_view contents) {
 }
 
 const std::unordered_map<Operator, ExpressionParser::OperatorPrecedence> ExpressionParser::binaryOperators = {
-	{ Operator::o_ELVIS, { 0, Associativity::RIGHT } },
-	{ Operator::o_OR, { 1 } },
-	{ Operator::o_AND, { 2 } },
-	{ Operator::o_EQUAL, { 5 } },
-	{ Operator::o_NOT_EQUAL, { 5 } },
-	{ Operator::o_IDENTITY, { 5 } },
-	{ Operator::o_LESS, { 7 } },
-	{ Operator::o_GREATER, { 7 } },
-	{ Operator::o_LESS_EQUAL, { 7 } },
-	{ Operator::o_GREATER_EQUAL, { 7 } },
-	{ Operator::o_PLUS, { 10 } },
-	{ Operator::o_MINUS, { 10 } },
-	{ Operator::o_MULTIPLY, { 20 } },
-	{ Operator::o_DIVIDE, { 20 } },
-	{ Operator::o_MODULO, { 20 } },
-	{ Operator::o_MUL_MUL, { POWER_PRECEDENCE, Associativity::RIGHT } },
+	{ Operator::oElvis, { 0, Associativity::RIGHT } },
+	{ Operator::oOr, { 1 } },
+	{ Operator::oAnd, { 2 } },
+	{ Operator::oEqual, { 5 } },
+	{ Operator::oNotEqual, { 5 } },
+	{ Operator::oIdentity, { 5 } },
+	{ Operator::oLess, { 7 } },
+	{ Operator::oGreater, { 7 } },
+	{ Operator::oLessEqual, { 7 } },
+	{ Operator::oGreaterEqual, { 7 } },
+	{ Operator::oPlus, { 10 } },
+	{ Operator::oMinus, { 10 } },
+	{ Operator::oMul, { 20 } },
+	{ Operator::oDiv, { 20 } },
+	{ Operator::oMod, { 20 } },
+	{ Operator::oMulMul, { POWER_PRECEDENCE, Associativity::RIGHT } },
 };
 
 ExpressionPtr ExpressionParser::parseExpression (int minimumPrecedence, bool stopAtAssignment, bool stopAtRange, bool allowWhileTrailer) {
@@ -112,7 +112,7 @@ ExpressionPtr ExpressionParser::parseInfix (ExpressionPtr initial, int minimumPr
 		if (stopAtAssignment && Parser::assignmentOperators.contains(s_operator)) {
 			break;
 		}
-		if (t_operator.get_type() == TokenType::Keyword && s_operator == cloth::to_string(Keyword::k_IS)) {
+		if (t_operator.get_type() == TokenType::Keyword && s_operator == cloth::to_string(Keyword::kIs)) {
 			if (TYPE_CHECK_PRECEDENCE < minimumPrecedence) {
 				break;
 			}
@@ -124,14 +124,14 @@ ExpressionPtr ExpressionParser::parseInfix (ExpressionPtr initial, int minimumPr
 			break;
 		}
 
-		const Operator o_kind    = fromCharacter(s_operator).value_or(Operator::o_ERROR);
-		const bool     b_isRange = o_kind == Operator::o_RANGE || o_kind == Operator::o_RANGE_INCLUSIVE;
+		const Operator o_kind    = fromCharacter(s_operator).value_or(Operator::oError);
+		const bool     b_isRange = o_kind == Operator::oRange || o_kind == Operator::oRangeInclusive;
 		// The loop parser consumes an outer range delimiter.
-		if ((stopAtRange && b_isRange) || o_kind == Operator::o_PAREN_CLOSE || o_kind == Operator::o_BRACE_CLOSE ||
-		    o_kind == Operator::o_BRACKET_CLOSE || o_kind == Operator::o_COMMA || o_kind == Operator::o_SEMICOLON) {
+		if ((stopAtRange && b_isRange) || o_kind == Operator::oParenClose || o_kind == Operator::oBraceClose ||
+		    o_kind == Operator::oBracketClose || o_kind == Operator::oComma || o_kind == Operator::oSemicolon) {
 			break;
 		}
-		if (o_kind == Operator::o_POINTER_RIGHT) {
+		if (o_kind == Operator::oPointerRight) {
 			if (CAST_PRECEDENCE < minimumPrecedence) {
 				break;
 			}
@@ -152,7 +152,7 @@ ExpressionPtr ExpressionParser::parseInfix (ExpressionPtr initial, int minimumPr
 		p_parser.advance();
 		const int     i_rightPrecedence = op_precedence.associativity == Associativity::LEFT ? op_precedence.precedence + 1 : op_precedence.precedence;
 		ExpressionPtr ep_right          = parseExpression(i_rightPrecedence, /*stopAtAssignment=*/false, stopAtRange, allowWhileTrailer);
-		if (o_kind == Operator::o_ELVIS) {
+		if (o_kind == Operator::oElvis) {
 			ep_left = std::make_shared<ElvisExpression>(std::move(ep_left), t_operator, std::move(ep_right));
 		} else {
 			ep_left = std::make_shared<BinaryExpression>(std::move(ep_left), t_operator, std::move(ep_right));
@@ -165,10 +165,10 @@ ExpressionPtr ExpressionParser::parseTypeCheck (ExpressionPtr operand, const Tok
 	const Token        t_target          = p_parser.peek();
 	const Token        t_next            = p_parser.peek(1);
 	const std::string &s_next            = t_next.get_lexeme();
-	const bool         b_hasValuePostfix = s_next == cloth::to_string(Operator::o_PAREN_OPEN) || s_next == cloth::to_string(Operator::o_DOT) ||
-	                               s_next == cloth::to_string(Operator::o_SAFE_DOT) || s_next == cloth::to_string(Operator::o_COLON_COLON) ||
-	                               s_next == cloth::to_string(Operator::o_BRACKET_OPEN);
-	const bool b_valueTarget = t_target.get_lexeme() == cloth::to_string(Operator::o_PAREN_OPEN) || isImplicitBinding(t_target) ||
+	const bool         b_hasValuePostfix = s_next == cloth::to_string(Operator::oParenOpen) || s_next == cloth::to_string(Operator::oDot) ||
+	                               s_next == cloth::to_string(Operator::oSafeDot) || s_next == cloth::to_string(Operator::oColonColon) ||
+	                               s_next == cloth::to_string(Operator::oBracketOpen);
+	const bool b_valueTarget = t_target.get_lexeme() == cloth::to_string(Operator::oParenOpen) || isImplicitBinding(t_target) ||
 	                           (t_target.get_type() == TokenType::Identifier && (b_hasValuePostfix || p_parser.p_typeParser.startsCallTypeArguments()));
 	if (!b_valueTarget || p_parser.p_typeParser.startsQualifiedTypeCheck()) {
 		return std::make_shared<TypeCheckExpression>(std::move(operand), op, p_parser.p_typeParser.parse(/*inCast=*/true));
@@ -192,13 +192,13 @@ ExpressionPtr ExpressionParser::parseTypeCheck (ExpressionPtr operand, const Tok
 }
 
 ExpressionPtr ExpressionParser::parseArrowTarget (ExpressionPtr receiver, const Token &op) {
-	if (p_parser.peek().get_type() != TokenType::Identifier || !at(Operator::o_PAREN_OPEN, 1)) {
+	if (p_parser.peek().get_type() != TokenType::Identifier || !at(Operator::oParenOpen, 1)) {
 		return std::make_shared<CastExpression>(std::move(receiver), op, TypeParser(p_parser).parse(/*inCast=*/true));
 	}
 	const Token     t_target   = p_parser.advance();
 	ExpressionPtr   ep_payload = p_parser.p_delimitedParser.parentheses([this] () -> ExpressionPtr {
                 p_parser.skipNewLines();
-                if (at(Operator::o_PAREN_CLOSE)) {
+                if (at(Operator::oParenClose)) {
                         return nullptr;
                 }
                 ExpressionPtr ep_expression = parseExpression();
@@ -212,9 +212,9 @@ ExpressionPtr ExpressionParser::parseArrowTarget (ExpressionPtr receiver, const 
 ExpressionPtr ExpressionParser::parseUnary (bool stopAtRange, bool allowWhileTrailer) {
 	const Token        t_token  = p_parser.peek();
 	const std::string &s_lexeme = t_token.get_lexeme();
-	const bool         b_not    = s_lexeme == cloth::to_string(Operator::o_NOT);
+	const bool         b_not    = s_lexeme == cloth::to_string(Operator::oNot);
 	if (t_token.get_type() == TokenType::Operator &&
-	    (b_not || s_lexeme == cloth::to_string(Operator::o_PLUS) || s_lexeme == cloth::to_string(Operator::o_MINUS))) {
+	    (b_not || s_lexeme == cloth::to_string(Operator::oPlus) || s_lexeme == cloth::to_string(Operator::oMinus))) {
 		p_parser.advance();
 		ExpressionPtr ep_operand = b_not ? parseUnary(stopAtRange, allowWhileTrailer) :
 		                                   parseExpression(POWER_PRECEDENCE, /*stopAtAssignment=*/false, stopAtRange, allowWhileTrailer);
@@ -228,19 +228,19 @@ ExpressionPtr ExpressionParser::parsePostfix (ExpressionPtr primary) {
 	while (true) {
 		const Token        t_next   = p_parser.peek();
 		const std::string &s_lexeme = t_next.get_lexeme();
-		if (s_lexeme == cloth::to_string(Operator::o_BRACKET_OPEN)) {
+		if (s_lexeme == cloth::to_string(Operator::oBracketOpen)) {
 			ExpressionPtr   ep_index = p_parser.p_delimitedParser.brackets([this] () -> ExpressionPtr { return parseExpression(); });
 			const TokenSpan ts_span  = TokenSpan::span_through(ep_value->get_span(), p_parser.previous().get_span());
 			ep_value                 = std::make_shared<IndexExpression>(std::move(ep_value), std::move(ep_index), ts_span);
-		} else if (s_lexeme == cloth::to_string(Operator::o_DOT)) {
+		} else if (s_lexeme == cloth::to_string(Operator::oDot)) {
 			p_parser.advance();
 			ep_value = parseMember(std::move(ep_value));
-		} else if (s_lexeme == cloth::to_string(Operator::o_SAFE_DOT)) {
+		} else if (s_lexeme == cloth::to_string(Operator::oSafeDot)) {
 			const Token                            t_operator      = p_parser.advance();
 			std::shared_ptr<const GuardedReceiver> grp_payload     = std::make_shared<GuardedReceiver>(std::move(ep_value));
 			ExpressionPtr                          ep_continuation = parsePostfix(parseMember(grp_payload));
 			return std::make_shared<GuardedAccessExpression>(t_operator, std::move(grp_payload), std::move(ep_continuation));
-		} else if (s_lexeme == cloth::to_string(Operator::o_COLON_COLON)) {
+		} else if (s_lexeme == cloth::to_string(Operator::oColonColon)) {
 			p_parser.advance();
 			ep_value = parseDoubleColon(std::move(ep_value));
 		} else {
@@ -253,7 +253,7 @@ ExpressionPtr ExpressionParser::parseMember (ExpressionPtr receiver) {
 	const bool                      b_genericCall     = p_parser.p_typeParser.startsCallTypeArguments();
 	const Token                     t_name            = p_parser.expect(TokenType::Identifier, "a member name");
 	std::optional<TypeArgumentList> opt_typeArguments = b_genericCall ? std::make_optional(p_parser.p_typeParser.arguments()) : std::nullopt;
-	if (!at(Operator::o_PAREN_OPEN)) {
+	if (!at(Operator::oParenOpen)) {
 		return std::make_shared<FieldAccessExpression>(std::move(receiver), t_name);
 	}
 	std::vector<CallArgument> v_arguments = parseArgumentList();
@@ -262,19 +262,19 @@ ExpressionPtr ExpressionParser::parseMember (ExpressionPtr receiver) {
 }
 
 ExpressionPtr ExpressionParser::parseDoubleColon (ExpressionPtr receiver) {
-	if (p_parser.atKeyword(Keyword::k_NEW)) {
+	if (p_parser.atKeyword(Keyword::kNew)) {
 		const Token               t_keyword   = p_parser.advance();
-		std::vector<CallArgument> v_arguments = at(Operator::o_PAREN_OPEN) ? parseArgumentList() : std::vector<CallArgument>{};
+		std::vector<CallArgument> v_arguments = at(Operator::oParenOpen) ? parseArgumentList() : std::vector<CallArgument>{};
 		const TokenSpan           ts_span     = TokenSpan::span_through(receiver->get_span(), p_parser.previous().get_span());
 		return std::make_shared<ClassCreationExpression>(std::move(receiver), t_keyword, std::move(v_arguments), ts_span);
 	}
-	if (p_parser.atKeyword(Keyword::k_DELETE)) {
+	if (p_parser.atKeyword(Keyword::kDelete)) {
 		return std::make_shared<ClassDeletionExpression>(std::move(receiver), p_parser.advance());
 	}
 	const bool                      b_genericCall     = p_parser.p_typeParser.startsCallTypeArguments();
 	const Token                     t_name            = p_parser.expect(TokenType::Identifier, "a compiler data or state-method name");
 	std::optional<TypeArgumentList> opt_typeArguments = b_genericCall ? std::make_optional(p_parser.p_typeParser.arguments()) : std::nullopt;
-	if (!at(Operator::o_PAREN_OPEN)) {
+	if (!at(Operator::oParenOpen)) {
 		return std::make_shared<ProviderAccessExpression>(std::move(receiver), t_name);
 	}
 	std::vector<CallArgument> v_arguments = parseArgumentList();
@@ -294,15 +294,15 @@ ExpressionPtr ExpressionParser::parsePrimary (bool allowWhileTrailer) {
 		if (TypeParser::startsTypeReceiver(t_token)) {
 			return std::make_shared<TypeReceiverExpression>(TypeParser(p_parser).parse(/*inCast=*/false, /*allowArrays=*/true));
 		}
-		if (s_lexeme == cloth::to_string(Keyword::k_IF)) {
+		if (s_lexeme == cloth::to_string(Keyword::kIf)) {
 			return std::make_shared<IfExpression>(p_parser.p_ifParser.parseIf(allowWhileTrailer));
 		}
-		if (s_lexeme == cloth::to_string(Keyword::k_NULL)) {
+		if (s_lexeme == cloth::to_string(Keyword::kNull)) {
 			p_parser.advance();
 			return std::make_shared<NullLiteral>(t_token.get_span());
 		}
-		const bool b_true = s_lexeme == cloth::to_string(Keyword::k_TRUE);
-		if (b_true || s_lexeme == cloth::to_string(Keyword::k_FALSE)) {
+		const bool b_true = s_lexeme == cloth::to_string(Keyword::kTrue);
+		if (b_true || s_lexeme == cloth::to_string(Keyword::kFalse)) {
 			p_parser.advance();
 			return std::make_shared<BooleanLiteral>(b_true, t_token.get_span());
 		}
@@ -312,23 +312,23 @@ ExpressionPtr ExpressionParser::parsePrimary (bool allowWhileTrailer) {
 		break;
 	}
 	case TokenType::Operator:
-		if (s_lexeme == cloth::to_string(Operator::o_BRACKET_OPEN)) {
+		if (s_lexeme == cloth::to_string(Operator::oBracketOpen)) {
 			std::vector<ExpressionPtr> v_elements = p_parser.p_delimitedParser.brackets([this] () -> std::vector<ExpressionPtr> {
-				return p_parser.p_delimitedParser.commaSeparated(Operator::o_BRACKET_CLOSE,
+				return p_parser.p_delimitedParser.commaSeparated(Operator::oBracketClose,
 				                                                 [this] () -> ExpressionPtr { return parseExpression(); });
 			});
 			return std::make_shared<ArrayLiteral>(std::move(v_elements),
 			                                      TokenSpan::span_through(t_token.get_span(), p_parser.previous().get_span()));
 		}
-		if (s_lexeme == cloth::to_string(Operator::o_BRACE_OPEN)) {
+		if (s_lexeme == cloth::to_string(Operator::oBraceOpen)) {
 			std::vector<ExpressionPtr> v_fields = p_parser.p_delimitedParser.braces([this] () -> std::vector<ExpressionPtr> {
-				return p_parser.p_delimitedParser.commaSeparated(Operator::o_BRACE_CLOSE,
+				return p_parser.p_delimitedParser.commaSeparated(Operator::oBraceClose,
 				                                                 [this] () -> ExpressionPtr { return parseExpression(); });
 			});
 			return std::make_shared<StructLiteral>(std::move(v_fields),
 			                                       TokenSpan::span_through(t_token.get_span(), p_parser.previous().get_span()));
 		}
-		if (s_lexeme == cloth::to_string(Operator::o_PAREN_OPEN)) {
+		if (s_lexeme == cloth::to_string(Operator::oParenOpen)) {
 			return p_parser.p_delimitedParser.parentheses([this] () -> ExpressionPtr { return parseExpression(); });
 		}
 		break;
@@ -338,7 +338,7 @@ ExpressionPtr ExpressionParser::parsePrimary (bool allowWhileTrailer) {
 		const bool                      b_genericCall     = p_parser.p_typeParser.startsCallTypeArguments();
 		const Token                     t_name            = p_parser.advance();
 		std::optional<TypeArgumentList> opt_typeArguments = b_genericCall ? std::make_optional(p_parser.p_typeParser.arguments()) : std::nullopt;
-		if (!at(Operator::o_PAREN_OPEN)) {
+		if (!at(Operator::oParenOpen)) {
 			return std::make_shared<NameExpression>(t_name);
 		}
 		std::vector<CallArgument> v_arguments = parseArgumentList();
@@ -373,10 +373,10 @@ std::vector<CallArgument> ExpressionParser::parseArgumentList () {
 }
 
 std::vector<CallArgument> ExpressionParser::parseArguments () {
-	return p_parser.p_delimitedParser.commaSeparated(Operator::o_PAREN_CLOSE, [this] () -> CallArgument {
+	return p_parser.p_delimitedParser.commaSeparated(Operator::oParenClose, [this] () -> CallArgument {
 		std::optional<Token> opt_label;
 		std::optional<Token> opt_equals;
-		if (p_parser.peek().get_type() == TokenType::Identifier && at(Operator::o_ASSIGN, 1)) {
+		if (p_parser.peek().get_type() == TokenType::Identifier && at(Operator::oAssign, 1)) {
 			opt_label  = p_parser.advance();
 			opt_equals = p_parser.advance();
 		}
@@ -394,11 +394,11 @@ ExpressionPtr ExpressionParser::parseInterpolation () {
 			const Token t_closing = p_parser.advance();
 			return std::make_shared<InterpolatedString>(std::move(v_parts), TokenSpan::span_through(t_opening.get_span(), t_closing.get_span()));
 		}
-		p_parser.expect(TokenType::InterpolationOpen, std::format("'{}' before an interpolated expression", cloth::to_string(Operator::o_BRACE_OPEN)));
+		p_parser.expect(TokenType::InterpolationOpen, std::format("'{}' before an interpolated expression", cloth::to_string(Operator::oBraceOpen)));
 		p_parser.skipNewLines();
 		v_parts.push_back(parseExpression());
 		p_parser.skipNewLines();
-		p_parser.expect(TokenType::InterpolationClose, std::format("'{}' after an interpolated expression", cloth::to_string(Operator::o_BRACE_CLOSE)));
+		p_parser.expect(TokenType::InterpolationClose, std::format("'{}' after an interpolated expression", cloth::to_string(Operator::oBraceClose)));
 	}
 }
 
@@ -413,8 +413,8 @@ std::string ExpressionParser::decodeString (std::string_view contents) {
 }
 
 bool ExpressionParser::isImplicitBinding (const Token &token) const {
-	return token.get_type() == TokenType::Keyword && (token.get_lexeme() == cloth::to_string(Keyword::k_SELF) ||
-	                                                  (p_parser.b_inStateBody && token.get_lexeme() == cloth::to_string(Keyword::k_STATE)));
+	return token.get_type() == TokenType::Keyword &&
+	       (token.get_lexeme() == cloth::to_string(Keyword::kSelf) || (p_parser.b_inStateBody && token.get_lexeme() == cloth::to_string(Keyword::kState)));
 }
 
 bool ExpressionParser::at (Operator op, int offset) {

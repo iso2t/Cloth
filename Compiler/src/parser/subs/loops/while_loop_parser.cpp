@@ -14,11 +14,11 @@ namespace cloth {
 WhileStatement WhileLoopParser::parseWhile (bool allowWhileTrailer) {
 	const Token t_keyword = p_parser.advance();
 	p_parser.skipNewLines();
-	const Token t_opening = p_parser.expect(Operator::o_PAREN_OPEN);
+	const Token t_opening = p_parser.expect(Operator::oParenOpen);
 	p_parser.skipNewLines();
 	ExpressionPtr ep_condition = p_parser.p_expressionParser.parseExpression();
 	p_parser.skipNewLines();
-	const Token t_closing = p_parser.expect(Operator::o_PAREN_CLOSE);
+	const Token t_closing = p_parser.expect(Operator::oParenClose);
 	return { t_keyword, t_opening, std::move(ep_condition), t_closing, parseLoopBody(t_keyword, allowWhileTrailer) };
 }
 

@@ -20,13 +20,13 @@ namespace {
  * @brief Represents the prefix used for string interpolation.
  * @param INTERPOLATION_PREFIX The prefix used for string interpolation.
  */
-const std::string S_INTERPOLATION_PREFIX = std::format("{}{}", to_string(o_POUND), to_string(o_DOUBLE_QUOTATION));
+const std::string S_INTERPOLATION_PREFIX = std::format("{}{}", to_string(oPound), to_string(oDoubleQuotation));
 
 /**
  * @brief Represents the prefix used for string interpolation.
  * @param INTERPOLATION_PREFIX The prefix used for string interpolation.
  */
-const std::string S_RAW_STRING_DELIMITER = std::string(3, to_string(o_DOUBLE_QUOTATION).front());
+const std::string S_RAW_STRING_DELIMITER = std::string(3, to_string(oDoubleQuotation).front());
 
 /**
  * @brief Represents an entry for an operator, including its type and spelling.
@@ -49,7 +49,7 @@ struct OperatorEntry {
 const std::vector<OperatorEntry> V_OPERATORS = [] {
 	std::vector<OperatorEntry> v_entries;
 
-	for (int i_value = o_PLUS; i_value < o_ERROR; ++i_value) {
+	for (int i_value = oPlus; i_value < oError; ++i_value) {
 		const Operator o_operator = static_cast<Operator>(i_value);
 		if (isTokenized(o_operator)) {
 			v_entries.push_back({ o_operator, to_string(o_operator) });
@@ -70,9 +70,9 @@ const std::vector<OperatorEntry> V_OPERATORS = [] {
 const std::vector<Keyword> V_KEYWORDS = [] {
 	std::vector<Keyword> v_entries;
 
-	for (int value = k_MOD; value < k_ERROR; ++value) {
+	for (int value = kMod; value < kError; ++value) {
 		const auto keyword = static_cast<Keyword>(value);
-		if (keyword != k_AUTO) {
+		if (keyword != kAuto) {
 			v_entries.push_back(keyword);
 		}
 	}
@@ -274,7 +274,7 @@ Operator Lexer::matchOperator () {
 			continue;
 		}
 
-		if (op == o_UNDERSCORE && identifierPartLength(s_remaining, spelling.size()) != 0) {
+		if (op == oUnderscore && identifierPartLength(s_remaining, spelling.size()) != 0) {
 			continue;
 		}
 
@@ -284,7 +284,7 @@ Operator Lexer::matchOperator () {
 		return op;
 	}
 
-	return o_ERROR;
+	return oError;
 }
 
 /**
@@ -328,7 +328,7 @@ void Lexer::scanToken () {
 		return;
 	}
 
-	if (const auto op = matchOperator(); op != o_ERROR) {
+	if (const auto op = matchOperator(); op != oError) {
 		v_tokens.emplace_back(source_text().substr(i_start, i_current - i_start), op, span());
 		return;
 	}

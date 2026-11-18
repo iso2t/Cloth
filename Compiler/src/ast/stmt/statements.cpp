@@ -16,7 +16,7 @@ namespace cloth {
 namespace {
 
 std::shared_ptr<const BinaryExpression> compoundExpression (const ExpressionPtr &target, const Token &op, const ExpressionPtr &value) {
-	if (!value || op.get_lexeme() == cloth::to_string(Operator::o_ASSIGN)) {
+	if (!value || op.get_lexeme() == cloth::to_string(Operator::oAssign)) {
 		return nullptr;
 	}
 	const Operator o_base = compound_assignment_base(op.get_lexeme());

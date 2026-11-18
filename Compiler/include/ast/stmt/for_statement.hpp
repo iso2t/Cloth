@@ -33,7 +33,7 @@ struct ForSource {
 		TokenSpan     span;
 
 		[[nodiscard]] bool isInclusive () const {
-			return delimiter.get_lexeme() == to_string(o_RANGE_INCLUSIVE);
+			return delimiter.get_lexeme() == to_string(oRangeInclusive);
 		}
 	};
 

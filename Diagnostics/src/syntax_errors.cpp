@@ -27,15 +27,15 @@ SyntaxException expected (std::string_view description, const cloth::Token &toke
 }
 
 SyntaxException newline (const cloth::Token &token) {
-	const auto semicolon = cloth::to_string(cloth::Operator::o_SEMICOLON);
+	const auto semicolon = cloth::to_string(cloth::Operator::oSemicolon);
 	return { DiagnosticCode::EXPECTED_NEWLINE, std::format("Expected a newline or '{}' after statement, found {}", semicolon, found(token)),
 		 token.get_span(), std::format("Start the next statement on a new line or separate it with '{}'.", semicolon) };
 }
 
 SyntaxException reassignment (const cloth::Token &token) {
 	return { DiagnosticCode::INVALID_REASSIGNMENT,
-		 std::format("'{}' is only allowed in a binding declaration; use '{}' for reassignment", cloth::to_string(cloth::Operator::o_FINAL_ASSIGN),
-		             cloth::to_string(cloth::Operator::o_ASSIGN)),
+		 std::format("'{}' is only allowed in a binding declaration; use '{}' for reassignment", cloth::to_string(cloth::Operator::oFinalAssign),
+		             cloth::to_string(cloth::Operator::oAssign)),
 		 token.get_span() };
 }
 
@@ -46,15 +46,15 @@ SyntaxException readOnlyProvider (const cloth::Token &name) {
 
 SyntaxException functionInType (const cloth::Token &keyword) {
 	return { DiagnosticCode::FUNCTION_IN_TYPE,
-		 std::format("A '{}' declaration is not allowed inside '{}'", cloth::to_string(cloth::Keyword::k_FN),
-		             cloth::to_string(cloth::Keyword::k_TYPEDEF)),
-		 keyword.get_span(), std::format("Declare a method with '{}' in the type body.", cloth::to_string(cloth::Keyword::k_MT)) };
+		 std::format("A '{}' declaration is not allowed inside '{}'", cloth::to_string(cloth::Keyword::kFn),
+		             cloth::to_string(cloth::Keyword::kTypeDef)),
+		 keyword.get_span(), std::format("Declare a method with '{}' in the type body.", cloth::to_string(cloth::Keyword::kMt)) };
 }
 
 SyntaxException methodOutsideType (const cloth::Token &keyword) {
 	return { DiagnosticCode::METHOD_OUTSIDE_TYPE,
-		 std::format("A '{}' declaration requires an enclosing '{}'", cloth::to_string(cloth::Keyword::k_MT),
-		             cloth::to_string(cloth::Keyword::k_TYPEDEF)),
+		 std::format("A '{}' declaration requires an enclosing '{}'", cloth::to_string(cloth::Keyword::kMt),
+		             cloth::to_string(cloth::Keyword::kTypeDef)),
 		 keyword.get_span() };
 }
 
@@ -64,14 +64,14 @@ SyntaxException unsupportedOperator (const cloth::Token &token) {
 
 SyntaxException number (const cloth::Token &token, bool floating) {
 	return { floating ? DiagnosticCode::INVALID_FLOAT : DiagnosticCode::INVALID_INTEGER,
-		 std::format("Invalid or out-of-range {} '{}'", cloth::to_string(floating ? cloth::k_FLOAT : cloth::k_INTEGER), token.get_lexeme()),
+		 std::format("Invalid or out-of-range {} '{}'", cloth::to_string(floating ? cloth::kFloat : cloth::kInteger), token.get_lexeme()),
 		 token.get_span() };
 }
 
 SyntaxException expression (const cloth::Token &token) {
 	return { DiagnosticCode::EXPECTED_EXPRESSION,
 		 std::format("Expected a number, boolean, character, string, '{}', binding name, '{}', or '{}', got {}",
-		             cloth::to_string(cloth::Keyword::k_NULL), cloth::to_string(cloth::Keyword::k_IF), cloth::to_string(cloth::Operator::o_PAREN_OPEN),
+		             cloth::to_string(cloth::Keyword::kNull), cloth::to_string(cloth::Keyword::kIf), cloth::to_string(cloth::Operator::oParenOpen),
 		             found(token)),
 		 token.get_span() };
 }

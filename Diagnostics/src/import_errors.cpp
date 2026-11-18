@@ -9,7 +9,7 @@ namespace cde::ImportErrors {
 
 SyntaxException outsideHeader (const cloth::Token &keyword) {
 	return { DiagnosticCode::IMPORT_OUTSIDE_HEADER,
-		 std::format("'{}' imports must appear in the file header before ordinary declarations", cloth::to_string(cloth::Keyword::k_USING)),
+		 std::format("'{}' imports must appear in the file header before ordinary declarations", cloth::to_string(cloth::Keyword::kUsing)),
 		 keyword.get_span() };
 }
 
