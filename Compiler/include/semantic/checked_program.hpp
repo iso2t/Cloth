@@ -338,6 +338,7 @@ struct InstanceKey {
 	const Symbol               *declaration;
 	std::optional<ResolvedType> receiver;
 	ResultTypes                 arguments;
+	unsigned                    operatorWidth = 0;
 
 	std::strong_ordering operator<=>(const InstanceKey &other) const;
 };

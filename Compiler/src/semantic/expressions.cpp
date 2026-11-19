@@ -19,11 +19,6 @@ ExpressionInfo value (ResolvedType type, const Symbol *symbol = nullptr, Receive
 	return { .types = { std::move(type) }, .symbol = symbol, .receiverFieldPath = fieldPath };
 }
 
-bool isSelfReference (const Expression &node) {
-	const NameExpression *ne_name = dynamic_cast<const NameExpression *>(&node);
-	return ne_name && ne_name->name.get_lexeme() == to_string(kSelf);
-}
-
 ResolvedType literalInteger (const IntegerLiteral &literal, const ResolvedType *expected, bool negative, TargetLayout layout, bool inferenceDefault) {
 	const ResolvedType rt = expected && expected->integer() ? *expected : ResolvedType(kInteger);
 	if (inferenceDefault) return rt;
@@ -254,6 +249,11 @@ ExpressionInfo BodyChecker::name (const Token &token, bool assignment) {
 	fail(Code::UNKNOWN_NAME, token.get_span(), "Unknown name '" + spelling + "'");
 }
 
+bool BodyChecker::isSelfReference (const Expression &node) {
+	const NameExpression *ne_name = dynamic_cast<const NameExpression *>(&node);
+	return ne_name && ne_name->name.get_lexeme() == to_string(kSelf);
+}
+
 bool BodyChecker::hasValueName (const Token &name) const {
 	return local(name.get_lexeme()) || (hasInstance() && !analyzer.members(selfType(), name.get_lexeme(), SymbolKind::Field).empty());
 }
@@ -310,7 +310,9 @@ ExpressionInfo BodyChecker::field (const FieldAccessExpression &node) {
 	if (rt.nullable() || rt == ResolvedType(kNull)) {
 		fail(Code::NULLABLE_PAYLOAD_ACCESS, node.receiver->get_span(), std::format("Use {} to access a nullable receiver", to_string(oSafeDot)));
 	}
-	const std::vector<Candidate> fields = analyzer.members(rt, node.name.get_lexeme(), r_receiver.isType ? SymbolKind::EnumCase : SymbolKind::Field);
+	const std::optional<ResolvedType> opt_bound = r_receiver.isType ? std::nullopt : receiverClassBound(*node.receiver, rt);
+	const std::vector<Candidate>      fields =
+	        analyzer.members(opt_bound ? *opt_bound : rt, node.name.get_lexeme(), r_receiver.isType ? SymbolKind::EnumCase : SymbolKind::Field);
 	if (fields.empty()) {
 		Code dc_code = Code::INVALID_STRUCT_FIELD;
 		if (enumeration(rt))
@@ -812,7 +814,7 @@ ExpressionInfo BodyChecker::builtinBinary (const BinaryExpression &node, const R
 	return value(left);
 }
 
-ExpressionInfo BodyChecker::call (const CallExpression &node) {
+std::vector<Candidate> BodyChecker::callCandidates (const CallExpression &node) {
 	checkDefaultName(node.name);
 	if (const Binding *b_local = local(node.name.get_lexeme()))
 		fail(Code::NOT_CALLABLE, node.name.get_span(), "Local binding '" + node.name.get_lexeme() + "' is not callable", b_local->name);
@@ -842,12 +844,18 @@ ExpressionInfo BodyChecker::call (const CallExpression &node) {
 				group.push_back({ sym });
 			}
 		}
-		if (group.empty() && b_builtinName) return builtinCall(node, node.typeArguments ? &*node.typeArguments : nullptr).value();
-		if (group.empty() && !candidates.empty()) {
+		if (group.empty() && !b_builtinName && !candidates.empty()) {
 			fail(Code::NOT_CALLABLE, node.name.get_span(), "'" + node.name.get_lexeme() + "' is not callable", &candidates.front()->name);
 		}
-		if (group.empty() && node.typeArguments) checkTypeArguments(*node.typeArguments);
 	}
+	return group;
+}
+
+ExpressionInfo BodyChecker::call (const CallExpression &node) {
+	const std::vector<Candidate> group = callCandidates(node);
+	if (group.empty() && builtinFunctionNamed(node.name.get_lexeme()))
+		return builtinCall(node, node.typeArguments ? &*node.typeArguments : nullptr).value();
+	if (group.empty() && node.typeArguments) checkTypeArguments(*node.typeArguments);
 	ExpressionInfo ei_call = invoke(node.name, node.get_span(), node.suppliedArguments, group, node.typeArguments ? &*node.typeArguments : nullptr);
 	if (ei_call.fallsThrough && ei_call.symbol->kind == SymbolKind::Method && owner && owner->kind == SymbolKind::Type &&
 	    dynamic_cast<const StructDeclaration *>(std::get<const TypeDeclaration *>(owner->declaration)))
@@ -907,7 +915,7 @@ ExpressionInfo BodyChecker::create (const ClassCreationExpression &node) {
 	const Symbol *sym_guarantee = nullptr;
 	Substitutions m_guaranteeArguments;
 	if (!m_arguments.empty()) {
-		const BodyFacts                                                             &bf_open = analyzer.openBody(rt_attachment);
+		const BodyFacts                                                             &bf_open = openFacts();
 		const std::unordered_map<const Expression *, ExpressionInfo>::const_iterator it_open = bf_open.expressions.find(&node);
 		if (it_open != bf_open.expressions.end() && it_open->second.argumentContract &&
 		    dynamic_cast<const ConstructorGuaranteeDeclaration *>(callable(*it_open->second.argumentContract))) {
@@ -978,9 +986,6 @@ ExpressionInfo BodyChecker::cast (const CastExpression &node) {
 	const ResolvedType &from = ei_operand.types.front();
 	if (const std::optional<Candidate> opt_cast = selectContext(node.op, from, to, true)) {
 		ExpressionInfo ei_cast = callOperator(*opt_cast, *node.operand, from, node.op, node.get_span());
-		if (ei_cast.types.front() != to && !ei_cast.types.front().width &&
-		    dynamic_cast<const MethodDeclaration &>(*callable(*opt_cast->symbol)).operatorMember->selector->capturesWidth())
-			ei_cast.types.front().width = to.width;
 		require(ei_cast.types, { to }, node.get_span(), Code::INVALID_CAST);
 		ei_cast.types = { to };
 		return ei_cast;

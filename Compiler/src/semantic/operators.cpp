@@ -52,6 +52,64 @@ bool Analyzer::hasOperator (std::string_view name) const {
 	return s_operatorNames.contains(name);
 }
 
+const TypeReference *widthSelector (const Symbol &symbol) {
+	if (symbol.kind != SymbolKind::Operator) return nullptr;
+	const OperatorMember &om_form = *static_cast<const MethodDeclaration &>(*callable(symbol)).operatorMember;
+	return om_form.selector && om_form.selector->capturesWidth() ? &*om_form.selector : nullptr;
+}
+
+DeclarationInfo Analyzer::widthSignature (const Symbol &symbol, const Substitutions &arguments, unsigned width) {
+	const CallableSignature &cs_method    = *callable(symbol);
+	DeclarationInfo          di_signature = specialize(declarations.at(&symbol), arguments);
+	di_signature.value                    = checkedType(*widthSelector(symbol), symbol, arguments, false, width);
+	if (!cs_method.returnTypes.empty()) {
+		di_signature.returns = { checkedType(cs_method.returnTypes.front(), symbol, arguments, false, width) };
+	} else if (symbol.name.get_operator() == oPointerRight) {
+		di_signature.returns = { *di_signature.value };
+	} else if (di_signature.inferResult) {
+		const InstanceKey                                        ik_key{ &symbol, substitute(ownerType(*di_signature.owner), arguments), {}, width };
+		const std::map<InstanceKey, ResultTypes>::const_iterator it_cached = m_widthResults.find(ik_key);
+		if (it_cached != m_widthResults.end()) {
+			di_signature.returns     = it_cached->second;
+			di_signature.inferResult = false;
+		} else {
+			if (!s_inferringWidths.insert(ik_key).second)
+				fail(Code::INVALID_OPERATOR_DECLARATION, symbol.name.get_span(), "A recursive operand context needs an explicit result type");
+			try {
+				BodyFacts bf_probe;
+				BodyChecker(*this, symbol, bf_probe, arguments, di_signature, nullptr, width).inferOperatorResult();
+				m_widthResults.emplace(ik_key, di_signature.returns);
+			} catch (...) {
+				s_inferringWidths.erase(ik_key);
+				throw;
+			}
+			s_inferringWidths.erase(ik_key);
+		}
+	}
+	return di_signature;
+}
+
+const BodyFacts &Analyzer::widthTemplate (const Symbol &symbol, unsigned width) {
+	const std::pair  it_template = m_widthTemplates.try_emplace({ &symbol, width });
+	GenericInstance &gi_template = it_template.first->second;
+	if (it_template.second) {
+		// Open receivers record generic dependencies against their declaration, including when requested by a closed call.
+		const InstanceWork *iw_previous = iw_active;
+		if (isTemplate(symbol)) iw_active = nullptr;
+		try {
+			gi_template.signature = widthSignature(symbol, {}, width);
+			checkPublicSurface(symbol, nullptr, &gi_template.signature);
+			BodyChecker(*this, symbol, gi_template.body, {}, gi_template.signature, nullptr, width).check();
+		} catch (...) {
+			iw_active = iw_previous;
+			m_widthTemplates.erase(it_template.first);
+			throw;
+		}
+		iw_active = iw_previous;
+	}
+	return gi_template.body;
+}
+
 void Analyzer::resolveOperator (const Symbol &operation, const MethodDeclaration &method) {
 	DeclarationInfo      &di_signature = declarations.at(&operation);
 	const OperatorMember &om_form      = *method.operatorMember;
@@ -170,7 +228,9 @@ std::optional<Candidate> BodyChecker::selectContext (const Token &op, const Reso
 		v_matches.push_back(
 		        { c_context, { analyzer.substitute(analyzer.ownerType(*di_signature.owner), c_context.arguments), std::move(rt_selector) }, u_rank });
 	}
-	return bestOperator(analyzer, context, op, op.get_span(), v_matches, sym_private);
+	std::optional<Candidate> opt_selected = bestOperator(analyzer, context, op, op.get_span(), v_matches, sym_private);
+	if (opt_selected && widthSelector(*opt_selected->symbol)) opt_selected->operatorWidth = peer.width;
+	return opt_selected;
 }
 
 ExpressionInfo BodyChecker::callOperator (const Candidate &candidate, const Expression &receiver, const ResolvedType &type, const Token &op,
@@ -233,6 +293,10 @@ std::optional<ExpressionInfo> BodyChecker::binaryOperator (const BinaryExpressio
 
 std::optional<ExpressionInfo> BodyChecker::applyBinaryOperator (const BinaryExpression &node, const ResolvedType &rt_left, const ResolvedType &rt_right,
                                                                 const ResolvedType *expected, bool allowContexts, FloatContext floats) {
+	if (isEquality(node.op.get_operator())) {
+		if (!rt_left.name.empty()) receiverClassBound(*node.left, rt_left);
+		if (!rt_right.name.empty()) receiverClassBound(*node.right, rt_right);
+	}
 	const bool               b_inequality = node.op.get_operator() == oNotEqual;
 	const bool               b_lift       = isEquality(node.op.get_operator()) && rt_left != ResolvedType(kNull) && rt_right != ResolvedType(kNull);
 	const ResolvedType       rt_a = b_lift ? payload(rt_left) : rt_left, rt_b = b_lift ? payload(rt_right) : rt_right;
@@ -280,14 +344,12 @@ std::optional<ExpressionInfo> BodyChecker::applyBinaryOperator (const BinaryExpr
 	};
 	const std::optional<Candidate> opt_left = contextFor(rt_left, rt_right), opt_right = contextFor(rt_right, rt_left);
 	if (!opt_left && !opt_right) return {};
-	const std::function project = [&] (const Expression &operand, const ResolvedType &peer, const std::optional<Candidate> &candidate) {
+	const std::function project = [&] (const Expression &operand, const std::optional<Candidate> &candidate) {
 		ExpressionInfo ei_operand = scalarInfo(operand);
 		if (!candidate || !ei_operand.fallsThrough) return ei_operand;
-		ExpressionInfo ei_projection = callOperator(*candidate, operand, ei_operand.types.front(), node.op, node.get_span());
-		if (form(*candidate).selector->capturesWidth() && !ei_projection.types.front().width) ei_projection.types.front().width = peer.width;
-		return ei_projection;
+		return callOperator(*candidate, operand, ei_operand.types.front(), node.op, node.get_span());
 	};
-	const ExpressionInfo  ei_left = project(*node.left, rt_right, opt_left), ei_right = project(*node.right, rt_left, opt_right);
+	const ExpressionInfo  ei_left = project(*node.left, opt_left), ei_right = project(*node.right, opt_right);
 	const CapturedOperand co_left{ node.left.get(), ei_left, captured }, co_right{ node.right.get(), ei_right, &co_left };
 	BodyChecker           bc_application = *this;
 	bc_application.captured              = &co_right;
@@ -299,6 +361,8 @@ std::optional<ExpressionInfo> BodyChecker::applyBinaryOperator (const BinaryExpr
 }
 
 ExpressionInfo BodyChecker::equality (const BinaryExpression &node, const ResolvedType &left, const ResolvedType &right) {
+	receiverClassBound(*node.left, left);
+	receiverClassBound(*node.right, right);
 	const Operator      o_op = node.op.get_operator();
 	ExpressionInfo      ei_result{ { ResolvedType(kBoolean) } };
 	const std::function incomparable = [&] {
@@ -321,7 +385,7 @@ ExpressionInfo BodyChecker::equality (const BinaryExpression &node, const Resolv
 		if (!b_references) incomparable();
 		ei_result.checkedIdentity = analyzer.hasMultipleTypeBounds(rt_left) || analyzer.hasMultipleTypeBounds(rt_right);
 		if (!m_arguments.empty()) {
-			const BodyFacts                                    &bf_open = analyzer.openBody(rt_attachment);
+			const BodyFacts                                    &bf_open = openFacts();
 			const decltype(bf_open.expressions)::const_iterator it_open = bf_open.expressions.find(&node);
 			if (it_open != bf_open.expressions.end()) ei_result.checkedIdentity |= it_open->second.checkedIdentity;
 		}

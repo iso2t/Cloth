@@ -265,6 +265,7 @@ struct Match {
 	Substitutions               substitutions;
 	const Substitutions        *overridingArguments;
 	std::optional<CallDispatch> dispatch;
+	unsigned                    operatorWidth;
 	MatchRank                   rank;
 
 	[[nodiscard]] std::size_t omittedCount () const {
@@ -308,10 +309,11 @@ bool BodyChecker::checkArguments (const std::vector<CallArgument> &arguments, co
 }
 
 std::vector<Candidate> BodyChecker::methodCandidates (const MemberCallExpression &site, const ResolvedType &receiver) const {
+	receiverClassBound(*site.receiver, receiver);
 	std::vector<Candidate> v_candidates = analyzer.members(receiver, site.name.get_lexeme(), SymbolKind::Method, MemberLookup::CallContract);
 	if (!m_arguments.empty()) {
 		using Facts                             = std::unordered_map<const Expression *, ExpressionInfo>;
-		const Facts                &m_open      = analyzer.openBody(rt_attachment).expressions;
+		const Facts                &m_open      = openFacts().expressions;
 		const Facts::const_iterator it_receiver = m_open.find(site.receiver.get()), it_call = m_open.find(&site);
 		if (it_receiver != m_open.end() && it_call != m_open.end() && it_call->second.argumentContract && it_receiver->second.types.size() == 1 &&
 		    it_receiver->second.types.front().parameter) {
@@ -329,12 +331,7 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 	return ei_call;
 }
 
-ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, const std::vector<CallArgument> &arguments, const std::vector<Candidate> &group,
-                                      const TypeArgumentList *typeArguments, const ResultTypes *knownArguments, const ReceiverProofs &proofs) {
-	const std::string &spelling = name.get_lexeme();
-	if (group.empty()) {
-		fail(Code::UNKNOWN_NAME, name.get_span(), "Unknown callable '" + spelling + "'");
-	}
+bool validateArgumentLabels (const std::vector<CallArgument> &arguments) {
 	std::map<std::string, const Token *> labels;
 	for (const CallArgument &arg : arguments) {
 		if (!arg.label && !labels.empty()) {
@@ -347,7 +344,14 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 			}
 		}
 	}
-	std::vector<PlacedCandidate>                 v_placed = bindCandidates(name, span, arguments, group, !labels.empty(), typeArguments);
+	return !labels.empty();
+}
+
+ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, const std::vector<CallArgument> &arguments, const std::vector<Candidate> &group,
+                                      const TypeArgumentList *typeArguments, const ResultTypes *knownArguments, const ReceiverProofs &proofs) {
+	const std::string &spelling = name.get_lexeme();
+	if (group.empty()) fail(Code::UNKNOWN_NAME, name.get_span(), "Unknown callable '" + spelling + "'");
+	std::vector<PlacedCandidate>                 v_placed = bindCandidates(name, span, arguments, group, validateArgumentLabels(arguments), typeArguments);
 	const std::vector<PlacedCandidate>::iterator it_firstGeneric =
 	        std::stable_partition(v_placed.begin(), v_placed.end(), [] (const PlacedCandidate &placed) { return !placed.parameters; });
 	const bool                               b_singleTemplate = v_placed.end() - it_firstGeneric == 1;
@@ -465,6 +469,7 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 			     .substitutions       = {},
 			     .overridingArguments = &candidate.overridingArguments,
 			     .dispatch            = candidate.dispatch,
+			     .operatorWidth       = candidate.operatorWidth,
 			     .rank                = MatchRank::Exact };
 		for (std::size_t i = 0; i < arguments.size(); ++i) {
 			const ResolvedType parameter = analyzer.substitute(info.parameters[match.placement.destinations[i]], substitutions);
@@ -526,14 +531,15 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 	}
 	if (b_continues) requireReceiverProofs(proofs);
 	ResultTypes results;
-	for (const ResolvedType &rt : analyzer.resultsOf(*best.contract)) {
-		results.push_back(analyzer.substitute(rt, best.substitutions));
-	}
+	if (best.operatorWidth)
+		results = analyzer.widthSignature(*best.contract, best.substitutions, best.operatorWidth).returns;
+	else
+		for (const ResolvedType &rt : analyzer.resultsOf(*best.contract)) results.push_back(analyzer.substitute(rt, best.substitutions));
 	remember(name, best.symbol->name);
 	const GenericInstance *gi_contract = nullptr, *gi_target = nullptr;
 	if (record) {
 		const ResolvedType *rt_host = best.dispatch && best.dispatch->kind == DispatchKind::State ? &best.dispatch->contract.owner : nullptr;
-		gi_target = gi_contract = analyzer.useCallable(*best.contract, best.substitutions, context, span, rt_host);
+		gi_target = gi_contract = analyzer.useCallable(*best.contract, best.substitutions, context, span, rt_host, best.operatorWidth);
 		if (best.dispatch) analyzer.useDispatch(*best.dispatch, best.substitutions, context, span);
 		if (best.symbol != best.contract) {
 			Substitutions m_target = *best.overridingArguments;

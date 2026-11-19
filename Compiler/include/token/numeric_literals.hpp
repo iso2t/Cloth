@@ -12,6 +12,8 @@
 
 namespace cloth {
 
+inline constexpr unsigned MAX_INTEGER_BITS = 65536;
+
 struct DecimalDigit {
 	char        ascii;
 	std::size_t length;

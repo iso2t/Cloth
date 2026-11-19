@@ -70,11 +70,13 @@ using Names      = std::map<std::string, Candidates, std::less<>>;
 // The enclosing overload cannot change an intrinsic expression or explicit type.
 struct IntrinsicDiagnostic : cde::ClothDiagnostic {
 	using ClothDiagnostic::ClothDiagnostic;
+
 	explicit IntrinsicDiagnostic (const ClothDiagnostic &error) : ClothDiagnostic(error) {
 	}
 };
 
 bool contextualFailure (const cde::ClothDiagnostic &error);
+bool validateArgumentLabels (const std::vector<CallArgument> &arguments);
 
 [[noreturn]] void           fail (Code code, const TokenSpan &span, std::string message, const Token *related = nullptr);
 const CallableSignature    *callable (const Symbol &symbol);
@@ -85,6 +87,7 @@ const ClassDeclaration     *asClass (const Symbol *symbol);
 const Symbol               &objectRoot ();
 const InterfaceDeclaration *asInterface (const Symbol *symbol);
 const TypeReference        &fieldType (const Symbol &symbol);
+const TypeReference        *widthSelector (const Symbol &symbol);
 
 struct Candidate {
 	const Symbol               *symbol;
@@ -93,6 +96,7 @@ struct Candidate {
 	const Symbol               *overridingMethod    = nullptr;
 	Substitutions               overridingArguments = {};
 	std::optional<CallDispatch> dispatch            = std::nullopt;
+	unsigned                    operatorWidth       = 0;
 };
 
 enum class MemberLookup { Declaration, CallContract };
@@ -110,8 +114,8 @@ class Analyzer {
 	[[nodiscard]] std::optional<Iteration> snapshotLayout (const ResolvedType &type) const;
 
 	[[nodiscard]] ResolvedType type (const TypeReference &reference, const Symbol &context, unsigned depth = 0, bool allowOpen = false) const;
-	[[nodiscard]] ResolvedType checkedType (const TypeReference &reference, const Symbol &context, const Substitutions &arguments = {},
-	                                        bool allowOpen = false) const;
+	[[nodiscard]] ResolvedType                    checkedType (const TypeReference &reference, const Symbol &context, const Substitutions &arguments = {},
+	                                                           bool allowOpen = false, unsigned operatorWidth = 0) const;
 	[[nodiscard]] ResolvedType substitute (ResolvedType type, const Substitutions &arguments) const;
 	void                       applyArguments (ResolvedType &type, ResultTypes arguments) const;
 	[[nodiscard]] const TypeParameterDeclaration *genericParameter (const Symbol &context, const std::string &name) const;
@@ -128,6 +132,7 @@ class Analyzer {
 	[[nodiscard]] bool                            accepts (const ResolvedType &expected, const ResolvedType &actual) const;
 	[[nodiscard]] bool                            numeric (const ResolvedType &type) const;
 	[[nodiscard]] ResolvedType                    boundShape (const ResolvedType &type) const;
+	[[nodiscard]] ResultTypes                     typeBounds (const ResolvedType &parameter) const;
 	[[nodiscard]] ResultTypes                     applicationsOf (const ResolvedType &actual, const Symbol &definition) const;
 	[[nodiscard]] bool                            supportsEquality (const ResolvedType &type) const;
 	[[nodiscard]] bool                            classEqualityMayCall (const ResolvedType &type, Operator operation = oEqual) const;
@@ -150,9 +155,12 @@ class Analyzer {
 	void                        recordLifetimeBody (LifetimeBody body, bool initializationMayCall);
 	[[nodiscard]] bool          preservesNewReceiver (const ResolvedType &host, const Symbol &constructor) const;
 	const ResultTypes          &resultsOf (const Symbol &symbol);
+	DeclarationInfo             widthSignature (const Symbol &symbol, const Substitutions &arguments, unsigned width);
+	const BodyFacts            &widthTemplate (const Symbol &symbol, unsigned width);
+	void                        useWidthAnnotation (const TypeReference &reference, const Symbol &owner);
 	void                        useType (const ResolvedType &type, const Symbol &context, const TokenSpan &where);
 	const GenericInstance      *useCallable (const Symbol &symbol, const Substitutions &arguments, const Symbol &context, const TokenSpan &where,
-	                                         const ResolvedType *stateHost = nullptr);
+	                                         const ResolvedType *stateHost = nullptr, unsigned operatorWidth = 0);
 	void                        useDispatch (const CallDispatch &dispatch, const Substitutions &arguments, const Symbol &context, const TokenSpan &where);
 	const Symbol               *constructorFor (const ResolvedType &type, const ResultTypes &parameters, const Symbol *access) const;
 	Candidate                   boundMethod (const ExpressionInfo &call, const ResolvedType &receiver, const std::vector<Candidate> &candidates,
@@ -240,8 +248,8 @@ class Analyzer {
 	void         checkIntrinsicSignature (const Symbol &symbol, LibraryIntrinsic operation) const;
 	void         registerScope (const SymbolScope &scope, std::size_t file, const Symbol *owner);
 	void         resolveDeclaration (const Symbol &symbol);
-	ResolvedType resolveType (const TypeReference &reference, const Symbol &context, unsigned depth, bool allowOpen,
-	                          std::set<const TypeParameterDeclaration *> &activeDefaults) const;
+	ResolvedType                                 resolveType (const TypeReference &reference, const Symbol &context, unsigned depth, bool allowOpen,
+	                                                          std::set<const TypeParameterDeclaration *> &activeDefaults, unsigned operatorWidth = 0) const;
 	void         checkParameterNames (const Symbol &symbol) const;
 	void         checkDeclaredBounds (const TypeParameterDeclaration &parameter, const Symbol &symbol) const;
 	void         checkArrayBound (const TypeParameterDeclaration &parameter, const ResolvedType &shape, const TokenSpan &where) const;
@@ -257,7 +265,7 @@ class Analyzer {
 	                                     TypeDispatch &table) const;
 	void          buildStates (const ResolvedType &receiver, TypeDispatch &table) const;
 	void          publishDispatch ();
-	void          checkPublicSurface (const Symbol &symbol, const Symbol *exportingHost = nullptr) const;
+	void          checkPublicSurface (const Symbol &symbol, const Symbol *exportingHost = nullptr, const DeclarationInfo *specialization = nullptr) const;
 	bool          sameMethod (const MethodRef &left, const MethodRef &right, bool results = false) const;
 	Substitutions methodArguments (const MethodRef &source, const Symbol &target) const;
 	bool          sameMethodBounds (const MethodRef &left, const MethodRef &right, bool constructorContracts = false) const;
@@ -277,11 +285,16 @@ class Analyzer {
 	const Symbol                                        *standaloneState (const Symbol &member) const;
 	void checkAttachedBody (const Symbol &member, const ResolvedType &host, BodyFacts &facts, const Substitutions &arguments, DeclarationInfo &signature);
 	ParameterContract        parameterContract (const TypeParameterDeclaration &parameter) const;
-	ResultTypes              typeBounds (const ResolvedType &parameter) const;
 	bool                     acceptsBound (const ResolvedType &required, const ResolvedType &actual) const;
 	bool                     sameSignature (const Candidate &left, const Candidate &right, bool includeResults = false) const;
 	void                     checkBodyOf (const Symbol &symbol);
 	std::set<const Symbol *> s_checking, s_checked;
+	std::map<InstanceKey, ResultTypes>                             m_widthResults;
+	std::set<InstanceKey>                                          s_inferringWidths;
+	std::map<std::pair<const Symbol *, unsigned>, GenericInstance> m_widthTemplates;
+	std::vector<std::pair<const TypeReference *, const Symbol *>>  v_widthAnnotations;
+	mutable bool                                                   b_hasTypeApplications = false;
+	void                                                           checkWidthAnnotations () const;
 	std::unordered_map<const TypeParameterDeclaration *, const Symbol *> m_genericOwners;
 	using Guarantees = std::unordered_map<const TypeParameterDeclaration *, Candidates>;
 	Guarantees m_guarantees;
@@ -313,8 +326,10 @@ struct Binding {
 class BodyChecker {
     public:
 	BodyChecker (Analyzer &analyzer, const Symbol &context, BodyFacts &facts, const Substitutions &arguments, DeclarationInfo &signature,
-	             const ResolvedType *attachment = nullptr);
+	             const ResolvedType *attachment = nullptr, unsigned operatorWidth = 0);
 	void check ();
+	void inferOperatorResult ();
+	void resolveBodyNames (const FunctionBody &body);
 
     private:
 	enum class ReceiverPhase { Ready, ConstructorDefault, Delegation, FieldInitializer };
@@ -344,7 +359,7 @@ class BodyChecker {
 	bool writeIndex (const Statement &statement, const ExpressionPtr &target, const ExpressionInfo &array, const Token &op, const ExpressionPtr &rhs,
 	                 const ExpressionPtr &compound);
 	std::optional<ResolvedType>   rangeEndpoints (const Expression &start, const Expression &end, const ResolvedType *hint, Code code, bool &continues);
-	[[nodiscard]] ResolvedType                  shapeOf (const Expression &value, const ResolvedType &fallback, std::size_t slot = 0) const;
+	[[nodiscard]] ResolvedType    shapeOf (const Expression &value, const ResolvedType &fallback, std::size_t slot = 0) const;
 	void                          receiveShape (const Token &binding, const ResolvedType &declared, const ResolvedType &shape, const TokenSpan &use);
 	ExpressionInfo                mutateArray (const MemberCallExpression &call, const ExpressionInfo &receiver, ArrayMutation operation);
 	std::optional<ExpressionInfo> builtinCall (const CallSite &call, const TypeArgumentList *typeArguments, const ExpressionInfo *receiver = nullptr);
@@ -372,6 +387,7 @@ class BodyChecker {
 	DeclarationInfo                            &di_signature;
 	const Symbol                               *owner;
 	const ResolvedType                         *rt_attachment;
+	unsigned                                    u_operatorWidth;
 	ResultTypes                                 returns;
 	std::vector<std::map<std::string, Binding>> scopes{ 1 };
 	using Narrowing = std::map<StoragePlace, ResolvedType>;
@@ -440,6 +456,9 @@ class BodyChecker {
 	bool                         checkStatement (const Statement &node);
 	void                         finishStatement (const Statement &node, bool fallsThrough, const Exits &incoming);
 	void                         typeBody ();
+	void                         resolveNames (const Expression &node);
+	void                         resolveNames (const std::vector<StatementPtr> &statements);
+	void                         resolveNames (const Statement &node);
 	void                         leaveScope ();
 
 	struct ArgumentProbe {
@@ -458,11 +477,15 @@ class BodyChecker {
 	bool                         readOnlyDefaultRoot (const Expression &node) const;
 	[[nodiscard]] ResolvedType   selfType () const;
 	ResolvedType                 bodyType (const TypeReference &reference, bool allowOpen = false) const;
+	const BodyFacts             &openFacts () const;
+	std::optional<ResolvedType>  receiverClassBound (const Expression &receiver, const ResolvedType &actual) const;
 	[[nodiscard]] bool           hasInstance () const;
 	void                         checkFieldRead (const Symbol &field, const Token &use) const;
 	void                         checkFieldWrite (const ExpressionInfo &target, const TokenSpan &span) const;
 	ResolvedType                 recordSelf (const Expression &node);
 	ExpressionInfo               call (const CallExpression &node);
+	std::vector<Candidate>       callCandidates (const CallExpression &node);
+	static bool                  isSelfReference (const Expression &node);
 	ExpressionInfo               create (const ClassCreationExpression &node);
 	ExpressionInfo               cast (const CastExpression &node);
 	bool                         loop (const LoopStatement &node);
@@ -477,21 +500,21 @@ class BodyChecker {
 	void                        numericPeers (const Expression &node, NumericPeers &peers, bool contextualFloat);
 	std::optional<ResolvedType> elementHint (const Expression &node, FloatContext floats);
 	std::optional<ResolvedType> rangeEndpointHint (const Expression &start, const Expression &end);
-	void                     require (const ResultTypes &actual, const ResultTypes &expected, const TokenSpan &span, Code code = Code::TYPE_MISMATCH) const;
-	bool                     expect (const Expression &node, const ResolvedType &type);
-	bool                     checkReturn (const Expression &node);
-	ExpressionInfo           name (const Token &token, bool assignment = false);
-	bool                         hasValueName (const Token &name) const;
-	std::optional<ResolvedType>  receiverType (const Expression &node, bool forConstruction = false);
-	std::optional<Receiver>      receiver (const Expression &node);
-	ExpressionInfo           field (const FieldAccessExpression &node);
-	std::optional<Candidate> stateTarget (const ResolvedType &receiver, const Token &name, const Expression &operand);
-	bool                     statePayload (const ExpressionPtr &payload, const ResolvedType &required, const TokenSpan &span, const Token &state);
-	ExpressionInfo           transition (const Candidate &state, const ExpressionPtr &payload, const TokenSpan &span);
-	ExpressionInfo           typeCheck (const TypeCheckExpression &node);
-	ExpressionInfo           binary (const BinaryExpression &node, const ResolvedType *expected, FloatContext floats, bool allowContexts = true);
-	ExpressionInfo           builtinBinary (const BinaryExpression &node, const ResolvedType *expected, FloatContext floats);
-	ExpressionInfo           elvis (const ElvisExpression &node, const ResultTypes *expected, FloatContext floats);
+	void           require (const ResultTypes &actual, const ResultTypes &expected, const TokenSpan &span, Code code = Code::TYPE_MISMATCH) const;
+	bool           expect (const Expression &node, const ResolvedType &type);
+	bool           checkReturn (const Expression &node);
+	ExpressionInfo name (const Token &token, bool assignment = false);
+	bool           hasValueName (const Token &name) const;
+	std::optional<ResolvedType>   receiverType (const Expression &node, bool forConstruction = false);
+	std::optional<Receiver>       receiver (const Expression &node);
+	ExpressionInfo                field (const FieldAccessExpression &node);
+	std::optional<Candidate>      stateTarget (const ResolvedType &receiver, const Token &name, const Expression &operand);
+	bool                          statePayload (const ExpressionPtr &payload, const ResolvedType &required, const TokenSpan &span, const Token &state);
+	ExpressionInfo                transition (const Candidate &state, const ExpressionPtr &payload, const TokenSpan &span);
+	ExpressionInfo                typeCheck (const TypeCheckExpression &node);
+	ExpressionInfo                binary (const BinaryExpression &node, const ResolvedType *expected, FloatContext floats, bool allowContexts = true);
+	ExpressionInfo                builtinBinary (const BinaryExpression &node, const ResolvedType *expected, FloatContext floats);
+	ExpressionInfo                elvis (const ElvisExpression &node, const ResultTypes *expected, FloatContext floats);
 	std::optional<ExpressionInfo> binaryOperator (const BinaryExpression &node, const ResolvedType *expected, bool allowContexts, FloatContext floats);
 	std::optional<ExpressionInfo> applyBinaryOperator (const BinaryExpression &node, const ResolvedType &rt_left, const ResolvedType &rt_right,
 	                                                   const ResolvedType *expected, bool allowContexts, FloatContext floats);

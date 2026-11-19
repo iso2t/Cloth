@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <format>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <set>
@@ -54,6 +55,10 @@ const StateSelectionDeclaration *stateSelection (const Symbol &symbol) {
 }
 
 bool Analyzer::sameMethod (const MethodRef &left, const MethodRef &right, bool results) const {
+	// Distinct templates in one owner keep their slots even when closing the owner makes their parameter types coincide.
+	if (left.symbol != right.symbol && left.symbol->kind == SymbolKind::Method && right.symbol->kind == SymbolKind::Method &&
+	    declarations.at(left.symbol).owner == declarations.at(right.symbol).owner && typeParameters(*left.symbol))
+		return false;
 	return left.symbol->name.get_lexeme() == right.symbol->name.get_lexeme() &&
 	       sameSignature({ left.symbol, argumentsOf(left.owner) }, { right.symbol, argumentsOf(right.owner) }, results);
 }
@@ -155,7 +160,17 @@ const TypeDispatch &Analyzer::dispatchFor (const ResolvedType &receiver) const {
 	const std::map<ResolvedType, TypeDispatch>::const_iterator it_cached = m_dispatch.find(receiver);
 	if (it_cached != m_dispatch.end()) return it_cached->second;
 	const ResolvedType rt_declaration = ownerType(*receiver.declaration);
-	if (receiver != rt_declaration) dispatchFor(rt_declaration);
+	if (receiver != rt_declaration) {
+		dispatchFor(rt_declaration);
+		// Interface requirements must have distinct slots as soon as their owner closes.
+		if (asInterface(receiver.declaration)) {
+			const Substitutions m_arguments = argumentsOf(receiver);
+			for (const SymbolScope::value_type &entry : receiver.declaration->members)
+				for (const Symbol &sym_method : entry.second)
+					if (sym_method.kind == SymbolKind::Method && typeParameters(sym_method))
+						checkOverload(sym_method, m_arguments, iw_active ? &iw_active->where : nullptr);
+		}
+	}
 	TypeDispatch        td_table;
 	const Substitutions m_arguments = argumentsOf(receiver);
 	for (const ResolvedType &rt_pattern : declarations.at(receiver.declaration).parents) {
@@ -230,6 +245,10 @@ void Analyzer::addClassMethod (const MethodRef &method, const MethodGroups &requ
 	        std::ranges::find_if(table.methods, [&] (const MethodSlot &slot) { return sameMethod(slot.contract, method); });
 	if (it_base != table.methods.end() && it_base->kind == DispatchKind::Virtual) {
 		const Symbol &sym_root = *it_base->contract.symbol;
+		if (md_method.overridePrefix && typeParameters(sym_method) &&
+		    std::any_of(std::next(it_base), table.methods.end(),
+		                [&] (const MethodSlot &slot) { return slot.kind == DispatchKind::Virtual && sameMethod(slot.contract, method); }))
+			fail(Code::INVALID_VIRTUAL_METHOD, sym_method.name.get_span(), "Override matches multiple generic virtual methods", &sym_root.name);
 		if (!md_method.overridePrefix)
 			fail(Code::INVALID_VIRTUAL_METHOD, sym_method.name.get_span(),
 			     std::format("Overriding '{}' requires {}{}", sym_method.name.get_lexeme(), to_string(kOverride), to_string(oColon)),

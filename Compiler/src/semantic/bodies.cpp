@@ -15,7 +15,7 @@
 namespace cloth::semantic {
 
 BodyChecker::BodyChecker (Analyzer &analyzer, const Symbol &context, BodyFacts &facts, const Substitutions &arguments, DeclarationInfo &signature,
-                          const ResolvedType *attachment) :
+                          const ResolvedType *attachment, unsigned operatorWidth) :
         analyzer(analyzer),
         context(context),
         bf_facts(facts),
@@ -23,6 +23,7 @@ BodyChecker::BodyChecker (Analyzer &analyzer, const Symbol &context, BodyFacts &
         di_signature(signature),
         owner(analyzer.declarations.at(&context).owner),
         rt_attachment(attachment),
+        u_operatorWidth(operatorWidth),
         returns(signature.returns) {
 	for (ResolvedType &rt_result : returns)
 		if (rt_result.parameter) rt_result = analyzer.boundShape(rt_result);
@@ -102,10 +103,37 @@ ResolvedType BodyChecker::selfType () const {
 }
 
 ResolvedType BodyChecker::bodyType (const TypeReference &reference, const bool allowOpen) const {
-	ResolvedType rt_type = analyzer.checkedType(reference, context, m_arguments, allowOpen);
+	ResolvedType rt_type = analyzer.checkedType(reference, context, m_arguments, allowOpen, u_operatorWidth);
 	if (record && !allowOpen) analyzer.useType(rt_type, context, reference.get_span());
 	if (rt_type.parameter) return analyzer.boundShape(rt_type);
 	return rt_type;
+}
+
+const BodyFacts &BodyChecker::openFacts () const {
+	if (u_operatorWidth && !m_arguments.empty()) return analyzer.widthTemplate(context, u_operatorWidth);
+	return analyzer.openBody(rt_attachment);
+}
+
+std::optional<ResolvedType> BodyChecker::receiverClassBound (const Expression &receiver, const ResolvedType &actual) const {
+	if (m_arguments.empty()) return {};
+	const ExpressionFacts                &ef_open = openFacts().expressions;
+	const ExpressionFacts::const_iterator it_open = ef_open.find(&receiver);
+	if (it_open == ef_open.end() || it_open->second.types.size() != 1) return {};
+	const ResolvedType &rt_open      = it_open->second.types.front();
+	const ResolvedType  rt_parameter = rt_open.nullable() ? rt_open.element() : rt_open;
+	if (!rt_parameter.parameter || !rt_parameter.suffixes.empty()) return {};
+	const ResolvedType          rt_payload = actual.nullable() ? actual.element() : actual;
+	std::optional<ResolvedType> opt_class;
+	for (ResolvedType rt_bound : analyzer.typeBounds(rt_parameter)) {
+		rt_bound = analyzer.substitute(std::move(rt_bound), m_arguments);
+		if (rt_bound.nullable()) rt_bound = rt_bound.element();
+		if (!rt_bound.suffixes.empty() || !rt_bound.declaration) continue;
+		if (!analyzer.accepts(rt_bound, rt_payload))
+			fail(Code::INVALID_CLASS_MEMBER, receiver.get_span(),
+			     std::format("Type '{}' cannot use the '{}' bound", actual.spelling(), rt_bound.spelling()), &rt_parameter.parameter->name);
+		if (asClass(rt_bound.declaration)) opt_class = rt_bound;
+	}
+	return opt_class;
 }
 
 bool BodyChecker::hasInstance () const {
@@ -206,6 +234,11 @@ void BodyChecker::check () {
 	                                                         std::nullopt,
 	                              .state   = sym_state },
 	                            we_initialization.sharedFields);
+}
+
+void BodyChecker::inferOperatorResult () {
+	record = false;
+	typeBody();
 }
 
 void BodyChecker::typeBody () {

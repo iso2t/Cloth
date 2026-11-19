@@ -13,7 +13,7 @@ namespace cloth {
 
 std::strong_ordering InstanceKey::operator<=>(const InstanceKey &other) const {
 	if (const std::strong_ordering so_decl = std::compare_three_way{}(declaration, other.declaration); so_decl != 0) return so_decl;
-	return std::tie(receiver, arguments) <=> std::tie(other.receiver, other.arguments);
+	return std::tie(receiver, arguments, operatorWidth) <=> std::tie(other.receiver, other.arguments, other.operatorWidth);
 }
 
 }
@@ -61,9 +61,13 @@ const Symbol *Analyzer::constructorFor (const ResolvedType &type, const ResultTy
 }
 
 const GenericInstance *Analyzer::useCallable (const Symbol &symbol, const Substitutions &arguments, const Symbol &context, const TokenSpan &where,
-                                              const ResolvedType *stateHost) {
-	if (!isTemplate(symbol) || dynamic_cast<const ConstructorGuaranteeDeclaration *>(callable(symbol))) return nullptr;
-	InstanceKey ik_key{ &symbol, std::nullopt, {} };
+                                              const ResolvedType *stateHost, unsigned operatorWidth) {
+	if (widthSelector(symbol)) {
+		if (!operatorWidth) return nullptr;
+	} else if (!isTemplate(symbol) || dynamic_cast<const ConstructorGuaranteeDeclaration *>(callable(symbol))) {
+		return nullptr;
+	}
+	InstanceKey ik_key{ &symbol, std::nullopt, {}, operatorWidth };
 	if (const Symbol *sym_owner = instanceOwner(symbol))
 		ik_key.receiver = substitute(ownerType(*sym_owner), arguments);
 	else if (standaloneState(symbol)) {
@@ -226,7 +230,7 @@ void Analyzer::visitTypeMembers (const ResolvedType &type, const Substitutions &
 	}
 	for (const SymbolScope::value_type &entry : sym_type.members) {
 		for (const Symbol &sym_member : entry.second) {
-			if (iw_active) checkOverload(sym_member, arguments, &iw_active->where);
+			if (iw_active && !typeParameters(sym_member)) checkOverload(sym_member, arguments, &iw_active->where);
 			if (sym_member.kind == SymbolKind::Field) {
 				DeclarationInfo di_field = specialize(declarations.at(&sym_member), arguments);
 				ResolvedType    rt_field = *di_field.value;
@@ -323,6 +327,7 @@ void Analyzer::completeInstance (const InstanceWork &work) {
 		}
 	}
 	if (!work.instance) {
+		if (work.key.operatorWidth) widthTemplate(sym_declaration, work.key.operatorWidth);
 		dependencies(sym_declaration);
 		if (sym_declaration.kind == SymbolKind::Type) {
 			for (const SymbolScope::value_type &entry : sym_declaration.members) {
@@ -332,7 +337,9 @@ void Analyzer::completeInstance (const InstanceWork &work) {
 		}
 	} else {
 		GenericInstance &gi_instance = *work.instance;
-		gi_instance.signature        = specialize(declarations.at(&sym_declaration), m_arguments);
+		if (work.key.operatorWidth && isTemplate(sym_declaration)) widthTemplate(sym_declaration, work.key.operatorWidth);
+		gi_instance.signature = work.key.operatorWidth ? widthSignature(sym_declaration, m_arguments, work.key.operatorWidth) :
+		                                                 specialize(declarations.at(&sym_declaration), m_arguments);
 		useDeclaredBounds(sym_declaration, m_arguments);
 		for (const ResultTypes *v_types : { &gi_instance.signature.parameters, &gi_instance.signature.returns, &gi_instance.signature.parents }) {
 			for (const ResolvedType &rt_type : *v_types) useType(rt_type, sym_declaration, work.where);
@@ -341,7 +348,8 @@ void Analyzer::completeInstance (const InstanceWork &work) {
 		if (work.key.receiver && standaloneState(sym_declaration))
 			checkAttachedBody(sym_declaration, *work.key.receiver, gi_instance.body, m_arguments, gi_instance.signature);
 		else
-			BodyChecker(*this, sym_declaration, gi_instance.body, m_arguments, gi_instance.signature).check();
+			BodyChecker(*this, sym_declaration, gi_instance.body, m_arguments, gi_instance.signature, nullptr, work.key.operatorWidth).check();
+		if (work.key.operatorWidth && !isTemplate(sym_declaration)) checkPublicSurface(sym_declaration, nullptr, &gi_instance.signature);
 	}
 }
 

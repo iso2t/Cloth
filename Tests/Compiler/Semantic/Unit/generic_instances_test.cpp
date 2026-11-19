@@ -61,6 +61,71 @@ fn<int> ordinary() = pick(1)
 	EXPECT_EQ(cp_program.instances.size(), 2u);
 }
 
+TEST (SemanticGenerics, ResolvesClosedMethodTemplatesAtTheCall) {
+	const std::string s_box = R"(typedef<class> Box<T> {
+    pub mt<U> read<U>(T value, U other) = other
+    pub mt<U> read<U>(int value, U other) = other
+}
+)";
+	EXPECT_NO_THROW(checkSource(s_box + "fn use(Box<int> b) {}"));
+	expectError(s_box + "fn use(Box<int> b) { b.read<bool>(1, true) }", cde::DiagnosticCode::AMBIGUOUS_CALL);
+	expectError(s_box + "fn use(Box<int> b) { b.read(1, true) }", cde::DiagnosticCode::AMBIGUOUS_CALL);
+	const CheckedProgram cp_program = checkSource(s_box + "fn<bool> use(Box<bool> b) = b.read(1, true)");
+	const Symbol        &sym_method = cp_program.units.front()->get_globals().at("Box").front().members.at("read").back();
+	EXPECT_EQ(callIn(cp_program, "use").argumentContract, &sym_method);
+	expectError("typedef<class> Box<T> { mt read<U>(T v, U u) {}\n mt read<V>(T v, V u) {} }", cde::DiagnosticCode::DUPLICATE_METHOD);
+	expectError("typedef<class> Box<T> { mt read(T v) {}\n mt read(int v) {} }\nfn use(Box<int> b) {}", cde::DiagnosticCode::DUPLICATE_METHOD);
+	const std::string s_virtual = R"(typedef<class> Entity<A>(bool tag) {
+    pub Entity() : (false) {}
+    virtual: pub mt<T> echo<T>(A key, T value) = value
+    virtual: pub mt<T> echo<T>(int key, T value) = value
+}
+)";
+	EXPECT_NO_THROW(checkSource(s_virtual + "fn use(Entity<int> e) {}"));
+	expectError(s_virtual + "typedef<class> Player : Entity<int> { override: pub mt<U> echo<U>(int key, U value) = value }",
+	            cde::DiagnosticCode::INVALID_VIRTUAL_METHOD);
+}
+
+TEST (SemanticGenerics, ChecksInterfaceAndStateContractsWhenTheirOwnerCloses) {
+	const std::string s_interface = R"(typedef<interface> View<T> {
+    pub mt<U> read<U>(T value, U other)
+    pub mt<U> read<U>(int value, U other)
+}
+)";
+	EXPECT_NO_THROW(checkSource(s_interface + "fn<bool> read(View<bool> v) = v.read(1, true)"));
+	expectError(s_interface + "fn use(View<int> v) {}", cde::DiagnosticCode::DUPLICATE_METHOD);
+	expectError(s_interface + "fn use(View<int> v) { v.read(1, true) }", cde::DiagnosticCode::DUPLICATE_METHOD);
+	const std::string s_state = R"(typedef<class> Host<T> {
+    pub state<int> ::echo<U>(T left, U right)
+    pub state<int> ::echo<U>(int head, U other)
+    default: pub state<void> Ready { mt<int> echo<V>(T x, V y) = 1 }
+}
+)";
+	EXPECT_NO_THROW(checkSource(s_state + "fn<int> use(Host<bool> h) = h::echo(true, true)"));
+	expectError(s_state + "fn use(Host<int> h) {}", cde::DiagnosticCode::INVALID_STATE_CONTRACT);
+	expectError(s_state + "fn use(Host<int> h) { h::echo(1, true) }", cde::DiagnosticCode::INVALID_STATE_CONTRACT);
+}
+
+TEST (SemanticGenerics, ValidatesTheOpenReceiverBoundAfterReselectingAnOverload) {
+	const std::string s_types = R"(typedef<class> Base(pub def<bool> tag) {
+    pub Base() : (false) {}
+    pub mt<int> read() = 1
+}
+typedef<class> Player : Base {}
+typedef<class> Other {
+    pub mt<int> read() = 2
+    pub operator ==(Object other) = false
+}
+typedef<class> Holder<T: Base>(def<T> value, def<Other> other) {
+    mt<T> get(Object arg) = value
+    mt<Other> get(Player arg) = other
+)";
+	const std::string s_use   = "\n}\nfn use(Holder<Player> holder) {}";
+	for (const char *s_member : { "mt<int> test() = get(value).read()", "mt<bool> test() = get(value).tag", "mt<bool> test() = get(value) == value" })
+		expectError(s_types + s_member + s_use, cde::DiagnosticCode::INVALID_CLASS_MEMBER);
+	EXPECT_NO_THROW(checkSource(s_types + "mt<Object> test() = get(value)" + s_use));
+}
+
 TEST (SemanticGenerics, InfersExactTypesBeforeContextualizingLiterals) {
 	const CheckedProgram   cp_program = checkSource(R"(fn<T> pick<T>(T a, T b) = a
 fn<T> first<T>(T[] data, T sample) = sample

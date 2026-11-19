@@ -11,6 +11,7 @@
 #include <lexer/lexer.hpp>
 #include <parser/parser.hpp>
 #include <semantic/checker.hpp>
+#include <token/numeric_literals.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -464,6 +465,7 @@ void Analyzer::checkBodies () {
 			}
 		}
 	}
+	checkWidthAnnotations();
 	checkInstances();
 	// Expand dependencies first so recursively growing bounds retain their template-limit diagnostic.
 	for (const Symbol *sym_declaration : v_order) {
@@ -507,7 +509,10 @@ void Analyzer::checkBodyOf (const Symbol &symbol) {
 	}
 	try {
 		const std::unordered_map<const Symbol *, ResultTypes>::const_iterator it_hosts = m_stateHosts.find(standaloneState(symbol));
-		if (it_hosts != m_stateHosts.end()) {
+		if (const TypeReference *tr_width = widthSelector(symbol)) {
+			BodyChecker(*this, symbol, program, {}, declarations.at(&symbol)).resolveBodyNames(*callable(symbol)->executableBody());
+			if (isTemplate(symbol)) widthTemplate(symbol, tr_width->get_name().get_lexeme() == to_string(kInteger) ? MAX_INTEGER_BITS : 64u);
+		} else if (it_hosts != m_stateHosts.end()) {
 			for (const ResolvedType &rt_host : it_hosts->second)
 				checkAttachedBody(symbol, rt_host, program.attachmentBodies[rt_host], {}, declarations.at(&symbol));
 		} else {

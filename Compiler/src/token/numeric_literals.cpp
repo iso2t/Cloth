@@ -23,7 +23,6 @@ constexpr char32_t DECIMAL_ZEROES[] = {
 	0x17E0, 0x1810, 0x1946, 0x19D0, 0x1A80, 0x1A90, 0x1B50, 0x1BB0, 0x1C40, 0x1C50, 0xA620, 0xA8D0, 0xA900, 0xA9D0, 0xA9F0, 0xAA50, 0xABF0, 0xFF10,
 };
 
-constexpr std::size_t MAX_INTEGER_BITS = 65536;
 constexpr int         WORD_BITS        = std::numeric_limits<std::uint32_t>::digits;
 // Seven hex digits keep the chunk radix within one word.
 constexpr std::size_t DIGITS_PER_CHUNK = 7;

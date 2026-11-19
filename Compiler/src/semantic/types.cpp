@@ -237,8 +237,10 @@ void Analyzer::checkParameterNames (const Symbol &symbol) const {
 	}
 }
 
-ResolvedType Analyzer::checkedType (const TypeReference &reference, const Symbol &context, const Substitutions &arguments, bool allowOpen) const {
-	ResolvedType rt_type = substitute(type(reference, context, 0, allowOpen), arguments);
+ResolvedType Analyzer::checkedType (const TypeReference &reference, const Symbol &context, const Substitutions &arguments, bool allowOpen,
+                                    unsigned operatorWidth) const {
+	std::set<const TypeParameterDeclaration *> s_activeDefaults;
+	ResolvedType rt_type = substitute(resolveType(reference, context, 0, allowOpen, s_activeDefaults, operatorWidth), arguments);
 	if (!allowOpen) checkBounds(rt_type, reference.get_span(), context);
 	return rt_type;
 }
@@ -249,9 +251,10 @@ ResolvedType Analyzer::type (const TypeReference &reference, const Symbol &conte
 }
 
 ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol &context, unsigned depth, bool allowOpen,
-                                    std::set<const TypeParameterDeclaration *> &activeDefaults) const {
+                                    std::set<const TypeParameterDeclaration *> &activeDefaults, unsigned operatorWidth) const {
 	const Token    &t_name  = reference.get_name();
 	const TokenSpan ts_span = reference.get_span();
+	if (reference.get_application()) b_hasTypeApplications = true;
 	if (depth > MAX_TYPE_ARG_NESTING) {
 		fail(Code::GENERIC_SUBSTITUTION_NESTING, ts_span, "Recursive generic type or default argument");
 	}
@@ -259,7 +262,7 @@ ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol
 	ResolvedType       rt_type(s_name);
 	if (s_name == to_string(kRange) && !hasTypeName(context, t_name)) {
 		if (reference.get_type_arguments().size() != 1) fail(Code::INVALID_RANGE_VALUE, ts_span, "A range requires one numeric endpoint type");
-		ResolvedType element = resolveType(reference.get_type_arguments().front(), context, depth + 1, false, activeDefaults);
+		ResolvedType element = resolveType(reference.get_type_arguments().front(), context, depth + 1, false, activeDefaults, operatorWidth);
 		if (!element.parameter && !numeric(element)) fail(Code::INVALID_RANGE_VALUE, ts_span, "Range endpoints must be numeric");
 		applyArguments(rt_type, { element });
 	} else if (t_name.get_type() == TokenType::Identifier) {
@@ -310,7 +313,7 @@ ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol
 					rt_arg.name      = param.name.get_lexeme();
 					rt_arg.parameter = &param;
 				} else if (i < v_supplied.size()) {
-					rt_arg = resolveType(v_supplied[i], context, depth + 1, false, activeDefaults);
+					rt_arg = resolveType(v_supplied[i], context, depth + 1, false, activeDefaults, operatorWidth);
 				} else if (param.defaultType) {
 					if (!activeDefaults.insert(&param).second)
 						fail(Code::INVALID_GENERIC_ARGUMENT, param.defaultType->get_span(), "Cyclic type argument default",
@@ -345,10 +348,14 @@ ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol
 			fail(Code::UNSUPPORTED_WIDTH, ts_span, "Width requires an integer or floating-point type");
 		}
 		if (t_width.get_lexeme() == to_string(kAuto)) {
-			rt_type.width = 0;
+			if (depth) fail(Code::UNSUPPORTED_TYPE, ts_span, "A type application needs a concrete numeric width");
+			if (operatorWidth && reference.isUnsigned()) fail(Code::UNSUPPORTED_TYPE, ts_span, "A captured width requires a signed numeric type");
+			if (operatorWidth && s_name == to_string(kFloat) && operatorWidth != 16 && operatorWidth != 32 && operatorWidth != 64)
+				fail(Code::UNSUPPORTED_WIDTH, ts_span, "Unsupported captured floating-point width");
+			rt_type.width = operatorWidth;
 		} else {
 			const IntegerValue v_width = integerLiteralValue(t_width);
-			if (v_width.size() != 1 || !v_width.front() || v_width.front() > 65536 ||
+			if (v_width.size() != 1 || !v_width.front() || v_width.front() > MAX_INTEGER_BITS ||
 			    (s_name == to_string(kFloat) && v_width.front() != 16 && v_width.front() != 32 && v_width.front() != 64)) {
 				fail(Code::UNSUPPORTED_WIDTH, ts_span, "Unsupported numeric width");
 			}
@@ -878,13 +885,13 @@ void Analyzer::checkOverload (const Symbol &symbol, const Substitutions &argumen
 	}
 }
 
-void Analyzer::checkPublicSurface (const Symbol &symbol, const Symbol *exportingHost) const {
+void Analyzer::checkPublicSurface (const Symbol &symbol, const Symbol *exportingHost, const DeclarationInfo *specialization) const {
 	if (symbol.visibility != Visibility::Public) return;
 	for (const Symbol *sym_scope = exportingHost ? exportingHost : declarations.at(&symbol).owner; sym_scope;
 	     sym_scope               = declarations.at(sym_scope).owner) {
 		if (sym_scope->visibility != Visibility::Public) return;
 	}
-	const DeclarationInfo                                                                    &di_info = declarations.at(&symbol);
+	const DeclarationInfo &di_info = specialization ? *specialization : declarations.at(&symbol);
 	std::set<ResolvedType>                                                                    s_exposed;
 	const std::function<void(const ResolvedType &, const TypeReference *, const TokenSpan &)> expose =
 	        [&] (const ResolvedType &type, const TypeReference *reference, const TokenSpan &where) {
