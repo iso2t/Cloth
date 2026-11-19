@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <backend/backend.hpp>
+
 #include <exception>
 #include <iostream>
 #include <ostream>
@@ -16,8 +18,6 @@
 #include <semantic/symbol_table.hpp>
 #include <system/compiler_options.hpp>
 #include <util/pstream.hpp>
-
-#include "../../Backend/include/backend.hpp"
 
 int main (const int argc, char *argv[]) try {
 	const cloth::sys::CompilerOptions co_options{ argc, argv };

@@ -1,3 +1,3 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-backend-obj-y := backend.o
+backend-obj-y := backend/backend.o
