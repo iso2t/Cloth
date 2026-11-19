@@ -65,14 +65,61 @@ const Symbol *Analyzer::constructorFor (const ResolvedType &type, const ResultTy
 	return nullptr;
 }
 
-const GenericInstance *Analyzer::useCallable (const Symbol &symbol, const Substitutions &arguments, const Symbol &context, const TokenSpan &where) {
+const GenericInstance *Analyzer::useCallable (const Symbol &symbol, const Substitutions &arguments, const Symbol &context, const TokenSpan &where,
+                                              const ResolvedType *stateHost) {
 	if (!isTemplate(symbol) || dynamic_cast<const ConstructorGuaranteeDeclaration *>(callable(symbol))) return nullptr;
 	InstanceKey ik_key{ &symbol, std::nullopt, {} };
 	if (const Symbol *sym_owner = instanceOwner(symbol)) ik_key.receiver = substitute(ownerType(*sym_owner), arguments);
+	else if (standaloneState(symbol)) {
+		const ResolvedType *rt_host = stateHost ? stateHost : rt_activeAttachment;
+		if (rt_host) ik_key.receiver = *rt_host;
+	}
 	if (const TypeParameterList *tpl_parameters = typeParameters(symbol)) {
 		for (const TypeParameterDeclaration &tp_parameter : tpl_parameters->parameters) ik_key.arguments.push_back(arguments.at(&tp_parameter));
 	}
 	return useInstance(std::move(ik_key), context, where);
+}
+
+// A generic dispatch can be seen before or after its concrete receiver enters the instance worklist.
+void Analyzer::useDispatch (const CallDispatch &dispatch, const Substitutions &arguments, const Symbol &context, const TokenSpan &where) {
+	const TypeParameterList *tpl_parameters = typeParameters(*dispatch.contract.symbol);
+	if (!tpl_parameters || (iw_active ? !iw_active->instance : isTemplate(context) || (rt_activeAttachment && rt_activeAttachment->dependent()))) return;
+	InstanceKey ik_key{ dispatch.contract.symbol, dispatch.receiver, {} };
+	for (const TypeParameterDeclaration &tp_parameter : tpl_parameters->parameters) ik_key.arguments.push_back(arguments.at(&tp_parameter));
+	const std::pair<DispatchUses::iterator, bool> it_use = m_dispatchUses.try_emplace(std::move(ik_key), DispatchUse{ dispatch, where });
+	if (it_use.second) {
+		for (const ResolvedType &rt_receiver : s_receivers) instantiateTargets(it_use.first->first, it_use.first->second, rt_receiver);
+	}
+}
+
+void Analyzer::registerReceiver (const ResolvedType &receiver) {
+	if (s_receivers.insert(receiver).second) {
+		for (const DispatchUses::value_type &entry : m_dispatchUses) instantiateTargets(entry.first, entry.second, receiver);
+	}
+}
+
+void Analyzer::instantiateTargets (const InstanceKey &key, const DispatchUse &use, const ResolvedType &receiver) {
+	if (!accepts(use.call.receiver, receiver)) return;
+	const TypeDispatch                          &td_table    = dispatchFor(receiver);
+	const std::function<void(const MethodRef &)> instantiate = [&] (const MethodRef &body) {
+		enqueue({ body.symbol, body.owner, key.arguments }, use.where, false);
+	};
+	if (use.call.kind == DispatchKind::Interface) {
+		const ResolvedType &rt_view = asInterface(use.call.receiver.declaration) ? use.call.receiver : use.call.contract.owner;
+		for (const InterfaceTarget &it_target : td_table.interfaceTargets) {
+			if (it_target.view == rt_view && it_target.contract == use.call.contract) instantiate(it_target.implementation);
+		}
+	} else if (use.call.kind == DispatchKind::Virtual) {
+		for (const MethodSlot &ms_slot : td_table.methods) {
+			if (ms_slot.contract == use.call.contract && ms_slot.implementation) instantiate(*ms_slot.implementation);
+		}
+	} else if (use.call.kind == DispatchKind::State) {
+		for (const StateMethod &sm_method : td_table.stateMethods) {
+			if (sm_method.contract == use.call.contract) {
+				for (const std::pair<const Symbol *const, MethodRef> &entry : sm_method.implementations) instantiate(entry.second);
+			}
+		}
+	}
 }
 
 const GenericInstance *Analyzer::guaranteeOwner (const Symbol &guarantee, const Substitutions &arguments, const Symbol &context, const TokenSpan &where) {
@@ -88,7 +135,7 @@ void Analyzer::useType (const ResolvedType &type, const Symbol &context, const T
 }
 
 const GenericInstance *Analyzer::useInstance (InstanceKey key, const Symbol &context, const TokenSpan &where) {
-	if (!iw_active && isTemplate(context)) {
+	if (!iw_active && (isTemplate(context) || (rt_activeAttachment && rt_activeAttachment->dependent()))) {
 		m_uses[&context].push_back({ std::move(key), where });
 		return nullptr;
 	}
@@ -219,10 +266,11 @@ bool Analyzer::hasConstructorProof (const ResolvedType &type, const ResultTypes 
 	const Substitutions m_arguments = instanceArguments(iw_active->key);
 	for (const Substitutions::value_type &entry : m_arguments) {
 		if (entry.second != type) continue;
-		const Guarantees::const_iterator it_requirements = m_guarantees.find(entry.first);
+		const ParameterContract          pc_contract     = parameterContract(*entry.first);
+		const Guarantees::const_iterator it_requirements = m_guarantees.find(pc_contract.parameter);
 		if (it_requirements == m_guarantees.end()) continue;
 		for (const Symbol *sym_requirement : it_requirements->second) {
-			if (specialize(declarations.at(sym_requirement), m_arguments).parameters == parameters) return true;
+			if (specialize(specialize(declarations.at(sym_requirement), pc_contract.arguments), m_arguments).parameters == parameters) return true;
 		}
 	}
 	return false;
@@ -244,6 +292,19 @@ void Analyzer::completeInstance (const InstanceWork &work) {
 	if (sym_declaration.kind == SymbolKind::Type) {
 		const ResolvedType rt_type = substitute(ownerType(sym_declaration), m_arguments);
 		visitTypeMembers(rt_type, m_arguments, work.instance);
+		if (asClass(&sym_declaration) || asInterface(&sym_declaration)) dispatchFor(rt_type);
+		if (work.instance && asClass(&sym_declaration)) {
+			registerReceiver(rt_type);
+			for (const StateSelections::value_type &entry_state : dispatchFor(rt_type).states) {
+				const StateSelection &ss_state = entry_state.second;
+				if (ss_state.owner != rt_type || ss_state.definition == ss_state.selection) continue;
+				for (const SymbolScope::value_type &entry : ss_state.definition->members) {
+					for (const Symbol &sym_member : entry.second) {
+						if (!typeParameters(sym_member)) enqueue({ &sym_member, rt_type, {} }, work.where, false);
+					}
+				}
+			}
+		}
 	} else if (sym_declaration.kind == SymbolKind::State) {
 		for (const SymbolScope::value_type &entry : sym_declaration.members) {
 			for (const Symbol &sym_member : entry.second) {
@@ -281,7 +342,10 @@ void Analyzer::completeInstance (const InstanceWork &work) {
 			for (const ResolvedType &rt_type : *v_types) useType(rt_type, sym_declaration, work.where);
 		}
 		if (gi_instance.signature.value) useType(*gi_instance.signature.value, sym_declaration, work.where);
-		BodyChecker(*this, sym_declaration, gi_instance.body, m_arguments, gi_instance.signature).check();
+		if (work.key.receiver && standaloneState(sym_declaration))
+			checkAttachedBody(sym_declaration, *work.key.receiver, gi_instance.body, m_arguments, gi_instance.signature);
+		else
+			BodyChecker(*this, sym_declaration, gi_instance.body, m_arguments, gi_instance.signature).check();
 	}
 }
 
@@ -328,6 +392,8 @@ void Analyzer::checkInstances () {
 			enqueue(std::move(ik_key), sym_declaration->name.get_span(), true);
 		} else if (asStruct(sym_declaration)) {
 			visitTypeMembers(ownerType(*sym_declaration), {}, nullptr);
+		} else if (asClass(sym_declaration)) {
+			registerReceiver(ownerType(*sym_declaration));
 		}
 	}
 	// A map entry is the provisional identity. Each new entry appends one job, including calls discovered in another body.

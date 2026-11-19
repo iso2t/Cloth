@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using library: Catalog
+typedef<class> Local {}
+pub fn<T> create<T: new(Catalog.Entry item, Local hidden)>(T value) = value

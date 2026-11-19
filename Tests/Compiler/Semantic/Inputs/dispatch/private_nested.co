@@ -1,0 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using library: Catalog
+fn bad(Catalog.Secret item) {}

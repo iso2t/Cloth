@@ -112,7 +112,10 @@ ExpressionInfo BodyChecker::name (const Token &token) {
 		return value(selfType());
 	}
 	if (spelling == to_string(kState) && owner && owner->kind == SymbolKind::State) {
-		return value(analyzer.substitute(*analyzer.declarations.at(owner).value, m_arguments));
+		const ResolvedType rt_payload = analyzer.substitute(*analyzer.declarations.at(owner).value, m_arguments);
+		if (rt_payload == ResolvedType(kVoid)) fail(Code::UNKNOWN_NAME, token.get_span(), "This state has no payload to read", &owner->name);
+		remember(token, owner->name);
+		return value(rt_payload, owner);
 	}
 	if (hasInstance()) {
 		const std::vector<Candidate> fields = analyzer.members(selfType(), spelling, SymbolKind::Field);
@@ -198,34 +201,52 @@ ExpressionInfo BodyChecker::field (const FieldAccessExpression &node) {
 	return ei_field;
 }
 
-std::optional<Candidate> BodyChecker::stateTarget (const ResolvedType &receiver, const Token &name) {
-	const ResolvedType host = receiver.nullable() ? receiver.element() : receiver;
-	for (SymbolKind kind : { SymbolKind::State, SymbolKind::StateAttachment }) {
-		const std::vector<Candidate> candidates = analyzer.members(host, name.get_lexeme(), kind);
-		if (candidates.empty()) {
-			continue;
+std::optional<Candidate> BodyChecker::stateTarget (const ResolvedType &receiver, const Token &name, const Expression &operand) {
+	const bool               b_attachedSelf = rt_attachment && isSelfReference(operand);
+	const ResolvedType       host           = b_attachedSelf ? *rt_attachment : receiver.nullable() ? receiver.element() : receiver;
+	std::optional<Candidate> opt_state;
+	if (host.suffixes.empty() && asClass(host.declaration)) {
+		const TypeDispatch                   &td_table = analyzer.dispatchFor(host);
+		const StateSelections::const_iterator it_state = td_table.states.find(name.get_lexeme());
+		if (it_state != td_table.states.end()) opt_state = Candidate{ it_state->second.selection, analyzer.argumentsOf(it_state->second.owner) };
+	} else if (host.parameter) {
+		for (SymbolKind kind : { SymbolKind::State, SymbolKind::StateAttachment }) {
+			const std::vector<Candidate> v_states = analyzer.members(host, name.get_lexeme(), kind);
+			if (!v_states.empty()) {
+				opt_state = v_states.front();
+				break;
+			}
 		}
-		if (receiver.nullable()) {
-			fail(Code::NULLABLE_PAYLOAD_ACCESS, name.get_span(), "A state operation requires a non-null receiver");
-		}
-		analyzer.requireAccess(*candidates.front().symbol, context, name.get_span());
-		remember(name, candidates.front().symbol->name);
-		return candidates.front();
 	}
-	return std::nullopt;
+	if (opt_state) {
+		if (receiver.nullable()) fail(Code::NULLABLE_PAYLOAD_ACCESS, name.get_span(), "A state operation requires a non-null receiver");
+		if (!b_attachedSelf || analyzer.declarations.at(opt_state->symbol).attachedState != owner)
+			analyzer.requireAccess(*opt_state->symbol, context, name.get_span());
+		remember(name, opt_state->symbol->name);
+	}
+	if (!opt_state && (b_attachedSelf || analyzer.hasStateName(context, name.get_lexeme()))) {
+		fail(Code::INVALID_STATE_TARGET, name.get_span(), host.spelling() + " does not support state '" + name.get_lexeme() + "'");
+	}
+	return opt_state;
+}
+
+bool BodyChecker::statePayload (const ExpressionPtr &payload, const ResolvedType &required, const TokenSpan &span, const Token &state) {
+	if (required == ResolvedType(kVoid)) {
+		if (payload) fail(Code::INVALID_STATE_PAYLOAD, payload->get_span(), "This state takes no payload", &state);
+		return true;
+	}
+	if (!payload) fail(Code::INVALID_STATE_PAYLOAD, span, "Missing state payload of type " + required.spelling(), &state);
+	const std::optional<ResolvedType> opt_actual = scalar(*payload, &required);
+	if (opt_actual && !analyzer.accepts(required, *opt_actual)) {
+		fail(Code::INVALID_STATE_PAYLOAD, payload->get_span(),
+		     std::format("State '{}' expects payload {}, received {}", state.get_lexeme(), required.spelling(), opt_actual->spelling()), &state);
+	}
+	return opt_actual.has_value();
 }
 
 ExpressionInfo BodyChecker::transition (const Candidate &state, const ExpressionPtr &payload, const TokenSpan &span) {
 	const ResolvedType required = analyzer.substitute(*analyzer.declarations.at(state.symbol).value, state.arguments);
-	if (payload && required.name == to_string(kVoid)) {
-		fail(Code::INVALID_STATE_PAYLOAD, payload->get_span(), "This state takes no payload");
-	}
-	if (payload) {
-		if (!expect(*payload, required)) return { .types = {}, .symbol = state.symbol, .fallsThrough = false };
-	} else if (required.name != to_string(kVoid)) {
-		fail(Code::INVALID_STATE_PAYLOAD, span, "Missing state payload");
-	}
-	return { {}, state.symbol };
+	return { .types = {}, .symbol = state.symbol, .fallsThrough = statePayload(payload, required, span, state.symbol->name) };
 }
 
 ExpressionInfo BodyChecker::typeCheck (const TypeCheckExpression &node) {
@@ -251,14 +272,14 @@ ExpressionInfo BodyChecker::typeCheck (const TypeCheckExpression &node) {
 	                         !std::ranges::any_of(analyzer.lookup(context, identifier->get_lexeme()),
 	                                              [] (const Symbol *symbol) { return symbol->kind == SymbolKind::Type; });
 	if (b_stateName && rp_receiverPhase == ReceiverPhase::FieldInitializer && isSelfReference(*node.operand)) {
-		if (const std::optional<Candidate> state = stateTarget(selfType(), *identifier)) {
+		if (const std::optional<Candidate> state = stateTarget(selfType(), *identifier, *node.operand)) {
 			recordSelf(*node.operand);
 			return value(ResolvedType(kBoolean), state->symbol);
 		}
 	}
 	const std::optional<ResolvedType> opt_source = scalar(*node.operand);
 	if (b_stateName && opt_source) {
-		if (const std::optional<Candidate> state = stateTarget(*opt_source, *identifier)) {
+		if (const std::optional<Candidate> state = stateTarget(*opt_source, *identifier, *node.operand)) {
 			return value(ResolvedType(kBoolean), state->symbol);
 		}
 	}
@@ -474,16 +495,21 @@ ExpressionInfo BodyChecker::create (const ClassCreationExpression &node, const R
 	}
 	// The guarantee owns its call syntax, even if the concrete constructor uses different labels or defaults.
 	const Symbol *sym_guarantee = nullptr;
+	Substitutions m_guaranteeArguments;
 	if (!m_arguments.empty()) {
-		const std::unordered_map<const Expression *, ExpressionInfo>::const_iterator it_open = analyzer.program.expressions.find(&node);
-		if (it_open != analyzer.program.expressions.end() && it_open->second.argumentContract &&
+		const BodyFacts                                                             &bf_open = analyzer.openBody(rt_attachment);
+		const std::unordered_map<const Expression *, ExpressionInfo>::const_iterator it_open = bf_open.expressions.find(&node);
+		if (it_open != bf_open.expressions.end() && it_open->second.argumentContract &&
 		    dynamic_cast<const ConstructorGuaranteeDeclaration *>(callable(*it_open->second.argumentContract))) {
 			sym_guarantee = it_open->second.argumentContract;
+			m_guaranteeArguments = m_arguments;
+			for (const Substitutions::value_type &entry : it_open->second.typeArguments)
+				m_guaranteeArguments.insert_or_assign(entry.first, analyzer.substitute(entry.second, m_arguments));
 		}
 	}
 	std::vector<Candidate> constructors;
 	if (sym_guarantee) {
-		constructors.push_back({ sym_guarantee, m_arguments });
+		constructors.push_back({ sym_guarantee, m_guaranteeArguments });
 	} else {
 		constructors = analyzer.members(rt, rt.name, SymbolKind::Constructor);
 	}
@@ -514,14 +540,14 @@ ExpressionInfo BodyChecker::create (const ClassCreationExpression &node, const R
 	if (sym_guarantee) {
 		ResultTypes v_parameters;
 		for (const ResolvedType &rt_parameter : analyzer.declarations.at(sym_guarantee).parameters) {
-			v_parameters.push_back(analyzer.substitute(rt_parameter, m_arguments));
+			v_parameters.push_back(analyzer.substitute(rt_parameter, m_guaranteeArguments));
 		}
 		result.symbol = analyzer.constructorFor(rt, v_parameters, nullptr);
 		if (!result.symbol) fail(Code::UNSATISFIED_GENERIC_BOUND, node.get_span(), "Missing guaranteed constructor", &sym_guarantee->name);
 		remember(node.name, result.symbol->name);
 		if (record) {
 			result.instance         = analyzer.useCallable(*result.symbol, analyzer.argumentsOf(rt), context, node.get_span());
-			result.contractInstance = analyzer.guaranteeOwner(*sym_guarantee, m_arguments, context, node.get_span());
+			result.contractInstance = analyzer.guaranteeOwner(*sym_guarantee, m_guaranteeArguments, context, node.get_span());
 		}
 	}
 	if (record) {
@@ -541,7 +567,7 @@ ExpressionInfo BodyChecker::cast (const CastExpression &node) {
 	if (const Token *id = node.target.get_bare_identifier();
 	    opt_from && id && !analyzer.genericParameter(context, id->get_lexeme()) &&
 	    !std::ranges::any_of(analyzer.lookup(context, id->get_lexeme()), [] (const Symbol *symbol) { return symbol->kind == SymbolKind::Type; })) {
-		if (const std::optional<Candidate> state = stateTarget(*opt_from, *id)) {
+		if (const std::optional<Candidate> state = stateTarget(*opt_from, *id, *node.operand)) {
 			if (readOnlyDefaultRoot(*node.operand))
 				fail(Code::INVALID_PARAMETER_DEFAULT, node.get_span(), "A default cannot change the state of a read-only receiver",
 				     &pd_default->name);
@@ -881,9 +907,11 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		if (readOnlyDefaultRoot(*n->receiver))
 			fail(Code::INVALID_PARAMETER_DEFAULT, n->name.get_span(), "A default cannot call a state method on a read-only receiver",
 			     &pd_default->name);
-		return invoke(n->name, node.get_span(), n->suppliedArguments,
-		              analyzer.members(*opt_receiver, n->name.get_lexeme(), SymbolKind::StateMethodContract),
-		              n->typeArguments ? &*n->typeArguments : nullptr);
+		if (opt_receiver->nullable()) fail(Code::NULLABLE_PAYLOAD_ACCESS, n->name.get_span(), "A state call requires a non-null receiver");
+		const ResolvedType          &rt_host   = rt_attachment && isSelfReference(*n->receiver) ? *rt_attachment : *opt_receiver;
+		const std::vector<Candidate> v_methods = analyzer.members(rt_host, n->name.get_lexeme(), SymbolKind::StateMethodContract);
+		if (v_methods.empty()) fail(Code::INVALID_STATE_TARGET, n->name.get_span(), "Unknown state method '" + n->name.get_lexeme() + "'");
+		return invoke(n->name, node.get_span(), n->suppliedArguments, v_methods, n->typeArguments ? &*n->typeArguments : nullptr);
 	}
 	if (const auto *n = dynamic_cast<const StateTransitionExpression *>(&node)) {
 		const std::optional<ResolvedType> opt_receiver = scalar(*n->receiver);
@@ -893,7 +921,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		}
 		if (readOnlyDefaultRoot(*n->receiver))
 			fail(Code::INVALID_PARAMETER_DEFAULT, n->get_span(), "A default cannot change the state of a read-only receiver", &pd_default->name);
-		const std::optional<Candidate> state = stateTarget(*opt_receiver, n->target);
+		const std::optional<Candidate> state = stateTarget(*opt_receiver, n->target, *n->receiver);
 		if (!state) {
 			fail(Code::INVALID_STATE_TARGET, n->target.get_span(), "Unknown state '" + n->target.get_lexeme() + "'");
 		}

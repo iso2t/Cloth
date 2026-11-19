@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <format>
 #include <tuple>
+#include <utility>
 
 #include <ast/decl/class_declaration.hpp>
 #include <lexer/lexer.hpp>
@@ -349,18 +350,24 @@ bool Analyzer::accessible (const Symbol &symbol, const Symbol &context) const {
 		}
 		const Symbol *scope = &context;
 		while (scope && scope != decl.owner) {
-			if (const DeclarationInfo &enclosing = declarations.at(scope);
-			    scope->kind == SymbolKind::State && !enclosing.owner && !enclosing.parents.empty()) {
-				scope = enclosing.parents.front().declaration;
-			} else {
-				scope = enclosing.owner;
-			}
+			scope = declarations.at(scope).owner;
 		}
 		if (!scope) {
 			return false;
 		}
 	}
 	return true;
+}
+
+bool Analyzer::accessible (const Candidate &candidate, const Symbol &context) const {
+	if (!candidate.dispatch || candidate.dispatch->kind != DispatchKind::State) return accessible(*candidate.symbol, context);
+	const Symbol &sym_host = *candidate.dispatch->contract.owner.declaration;
+	if (!accessible(sym_host, context)) return false;
+	if (candidate.symbol->visibility == Visibility::Public || accessible(*candidate.symbol, context)) return true;
+	for (const Symbol *sym_scope = &context; sym_scope; sym_scope = declarations.at(sym_scope).owner) {
+		if (sym_scope == &sym_host) return true;
+	}
+	return false;
 }
 
 void Analyzer::requireAccess (const Symbol &symbol, const Symbol &context, const TokenSpan &use) const {
@@ -394,6 +401,28 @@ void Analyzer::checkBodies () {
 		}
 	}
 	checkInstances();
+	publishDispatch();
+}
+
+const Symbol *Analyzer::standaloneState (const Symbol &member) const {
+	const Symbol *sym_state = declarations.at(&member).owner;
+	return sym_state && sym_state->kind == SymbolKind::State && !declarations.at(sym_state).owner ? sym_state : nullptr;
+}
+
+const BodyFacts &Analyzer::openBody (const ResolvedType *attachment) const {
+	return attachment ? program.attachmentBodies.at(ownerType(*attachment->declaration)) : static_cast<const BodyFacts &>(program);
+}
+
+void Analyzer::checkAttachedBody (const Symbol &member, const ResolvedType &host, BodyFacts &facts, const Substitutions &arguments,
+                                  DeclarationInfo &signature) {
+	const ResolvedType *rt_previous = std::exchange(rt_activeAttachment, &host);
+	try {
+		BodyChecker(*this, member, facts, arguments, signature, &host).check();
+	} catch (...) {
+		rt_activeAttachment = rt_previous;
+		throw;
+	}
+	rt_activeAttachment = rt_previous;
 }
 
 void Analyzer::checkBodyOf (const Symbol &symbol) {
@@ -404,7 +433,14 @@ void Analyzer::checkBodyOf (const Symbol &symbol) {
 		fail(Code::INVALID_OPERATOR_DECLARATION, symbol.name.get_span(), "Recursive operator needs an explicit result type");
 	}
 	try {
-		BodyChecker(*this, symbol, program, {}, declarations.at(&symbol)).check();
+		const std::unordered_map<const Symbol *, ResultTypes>::const_iterator it_hosts = m_stateHosts.find(standaloneState(symbol));
+		if (it_hosts != m_stateHosts.end()) {
+			for (const ResolvedType &rt_host : it_hosts->second)
+				checkAttachedBody(symbol, rt_host, program.attachmentBodies[rt_host], {}, declarations.at(&symbol));
+		} else {
+			BodyChecker(*this, symbol, program, {}, declarations.at(&symbol)).check();
+		}
+		if (symbol.kind == SymbolKind::Operator) checkPublicSurface(symbol);
 	} catch (...) {
 		s_checking.erase(&symbol);
 		throw;

@@ -143,6 +143,7 @@ struct Match {
 	ResultTypes       parameters;
 	Substitutions     substitutions;
 	const Substitutions *overridingArguments;
+	std::optional<CallDispatch> dispatch;
 	MatchRank         rank;
 
 	[[nodiscard]] std::size_t omittedCount () const {
@@ -183,11 +184,11 @@ std::vector<Candidate> BodyChecker::methodCandidates (const MemberCallExpression
 	std::vector<Candidate> v_candidates = analyzer.members(receiver, site.name.get_lexeme(), SymbolKind::Method, MemberLookup::CallContract);
 	if (!m_arguments.empty()) {
 		using Facts                             = std::unordered_map<const Expression *, ExpressionInfo>;
-		const Facts                &m_open      = analyzer.program.expressions;
+		const Facts                &m_open      = analyzer.openBody(rt_attachment).expressions;
 		const Facts::const_iterator it_receiver = m_open.find(site.receiver.get()), it_call = m_open.find(&site);
 		if (it_receiver != m_open.end() && it_call != m_open.end() && it_call->second.argumentContract && it_receiver->second.types.size() == 1 &&
 		    it_receiver->second.types.front().parameter) {
-			return { analyzer.boundMethod(it_call->second, v_candidates, m_arguments) };
+			return { analyzer.boundMethod(it_call->second, receiver, v_candidates, m_arguments) };
 		}
 	}
 	return v_candidates;
@@ -295,6 +296,7 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 			     .parameters          = {},
 			     .substitutions       = {},
 			     .overridingArguments = &candidate.overridingArguments,
+			     .dispatch            = candidate.dispatch,
 			     .rank                = MatchRank::Exact };
 		for (std::size_t i = 0; i < arguments.size(); ++i) {
 			const ResolvedType parameter = analyzer.substitute(info.parameters[match.placement.destinations[i]], substitutions);
@@ -328,11 +330,11 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 		if (!viable) {
 			continue;
 		}
-		if (!analyzer.accessible(symbol, context)) {
+		if (!analyzer.accessible(candidate, context)) {
 			inaccessible = &symbol;
 			continue;
 		}
-		if (candidate.overridingMethod && !analyzer.accessible(*candidate.overridingMethod, context)) {
+		if (!candidate.dispatch && candidate.overridingMethod && !analyzer.accessible(*candidate.overridingMethod, context)) {
 			inaccessible = candidate.overridingMethod;
 			continue;
 		}
@@ -361,6 +363,10 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 		fail(Code::AMBIGUOUS_CALL, span, "Ambiguous call to '" + spelling + "'", &matches.front().symbol->name);
 	}
 	Match &best        = matches.front();
+	if (best.contract->visibility == Visibility::Private && asInterface(analyzer.declarations.at(best.contract).owner) &&
+	    !callable(*best.contract)->executableBody()) {
+		fail(Code::MISSING_INTERFACE_IMPLEMENTATION, span, "Private interface method '" + spelling + "' has no body", &best.contract->name);
+	}
 	bool   b_continues = true;
 	if (!knownArguments || best.rank == MatchRank::Contextual) {
 		// Only the selected contract commits facts. Replay written arguments in source order.
@@ -378,7 +384,9 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 	remember(name, best.symbol->name);
 	const GenericInstance *gi_contract = nullptr, *gi_target = nullptr;
 	if (record) {
-		gi_target = gi_contract = analyzer.useCallable(*best.contract, best.substitutions, context, span);
+		const ResolvedType *rt_host = best.dispatch && best.dispatch->kind == DispatchKind::State ? &best.dispatch->contract.owner : nullptr;
+		gi_target = gi_contract = analyzer.useCallable(*best.contract, best.substitutions, context, span, rt_host);
+		if (best.dispatch) analyzer.useDispatch(*best.dispatch, best.substitutions, context, span);
 		if (best.symbol != best.contract) {
 			Substitutions m_target = *best.overridingArguments;
 			if (const TypeParameterList *tpl_method = typeParameters(*best.symbol)) {
@@ -399,7 +407,8 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 		 .fallsThrough         = b_continues,
 		 .typeArguments        = std::move(best.substitutions),
 		 .instance             = gi_target,
-		 .contractInstance     = gi_contract };
+		 .contractInstance     = gi_contract,
+		 .dispatch             = best.dispatch };
 }
 
 }

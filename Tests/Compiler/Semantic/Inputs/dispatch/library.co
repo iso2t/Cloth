@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<int> seed() = 7
+pub typedef<class> Catalog {
+    pub typedef<class> Entry {}
+    typedef<class> Secret {}
+    mt<Secret> keep(Secret item) = item
+}
+pub typedef<interface> Query { pub mt<int> read(opt<int> n ?: seed()) = default (n) }
+pub typedef<class> Reader : Query {
+    pub state<int> ::amount(opt<int> n ?: seed())
+    default: (seed()) pub state<int> Loaded { mt<int> amount(int renamed) = state + renamed }
+}
+pub fn<T> keep<T>(T value) = value

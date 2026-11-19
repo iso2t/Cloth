@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <ast/decl/class_declaration.hpp>
+#include <ast/decl/interface_declaration.hpp>
 #include <ast/expr/member_call_expression.hpp>
 #include <ast/stmt/loop_control.hpp>
 #include <ast/stmt/statements.hpp>
@@ -44,6 +45,9 @@ struct ReturnDiagnostic : cde::ClothDiagnostic {
 [[noreturn]] void        fail (Code code, const TokenSpan &span, std::string message, const Token *related = nullptr);
 const CallableSignature *callable (const Symbol &symbol);
 const TypeParameterList *typeParameters (const Symbol &symbol);
+const ClassDeclaration     *asClass (const Symbol *symbol);
+const InterfaceDeclaration *asInterface (const Symbol *symbol);
+const TypeReference        &fieldType (const Symbol &symbol);
 
 struct Candidate {
 	const Symbol            *symbol;
@@ -51,6 +55,7 @@ struct Candidate {
 	const TypeParameterList *inferOwner          = nullptr;
 	const Symbol            *overridingMethod    = nullptr;
 	Substitutions            overridingArguments = {};
+	std::optional<CallDispatch> dispatch            = std::nullopt;
 };
 
 enum class MemberLookup { Declaration, CallContract };
@@ -84,9 +89,16 @@ class Analyzer {
 	void checkBodies ();
 	const ResultTypes     &resultsOf (const Symbol &symbol);
 	void                   useType (const ResolvedType &type, const Symbol &context, const TokenSpan &where);
-	const GenericInstance *useCallable (const Symbol &symbol, const Substitutions &arguments, const Symbol &context, const TokenSpan &where);
+	const GenericInstance *useCallable (const Symbol &symbol, const Substitutions &arguments, const Symbol &context, const TokenSpan &where,
+	                                    const ResolvedType *stateHost = nullptr);
+	void                   useDispatch (const CallDispatch &dispatch, const Substitutions &arguments, const Symbol &context, const TokenSpan &where);
 	const Symbol          *constructorFor (const ResolvedType &type, const ResultTypes &parameters, const Symbol *access) const;
-	Candidate              boundMethod (const ExpressionInfo &call, const std::vector<Candidate> &candidates, const Substitutions &arguments) const;
+	Candidate              boundMethod (const ExpressionInfo &call, const ResolvedType &receiver, const std::vector<Candidate> &candidates,
+	                                    const Substitutions &arguments) const;
+	bool                   accessible (const Candidate &candidate, const Symbol &context) const;
+	const TypeDispatch    &dispatchFor (const ResolvedType &receiver) const;
+	bool                   hasStateName (const Symbol &context, std::string_view name) const;
+	const BodyFacts       &openBody (const ResolvedType *attachment) const;
 	const GenericInstance *guaranteeOwner (const Symbol &guarantee, const Substitutions &arguments, const Symbol &context, const TokenSpan &where);
 
     private:
@@ -113,6 +125,17 @@ class Analyzer {
 	};
 
 	std::unordered_map<const Symbol *, std::vector<InstanceUse>> m_uses;
+
+	struct DispatchUse {
+		CallDispatch call;
+		TokenSpan    where;
+	};
+
+	using DispatchUses = std::map<InstanceKey, DispatchUse>;
+	DispatchUses           m_dispatchUses;
+	std::set<ResolvedType> s_receivers;
+	void                   registerReceiver (const ResolvedType &receiver);
+	void                   instantiateTargets (const InstanceKey &key, const DispatchUse &use, const ResolvedType &receiver);
 	std::set<InstanceKey>                                        s_templates;
 	std::deque<InstanceWork>                                     q_templates, q_instances;
 	const InstanceWork                                          *iw_active    = nullptr;
@@ -145,7 +168,36 @@ class Analyzer {
 	void                                 resolveDeclaration (const Symbol &symbol);
 	void                                 checkDeclarations ();
 	void                                 checkOverload (const Symbol &symbol, const Substitutions &arguments, const TokenSpan *application) const;
-	void                                 checkInterfaces (const Symbol &symbol) const;
+	mutable std::map<ResolvedType, TypeDispatch> m_dispatch;
+	using MethodGroup  = std::vector<MethodRef>;
+	using MethodGroups = std::map<std::string, std::vector<MethodGroup>, std::less<>>;
+	void          buildMethods (const ResolvedType &receiver, TypeDispatch &table) const;
+	void          addClassMethod (const MethodRef &method, const MethodGroups &requirements, TypeDispatch &table) const;
+	void          mergeRequirements (const ResolvedType &receiver, const MethodGroup &group, TypeDispatch &table) const;
+	void          implementRequirements (const ResolvedType &receiver, const MethodGroup &group, const MethodRef &contract, const MethodGroup &defaults,
+	                                     TypeDispatch &table) const;
+	void          buildStates (const ResolvedType &receiver, TypeDispatch &table) const;
+	void          publishDispatch ();
+	void          checkPublicSurface (const Symbol &symbol, const Symbol *exportingHost = nullptr) const;
+	bool          sameMethod (const MethodRef &left, const MethodRef &right, bool results = false) const;
+	Substitutions methodArguments (const MethodRef &source, const Symbol &target) const;
+	bool          sameMethodBounds (const MethodRef &left, const MethodRef &right, bool constructorContracts = false) const;
+	bool          sameTypeDefaults (const MethodRef &left, const MethodRef &right) const;
+	void          inheritMethodBounds (const MethodRef &body, const MethodRef &contract, Code code) const;
+
+	struct ParameterContract {
+		const TypeParameterDeclaration *parameter;
+		Substitutions                   arguments;
+	};
+
+	using ParameterContracts = std::map<const TypeParameterDeclaration *, ParameterContract>;
+	mutable ParameterContracts                           m_parameterContracts;
+	mutable std::map<const Symbol *, ParameterContracts> m_attachmentContracts;
+	std::unordered_map<const Symbol *, ResultTypes>      m_stateHosts;
+	const ResolvedType                                  *rt_activeAttachment = nullptr;
+	const Symbol                                        *standaloneState (const Symbol &member) const;
+	void checkAttachedBody (const Symbol &member, const ResolvedType &host, BodyFacts &facts, const Substitutions &arguments, DeclarationInfo &signature);
+	ParameterContract                    parameterContract (const TypeParameterDeclaration &parameter) const;
 	bool                                 sameSignature (const Candidate &left, const Candidate &right, bool includeResults = false) const;
 	void                                 checkBodyOf (const Symbol &symbol);
 	std::set<const Symbol *>             s_checking, s_checked;
@@ -164,7 +216,8 @@ struct Binding {
 
 class BodyChecker {
     public:
-	BodyChecker (Analyzer &analyzer, const Symbol &context, BodyFacts &facts, const Substitutions &arguments, DeclarationInfo &signature);
+	BodyChecker (Analyzer &analyzer, const Symbol &context, BodyFacts &facts, const Substitutions &arguments, DeclarationInfo &signature,
+	             const ResolvedType *attachment = nullptr);
 	void check ();
 
     private:
@@ -192,6 +245,7 @@ class BodyChecker {
 	const Substitutions                        &m_arguments;
 	DeclarationInfo                            &di_signature;
 	const Symbol                               *owner;
+	const ResolvedType                         *rt_attachment;
 	ResultTypes                                 returns;
 	std::vector<std::map<std::string, Binding>> scopes{ 1 };
 	using Narrowing = std::map<const Token *, ResolvedType>;
@@ -239,7 +293,8 @@ class BodyChecker {
 	ExpressionInfo           name (const Token &token);
 	std::optional<Receiver>  receiver (const Expression &node, bool allowOpen = false);
 	ExpressionInfo           field (const FieldAccessExpression &node);
-	std::optional<Candidate> stateTarget (const ResolvedType &receiver, const Token &name);
+	std::optional<Candidate>     stateTarget (const ResolvedType &receiver, const Token &name, const Expression &operand);
+	bool                         statePayload (const ExpressionPtr &payload, const ResolvedType &required, const TokenSpan &span, const Token &state);
 	ExpressionInfo           transition (const Candidate &state, const ExpressionPtr &payload, const TokenSpan &span);
 	ExpressionInfo           typeCheck (const TypeCheckExpression &node);
 	ExpressionInfo           binary (const BinaryExpression &node, const ResolvedType *expected);

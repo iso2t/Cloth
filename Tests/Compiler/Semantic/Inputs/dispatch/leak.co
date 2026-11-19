@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub typedef<class> Box<T> {}
+typedef<class> Internal { pub typedef<class> Nested {} }
+pub typedef<interface> API { pub mt<Box<Internal.Nested>> read() }

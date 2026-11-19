@@ -15,13 +15,15 @@
 
 namespace cloth::semantic {
 
-BodyChecker::BodyChecker (Analyzer &analyzer, const Symbol &context, BodyFacts &facts, const Substitutions &arguments, DeclarationInfo &signature) :
+BodyChecker::BodyChecker (Analyzer &analyzer, const Symbol &context, BodyFacts &facts, const Substitutions &arguments, DeclarationInfo &signature,
+                          const ResolvedType *attachment) :
         analyzer(analyzer),
         context(context),
         bf_facts(facts),
         m_arguments(arguments),
         di_signature(signature),
         owner(analyzer.declarations.at(&context).owner),
+        rt_attachment(attachment),
         returns(signature.returns) {
 	while (owner && owner->kind != SymbolKind::Type && owner->kind != SymbolKind::State) {
 		owner = analyzer.declarations.at(owner).owner;
@@ -271,11 +273,7 @@ void BodyChecker::check () {
 			selection = std::get<const StateAttachmentDeclaration *>(context.declaration);
 		}
 		if (selection && selection->initial) {
-			if (selection->initial->payload) {
-				expect(*selection->initial->payload, *info.value);
-			} else if (info.value->name != to_string(kVoid)) {
-				fail(Code::INVALID_STATE_PAYLOAD, selection->initial->span, "Initial state needs a payload");
-			}
+			statePayload(selection->initial->payload, *info.value, selection->initial->span, context.name);
 		}
 	}
 }

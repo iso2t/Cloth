@@ -28,6 +28,7 @@ obj-y := cloth.o \
          semantic/bodies.o \
          semantic/calls.o \
          semantic/checked_program.o \
+         semantic/dispatch.o \
          semantic/expressions.o \
          semantic/instances.o \
          semantic/symbol_table.o \

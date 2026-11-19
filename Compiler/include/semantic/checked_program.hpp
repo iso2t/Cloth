@@ -79,6 +79,58 @@ enum class ReceiverFieldPath { None, Stored, Indirect };
 
 enum class ResultKind { Empty, Single, Multiple, Never };
 
+// The owner distinguishes applications of the same generic method declaration.
+struct MethodRef {
+	const Symbol *symbol;
+	ResolvedType  owner;
+	bool          operator==(const MethodRef &) const = default;
+};
+
+enum class DispatchKind { Direct, Virtual, Interface, State };
+
+struct MethodSlot {
+	MethodRef                contract;
+	std::optional<MethodRef> implementation;
+	DispatchKind             kind;
+};
+
+struct InterfaceTarget {
+	ResolvedType view;
+	MethodRef    contract;
+	MethodRef    implementation;
+};
+
+struct StateSelection {
+	const Symbol *selection;
+	const Symbol *definition;
+	ResolvedType  owner;
+	ResolvedType  payload;
+};
+
+struct StateMethod {
+	MethodRef contract;
+	// Each key is a supported state selection on this host.
+	std::map<const Symbol *, MethodRef> implementations;
+};
+
+using StateSelections = std::map<std::string, StateSelection, std::less<>>;
+
+struct TypeDispatch {
+	std::vector<MethodSlot>      methods;
+	std::vector<ResolvedType>    interfaces;
+	std::vector<InterfaceTarget> interfaceTargets;
+	StateSelections              states;
+	const Symbol                *initialState = nullptr;
+	std::vector<StateMethod>     stateMethods;
+};
+
+// The static receiver and contract select a slot in the concrete receiver's dispatch table.
+struct CallDispatch {
+	DispatchKind kind;
+	ResolvedType receiver;
+	MethodRef    contract;
+};
+
 struct ExpressionInfo {
 	ResultTypes   types;
 	const Symbol *symbol  = nullptr;
@@ -94,6 +146,7 @@ struct ExpressionInfo {
 	const GenericInstance      *instance             = nullptr;
 	const GenericInstance      *contractInstance     = nullptr;
 	std::optional<ResolvedType> representedType      = std::nullopt;
+	std::optional<CallDispatch> dispatch             = std::nullopt;
 
 	[[nodiscard]] ResultKind resultKind () const;
 	static ExpressionInfo    never ();
@@ -131,5 +184,8 @@ struct CheckedProgram : BodyFacts {
 	std::deque<Symbol>                                  constructorRequirements;
 	std::unordered_map<const Symbol *, DeclarationInfo> declarations;
 	std::map<InstanceKey, GenericInstance>              instances;
+	std::map<ResolvedType, TypeDispatch>                dispatchTables;
+	// A standalone state keeps its lexical scope. State selections in its body belong to each attaching class.
+	std::map<ResolvedType, BodyFacts> attachmentBodies;
 };
 }

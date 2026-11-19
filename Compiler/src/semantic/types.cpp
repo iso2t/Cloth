@@ -23,6 +23,8 @@ const Symbol *namedType (const Candidates &candidates) {
 	return nullptr;
 }
 
+}
+
 const InterfaceDeclaration *asInterface (const Symbol *symbol) {
 	if (!symbol || symbol->kind != SymbolKind::Type) {
 		return nullptr;
@@ -48,8 +50,6 @@ const TypeReference &fieldType (const Symbol &symbol) {
 		return (*field)->parameter.type;
 	}
 	return std::get<const EnumFieldDeclaration *>(symbol.declaration)->type;
-}
-
 }
 
 void Analyzer::applyArguments (ResolvedType &type, ResultTypes arguments) const {
@@ -295,28 +295,56 @@ std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_
 	std::set<const Symbol *>                  s_path;
 	std::function<void(const ResolvedType &)> visit = [&] (const ResolvedType &receiver) {
 		if (receiver.parameter) {
+			const ParameterContract pc_contract = parameterContract(*receiver.parameter);
 			if (kind == SymbolKind::Constructor) {
-				const auto guarantees = m_guarantees.find(receiver.parameter);
+				const Guarantees::const_iterator guarantees = m_guarantees.find(pc_contract.parameter);
 				if (guarantees != m_guarantees.end()) {
 					for (const Symbol *sym : guarantees->second) {
-						v_members.push_back({ sym });
+						v_members.push_back({ sym, pc_contract.arguments });
 					}
 				}
 				return;
 			}
-			const Symbol &owner = *m_genericOwners.at(receiver.parameter);
+			const Symbol &owner = *m_genericOwners.at(pc_contract.parameter);
 			if (!s_path.insert(&owner).second) {
 				return;
 			}
-			for (const TypeParameterBound &bound : receiver.parameter->bounds) {
+			for (const TypeParameterBound &bound : pc_contract.parameter->bounds) {
 				if (const TypeReference *ref = std::get_if<TypeReference>(&bound.value)) {
-					visit(this->type(*ref, owner));
+					visit(substitute(this->type(*ref, owner), pc_contract.arguments));
 				}
 			}
 			s_path.erase(&owner);
 			return;
 		}
 		if (!receiver.declaration || !s_path.insert(receiver.declaration).second) {
+			return;
+		}
+		if ((kind == SymbolKind::Method || kind == SymbolKind::StateMethodContract) &&
+		    (asClass(receiver.declaration) || asInterface(receiver.declaration))) {
+			const TypeDispatch &td_table = dispatchFor(receiver);
+			if (kind == SymbolKind::StateMethodContract) {
+				for (const StateMethod &sm_method : td_table.stateMethods) {
+					if (sm_method.contract.symbol->name.get_lexeme() != name) continue;
+					Candidate c_method{ sm_method.contract.symbol, argumentsOf(sm_method.contract.owner) };
+					c_method.dispatch = CallDispatch{ DispatchKind::State, receiver, sm_method.contract };
+					v_members.push_back(std::move(c_method));
+				}
+			} else {
+				for (const MethodSlot &ms_slot : td_table.methods) {
+					if (ms_slot.contract.symbol->name.get_lexeme() != name) continue;
+					const MethodRef &mr_static = lookup == MemberLookup::Declaration && ms_slot.implementation ? *ms_slot.implementation :
+					                                                                                             ms_slot.contract;
+					Candidate        c_method{ mr_static.symbol, argumentsOf(mr_static.owner) };
+					if (ms_slot.implementation && ms_slot.implementation->symbol != mr_static.symbol) {
+						c_method.overridingMethod    = ms_slot.implementation->symbol;
+						c_method.overridingArguments = argumentsOf(ms_slot.implementation->owner);
+					}
+					if (ms_slot.kind != DispatchKind::Direct) c_method.dispatch = CallDispatch{ ms_slot.kind, receiver, ms_slot.contract };
+					v_members.push_back(std::move(c_method));
+				}
+			}
+			s_path.erase(receiver.declaration);
 			return;
 		}
 		const Substitutions m_args = argumentsOf(receiver);
@@ -336,6 +364,9 @@ std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_
 		s_path.erase(receiver.declaration);
 	};
 	visit(type);
+	if (v_members.size() < 2 || (!type.parameter && (asClass(type.declaration) || asInterface(type.declaration)) &&
+	                             (kind == SymbolKind::Method || kind == SymbolKind::StateMethodContract)))
+		return v_members;
 	if (kind == SymbolKind::Method) {
 		std::stable_partition(v_members.begin(), v_members.end(),
 		                      [&] (const Candidate &candidate) { return !asInterface(declarations.at(candidate.symbol).owner); });
@@ -360,38 +391,39 @@ std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_
 		});
 		if (it_prior == unique.end()) {
 			unique.push_back(candidate);
-		} else if (lookup == MemberLookup::CallContract && it_prior->symbol != candidate.symbol && asClass(current.owner)) {
-			const auto *md_base     = dynamic_cast<const MethodDeclaration *>(callable(*candidate.symbol));
-			const auto *md_override = dynamic_cast<const MethodDeclaration *>(callable(*it_prior->symbol));
-			// An override supplies a body. Calls retain the original labels, defaults and generic parameter identities.
-			if (md_base && md_base->virtualPrefix && md_override && md_override->overridePrefix) {
-				const Symbol *sym_override = it_prior->symbol;
-				Substitutions m_override      = std::move(it_prior->arguments);
-				*it_prior                  = candidate;
-				it_prior->overridingMethod = sym_override;
-				it_prior->overridingArguments = std::move(m_override);
-			}
 		}
 	}
 	return unique;
 }
 
-Candidate Analyzer::boundMethod (const ExpressionInfo &call, const std::vector<Candidate> &candidates, const Substitutions &arguments) const {
+Candidate Analyzer::boundMethod (const ExpressionInfo &call, const ResolvedType &receiver, const std::vector<Candidate> &candidates,
+                                 const Substitutions &arguments) const {
 	// The template selects the overload. A concrete receiver can supply an implementation of the same method.
 	Candidate c_contract{ call.argumentContract };
 	for (const Substitutions::value_type &entry : call.typeArguments) {
 		c_contract.arguments.emplace(entry.first, substitute(entry.second, arguments));
+	}
+	if (call.dispatch) {
+		c_contract.dispatch                 = *call.dispatch;
+		c_contract.dispatch->receiver       = substitute(call.dispatch->receiver, arguments);
+		c_contract.dispatch->contract.owner = substitute(call.dispatch->contract.owner, arguments);
+		if (call.dispatch->kind == DispatchKind::Interface && asClass(receiver.declaration)) {
+			for (const InterfaceTarget &it_target : dispatchFor(receiver).interfaceTargets) {
+				if (it_target.view == c_contract.dispatch->receiver && it_target.contract == c_contract.dispatch->contract) {
+					if (it_target.implementation.symbol != c_contract.symbol) {
+						c_contract.overridingMethod    = it_target.implementation.symbol;
+						c_contract.overridingArguments = argumentsOf(it_target.implementation.owner);
+					}
+					return c_contract;
+				}
+			}
+		}
 	}
 	for (const Candidate &c_target : candidates) {
 		if (c_target.symbol == call.argumentContract) {
 			c_contract.arguments.insert(c_target.arguments.begin(), c_target.arguments.end());
 			c_contract.overridingMethod    = c_target.overridingMethod;
 			c_contract.overridingArguments = c_target.overridingArguments;
-			break;
-		}
-		if (asInterface(declarations.at(call.argumentContract).owner) && sameSignature(c_contract, c_target)) {
-			c_contract.overridingMethod    = c_target.overridingMethod ? c_target.overridingMethod : c_target.symbol;
-			c_contract.overridingArguments = c_target.overridingMethod ? c_target.overridingArguments : c_target.arguments;
 			break;
 		}
 	}
@@ -401,10 +433,11 @@ Candidate Analyzer::boundMethod (const ExpressionInfo &call, const std::vector<C
 bool Analyzer::referenceType (const ResolvedType &type) const {
 	if (!type.suffixes.empty()) return false;
 	if (!type.parameter) return asClass(type.declaration) || asInterface(type.declaration);
-	for (const TypeParameterBound &tp_bound : type.parameter->bounds) {
+	const ParameterContract pc_contract = parameterContract(*type.parameter);
+	for (const TypeParameterBound &tp_bound : pc_contract.parameter->bounds) {
 		const TypeReference *tr_bound = std::get_if<TypeReference>(&tp_bound.value);
 		if (!tr_bound) return true;
-		const ResolvedType rt_bound   = this->type(*tr_bound, *m_genericOwners.at(type.parameter));
+		const ResolvedType rt_bound   = substitute(this->type(*tr_bound, *m_genericOwners.at(pc_contract.parameter)), pc_contract.arguments);
 		const ResolvedType rt_payload = rt_bound.nullable() ? rt_bound.element() : rt_bound;
 		if (rt_payload.suffixes.empty() && (asClass(rt_payload.declaration) || asInterface(rt_payload.declaration))) return true;
 	}
@@ -445,9 +478,11 @@ bool Analyzer::accepts (const ResolvedType &expected, const ResolvedType &actual
 			if (!visited.insert(&parameter).second) {
 				return false;
 			}
-			for (const TypeParameterBound &bound : parameter.bounds) {
+			const ParameterContract pc_contract = parameterContract(parameter);
+			for (const TypeParameterBound &bound : pc_contract.parameter->bounds) {
 				if (const TypeReference *ref = std::get_if<TypeReference>(&bound.value)) {
-					const ResolvedType constraint = type(*ref, *m_genericOwners.at(&parameter));
+					const ResolvedType constraint =
+					        substitute(type(*ref, *m_genericOwners.at(pc_contract.parameter)), pc_contract.arguments);
 					if (constraint == expected || (constraint.parameter ? check(*constraint.parameter) : accepts(expected, constraint))) {
 						return true;
 					}
@@ -460,9 +495,17 @@ bool Analyzer::accepts (const ResolvedType &expected, const ResolvedType &actual
 	if (!expected.declaration || !actual.declaration || !actual.suffixes.empty() || !expected.suffixes.empty()) {
 		return false;
 	}
-	for (const ResolvedType &parent : declarations.at(actual.declaration).parents) {
-		if (accepts(expected, substitute(parent, argumentsOf(actual)))) {
-			return true;
+	std::set<ResolvedType> s_seen;
+	ResultTypes            v_pending{ actual };
+	while (!v_pending.empty()) {
+		const ResolvedType rt_child = std::move(v_pending.back());
+		v_pending.pop_back();
+		if (!s_seen.insert(rt_child).second) continue;
+		const Substitutions m_arguments = argumentsOf(rt_child);
+		for (const ResolvedType &rt_pattern : declarations.at(rt_child.declaration).parents) {
+			ResolvedType rt_parent = substitute(rt_pattern, m_arguments);
+			if (rt_parent == expected) return true;
+			if (rt_parent.declaration) v_pending.push_back(std::move(rt_parent));
 		}
 	}
 	return false;
@@ -562,34 +605,21 @@ void Analyzer::checkBounds (const ResolvedType &type, const TokenSpan &where, co
 }
 
 bool Analyzer::satisfies (const TypeParameterDeclaration &parameter, const Substitutions &arguments, const Symbol &declaration, const Symbol &use) const {
-	const ResolvedType &actual = arguments.at(&parameter);
-	for (const TypeParameterBound &bound : parameter.bounds) {
-		if (const TypeReference *ref = std::get_if<TypeReference>(&bound.value)) {
-			if (!accepts(substitute(type(*ref, declaration), arguments), actual)) {
-				return false;
-			}
+	const ResolvedType     &rt_actual   = arguments.at(&parameter);
+	const ParameterContract pc_contract = parameterContract(parameter);
+	const Symbol           &sym_origin  = pc_contract.parameter == &parameter ? declaration : *m_genericOwners.at(pc_contract.parameter);
+	const std::function<ResolvedType(const TypeReference &)> resolve = [&] (const TypeReference &reference) {
+		return substitute(substitute(type(reference, sym_origin), pc_contract.arguments), arguments);
+	};
+	for (const TypeParameterBound &tp_bound : pc_contract.parameter->bounds) {
+		if (const TypeReference *tr_bound = std::get_if<TypeReference>(&tp_bound.value)) {
+			if (!accepts(resolve(*tr_bound), rt_actual)) return false;
 		} else {
-			ResultTypes required;
-			for (const ParameterDeclaration &p : std::get<ConstructorBound>(bound.value).declaration.parameters) {
-				required.push_back(substitute(type(p.type, declaration), arguments));
-			}
-			bool found = false;
-			if (actual.parameter && actual.suffixes.empty()) {
-				for (const TypeParameterBound &available : actual.parameter->bounds) {
-					if (const ConstructorBound *ctor = std::get_if<ConstructorBound>(&available.value)) {
-						ResultTypes signature;
-						for (const ParameterDeclaration &p : ctor->declaration.parameters) {
-							signature.push_back(type(p.type, *m_genericOwners.at(actual.parameter)));
-						}
-						found |= signature == required;
-					}
-				}
-			} else {
-				found = constructorFor(actual, required, &use) || hasConstructorProof(actual, required);
-			}
-			if (!found) {
+			ResultTypes v_required;
+			for (const ParameterDeclaration &pd_param : std::get<ConstructorBound>(tp_bound.value).declaration.parameters)
+				v_required.push_back(resolve(pd_param.type));
+			if (!constructorFor(rt_actual, v_required, rt_actual.parameter ? nullptr : &use) && !hasConstructorProof(rt_actual, v_required))
 				return false;
-			}
 		}
 	}
 	return true;
@@ -621,6 +651,67 @@ void Analyzer::checkOverload (const Symbol &symbol, const Substitutions &argumen
 	}
 }
 
+void Analyzer::checkPublicSurface (const Symbol &symbol, const Symbol *exportingHost) const {
+	if (symbol.visibility != Visibility::Public) return;
+	for (const Symbol *sym_scope = exportingHost ? exportingHost : declarations.at(&symbol).owner; sym_scope;
+	     sym_scope               = declarations.at(sym_scope).owner) {
+		if (sym_scope->visibility != Visibility::Public) return;
+	}
+	const DeclarationInfo                                                                    &di_info = declarations.at(&symbol);
+	std::set<ResolvedType>                                                                    s_exposed;
+	const std::function<void(const ResolvedType &, const TypeReference *, const TokenSpan &)> expose =
+	        [&] (const ResolvedType &type, const TypeReference *reference, const TokenSpan &where) {
+		        if (!s_exposed.insert(type).second) return;
+		        for (const Symbol *sym_type = type.declaration; sym_type; sym_type = declarations.at(sym_type).owner) {
+			        if (sym_type->visibility != Visibility::Public)
+				        fail(Code::PRIVATE_GENERIC_SIGNATURE, where,
+				             "Public signature exposes private type '" + sym_type->name.get_lexeme() + "'", &sym_type->name);
+		        }
+		        for (std::size_t st_index = 0; st_index < type.arguments().size(); ++st_index) {
+			        const TypeReference *tr_arg =
+			                reference && st_index < reference->get_type_arguments().size() ? &reference->get_type_arguments()[st_index] : nullptr;
+			        expose(type.arguments()[st_index], tr_arg, tr_arg ? tr_arg->get_span() : where);
+		        }
+	        };
+	const std::function<void(const TypeReference &)> written = [&] (const TypeReference &reference) {
+		expose(type(reference, symbol), &reference, reference.get_span());
+	};
+	if (const CallableSignature *cs_method = callable(symbol)) {
+		for (const ParameterDeclaration &pd_param : cs_method->parameters) written(pd_param.type);
+		for (const TypeReference &tr_result : cs_method->returnTypes) written(tr_result);
+		if (cs_method->returnTypes.empty()) {
+			for (const ResolvedType &rt_result : di_info.returns) expose(rt_result, nullptr, symbol.name.get_span());
+		}
+		if (const MethodDeclaration *md_method = dynamic_cast<const MethodDeclaration *>(cs_method);
+		    md_method && md_method->operatorMember && md_method->operatorMember->selector)
+			written(*md_method->operatorMember->selector);
+	} else if (symbol.kind == SymbolKind::Field) {
+		written(fieldType(symbol));
+	} else if (const ClassDeclaration *cd_class = asClass(&symbol)) {
+		for (const ClassParentClause &cp_parent : cd_class->parents) written(cp_parent.type);
+	} else if (const InterfaceDeclaration *id_interface = asInterface(&symbol)) {
+		for (const TypeReference &tr_parent : id_interface->parents) written(tr_parent);
+	} else if (symbol.kind == SymbolKind::State) {
+		const StateBodyDeclaration &sd_state = *std::get<const StateBodyDeclaration *>(symbol.declaration);
+		written(sd_state.payloadType);
+		if (const TopLevelStateDeclaration *ts_state = dynamic_cast<const TopLevelStateDeclaration *>(&sd_state)) written(ts_state->host);
+	} else if (symbol.kind == SymbolKind::StateAttachment) {
+		expose(*di_info.value, nullptr, symbol.name.get_span());
+	}
+	if (const TypeParameterList *tpl_parameters = typeParameters(symbol)) {
+		for (const TypeParameterDeclaration &tp_param : tpl_parameters->parameters) {
+			if (tp_param.defaultType) written(*tp_param.defaultType);
+			for (const TypeParameterBound &tp_bound : tp_param.bounds) {
+				if (const TypeReference *tr_bound = std::get_if<TypeReference>(&tp_bound.value))
+					written(*tr_bound);
+				else
+					for (const ParameterDeclaration &pd_param : std::get<ConstructorBound>(tp_bound.value).declaration.parameters)
+						written(pd_param.type);
+			}
+		}
+	}
+}
+
 void Analyzer::checkDeclarations () {
 	std::set<const Symbol *>            s_done, s_path;
 	std::function<void(const Symbol &)> visit = [&] (const Symbol &sym) {
@@ -631,18 +722,25 @@ void Analyzer::checkDeclarations () {
 			fail(Code::INTERFACE_INHERITANCE_CYCLE, sym.name.get_span(), "Cyclic inheritance at '" + sym.name.get_lexeme() + "'");
 		}
 		const ClassDeclaration  *base = nullptr;
-		std::set<const Symbol *> direct;
+		std::map<const Symbol *, ResolvedType> m_direct;
 		for (const ResolvedType &parent : declarations.at(&sym).parents) {
 			if (!parent.declaration || !parent.suffixes.empty()) {
-				fail(Code::INVALID_INTERFACE_HEADER, sym.name.get_span(), "Expected a named parent type");
+				fail(sym.kind == SymbolKind::State ? Code::INVALID_STATE_ATTACHMENT : Code::INVALID_INTERFACE_HEADER, sym.name.get_span(),
+				     "Expected a named parent type");
 			}
-			if (!direct.insert(parent.declaration).second) {
+			const std::pair<std::map<const Symbol *, ResolvedType>::iterator, bool> it_parent = m_direct.emplace(parent.declaration, parent);
+			if (!it_parent.second) {
+				if (it_parent.first->second != parent)
+					fail(Code::CONFLICTING_INTERFACE_APPLICATION, sym.name.get_span(),
+					     "Conflicting applications of " + it_parent.first->second.spelling() + " and " + parent.spelling(),
+					     &parent.declaration->name);
 				fail(Code::INVALID_INTERFACE_HEADER, sym.name.get_span(), "Duplicate parent type", &parent.declaration->name);
 			}
 			const ClassDeclaration *parentClass = asClass(parent.declaration);
 			if (sym.kind == SymbolKind::State) {
-				if (!parentClass) {
-					fail(Code::INVALID_STATE_DECLARATION, sym.name.get_span(), "A state requires a class host", &parent.declaration->name);
+				if (!parentClass && !asInterface(parent.declaration)) {
+					fail(Code::INVALID_STATE_ATTACHMENT, sym.name.get_span(), "A state needs a class or interface host",
+					     &parent.declaration->name);
 				}
 			} else if (parentClass && asClass(&sym)) {
 				if (base || parentClass->finalKeyword) {
@@ -676,11 +774,18 @@ void Analyzer::checkDeclarations () {
 				fail(Code::INVALID_STATE_ATTACHMENT, sym->name.get_span(), "Unknown attached state '" + sym->name.get_lexeme() + "'");
 			}
 			const DeclarationInfo &state = declarations.at(info.attachedState);
-			if (state.parents.front().declaration != info.owner) {
+			if (!accepts(state.parents.front(), ownerType(*info.owner))) {
 				fail(Code::INVALID_STATE_ATTACHMENT, sym->name.get_span(), "State is declared for a different host", &info.attachedState->name);
 			}
 			info.value = state.value;
+			m_stateHosts[info.attachedState].push_back(ownerType(*info.owner));
 		}
+	}
+	for (const Symbol *sym_type : v_order) {
+		if (asClass(sym_type) || asInterface(sym_type)) dispatchFor(ownerType(*sym_type));
+	}
+	for (const Symbol *sym : v_order) {
+		const DeclarationInfo &info = declarations.at(sym);
 		if (const TypeParameterList *tp = typeParameters(*sym)) {
 			std::set<std::string> names;
 			Substitutions         m_defaults = argumentsOf(ownerType(*sym));
@@ -728,67 +833,12 @@ void Analyzer::checkDeclarations () {
 		checkOverload(*sym, {}, nullptr);
 	}
 	for (const Symbol *symbol : v_order) {
-		if (asClass(symbol) || asInterface(symbol)) {
-			checkInterfaces(*symbol);
-		}
-	}
-}
-
-void Analyzer::checkInterfaces (const Symbol &symbol) const {
-	const ResolvedType                        receiver = ownerType(symbol);
-	std::map<const Symbol *, ResolvedType>    ancestors;
-	std::function<void(const ResolvedType &)> visit = [&] (const ResolvedType &type) {
-		const Substitutions arguments = argumentsOf(type);
-		for (const ResolvedType &base : declarations.at(type.declaration).parents) {
-			const ResolvedType parent    = substitute(base, arguments);
-			const auto [prior, inserted] = ancestors.emplace(parent.declaration, parent);
-			if (inserted) {
-				visit(parent);
-			} else if (prior->second != parent) {
-				fail(Code::CONFLICTING_INTERFACE_APPLICATION, symbol.name.get_span(), "Conflicting applications of " + parent.name,
-				     &parent.declaration->name);
-			}
-		}
-	};
-	visit(receiver);
-	for (const auto &[ancestor, type] : ancestors) {
-		if (!asInterface(ancestor)) {
-			continue;
-		}
-		for (const auto &[name, overloads] : ancestor->members) {
-			for (const Symbol &method : overloads) {
-				if (method.kind != SymbolKind::Method || method.visibility != Visibility::Public) {
-					continue;
-				}
-				const Candidate              requirement{ &method, argumentsOf(type) };
-				const std::vector<Candidate> visible        = members(receiver, name, SymbolKind::Method);
-				const Symbol                *implementation = nullptr;
-				for (const Candidate &candidate : visible) {
-					if (!sameSignature(candidate, requirement)) {
-						continue;
-					}
-					if (!sameSignature(candidate, requirement, true) || candidate.symbol->visibility != Visibility::Public) {
-						fail(Code::INCOMPATIBLE_INTERFACE_REQUIREMENT, candidate.symbol->name.get_span(),
-						     std::format("The implementation of '{}' must be {} and match the interface's result types", name,
-						                 to_string(kPublic)),
-						     &method.name);
-					}
-					if (!callable(*candidate.symbol)->executableBody()) {
-						continue;
-					}
-					if (implementation) {
-						fail(Code::CONFLICTING_INTERFACE_DEFAULTS, symbol.name.get_span(), "Multiple implementations of '" + name + "'",
-						     &candidate.symbol->name);
-					}
-					implementation = candidate.symbol;
-				}
-				if (asClass(&symbol) && !implementation) {
-					fail(Code::MISSING_INTERFACE_IMPLEMENTATION, symbol.name.get_span(), "Missing implementation of '" + name + "'",
-					     &method.name);
-				}
+		checkPublicSurface(*symbol);
+		if (asClass(symbol) && symbol->visibility == Visibility::Public) {
+			for (const StateMethod &sm_method : dispatchFor(ownerType(*symbol)).stateMethods) {
+				if (sm_method.contract.symbol->kind == SymbolKind::Method) checkPublicSurface(*sm_method.contract.symbol, symbol);
 			}
 		}
 	}
 }
-
 }
