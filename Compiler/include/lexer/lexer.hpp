@@ -32,7 +32,8 @@ class Lexer {
 	Lexer (const char *src, const size_t length) : Lexer(std::string(src, length)) {
 	}
 
-	Lexer (const SourceFile &source, const size_t offset) : Lexer(SourceFile{ source.get_path(), source.get_contents().substr(offset), source.get_extension() }) {
+	Lexer (const SourceFile &source, const size_t offset) :
+	        Lexer(SourceFile{ source.get_path(), source.get_contents().substr(offset), source.get_extension() }) {
 	}
 
 	~Lexer () = default;

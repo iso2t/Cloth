@@ -38,6 +38,14 @@ void CompilerOptions::add_flag (const CompilerFlag &flag) {
 // TODO: Allow comma separated lists of source files to use all at the same time? ie "path1","path2"
 // TODO: "path1","path" "path3" fails as path3 is seen as another arg.
 void CompilerOptions::build_defaults () {
+	add_flag({ "--kind", CompilerFlag::Value{ "library or executable", [this] (std::string_view kindName) {
+		                                         if (kindName == "library")
+			                                         kind = ProgramKind::Library;
+		                                         else if (kindName == "executable")
+			                                         kind = ProgramKind::Executable;
+		                                         else
+			                                         throw std::invalid_argument("--kind requires library or executable");
+	                                         } } });
 	add_flag({ "--target-bits", CompilerFlag::Value{ "32 or 64", [this] (const std::string_view bits) {
 		                                                if (bits == "32")
 			                                                targetLayout.sizeBits = 32;

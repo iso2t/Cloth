@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --src "%/S/Inputs/boundaries/helper.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --src "%/S/Inputs/boundaries/helper.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --stdlib "%/S/Inputs/boundaries/library" --src "%/S/Inputs/boundaries/client.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%/S/Inputs/boundaries/helper.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=MISSING --input-file "%t.err"
+# MISSING: [C3034] Error: Executable program requires a main function
+# MISSING: helper.co:5:1
+# MISSING: no main was declared in this source
+
+# RUN: echo "fn main() {}" > "%t.co"
+# RUN: echo "fn main(string[] args) {}" >> "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=DUPLICATE --input-file "%t.err"
+# DUPLICATE: [C3035] Error: Executable program must have exactly one main function
+# DUPLICATE-COUNT-2: main declared here
+
+# RUN: echo "fn main(string?[] args) {}" > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=PARAMS --input-file "%t.err"
+# PARAMS: [C3036] Error:
+# PARAMS: invalid entry-point parameter list
+
+# RUN: echo "fn<usize> main() = 0" > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=RETURN --input-file "%t.err"
+# RETURN: [C3037] Error:
+# RETURN: invalid entry-point return type
+
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind application --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=OPTION --input-file "%t.err"
+# RUN: %expect_exit --empty-stdout 1 %cloth --src "%t.co" --kind 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=OPTION --input-file "%t.err"
+# OPTION: --kind requires library or executable

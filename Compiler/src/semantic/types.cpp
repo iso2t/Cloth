@@ -25,6 +25,16 @@ const Symbol *namedType (const Candidates &candidates) {
 
 }
 
+const Symbol &objectRoot () {
+	// The implicit base has a stable nominal identity and no source constructor.
+	static const TokenSpan        TS_ROOT{ 1, 1, 1, 1 };
+	static const Token            T_CLASS{ std::string(to_string(kClass)), TokenType::Keyword, TS_ROOT };
+	static const Token            T_NAME{ "Object", TokenType::Identifier, TS_ROOT };
+	static const ClassDeclaration CD_ROOT{ T_CLASS, T_NAME, {}, {}, {}, {}, TS_ROOT };
+	static const Symbol           SYM_ROOT{ SymbolKind::Type, Visibility::Public, T_NAME, &CD_ROOT, {} };
+	return SYM_ROOT;
+}
+
 const StructDeclaration *asStruct (const Symbol *symbol) {
 	if (!symbol || symbol->kind != SymbolKind::Type) return nullptr;
 	return dynamic_cast<const StructDeclaration *>(std::get<const TypeDeclaration *>(symbol->declaration));
@@ -246,7 +256,7 @@ ResolvedType Analyzer::type (const TypeReference &reference, const Symbol &conte
 		rt_type.suffixes.emplace_back(to_string(oQuestion));
 	}
 	for (std::size_t i = 0; i < reference.get_array_suffixes().size(); ++i) {
-		std::string s_extent;
+		std::string       s_extent;
 		const std::size_t index = reference.get_array_suffixes().size() - 1 - i;
 		if (index < reference.get_array_sizes().size() && reference.get_array_sizes()[index]) {
 			const IntegerValue v_size = integerLiteralValue(*reference.get_array_sizes()[index]);
@@ -520,6 +530,7 @@ bool Analyzer::accepts (const ResolvedType &expected, const ResolvedType &actual
 	if (!expected.declaration || !actual.declaration || !actual.suffixes.empty() || !expected.suffixes.empty()) {
 		return false;
 	}
+	if (expected.declaration == &objectRoot() && asInterface(actual.declaration)) return true;
 	std::set<ResolvedType> s_seen;
 	ResultTypes            v_pending{ actual };
 	while (!v_pending.empty()) {
@@ -599,7 +610,7 @@ void Analyzer::resolveDeclaration (const Symbol &symbol) {
 		info.value = ownerType(*info.owner);
 	} else if (symbol.kind == SymbolKind::State) {
 		const auto state = std::get<const StateBodyDeclaration *>(symbol.declaration);
-		info.value                        = type(state->payloadType, symbol);
+		info.value       = type(state->payloadType, symbol);
 		if (const auto *top = dynamic_cast<const TopLevelStateDeclaration *>(state)) {
 			info.parents.push_back(valueType(top->host));
 		}
@@ -607,8 +618,12 @@ void Analyzer::resolveDeclaration (const Symbol &symbol) {
 		const auto td = std::get<const TypeDeclaration *>(symbol.declaration);
 		if (const auto *cd = dynamic_cast<const ClassDeclaration *>(td)) {
 			for (const ClassParentClause &parent : cd->parents) {
-				info.parents.push_back(valueType(parent.type));
+				const ResolvedType &rt_parent = info.parents.emplace_back(valueType(parent.type));
+				if (rt_parent.declaration == &objectRoot() && parent.constructorArguments && !parent.constructorArguments->empty())
+					fail(Code::INVALID_CLASS_MEMBER, parent.span, std::format("{} takes no base arguments", rt_parent.name));
 			}
+			if (std::ranges::none_of(info.parents, [] (const ResolvedType &parent) { return asClass(parent.declaration); }))
+				info.parents.push_back(ownerType(objectRoot()));
 		} else if (const auto *id = dynamic_cast<const InterfaceDeclaration *>(td)) {
 			for (const TypeReference &parent : id->parents) {
 				info.parents.push_back(valueType(parent));
@@ -746,7 +761,7 @@ void Analyzer::checkDeclarations () {
 		if (!s_path.insert(&sym).second) {
 			fail(Code::INTERFACE_INHERITANCE_CYCLE, sym.name.get_span(), "Cyclic inheritance at '" + sym.name.get_lexeme() + "'");
 		}
-		const ClassDeclaration  *base = nullptr;
+		const ClassDeclaration                *base = nullptr;
 		std::map<const Symbol *, ResolvedType> m_direct;
 		for (const ResolvedType &parent : declarations.at(&sym).parents) {
 			if (!parent.declaration || !parent.suffixes.empty()) {

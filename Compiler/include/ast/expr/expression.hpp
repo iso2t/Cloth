@@ -9,7 +9,7 @@
 namespace cloth {
 
 struct Expression {
-	virtual ~Expression ()              = default;
+	virtual ~Expression ()                            = default;
 	[[nodiscard]] virtual TokenSpan get_span () const = 0;
 };
 

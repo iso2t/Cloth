@@ -100,7 +100,7 @@ struct IntrinsicBody {
 	}
 
 	[[nodiscard]] std::string_view get_id () const {
-		const std::string_view s_name = operation.get_lexeme();
+		const std::string_view s_name  = operation.get_lexeme();
 		const std::string_view s_quote = to_string(oDoubleQuotation);
 		if (s_name.size() >= 2 * s_quote.size() && s_name.starts_with(s_quote) && s_name.ends_with(s_quote)) {
 			return s_name.substr(s_quote.size(), s_name.size() - 2 * s_quote.size());

@@ -18,6 +18,7 @@
 
 #include <ast/expr/expression.hpp>
 #include <ast/type/type_parameters.hpp>
+#include <semantic/program_kind.hpp>
 #include <semantic/symbol_table.hpp>
 #include <semantic/target_layout.hpp>
 #include <token/numeric_literals.hpp>
@@ -69,16 +70,28 @@ struct TypeArguments {
 	bool        dependent;
 };
 
+enum class LibraryIntrinsic {
+	DecodeUtf8,
+	FileOpen,
+	FileRead,
+	OwnershipAcquire,
+	OwnershipRelease,
+	OwnershipDelete,
+	OwnershipCheckMutation,
+	OwnershipSetCleanup
+};
+
 struct DeclarationInfo {
-	std::size_t                 file;
-	const Symbol               *owner;
-	ResultTypes                 parameters         = {};
-	ResultTypes                 returns            = {};
-	ResultTypes                 parents            = {};
-	std::optional<ResolvedType> value              = {};
-	const Symbol               *attachedState      = nullptr;
-	bool                        inferResult        = false;
-	const Symbol               *primaryConstructor = nullptr;
+	std::size_t                     file;
+	const Symbol                   *owner;
+	ResultTypes                     parameters         = {};
+	ResultTypes                     returns            = {};
+	ResultTypes                     parents            = {};
+	std::optional<ResolvedType>     value              = {};
+	const Symbol                   *attachedState      = nullptr;
+	bool                            inferResult        = false;
+	const Symbol                   *primaryConstructor = nullptr;
+	std::optional<LibraryIntrinsic> intrinsic          = {};
 };
 
 // Stored paths select storage in the enclosing instance. Indirect paths continue
@@ -169,7 +182,7 @@ struct ProviderSelection {
 	ProviderKind                 kind;
 	ResolvedType                 receiver;
 	bool                         typeReceiver;
-	std::optional<MetadataQuery> metadata = {};
+	std::optional<MetadataQuery> metadata          = {};
 	bool                         callsFormatter    = false;
 	std::optional<MethodRef>     formatter         = {};
 	const GenericInstance       *formatterInstance = nullptr;
@@ -183,6 +196,7 @@ struct IndexedAccess {
 };
 
 enum class RangeOperation { Construct, Membership, Equal };
+
 struct ExpressionInfo {
 	ResultTypes   types;
 	const Symbol *symbol  = nullptr;
@@ -202,7 +216,7 @@ struct ExpressionInfo {
 
 	ReceiverChecks receiverChecks = {};
 	// A generic intersection can require liveness validation even for an identity comparison.
-	bool checkedIdentity = false;
+	bool                             checkedIdentity    = false;
 	NumericConstant                  numericConstant    = {};
 	bool                             invalidNumericCast = false;
 	std::optional<ProviderSelection> provider           = {};
@@ -238,13 +252,13 @@ struct BodyFacts {
 	std::unordered_map<const ForStatement *, Iteration>                 iterations;
 	std::unordered_map<const Token *, ResolvedType>                     arrayConstraints;
 	std::unordered_map<const Symbol *, std::vector<const Expression *>> enumPayloads;
-	std::unordered_map<const ParameterDeclaration *, DefaultEffects>  defaultEffects;
-	std::unordered_map<const Statement *, ControlFlow>                controlFlow;
-	std::unordered_map<const LoopJumpStatement *, const LoopTarget *> jumpTargets;
-	std::unordered_map<const Statement *, ReceiverChecks>             writeChecks;
-	std::unordered_map<const Expression *, ExpressionInfo>        expressions;
-	std::unordered_map<const ClassParentClause *, ExpressionInfo> parentConstructors;
-	std::unordered_map<const Token *, ResolvedType>               localTypes;
+	std::unordered_map<const ParameterDeclaration *, DefaultEffects>    defaultEffects;
+	std::unordered_map<const Statement *, ControlFlow>                  controlFlow;
+	std::unordered_map<const LoopJumpStatement *, const LoopTarget *>   jumpTargets;
+	std::unordered_map<const Statement *, ReceiverChecks>               writeChecks;
+	std::unordered_map<const Expression *, ExpressionInfo>              expressions;
+	std::unordered_map<const ClassParentClause *, ExpressionInfo>       parentConstructors;
+	std::unordered_map<const Token *, ResolvedType>                     localTypes;
 	// An "is" target can resolve to a value after parsing. Keep that expression alive with its bindings.
 	std::unordered_map<const TypeCheckExpression *, std::shared_ptr<const BinaryExpression>> valueTests;
 	std::unordered_map<const Statement *, ExpressionInfo>                                    writes;
@@ -266,9 +280,12 @@ struct GenericInstance {
 };
 
 struct CheckedProgram : BodyFacts {
-	explicit CheckedProgram (SymbolTable entry, TargetLayout layout = {}, std::filesystem::path standardLibraryRoot = {});
+	explicit CheckedProgram (SymbolTable entry, TargetLayout layout = {}, std::filesystem::path standardLibraryRoot = {},
+	                         ProgramKind kind = ProgramKind::Library);
 	const TargetLayout          layout;
 	const std::filesystem::path standardLibraryRoot;
+	const ProgramKind           kind;
+	const Symbol               *entryPoint = nullptr;
 
 	// Own the declarations and stable instances referenced by the body facts.
 	std::vector<std::unique_ptr<const SymbolTable>>     units;

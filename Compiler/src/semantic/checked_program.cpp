@@ -88,15 +88,15 @@ std::string ResolvedType::spelling () const {
 	std::string                                 s_result;
 	bool                                        b_truncated = false;
 	const std::function<void(std::string_view)> append      = [&] (std::string_view part) {
-		if (b_truncated) return;
-		const std::size_t st_left = ST_MAX_BYTES - s_result.size();
-		s_result.append(part.substr(0, st_left));
-		if (part.size() <= st_left) return;
-		std::size_t st_end = ST_MAX_BYTES - S_ELLIPSIS.size();
-		while (st_end && (static_cast<unsigned char>(s_result[st_end]) & 0xc0) == 0x80) --st_end;
-		s_result.resize(st_end);
-		s_result += S_ELLIPSIS;
-		b_truncated = true;
+                if (b_truncated) return;
+                const std::size_t st_left = ST_MAX_BYTES - s_result.size();
+                s_result.append(part.substr(0, st_left));
+                if (part.size() <= st_left) return;
+                std::size_t st_end = ST_MAX_BYTES - S_ELLIPSIS.size();
+                while (st_end && (static_cast<unsigned char>(s_result[st_end]) & 0xc0) == 0x80) --st_end;
+                s_result.resize(st_end);
+                s_result += S_ELLIPSIS;
+                b_truncated = true;
 	};
 	const std::function<void(const ResolvedType &)> write = [&] (const ResolvedType &type) {
 		append(type.name);
@@ -142,13 +142,15 @@ ExpressionInfo ExpressionInfo::never () {
 	return { .types = {}, .fallsThrough = false };
 }
 
-CheckedProgram::CheckedProgram (SymbolTable entry, TargetLayout layout, std::filesystem::path standardLibraryRoot) :
+CheckedProgram::CheckedProgram (SymbolTable entry, TargetLayout layout, std::filesystem::path standardLibraryRoot, ProgramKind kind) :
         layout(layout),
-        standardLibraryRoot(std::move(standardLibraryRoot)) {
+        standardLibraryRoot(std::move(standardLibraryRoot)),
+        kind(kind) {
 	if (layout.sizeBits != 32 && layout.sizeBits != 64) throw std::invalid_argument("A Cloth target requires a 32- or 64-bit size type");
 	units.emplace_back(std::make_unique<SymbolTable>(std::move(entry)));
 	semantic::Analyzer analyzer(*this);
 	analyzer.checkBodies();
+	entryPoint = analyzer.entryPoint();
 }
 }
 
@@ -205,9 +207,12 @@ const TypeParameterList *typeParameters (const Symbol &symbol) {
 }
 
 Analyzer::Analyzer (CheckedProgram &program) : program(program), declarations(program.declarations) {
+	declarations.emplace(&objectRoot(), DeclarationInfo{ 0, nullptr });
 	loadImports();
+	registerIntrinsics();
 	for (const Symbol *sym : v_order) {
 		resolveDeclaration(*sym);
+		if (const std::optional<LibraryIntrinsic> op = declarations.at(sym).intrinsic) checkIntrinsicSignature(*sym, *op);
 	}
 	checkDeclarations();
 }
@@ -215,6 +220,8 @@ Analyzer::Analyzer (CheckedProgram &program) : program(program), declarations(pr
 void Analyzer::registerScope (const SymbolScope &scope, std::size_t file, const Symbol *owner) {
 	for (const SymbolScope::value_type &entry : scope) {
 		for (const Symbol &sym : entry.second) {
+			if (sym.kind == SymbolKind::Type && sym.name.get_lexeme() == objectRoot().name.get_lexeme())
+				fail(Code::INVALID_CLASS_MEMBER, sym.name.get_span(), std::format("{} is the built-in class root", sym.name.get_lexeme()));
 			declarations.emplace(&sym, DeclarationInfo{ file, owner });
 			if (sym.kind == SymbolKind::Constructor && dynamic_cast<const PrimaryConstructorDeclaration *>(callable(sym))) {
 				declarations.at(owner).primaryConstructor = &sym;
@@ -246,6 +253,12 @@ void Analyzer::registerScope (const SymbolScope &scope, std::size_t file, const 
 void Analyzer::loadImports () {
 	namespace fs = std::filesystem;
 	using Edge   = std::pair<const ImportDeclaration *, std::size_t>;
+
+	struct ImportRoot {
+		const fs::path &path;
+		bool            standardLibrary;
+	};
+
 	std::vector<std::vector<Edge>>  v_edges;
 	std::map<fs::path, std::size_t> m_files;
 	const SourceFile               *sf_entry = program.units.front()->get_source_unit().get_source();
@@ -255,6 +268,7 @@ void Analyzer::loadImports () {
 		p_root                 = p_entry.parent_path();
 		m_files.emplace(p_entry, 0);
 	}
+	const ImportRoot ir_roots[] = { { p_root, false }, { program.standardLibraryRoot, true } };
 	for (std::size_t st_file = 0; st_file < program.units.size(); ++st_file) {
 		v_names.emplace_back();
 		v_edges.emplace_back();
@@ -266,16 +280,18 @@ void Analyzer::loadImports () {
 			}
 			fs::path p_relative;
 			for (const Token &part : id_import.path.components) p_relative /= part.get_lexeme();
-			fs::path p_target;
-			for (const fs::path &root : { p_root, program.standardLibraryRoot }) {
-				if (root.empty()) continue;
+			fs::path    p_target;
+			std::string s_libraryPath;
+			for (const ImportRoot &ir_root : ir_roots) {
+				if (ir_root.path.empty()) continue;
 				for (const char *extension : { ".co", ".clib" }) {
-					fs::path candidate = root / p_relative;
+					fs::path candidate = ir_root.path / p_relative;
 					candidate += extension;
 					if (!fs::is_regular_file(candidate)) continue;
 					if (!p_target.empty())
 						fail(Code::AMBIGUOUS_IMPORT_SOURCE, id_import.path.get_span(), "Both .co and .clib match this import");
 					p_target = fs::canonical(candidate);
+					if (ir_root.standardLibrary) s_libraryPath = p_relative.generic_string() + extension;
 				}
 				if (!p_target.empty()) break;
 			}
@@ -284,6 +300,7 @@ void Analyzer::loadImports () {
 				     "Cannot find source for '" + id_import.path.get_spelling() + "'");
 			}
 			const std::pair<decltype(m_files)::iterator, bool> inserted = m_files.emplace(p_target, program.units.size());
+			if (!s_libraryPath.empty()) m_libraryPaths[inserted.first->second].insert(std::move(s_libraryPath));
 			if (inserted.second) {
 				Lexer l_lexer{ SourceFile(p_target) };
 				program.units.emplace_back(std::make_unique<SymbolTable>(Parser(l_lexer).parse()));
@@ -349,9 +366,11 @@ Candidates Analyzer::lookup (const Symbol &context, const std::string &name) con
 }
 
 Candidates Analyzer::lookupFile (const Symbol &context, const std::string &name) const {
-	const Names &names = v_names[declarations.at(&context).file];
-	const auto   it    = names.find(name);
-	return it == names.end() ? Candidates{} : it->second;
+	const Names &names   = v_names[declarations.at(&context).file];
+	const auto   it      = names.find(name);
+	Candidates   v_found = it == names.end() ? Candidates{} : it->second;
+	if (name == objectRoot().name.get_lexeme()) v_found.push_back(&objectRoot());
+	return v_found;
 }
 
 bool Analyzer::accessible (const Symbol &symbol, const Symbol &context) const {

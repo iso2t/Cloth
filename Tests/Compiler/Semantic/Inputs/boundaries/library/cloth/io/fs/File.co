@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub typedef<enum> FileError { InvalidPath, NotFound, PermissionDenied, OpenFailed, AlreadyOpen, NotOpen, ReadFailed }
+pub final typedef<class> File {
+    pub mt<FileError?> open(string path) = intrinsic "io.file.open"
+    pub mt<unsigned int<8>[]?, FileError?> read(usize limit) = intrinsic "io.file.read"
+}

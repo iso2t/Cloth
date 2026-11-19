@@ -10,6 +10,7 @@
 #include <variant>
 #include <vector>
 
+#include <semantic/program_kind.hpp>
 #include <semantic/target_layout.hpp>
 
 namespace cloth::sys {
@@ -40,6 +41,7 @@ class CompilerOptions {
 	std::optional<std::filesystem::path> p_sourcePath;
 	TargetLayout                         targetLayout;
 	std::filesystem::path                standardLibraryRoot;
+	ProgramKind                          kind = ProgramKind::Library;
 
 	[[nodiscard]] int get_lexer_flag () const {
 		return i_lexer;

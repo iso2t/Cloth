@@ -26,6 +26,7 @@ obj-y := cloth.o \
          parser/subs/struct_parser.o \
          parser/subs/type_parser.o \
          semantic/bodies.o \
+         semantic/program_boundaries.o \
          semantic/calls.o \
          semantic/constants.o \
          semantic/collections.o \

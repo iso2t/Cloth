@@ -276,14 +276,14 @@ void Analyzer::completeInstance (const InstanceWork &work) {
 	const Symbol                             &sym_declaration = *work.key.declaration;
 	const Substitutions                       m_arguments     = instanceArguments(work.key);
 	const std::function<void(const Symbol &)> dependencies    = [&] (const Symbol &owner) {
-		const std::unordered_map<const Symbol *, std::vector<InstanceUse>>::const_iterator it_uses = m_uses.find(&owner);
-		if (it_uses == m_uses.end()) return;
-		for (const InstanceUse &iu_use : it_uses->second) {
-			InstanceKey ik_next = iu_use.key;
-			if (ik_next.receiver) ik_next.receiver = substitute(std::move(*ik_next.receiver), m_arguments);
-			for (ResolvedType &rt_arg : ik_next.arguments) rt_arg = substitute(std::move(rt_arg), m_arguments);
-			enqueue(std::move(ik_next), iu_use.where, true);
-		}
+                const std::unordered_map<const Symbol *, std::vector<InstanceUse>>::const_iterator it_uses = m_uses.find(&owner);
+                if (it_uses == m_uses.end()) return;
+                for (const InstanceUse &iu_use : it_uses->second) {
+                        InstanceKey ik_next = iu_use.key;
+                        if (ik_next.receiver) ik_next.receiver = substitute(std::move(*ik_next.receiver), m_arguments);
+                        for (ResolvedType &rt_arg : ik_next.arguments) rt_arg = substitute(std::move(rt_arg), m_arguments);
+                        enqueue(std::move(ik_next), iu_use.where, true);
+                }
 	};
 	if (sym_declaration.kind == SymbolKind::Type) {
 		const ResolvedType rt_type = substitute(ownerType(sym_declaration), m_arguments);

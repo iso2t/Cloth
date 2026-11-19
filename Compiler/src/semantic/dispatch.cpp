@@ -82,7 +82,7 @@ bool Analyzer::sameMethodBounds (const MethodRef &left, const MethodRef &right, 
 		const ParameterContract                                  pc_origin   = parameterContract(typeParameters(*method.symbol)->parameters[index]);
 		const Symbol                                            &sym_origin  = *m_genericOwners.at(pc_origin.parameter);
 		const std::function<ResolvedType(const TypeReference &)> resolve     = [&] (const TypeReference &reference) {
-			return substitute(substitute(type(reference, sym_origin), pc_origin.arguments), m_arguments);
+                        return substitute(substitute(type(reference, sym_origin), pc_origin.arguments), m_arguments);
 		};
 		for (const TypeParameterBound &tp_bound : pc_origin.parameter->bounds) {
 			if (const TypeReference *tr_type = std::get_if<TypeReference>(&tp_bound.value)) {
@@ -319,8 +319,8 @@ void Analyzer::implementRequirements (const ResolvedType &receiver, const Method
                                       TypeDispatch &table) const {
 	const Symbol                           &sym_owner = *receiver.declaration;
 	const std::vector<MethodSlot>::iterator it_class  = std::ranges::find_if(table.methods, [&] (const MethodSlot &slot) {
-		return slot.kind != DispatchKind::Interface && sameMethod(slot.contract, contract);
-	});
+                return slot.kind != DispatchKind::Interface && sameMethod(slot.contract, contract);
+        });
 	std::optional<MethodRef>                opt_target;
 	if (it_class != table.methods.end()) {
 		const MethodRef &mr_body = *it_class->implementation;

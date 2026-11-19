@@ -64,7 +64,7 @@ char32_t decodeCharacter (const Token &token) {
 std::string collapseInterpolationBraces (std::string_view contents) {
 	const std::string_view s_open  = to_string(oBraceOpen);
 	const std::string_view s_close = to_string(oBraceClose);
-	std::string s_result;
+	std::string            s_result;
 	s_result.reserve(contents.size());
 	while (!contents.empty()) {
 		const std::string_view s_brace = contents.starts_with(s_open) ? s_open : s_close;

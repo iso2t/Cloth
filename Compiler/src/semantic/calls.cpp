@@ -137,14 +137,14 @@ std::vector<PlacedCandidate> bindCandidates (const Token &name, const TokenSpan 
 enum class MatchRank { Exact, Assignable, Contextual };
 
 struct Match {
-	const Symbol     *symbol;
-	const Symbol     *contract;
-	ArgumentPlacement placement;
-	ResultTypes       parameters;
-	Substitutions     substitutions;
-	const Substitutions *overridingArguments;
+	const Symbol               *symbol;
+	const Symbol               *contract;
+	ArgumentPlacement           placement;
+	ResultTypes                 parameters;
+	Substitutions               substitutions;
+	const Substitutions        *overridingArguments;
 	std::optional<CallDispatch> dispatch;
-	MatchRank         rank;
+	MatchRank                   rank;
 
 	[[nodiscard]] std::size_t omittedCount () const {
 		return placement.omitted.size();
@@ -248,8 +248,8 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 		}
 		v_probes.push_back(std::move(ap_probe));
 	}
-	std::vector<Match> matches;
-	const Symbol      *inaccessible = nullptr;
+	std::vector<Match>              matches;
+	const Symbol                   *inaccessible = nullptr;
 	const TypeParameterDeclaration *tp_unproven  = nullptr;
 	for (PlacedCandidate &pc_placed : v_placed) {
 		const Candidate         &candidate     = pc_placed.candidate;
@@ -370,12 +370,12 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 	if (matches.size() != 1) {
 		fail(Code::AMBIGUOUS_CALL, span, "Ambiguous call to '" + spelling + "'", &matches.front().symbol->name);
 	}
-	Match &best        = matches.front();
+	Match &best = matches.front();
 	if (best.contract->visibility == Visibility::Private && asInterface(analyzer.declarations.at(best.contract).owner) &&
 	    !callable(*best.contract)->executableBody()) {
 		fail(Code::MISSING_INTERFACE_IMPLEMENTATION, span, "Private interface method '" + spelling + "' has no body", &best.contract->name);
 	}
-	bool   b_continues = true;
+	bool b_continues = true;
 	if (!knownArguments || best.rank == MatchRank::Contextual) {
 		// Only the selected contract commits facts. Replay written arguments in source order.
 		if (!record && !we_capture && best.rank != MatchRank::Contextual) {

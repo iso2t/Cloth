@@ -34,7 +34,7 @@ inline constexpr std::string_view S_ELEMENT = "element", S_RANK = "rank", S_EXTE
 inline constexpr std::string_view S_ISARRAY = "isarray", S_HASEXTENT = "hasextent", S_ISUNSIGNED = "isunsigned", S_ISNUMERIC = "isnumeric";
 }
 
-std::string_view unsignedIntegerSpelling ();
+std::string_view             unsignedIntegerSpelling ();
 double                       floatingLiteral (std::string_view text, unsigned width);
 NumericConstant              numericLimit (const ResolvedType &type, TargetLayout layout, bool maximum);
 void                         checkNumeric (const Expression &node, ExpressionInfo &result, const BodyFacts &facts, TargetLayout layout);
@@ -60,6 +60,7 @@ const CallableSignature    *callable (const Symbol &symbol);
 const TypeParameterList    *typeParameters (const Symbol &symbol);
 const StructDeclaration    *asStruct (const Symbol *symbol);
 const ClassDeclaration     *asClass (const Symbol *symbol);
+const Symbol               &objectRoot ();
 const InterfaceDeclaration *asInterface (const Symbol *symbol);
 const TypeReference        &fieldType (const Symbol &symbol);
 
@@ -115,6 +116,7 @@ class Analyzer {
 	};
 
 	void                   checkBodies ();
+	[[nodiscard]] const Symbol *entryPoint () const;
 	void                   recordLifetimeBody (LifetimeBody body, bool initializationMayCall);
 	[[nodiscard]] bool     preservesNewReceiver (const ResolvedType &host, const Symbol &constructor) const;
 	const ResultTypes     &resultsOf (const Symbol &symbol);
@@ -197,7 +199,12 @@ class Analyzer {
 	const GenericInstance                       *enqueue (InstanceKey key, const TokenSpan &where, bool symbolic);
 	std::vector<Names>                           v_names;
 	Candidates                                   v_order;
+	// A unit can be reached through several imports. Only selections from the standard library confer a library path.
+	using LibraryPaths = std::map<std::size_t, std::set<std::string, std::less<>>>;
+	LibraryPaths                                 m_libraryPaths;
 	void                                         loadImports ();
+	void                                         registerIntrinsics ();
+	void                                         checkIntrinsicSignature (const Symbol &symbol, LibraryIntrinsic operation) const;
 	void                                         registerScope (const SymbolScope &scope, std::size_t file, const Symbol *owner);
 	void                                         resolveDeclaration (const Symbol &symbol);
 	void                                         checkDeclarations ();
@@ -231,16 +238,17 @@ class Analyzer {
 	const ResolvedType                                  *rt_activeAttachment = nullptr;
 	const Symbol                                        *standaloneState (const Symbol &member) const;
 	void checkAttachedBody (const Symbol &member, const ResolvedType &host, BodyFacts &facts, const Substitutions &arguments, DeclarationInfo &signature);
-	ParameterContract parameterContract (const TypeParameterDeclaration &parameter) const;
-	bool              sameSignature (const Candidate &left, const Candidate &right, bool includeResults = false) const;
-	void              checkBodyOf (const Symbol &symbol);
-	std::set<const Symbol *>                                             s_checking, s_checked;
+	ParameterContract        parameterContract (const TypeParameterDeclaration &parameter) const;
+	bool                     sameSignature (const Candidate &left, const Candidate &right, bool includeResults = false) const;
+	void                     checkBodyOf (const Symbol &symbol);
+	std::set<const Symbol *> s_checking, s_checked;
 	std::unordered_map<const TypeParameterDeclaration *, const Symbol *> m_genericOwners;
 	using Guarantees = std::unordered_map<const TypeParameterDeclaration *, Candidates>;
 	Guarantees m_guarantees;
 };
 
 enum class PlaceFact { Presence, CurrentShape, RetainedShape, RepresentedType };
+
 struct StoragePlace {
 	const Token                *root;
 	std::vector<const Symbol *> fields                                  = {};
@@ -272,10 +280,10 @@ class BodyChecker {
 	enum class ReceiverPhase { Ready, ConstructorDefault, Delegation, FieldInitializer };
 
 	struct Receiver {
-		ResolvedType      type;
-		bool              isType       = false;
-		ReceiverFieldPath fieldPath    = ReceiverFieldPath::None;
-		bool              fallsThrough = true;
+		ResolvedType                type;
+		bool                        isType       = false;
+		ReceiverFieldPath           fieldPath    = ReceiverFieldPath::None;
+		bool                        fallsThrough = true;
 		std::optional<ResolvedType> represented  = {};
 	};
 
@@ -295,27 +303,27 @@ class BodyChecker {
 	IndexedAccess          indexAccess (const ExpressionInfo &operation, const TokenSpan &span);
 	bool writeIndex (const Statement &statement, const ExpressionPtr &target, const ExpressionInfo &array, const Token &op, const ExpressionPtr &rhs,
 	                 const ExpressionPtr &compound);
-	std::optional<ResolvedType> rangeEndpoints (const Expression &start, const Expression &end, const ResolvedType *hint, Code code, bool &continues);
-	ResolvedType                shapeOf (const Expression &value, const ResolvedType &fallback, std::size_t slot = 0) const;
-	void                        receiveShape (const Token &binding, const ResolvedType &declared, const ResolvedType &shape, const TokenSpan &use);
-	ExpressionInfo              mutateArray (const MemberCallExpression &call, const ExpressionInfo &receiver, ArrayMutation operation);
-	void                        rowShape (const Expression &target, const Expression &value, const ResolvedType &incoming);
-	void                        checkValidatorReceiver (const Expression *receiver, const TokenSpan &use) const;
-	void                        enumValue (const EnumFieldDeclaration &field, const Expression &value, const Token *caseName);
-	std::optional<ProviderSelection>            textConversion (const ResolvedType &type, const TokenSpan &use);
-	ExpressionInfo              providerAccess (const ProviderAccessExpression &node);
-	const GuardedPayload                       *gp_payload       = nullptr;
-	ReceiverPhase                               rp_receiverPhase = ReceiverPhase::Ready;
-	const ParameterDeclaration                 *pd_default       = nullptr;
-	bool                                        b_nestedFunction = false;
-	Analyzer                                   &analyzer;
-	const Symbol                               &context;
-	BodyFacts                                  &bf_facts;
-	const Substitutions                        &m_arguments;
-	DeclarationInfo                            &di_signature;
-	const Symbol                               *owner;
-	const ResolvedType                         *rt_attachment;
-	ResultTypes                                 returns;
+	std::optional<ResolvedType>      rangeEndpoints (const Expression &start, const Expression &end, const ResolvedType *hint, Code code, bool &continues);
+	ResolvedType                     shapeOf (const Expression &value, const ResolvedType &fallback, std::size_t slot = 0) const;
+	void                             receiveShape (const Token &binding, const ResolvedType &declared, const ResolvedType &shape, const TokenSpan &use);
+	ExpressionInfo                   mutateArray (const MemberCallExpression &call, const ExpressionInfo &receiver, ArrayMutation operation);
+	void                             rowShape (const Expression &target, const Expression &value, const ResolvedType &incoming);
+	void                             checkValidatorReceiver (const Expression *receiver, const TokenSpan &use) const;
+	void                             enumValue (const EnumFieldDeclaration &field, const Expression &value, const Token *caseName);
+	std::optional<ProviderSelection> textConversion (const ResolvedType &type, const TokenSpan &use);
+	ExpressionInfo                   providerAccess (const ProviderAccessExpression &node);
+	const GuardedPayload            *gp_payload       = nullptr;
+	ReceiverPhase                    rp_receiverPhase = ReceiverPhase::Ready;
+	const ParameterDeclaration      *pd_default       = nullptr;
+	bool                             b_nestedFunction = false;
+	Analyzer                        &analyzer;
+	const Symbol                    &context;
+	BodyFacts                       &bf_facts;
+	const Substitutions             &m_arguments;
+	DeclarationInfo                 &di_signature;
+	const Symbol                    *owner;
+	const ResolvedType              *rt_attachment;
+	ResultTypes                      returns;
 	std::vector<std::map<std::string, Binding>> scopes{ 1 };
 	using Narrowing = std::map<StoragePlace, ResolvedType>;
 	using JumpPaths = std::map<const LoopTarget *, Narrowing>;
@@ -396,12 +404,12 @@ class BodyChecker {
 	ExpressionInfo              scalarInfo (const Expression &node, const ResolvedType *expected = nullptr);
 	void                     require (const ResultTypes &actual, const ResultTypes &expected, const TokenSpan &span, Code code = Code::TYPE_MISMATCH) const;
 	bool                     expect (const Expression &node, const ResolvedType &type);
-	bool                         checkReturn (const Expression &node);
+	bool                     checkReturn (const Expression &node);
 	ExpressionInfo           name (const Token &token);
 	std::optional<Receiver>  receiver (const Expression &node, bool allowOpen = false);
 	ExpressionInfo           field (const FieldAccessExpression &node);
-	std::optional<Candidate>     stateTarget (const ResolvedType &receiver, const Token &name, const Expression &operand);
-	bool                         statePayload (const ExpressionPtr &payload, const ResolvedType &required, const TokenSpan &span, const Token &state);
+	std::optional<Candidate> stateTarget (const ResolvedType &receiver, const Token &name, const Expression &operand);
+	bool                     statePayload (const ExpressionPtr &payload, const ResolvedType &required, const TokenSpan &span, const Token &state);
 	ExpressionInfo           transition (const Candidate &state, const ExpressionPtr &payload, const TokenSpan &span);
 	ExpressionInfo           typeCheck (const TypeCheckExpression &node);
 	ExpressionInfo           binary (const BinaryExpression &node, const ResolvedType *expected);

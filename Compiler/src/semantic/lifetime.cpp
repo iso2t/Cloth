@@ -176,15 +176,15 @@ void LifetimeChecker::join (OptionalPath &paths, const Path &other) {
 	// Bindings that select the same pair on both edges still alias one another after the join.
 	std::map<std::pair<Identity, Identity>, Identity> m_pairs;
 	const std::function                               merge = [&] (const Handle a, Handle b) {
-		Identity id_object = a.identity;
-		if (id_object != b.identity) {
-			const std::pair<std::map<std::pair<Identity, Identity>, Identity>::iterator, bool> it_entry =
-			        m_pairs.try_emplace({ id_object, b.identity }, id_next);
-			if (it_entry.second) ++id_next;
-			id_object                   = it_entry.first->second;
-			p_joined.objects[id_object] = common(object(a.identity, left), object(b.identity, other));
-		}
-		return Handle{ id_object, a.presence == b.presence ? a.presence : Presence::Unknown };
+                Identity id_object = a.identity;
+                if (id_object != b.identity) {
+                        const std::pair<std::map<std::pair<Identity, Identity>, Identity>::iterator, bool> it_entry =
+                                m_pairs.try_emplace({ id_object, b.identity }, id_next);
+                        if (it_entry.second) ++id_next;
+                        id_object                   = it_entry.first->second;
+                        p_joined.objects[id_object] = common(object(a.identity, left), object(b.identity, other));
+                }
+                return Handle{ id_object, a.presence == b.presence ? a.presence : Presence::Unknown };
 	};
 	for (const std::map<const Token *, Handle>::value_type &entry : left.bindings) {
 		const auto it_entry = other.bindings.find(entry.first);
@@ -327,20 +327,20 @@ void LifetimeChecker::arguments (const CallSite &call, Path &path) {
 }
 
 Values LifetimeChecker::call (const CallSite &node, const ExpressionInfo &info, Path &path, ReceiverChecks &checks) {
-	const MemberCallExpression    *mc_method   = dynamic_cast<const MemberCallExpression *>(&node);
-	const StateCallExpression     *sc_state    = dynamic_cast<const StateCallExpression *>(&node);
-	const ClassCreationExpression *cc_new      = dynamic_cast<const ClassCreationExpression *>(&node);
-	const Expression              *e_receiver  = mc_method ? mc_method->receiver.get() : sc_state ? sc_state->receiver.get() : nullptr;
-	const bool                     b_method    = info.symbol && info.symbol->kind == SymbolKind::Method;
-	const StorageOwner             arrayOwner  = info.arrayMutation && e_receiver ? storageOwner(*e_receiver) : StorageOwner{};
+	const MemberCallExpression    *mc_method  = dynamic_cast<const MemberCallExpression *>(&node);
+	const StateCallExpression     *sc_state   = dynamic_cast<const StateCallExpression *>(&node);
+	const ClassCreationExpression *cc_new     = dynamic_cast<const ClassCreationExpression *>(&node);
+	const Expression              *e_receiver = mc_method ? mc_method->receiver.get() : sc_state ? sc_state->receiver.get() : nullptr;
+	const bool                     b_method   = info.symbol && info.symbol->kind == SymbolKind::Method;
+	const StorageOwner             arrayOwner = info.arrayMutation && e_receiver ? storageOwner(*e_receiver) : StorageOwner{};
 	if (arrayOwner.receiver) m_observed.try_emplace(arrayOwner.receiver);
 	const Handle h_receiver  = e_receiver ? scalar(*e_receiver, path) : b_method ? path.bindings[&lb_job.context->name] : Handle{};
 	const Handle storedOwner = arrayOwner.receiver ? m_observed.at(arrayOwner.receiver) :
 	                           arrayOwner.implicit ? path.bindings[&lb_job.context->name] :
 	                                                 Handle{};
 	if (arrayOwner.receiver) m_observed.erase(arrayOwner.receiver);
-	const bool                     b_self      = !e_receiver || directSelf(*e_receiver);
-	const TokenSpan                ts_receiver = e_receiver ? e_receiver->get_span() : node.name.get_span();
+	const bool      b_self      = !e_receiver || directSelf(*e_receiver);
+	const TokenSpan ts_receiver = e_receiver ? e_receiver->get_span() : node.name.get_span();
 	if (path.reachable && !sc_state && b_method) access(h_receiver, path, ts_receiver, b_self, checks.beforeArguments);
 	arguments(node, path);
 	defaults(info, path);
@@ -981,7 +981,8 @@ void Analyzer::recordLifetimeBody (LifetimeBody body, bool initializationMayCall
 bool Analyzer::preservesNewReceiver (const ResolvedType &host, const Symbol &constructor) const {
 	if (!asClass(host.declaration)) return false;
 	// A base constructor may invoke code on the derived instance before its own constructor body starts.
-	if (std::ranges::any_of(declarations.at(host.declaration).parents, [] (const ResolvedType &parent) { return asClass(parent.declaration) != nullptr; }))
+	if (std::ranges::any_of(declarations.at(host.declaration).parents,
+	                        [] (const ResolvedType &parent) { return parent.declaration != &objectRoot() && asClass(parent.declaration); }))
 		return false;
 	const decltype(m_initializationEffects)::const_iterator it_effects = m_initializationEffects.find(host);
 	if (it_effects == m_initializationEffects.end()) return true;

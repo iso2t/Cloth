@@ -266,7 +266,7 @@ void BodyChecker::typeBody () {
 	if (context.kind == SymbolKind::Type && cd) {
 		rp_receiverPhase = ReceiverPhase::Delegation;
 		for (std::size_t i = 0; i < cd->parents.size(); ++i) {
-			if (cd->parents[i].constructorArguments) {
+			if (cd->parents[i].constructorArguments && info.parents[i].declaration != &objectRoot()) {
 				const ResolvedType &parent  = info.parents[i];
 				ExpressionInfo      ei_call = invoke(cd->parents[i].type.get_name(), cd->parents[i].span, *cd->parents[i].constructorArguments,
 				                                     analyzer.members(parent, parent.name, SymbolKind::Constructor));
@@ -368,9 +368,9 @@ ExpressionInfo BodyChecker::block (const std::vector<StatementPtr> &statements, 
 ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTypes *expected, const bool discard) {
 	std::optional<ResultTypes>                              opt_common, shapes;
 	std::optional<std::vector<std::optional<ResolvedType>>> opt_metadata;
-	std::optional<Narrowing>   opt_joined;
-	Exits                      exits;
-	const std::function        branch = [&] (const std::vector<StatementPtr> &statements, const TokenSpan &span, bool reachable) {
+	std::optional<Narrowing>                                opt_joined;
+	Exits                                                   exits;
+	const std::function branch = [&] (const std::vector<StatementPtr> &statements, const TokenSpan &span, bool reachable) {
 		BodyChecker bc_branch   = *this;
 		bc_branch.fs_flow.exits = {};
 		if (!reachable) bc_branch.we_capture = nullptr;

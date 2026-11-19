@@ -72,9 +72,9 @@ void BodyChecker::enumValue (const EnumFieldDeclaration &field, const Expression
 	const std::string   subject = std::format("{} for '{}.{}'", caseName ? "Case '" + caseName->get_lexeme() + "'" : "Default", owner->name.get_lexeme(),
 	                                          field.name.get_lexeme());
 	const std::function error   = [&] (const Expression &expression, std::string message, Code code) {
-		std::vector<cde::SourceLabel> v_labels{ { expression.get_span(), message }, { field.type.get_span(), "payload field type declared here" } };
-		if (caseName) v_labels.push_back({ caseName->get_span(), "enum case declared here" });
-		throw cde::ClothDiagnostic(code, subject + " " + message, std::move(v_labels));
+                std::vector<cde::SourceLabel> v_labels{ { expression.get_span(), message }, { field.type.get_span(), "payload field type declared here" } };
+                if (caseName) v_labels.push_back({ caseName->get_span(), "enum case declared here" });
+                throw cde::ClothDiagnostic(code, subject + " " + message, std::move(v_labels));
 	};
 	enumConstant(value, [&] (const Expression &expression, bool valid) {
 		if (!valid) error(expression, "requires a constant literal or explicit cast", Code::INVALID_ENUM_MEMBER);
