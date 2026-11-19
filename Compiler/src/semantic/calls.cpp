@@ -129,7 +129,7 @@ bool contextualFailure (const cde::ClothDiagnostic &error) {
 
 struct PlacedCandidate {
 	const Candidate         *candidate;
-	ArgumentPlacement placement;
+	ArgumentPlacement        placement;
 	const TypeParameterList *parameters;
 };
 
@@ -334,23 +334,29 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 				fail(Code::INVALID_GENERIC_ARGUMENT, ref.get_span(), "A type argument must be a value type");
 		}
 	}
-	std::vector<ArgumentProbe> v_probes;
+	std::vector<ArgumentProbe>    v_probes;
 	std::vector<ArgumentEvidence> v_evidence;
-	BodyChecker                natural            = *this;
+	BodyChecker                   natural         = *this;
 	natural.record                                = false;
 	natural.we_capture                            = nullptr;
 	bool                       b_naturalContinues = true;
 	std::optional<BodyChecker> opt_unreachable;
 	for (const CallArgument &arg : arguments) {
-		BodyChecker  &bc_input = natural.onPath(b_naturalContinues, opt_unreachable);
-		ArgumentProbe ap_probe{ .result = {}, .before = bc_input.fs_flow, .after = bc_input.fs_flow };
+		BodyChecker                &bc_input = natural.onPath(b_naturalContinues, opt_unreachable);
+		ArgumentProbe               ap_probe{ .result = {}, .before = bc_input.fs_flow, .after = bc_input.fs_flow };
 		std::optional<ResolvedType> opt_evidence;
 		if (knownArguments) {
 			ap_probe.result = ExpressionInfo{ { knownArguments->at(v_probes.size()) } };
 		} else {
 			BodyChecker bc_operand = bc_input;
 			try {
-				ap_probe.result = bc_operand.scalarInfo(*arg.expression);
+				ap_probe.result              = bc_operand.expression(*arg.expression);
+				const ResultKind rk_argument = ap_probe.result->resultKind();
+				if (rk_argument == ResultKind::Empty)
+					fail(Code::NO_MATCHING_CALL, span, "No overload of '" + spelling + "' accepts an argument that produces no value",
+					     &group.front().symbol->name);
+				if (rk_argument == ResultKind::Multiple)
+					fail(Code::MULTIPLE_RESULTS_IN_SCALAR, arg.expression->get_span(), "A call argument requires one value");
 				ap_probe.after = bc_input.fs_flow = std::move(bc_operand.fs_flow);
 				b_naturalContinues &= ap_probe.result->fallsThrough;
 			} catch (const cde::ClothDiagnostic &error) {
@@ -377,25 +383,25 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 		}
 		v_probes.push_back(std::move(ap_probe));
 	}
-	std::vector<Match>              matches;
-	const Symbol                   *inaccessible = nullptr;
+	std::vector<Match>                  matches;
+	const Symbol                       *inaccessible = nullptr;
 	std::optional<cde::ClothDiagnostic> opt_boundFailure;
 	bool                                b_inferred = false;
 	for (std::vector<PlacedCandidate>::iterator it_placed = v_placed.begin(); it_placed != v_placed.end(); ++it_placed) {
 		if (it_placed == it_firstGeneric && !matches.empty()) break;
-		PlacedCandidate         &pc_placed     = *it_placed;
-		const Candidate         &candidate     = *pc_placed.candidate;
-		ArgumentPlacement       &ap_placement  = pc_placed.placement;
-		const Symbol            &symbol        = *candidate.symbol;
-		const DeclarationInfo   &info          = analyzer.declarations.at(&symbol);
-		Substitutions            substitutions = candidate.arguments;
+		PlacedCandidate       &pc_placed     = *it_placed;
+		const Candidate       &candidate     = *pc_placed.candidate;
+		ArgumentPlacement     &ap_placement  = pc_placed.placement;
+		const Symbol          &symbol        = *candidate.symbol;
+		const DeclarationInfo &info          = analyzer.declarations.at(&symbol);
+		Substitutions          substitutions = candidate.arguments;
 		if (pc_placed.parameters) {
 			if (!inferCall(analyzer, pc_placed, context, span, typeArguments, explicitTypes, v_evidence, b_singleTemplate, substitutions,
 			               opt_boundFailure))
 				continue;
 			b_inferred = true;
 		}
-		bool viable = true;
+		bool  viable = true;
 		Match match{ .symbol              = candidate.overridingMethod ? candidate.overridingMethod : &symbol,
 			     .contract            = &symbol,
 			     .placement           = std::move(ap_placement),

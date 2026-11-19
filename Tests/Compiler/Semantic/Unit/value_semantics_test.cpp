@@ -195,7 +195,8 @@ TEST (SemanticValues, IterationRetainsTheLibrarySnapshotAndSlotDeclarations) {
 }
 
 TEST (SemanticValues, PrivateValidatorsFollowTheSelectedDeclaringSetter) {
-	const std::string    base      = R"(typedef<class> Base<T> {
+	const std::string    base      = R"(typedef<class> Base<T>(int seed) {
+    pub Base() : (0) {}
     operator []?(usize i) = true
     pub operator []=(usize i, T value) {}
 }
@@ -211,7 +212,8 @@ typedef<class> Child : Base<int> { operator []?(usize i) = false }
 	EXPECT_NE(write.indexed->validatorInstance, nullptr);
 	expectError(base + "fn bad(Child child) { child[0]++ }", Code::INVALID_INDEX);
 	expectError("typedef<class> C { operator []?(int i) = true\npub operator []=(usize i, int v) {} }", Code::INVALID_OPERATOR_DECLARATION);
-	expectError(R"(typedef<class> Parent {
+	expectError(R"(typedef<class> Parent(int seed) {
+    pub Parent() : (0) {}
     operator []?(usize i) = true
     pub operator []=(usize i, int value) {}
 }

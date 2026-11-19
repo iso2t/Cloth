@@ -84,6 +84,43 @@ TEST (SemanticChecking, ChecksDefaultsEvenWhenEveryCallSuppliesTheArgument) {
 	expectError("fn<int> f(int<8> x) = 1\nfn<int, bool> f(int<64> x, opt<bool> flag ?: true) = 2, flag\nfn<int> use() = f(1)", Code::AMBIGUOUS_CALL);
 }
 
+TEST (SemanticChecking, BindsOmittedBaseArgumentsInOpenAndClosedClasses) {
+	const CheckedProgram     cp_program = checkSource(R"(typedef<interface> View {}
+typedef<class> Base<T> { pub Base(opt<int> tag ?: 1) : () {} }
+typedef<class> Child<T> : View, Base<T> {}
+typedef<class> Explicit : Base<int>() {}
+fn use(Child<int> child) {}
+)");
+	const SymbolScope       &ss_globals = cp_program.units.front()->get_globals();
+	const Symbol            &sym_child = ss_globals.at("Child").front(), &sym_explicit = ss_globals.at("Explicit").front();
+	const ClassDeclaration  &cd_child    = dynamic_cast<const ClassDeclaration &>(*std::get<const TypeDeclaration *>(sym_child.declaration));
+	const ClassDeclaration  &cd_explicit = dynamic_cast<const ClassDeclaration &>(*std::get<const TypeDeclaration *>(sym_explicit.declaration));
+	const ClassParentClause &cp_base     = cd_child.parents.at(1);
+	const ExpressionInfo    &ei_open     = cp_program.parentConstructors.at(&cp_base);
+	const ExpressionInfo    &ei_explicit = cp_program.parentConstructors.at(&cd_explicit.parents.front());
+	const GenericInstance   &gi_child    = cp_program.instances.at({ &sym_child, std::nullopt, { ResolvedType(kInteger) } });
+	const ExpressionInfo    &ei_closed   = gi_child.body.parentConstructors.at(&cp_base);
+	EXPECT_FALSE(cp_program.parentConstructors.contains(&cd_child.parents.front()));
+	EXPECT_EQ(ei_open.symbol, ei_explicit.symbol);
+	EXPECT_EQ(ei_open.argumentContract, ei_open.symbol);
+	EXPECT_EQ(ei_open.omittedParameters, (std::vector<std::size_t>{ 0 }));
+	EXPECT_TRUE(ei_open.parameterForArgument.empty());
+	ASSERT_NE(ei_closed.instance, nullptr);
+	EXPECT_EQ(ei_closed.instance, ei_explicit.instance);
+	EXPECT_EQ(ei_closed.omittedParameters, ei_open.omittedParameters);
+
+	using Code = cde::DiagnosticCode;
+	for (const std::string s_base : { "Base", "Base()" }) {
+		expectError("typedef<class> Base(int required)\ntypedef<class> Child : " + s_base, Code::CALL_ARITY);
+		expectError("typedef<class> Base {}\ntypedef<class> Child : " + s_base, Code::PRIVATE_CLASS_MEMBER);
+		expectError("typedef<class> Base { pub Base(opt<int> x ?: 1) : () {}\n pub Base(opt<bool> x ?: true) : () {} }\n"
+		            "typedef<class> Child : " +
+		                    s_base,
+		            Code::AMBIGUOUS_CALL);
+	}
+	expectError("typedef<interface> View {}\ntypedef<class> Child : View()", Code::INVALID_INTERFACE_HEADER);
+}
+
 TEST (SemanticChecking, DistinguishesOrderedResultsEmptyAndNoncontinuingExpressions) {
 	const CheckedProgram  cp_program = checkSource(R"(fn<int<8>, bool> choose(bool flag) = if (flag) { return 1, true } else { 2, false }
 fn<int<8>, bool> exit(bool flag) = if (flag) { return choose(flag) } else { return 3, true }
@@ -256,6 +293,54 @@ fn<int> run(int n) {
 	expectError("fn<Missing> run() = 1", Code::UNSUPPORTED_TYPE);
 }
 
+TEST (SemanticChecking, ChecksDeferredReturnsAndProducesNoValueForVoidReads) {
+	const CheckedProgram       cp_program = checkSource(R"(fn cleanup() {}
+fn use(bool early) {
+    def<void> later := { if (early) return; return cleanup() }
+    later
+    return later
+}
+fn<int> typed() { def<int> later = { return 3 }; return later }
+fn empty() { def<void> first, second = {}; first; second }
+)");
+	const Symbol              &sym_use    = cp_program.units.front()->get_globals().at("use").front();
+	const CallableSignature   &cs_use     = *std::get<const CallableSignature *>(sym_use.declaration);
+	const BlockBody           &bb_body    = std::get<BlockBody>(cs_use.executableBody()->value);
+	const BindingDeclaration  &bd_later   = dynamic_cast<const BindingDeclaration &>(*bb_body.statements.at(0));
+	const ExpressionStatement &es_read    = dynamic_cast<const ExpressionStatement &>(*bb_body.statements.at(1));
+	const ReturnStatement     &rs_return  = dynamic_cast<const ReturnStatement &>(*bb_body.statements.at(2));
+	EXPECT_EQ(cp_program.localTypes.at(&bd_later.name), ResolvedType(kVoid));
+	EXPECT_EQ(cp_program.expressions.at(bd_later.initializer.get()).resultKind(), ResultKind::Empty);
+	for (const Expression *e_read : { es_read.expression.get(), rs_return.value.get() }) {
+		const ExpressionInfo &ei_read = cp_program.expressions.at(e_read);
+		EXPECT_EQ(ei_read.binding, &bd_later.name);
+		EXPECT_EQ(ei_read.resultKind(), ResultKind::Empty);
+	}
+
+	using Code = cde::DiagnosticCode;
+	expectError("fn use() { def later = { return 1 } }", Code::BLOCK_RETURN_TYPE_REQUIRED);
+	expectError("fn use() { def<void> later = { return 1 } }", Code::VALUE_IN_VOID);
+	expectError("fn use() { def<int> later = { return } }", Code::RETURN_VALUE_REQUIRED);
+	expectError("fn use() { def<int> later = {} }", Code::MISSING_RETURN);
+	expectError("fn<int> use() { def<void> later = { return }; later }", Code::MISSING_RETURN);
+	expectError("fn use() { def<void> later = {}; def value = later }", Code::VOID_VALUE);
+	expectError("fn take(int n) {}\nfn use() { def<void> later = {}; take(later) }", Code::NO_MATCHING_CALL);
+	for (const std::string s_use : { "later()", "later(1)", "later<int>()" })
+		expectError("fn use() { def<int> later = { return 1 }; " + s_use + " }", Code::NOT_CALLABLE);
+	for (const std::string s_write : { "later = 1", "later += 1", "later++", "other, later = 2, 1" })
+		expectError("fn use(int other) { def<int> later = { return 1 }; " + s_write + " }", Code::BLOCK_ASSIGNMENT);
+}
+
+TEST (SemanticChecking, AppliesDeferredWritesOnlyWhenTheBindingIsRead) {
+	const std::string s_source = "fn<usize> use(string? text) { if (text == null) return 0; def<void> clear = { text = null }; ";
+	EXPECT_NO_THROW(checkSource(s_source + "return text::size }"));
+	expectError(s_source + "clear; return text::size }", cde::DiagnosticCode::NULLABLE_PAYLOAD_ACCESS);
+	const std::string s_delete = "typedef<class> Item { pub def<int> value = 1 }\n"
+	                             "fn<int> use(Item item) { def<void> destroy = { item::delete }; ";
+	EXPECT_NO_THROW(checkSource(s_delete + "return item.value }"));
+	expectError(s_delete + "destroy; return item.value }", cde::DiagnosticCode::DELETED_CLASS_ACCESS);
+}
+
 TEST (SemanticChecking, EnforcesMemberVisibilityAndSpecializesReceiverTypes) {
 	EXPECT_NO_THROW(checkSource(R"(pub typedef<class> Box<T>(def<T> item) {
     pub mt<T> get() = self.item
@@ -293,7 +378,8 @@ fn<int> sum(Point? point, int[] items) {
 
 TEST (SemanticChecking, ChecksInheritedOverloadsAndGenericBounds) {
 	EXPECT_NO_THROW(checkSource(R"(typedef<interface> Readable { pub mt<int> read() }
-typedef<class> Base : Readable {
+typedef<class> Base(int seed) : Readable {
+    pub Base() : (0) {}
     virtual: pub mt<int> read() = 1
     pub mt<int> read(int x) = x
 }
@@ -316,7 +402,7 @@ TEST (SemanticChecking, ChecksOperatorsConstructorsAndStatePayloads) {
     pub operator +(int delta) = self.n + delta
     operator []?(int i) = true
     pub operator []=(int i, int value) { self.n = value }
-    pub state On
+    default: (0) pub state On
     pub state<void> ::clear()
 }
 typedef<state<int>> On for Counter { pub mt clear() { self -> On(1) } }
@@ -331,7 +417,7 @@ fn<int> work() {
 	using Code = cde::DiagnosticCode;
 	expectError("typedef<class> Box(int x)\nfn<Box> leak() = Box::new(1)", Code::PRIVATE_CLASS_MEMBER);
 	expectError("typedef<class> Lamp { state Missing }", Code::INVALID_STATE_ATTACHMENT);
-	expectError("typedef<class> C { pub state<int> On {} }\nfn bad(C c) { c -> On() }", Code::INVALID_STATE_PAYLOAD);
+	expectError("typedef<class> C { default: (0) pub state<int> On {} }\nfn bad(C c) { c -> On() }", Code::INVALID_STATE_PAYLOAD);
 }
 
 TEST (SemanticChecking, DelegatesToThePrimaryAndKeepsOrdinaryConstructorOverloads) {
@@ -365,7 +451,7 @@ fn<Counter> make() = Counter::new(true)
 }
 
 TEST (SemanticChecking, ReadsFieldsInDeclarationOrderAndKeepsOtherInstancesIndependent) {
-	const CheckedProgram         cp_program = checkSource(R"(typedef<class> Base { pub def<int> inherited = 1 }
+	const CheckedProgram         cp_program = checkSource(R"(typedef<class> Base(pub def<int> inherited) { pub Base() : (1) {} }
 typedef<class> Sample(int seed, def<int> offset ?: seed, def<Sample> other) : Base {
     def<int> z = seed + self.offset
     def<int> a = z + self.z
@@ -416,7 +502,7 @@ TEST (SemanticChecking, ResolvesUpdatesAndDistinguishesStateTypeAndValueTests) {
 	const CheckedProgram checked = checkSource(R"(typedef<class> Meter(def<int> n) {
     pub operator +=(int amount) { self.n += amount }
     pub operator ++() { self.n++ }
-    pub state<void> Ready {}
+    default: pub state<void> Ready {}
 }
 fn<bool> test(Meter m) {
     m += 3
@@ -429,7 +515,7 @@ fn<bool> test(Meter m) {
 	EXPECT_EQ(checked.writes.size(), 2u);
 	EXPECT_EQ(checked.valueTests.size(), 1u);
 	using Code = cde::DiagnosticCode;
-	expectError("typedef<class> C { state<void> Hidden {} }\nfn<bool> bad(C c) = c is Hidden", Code::PRIVATE_CLASS_MEMBER);
+	expectError("typedef<class> C { default: state<void> Hidden {} }\nfn<bool> bad(C c) = c is Hidden", Code::PRIVATE_CLASS_MEMBER);
 	expectError("fn<bool> bad(int n) = 3 is n", Code::INVALID_RANGE_MEMBERSHIP);
 	expectError("fn<int> bad(int? n) = n -> int", Code::NULLABLE_PAYLOAD_ACCESS);
 }

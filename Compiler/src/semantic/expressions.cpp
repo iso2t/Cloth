@@ -25,7 +25,7 @@ bool isSelfReference (const Expression &node) {
 }
 
 ResolvedType literalInteger (const IntegerLiteral &literal, const ResolvedType *expected, bool negative, TargetLayout layout, bool inferenceDefault) {
-	const ResolvedType  rt         = expected && expected->integer() ? *expected : ResolvedType(kInteger);
+	const ResolvedType rt = expected && expected->integer() ? *expected : ResolvedType(kInteger);
 	if (inferenceDefault) return rt;
 	const bool          isUnsigned = rt.name == unsignedIntegerSpelling() || rt.name == to_string(kUsize);
 	const unsigned      width      = rt.width ? rt.width : layout.sizeBits;
@@ -131,6 +131,7 @@ ExpressionInfo BodyChecker::name (const Token &token) {
 		remember(token, *binding->name);
 		if (!binding->type) return { .types = {}, .binding = binding->name, .fallsThrough = false };
 		applyWrites(*binding);
+		if (binding->deferred && *binding->type == ResolvedType(kVoid)) return { .types = {}, .binding = binding->name };
 		ExpressionInfo ei_read{ { *binding->type }, nullptr, binding->name };
 		narrowRead(ei_read, { binding->name });
 		const Narrowing::const_iterator it_metadata = fs_flow.narrowed.find({ binding->name, {}, PlaceFact::RepresentedType });
@@ -498,7 +499,7 @@ ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const Resolved
 		opt_right = onPath(opt_left.has_value(), opt_unreachable).scalar(*node.right, opt_hint ? &*opt_hint : nullptr);
 	}
 	if (!opt_left || !opt_right) return ExpressionInfo::never();
-	const ResolvedType    &left = *opt_left, &right = *opt_right;
+	const ResolvedType &left = *opt_left, &right = *opt_right;
 	if (equality && (rangeType(left) || rangeType(right)) && left.name != to_string(kNull) && right.name != to_string(kNull)) {
 		if (rangeType(left) && rangeType(right)) {
 			if (left.arguments() != right.arguments())
@@ -552,13 +553,8 @@ ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const Resolved
 
 ExpressionInfo BodyChecker::call (const CallExpression &node) {
 	checkDefaultName(node.name);
-	if (const Binding *b = local(node.name.get_lexeme())) {
-		if (!b->deferred || !node.suppliedArguments.empty() || node.typeArguments) {
-			fail(Code::NOT_CALLABLE, node.name.get_span(), "Local binding is not callable with these arguments", b->name);
-		}
-		applyWrites(*b);
-		return { { *b->type }, nullptr, b->name };
-	}
+	if (const Binding *b_local = local(node.name.get_lexeme()))
+		fail(Code::NOT_CALLABLE, node.name.get_span(), "Local binding '" + node.name.get_lexeme() + "' is not callable", b_local->name);
 	std::vector<Candidate> group;
 	if (owner && owner->kind == SymbolKind::State) {
 		group = analyzer.members(analyzer.substitute(analyzer.ownerType(*owner), m_arguments), node.name.get_lexeme(), SymbolKind::Method,
@@ -876,7 +872,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		}
 		const ExpressionInfo ei_operand = scalarInfo(*n->operand, hint);
 		if (!ei_operand.fallsThrough) return ExpressionInfo::never();
-		const ResolvedType &operand = ei_operand.types.front();
+		const ResolvedType    &operand = ei_operand.types.front();
 		std::vector<Candidate> group   = analyzer.members(operand, n->op.get_lexeme(), SymbolKind::Operator);
 		std::erase_if(group, [&] (const Candidate &candidate) {
 			const MethodDeclaration &md_method = dynamic_cast<const MethodDeclaration &>(*callable(*candidate.symbol));
@@ -1011,14 +1007,14 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		return condition(*n, expected, discard);
 	}
 	if (const auto *n = dynamic_cast<const FunctionBlockExpression *>(&node)) {
-		BodyChecker inner      = *this;
-		inner.b_nestedFunction = true;
+		if (n->declaration.returnTypes.empty())
+			fail(Code::BLOCK_RETURN_TYPE_REQUIRED, n->declaration.name.get_span(), "A deferred binding requires a result type");
+		BodyChecker inner       = *this;
+		inner.t_deferredBinding = &n->declaration.name;
 		inner.returns.clear();
 		for (const TypeReference &ref : n->declaration.returnTypes) {
-			inner.returns.push_back(bodyType(ref));
-		}
-		if (inner.returns.empty()) {
-			fail(Code::BLOCK_RETURN_TYPE_REQUIRED, node.get_span(), "A deferred binding requires a result type");
+			ResolvedType rt_type = bodyType(ref);
+			if (rt_type != ResolvedType(kVoid)) inner.returns.push_back(std::move(rt_type));
 		}
 		inner.scopes.emplace_back();
 		inner.lt_loop                           = nullptr;

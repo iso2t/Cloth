@@ -41,6 +41,13 @@ const Binding *BodyChecker::local (const std::string &name) const {
 	return nullptr;
 }
 
+const Binding *BodyChecker::assignmentBinding (const Token &target) const {
+	const Binding *b_local = local(target.get_lexeme());
+	if (b_local && b_local->deferred)
+		fail(Code::BLOCK_ASSIGNMENT, target.get_span(), "Cannot assign to deferred binding '" + target.get_lexeme() + "'", b_local->name);
+	return b_local;
+}
+
 void BodyChecker::remember (const Token &use, const Token &declaration) const {
 	if (record) {
 		bf_facts.references[&use] = &declaration;
@@ -139,6 +146,7 @@ bool BodyChecker::expect (const Expression &node, const ResolvedType &type) {
 }
 
 bool BodyChecker::checkReturn (const Expression &node) {
+	const Token   *t_contract = t_deferredBinding ? t_deferredBinding : &context.name;
 	ExpressionInfo ei_result;
 	try {
 		ei_result = expression(node, &returns);
@@ -147,22 +155,22 @@ bool BodyChecker::checkReturn (const Expression &node) {
 	}
 	if (!ei_result.fallsThrough) return false;
 	if (returns.empty() && !ei_result.types.empty()) {
-		fail(Code::VALUE_IN_VOID, node.get_span(), "This callable declares no results", &context.name);
+		fail(Code::VALUE_IN_VOID, node.get_span(), "This callable declares no results", t_contract);
 	}
 	if (ei_result.types.size() != returns.size()) {
 		const Code dc_code = returns.size() == 1 && ei_result.types.empty() ? Code::RETURN_TYPE : Code::RESULT_ARITY;
-		fail(dc_code, node.get_span(), std::format("Expected {} result(s), found {}", returns.size(), ei_result.types.size()), &context.name);
+		fail(dc_code, node.get_span(), std::format("Expected {} result(s), found {}", returns.size(), ei_result.types.size()), t_contract);
 	}
 	const auto *rl_list = dynamic_cast<const ResultListExpression *>(&node);
 	for (std::size_t st_slot = 0; st_slot < returns.size(); ++st_slot) {
 		if (!analyzer.accepts(returns[st_slot], ei_result.types[st_slot])) {
 			if (returns.size() == 1) {
 				fail(Code::RETURN_TYPE, node.get_span(),
-				     "Expected " + returns.front().spelling() + ", found " + ei_result.types.front().spelling(), &context.name);
+				     "Expected " + returns.front().spelling() + ", found " + ei_result.types.front().spelling(), t_contract);
 			}
 			fail(Code::RETURN_TYPE, rl_list ? rl_list->values[st_slot]->get_span() : node.get_span(),
 			     std::format("Expected {} for result {}, found {}", returns[st_slot].spelling(), st_slot + 1, ei_result.types[st_slot].spelling()),
-			     &context.name);
+			     t_contract);
 		}
 	}
 	return true;
@@ -177,7 +185,7 @@ void BodyChecker::checkBody (const FunctionBody &body) {
 			fallsThrough &= next;
 		}
 		if (fallsThrough && !returns.empty()) {
-			fail(Code::MISSING_RETURN, block->span, "Not every path returns a value", &context.name);
+			fail(Code::MISSING_RETURN, block->span, "Not every path returns a value", t_deferredBinding ? t_deferredBinding : &context.name);
 		}
 	} else if (const ExpressionBody *bodyExpr = std::get_if<ExpressionBody>(&body.value)) {
 		checkReturn(*bodyExpr->expression);
@@ -228,7 +236,7 @@ void BodyChecker::typeBody () {
 			const ConstructorDelegation &cd_delegation = cd_constructor->delegation;
 			const ExpressionInfo         ei_call = bindCall(cd_delegation.name, cd_delegation.span, cd_delegation.suppliedArguments, { c_primary });
 			if (record) {
-				bf_facts.expressions[&cd_delegation] = ei_call;
+				bf_facts.expressions[&cd_delegation]      = ei_call;
 				di_signature.delegationPreservesOwnership = we_capture && !we_capture->sharedFields && ei_call.fallsThrough &&
 				                                            ei_call.omittedParameters.empty();
 			}
@@ -272,13 +280,15 @@ void BodyChecker::typeBody () {
 	}
 	if (context.kind == SymbolKind::Type && cd) {
 		rp_receiverPhase = ReceiverPhase::Delegation;
+		const std::vector<CallArgument> v_noArguments;
 		for (std::size_t i = 0; i < cd->parents.size(); ++i) {
-			if (cd->parents[i].constructorArguments && info.parents[i].declaration != &objectRoot()) {
-				const ResolvedType &parent  = info.parents[i];
-				ExpressionInfo      ei_call = invoke(cd->parents[i].type.get_name(), cd->parents[i].span, *cd->parents[i].constructorArguments,
-				                                     analyzer.members(parent, parent.name, SymbolKind::Constructor));
-				if (record) bf_facts.parentConstructors.emplace(&cd->parents[i], std::move(ei_call));
-			}
+			const ResolvedType &rt_parent = info.parents[i];
+			if (!asClass(rt_parent.declaration) || rt_parent.declaration == &objectRoot()) continue;
+			const ClassParentClause         &cp_parent   = cd->parents[i];
+			const std::vector<CallArgument> &v_arguments = cp_parent.constructorArguments ? *cp_parent.constructorArguments : v_noArguments;
+			ExpressionInfo                   ei_call     = invoke(cp_parent.type.get_name(), cp_parent.span, v_arguments,
+			                                                      analyzer.members(rt_parent, rt_parent.name, SymbolKind::Constructor));
+			if (record) bf_facts.parentConstructors.emplace(&cp_parent, std::move(ei_call));
 		}
 	} else if (context.kind == SymbolKind::Field) {
 		if (const auto field = std::get_if<const ClassFieldDeclaration *>(&context.declaration)) {
@@ -468,7 +478,7 @@ void BodyChecker::assign (const Token &target, const std::optional<ResolvedType>
 		     &pd_default->name);
 	}
 	const Binding *b_local = local(target.get_lexeme());
-	if (b_local && (!b_local->mutableBinding || b_local->deferred)) {
+	if (b_local && !b_local->mutableBinding) {
 		fail(Code::IMMUTABLE_BINDING, target.get_span(), "Cannot assign to immutable binding '" + target.get_lexeme() + "'", b_local->name);
 	}
 	if (!ei_binding.binding && (!ei_binding.symbol || ei_binding.symbol->kind != SymbolKind::Field)) {
@@ -517,7 +527,7 @@ bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Ex
 		for (const ReceivingTarget &target : targets) {
 			if (std::holds_alternative<ReceivingTarget::Discard>(target.value))
 				expected.emplace_back();
-			else if (const Binding *binding = local(target.get_token().get_lexeme()))
+			else if (const Binding *binding = assignmentBinding(target.get_token()))
 				expected.push_back(binding->type.value_or(ResolvedType{}));
 			else
 				expected.push_back(name(target.get_token()).types.front());
@@ -706,15 +716,15 @@ bool BodyChecker::checkStatement (const Statement &node) {
 		return expression(*s->expression, nullptr, true).fallsThrough;
 	}
 	if (const auto *s = dynamic_cast<const ReturnStatement *>(&node)) {
-		if (pd_default && !b_nestedFunction) {
+		if (pd_default && !t_deferredBinding) {
 			fail(Code::INVALID_PARAMETER_DEFAULT, s->span, std::format("'{}' cannot leave a parameter default", to_string(kReturn)),
 			     &pd_default->name);
 		}
-		if (!b_nestedFunction && rp_receiverPhase != ReceiverPhase::Ready) {
+		if (!t_deferredBinding && rp_receiverPhase != ReceiverPhase::Ready) {
 			fail(Code::PARTIAL_CLASS_INSTANCE, s->span, std::format("'{}' cannot leave class initialization", to_string(kReturn)));
 		}
 		if (!s->value && !returns.empty()) {
-			fail(Code::RETURN_VALUE_REQUIRED, s->span, "A return value is required");
+			fail(Code::RETURN_VALUE_REQUIRED, s->span, "A return value is required", t_deferredBinding);
 		}
 		if (s->value) {
 			if (checkReturn(*s->value)) fs_flow.exits.returned = true;
@@ -727,26 +737,31 @@ bool BodyChecker::checkStatement (const Statement &node) {
 		if (s->type) {
 			annotation = bodyType(*s->type);
 		}
+		if (dynamic_cast<const FunctionBlockExpression *>(s->initializer.get())) {
+			expression(*s->initializer);
+			bind(s->name, annotation, s->isMutable, true);
+			scopes.back().at(s->name.get_lexeme()).effects = we_deferred;
+			return true;
+		}
+		if (annotation == ResolvedType(kVoid)) fail(Code::VOID_TYPE, s->type->get_span(), "A binding requires a value type");
 		const ExpressionInfo              ei_value   = scalarInfo(*s->initializer, annotation ? &*annotation : nullptr);
 		const std::optional<ResolvedType> opt_actual = ei_value.fallsThrough ? std::optional{ ei_value.types.front() } : std::nullopt;
 		if (annotation && opt_actual) {
 			require({ *opt_actual }, { *annotation }, s->initializer->get_span());
 		}
 		if (!annotation && opt_actual) checkInferredBinding(*opt_actual, s->initializer->get_span());
-		bind(s->name, annotation ? annotation : opt_actual, s->isMutable,
-		     dynamic_cast<const FunctionBlockExpression *>(s->initializer.get()) != nullptr);
-		if (opt_actual && !dynamic_cast<const FunctionBlockExpression *>(s->initializer.get()))
+		bind(s->name, annotation ? annotation : opt_actual, s->isMutable);
+		if (opt_actual)
 			receiveShape(s->name, annotation ? *annotation : *opt_actual, shapeOf(*s->initializer, *opt_actual), s->initializer->get_span());
 		if (ei_value.representedType) fs_flow.narrowed.insert_or_assign({ &s->name, {}, PlaceFact::RepresentedType }, *ei_value.representedType);
 		if (annotation) setPresence({ &s->name }, *annotation, opt_actual);
-		if (dynamic_cast<const FunctionBlockExpression *>(s->initializer.get())) scopes.back().at(s->name.get_lexeme()).effects = we_deferred;
 		return opt_actual.has_value();
 	}
 	if (const auto *s = dynamic_cast<const BindingGroupDeclaration *>(&node)) {
 		return receive(s->targets, *s->initializer, &s->types, s->isMutable);
 	}
 	if (const auto *s = dynamic_cast<const AssignmentStatement *>(&node)) {
-		const Binding                    *binding  = local(s->name.get_lexeme());
+		const Binding                    *binding  = assignmentBinding(s->name);
 		const std::optional<TypedPlace>   tp_field = binding ? std::nullopt : locate(NameExpression(s->name));
 		const std::optional<ResolvedType> opt_type = binding ? binding->type : tp_field ? tp_field->type : name(s->name).types.front();
 		if (const BinaryExpression *compound = s->get_compound()) {
@@ -765,6 +780,7 @@ bool BodyChecker::checkStatement (const Statement &node) {
 		return receive(s->targets, *s->value, nullptr);
 	}
 	if (const auto *s = dynamic_cast<const UpdateStatement *>(&node)) {
+		(void)assignmentBinding(s->name);
 		const std::optional<ResolvedType> opt_target = scalar(*s->target);
 		if (opt_target && !updateOperator(node, *opt_target, s->op, nullptr) && !analyzer.numeric(*opt_target)) {
 			fail(Code::UNARY_OPERAND, s->op.get_span(), "Update needs a numeric binding or a matching operator");

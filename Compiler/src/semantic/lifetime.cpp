@@ -63,8 +63,8 @@ struct Path {
 	std::map<Identity, ObjectFacts> objects;
 	// An absent order means the entries are unknown. An empty order proves the list is empty.
 	std::map<Identity, std::vector<Identity>> entries;
-	Values                          values;
-	bool                            reachable = true;
+	Values                                    values;
+	bool                                      reachable = true;
 };
 
 using OptionalPath = std::optional<Path>;
@@ -217,28 +217,28 @@ class LifetimeChecker {
 	void                              access (const Handle &handle, const Path &path, const TokenSpan &span, bool permit, bool &runtime) const;
 	[[nodiscard]] const TypeDispatch *table (const ResolvedType &type) const;
 	void                              enter (Path &path, Handle handle, const Symbol &selection, const ResolvedType &host);
-	void                       selectState (const ExpressionInfo &call, Handle receiver, bool self, const Token &name, Path &path, ReceiverChecks &checks);
-	void                       defaults (const ExpressionInfo &call, Path &path) const;
-	Handle                     scalar (const Expression &node, Path &path);
-	Values                     expression (const Expression &node, Path &path);
-	Values                     conditional (const IfExpression &node, Path &path);
-	Values                     guardedAccess (const GuardedAccessExpression &node, Path &path);
-	void                       binary (const BinaryExpression &node, const ExpressionInfo &info, Path &path, ReceiverChecks &checks);
-	Branches                   condition (const Expression &node, Path &path);
-	void                       statements (const std::vector<StatementPtr> &body, Path &path);
-	void                       statement (const Statement &node, Path &path);
-	void                       loop (const LoopStatement &node, Path &path);
-	void                       arguments (const CallSite &call, Path &path);
-	std::optional<std::uint64_t>      constantIndex (const Expression &index) const;
-	void                              append (Identity list, Handle item, const CallSite &call, Path &path) const;
-	Handle                            readOwned (Identity list, std::optional<std::uint64_t> index, const ResolvedType &type, Path &path);
-	Handle                            remove (Identity list, std::optional<std::uint64_t> index, Path &path) const;
-	bool                              mayRunDestructor (const Symbol *allocation) const;
-	void                              destroyOwned (Identity list, const Token &site, Path &path) const;
-	void                       store (const Token &name, Handle handle, Path &path);
-	Values                     runDeferred (const FunctionBlockExpression &block, Path &path);
-	[[nodiscard]] const Token *binding (const Token &name) const;
-	[[nodiscard]] StorageOwner storageOwner (const Expression &target) const;
+	void     selectState (const ExpressionInfo &call, Handle receiver, bool self, const Token &name, Path &path, ReceiverChecks &checks);
+	void     defaults (const ExpressionInfo &call, Path &path) const;
+	Handle   scalar (const Expression &node, Path &path);
+	Values   expression (const Expression &node, Path &path);
+	Values   conditional (const IfExpression &node, Path &path);
+	Values   guardedAccess (const GuardedAccessExpression &node, Path &path);
+	void     binary (const BinaryExpression &node, const ExpressionInfo &info, Path &path, ReceiverChecks &checks);
+	Branches condition (const Expression &node, Path &path);
+	void     statements (const std::vector<StatementPtr> &body, Path &path);
+	void     statement (const Statement &node, Path &path);
+	void     loop (const LoopStatement &node, Path &path);
+	void     arguments (const CallSite &call, Path &path);
+	std::optional<std::uint64_t> constantIndex (const Expression &index) const;
+	void                         append (Identity list, Handle item, const CallSite &call, Path &path) const;
+	Handle                       readOwned (Identity list, std::optional<std::uint64_t> index, const ResolvedType &type, Path &path);
+	Handle                       remove (Identity list, std::optional<std::uint64_t> index, Path &path) const;
+	bool                         mayRunDestructor (const Symbol *allocation) const;
+	void                         destroyOwned (Identity list, const Token &site, Path &path) const;
+	void                         store (const Token &name, Handle handle, Path &path);
+	Values                       runDeferred (const FunctionBlockExpression &block, Path &path);
+	[[nodiscard]] const Token   *binding (const Token &name) const;
+	[[nodiscard]] StorageOwner   storageOwner (const Expression &target) const;
 	void   write (const Statement &node, const Expression &target, const ExpressionPtr &value, const ExpressionPtr &compound, Path &path);
 	Values call (const CallSite &node, const ExpressionInfo &info, Path &path, ReceiverChecks &checks);
 };
@@ -281,9 +281,9 @@ void LifetimeChecker::join (OptionalPath &paths, const Path &other) {
                         if (it_entry.second) ++id_next;
                         id_object                   = it_entry.first->second;
                         p_joined.objects[id_object] = common(object(a.identity, left), object(b.identity, other));
-			// This identity selects between objects. It cannot prove distinct allocations.
-			p_joined.objects[id_object].allocation = nullptr;
-		}
+                        // This identity selects between objects. It cannot prove distinct allocations.
+                        p_joined.objects[id_object].allocation = nullptr;
+                }
                 return Handle{ id_object, a.presence == b.presence ? a.presence : Presence::Unknown };
 	};
 	for (const std::map<const Token *, Handle>::value_type &entry : left.bindings) {
@@ -569,7 +569,6 @@ Values LifetimeChecker::call (const CallSite &node, const ExpressionInfo &info, 
 	if (info.arrayMutation)
 		access(storedOwner, path, ts_receiver, arrayOwner.implicit || (arrayOwner.receiver && directSelf(*arrayOwner.receiver)), checks.atAccess);
 	if (sc_state) selectState(info, h_receiver, b_self, node.name, path, checks);
-	if (info.binding && m_deferred.contains(info.binding)) return runDeferred(*m_deferred.at(info.binding), path);
 	const bool b_preservesNew = cc_new && info.symbol && !info.types.empty() && a_analyzer.preservesNewReceiver(info.types.front(), *info.symbol);
 	const bool b_simpleNew    = b_preservesNew && info.omittedParameters.empty() &&
 	                         (a_analyzer.declarations.at(info.types.front().declaration).primaryConstructor == info.symbol ||
@@ -822,9 +821,9 @@ Values LifetimeChecker::expression (const Expression &node, Path &path) {
 		const Handle h_value = scalar(*cd_delete->receiver, path);
 		access(h_value, path, node.get_span(), false, rc_checks.atAccess);
 		if (path.reachable && h_value.presence != Presence::Absent) {
-			const ObjectFacts &of_value     = object(h_value.identity, path);
-			const bool         b_list       = olm_list.owner && of_value.allocation == olm_list.owner;
-			const bool b_mayChangeOwnership = olm_list.owner &&
+			const ObjectFacts &of_value             = object(h_value.identity, path);
+			const bool         b_list               = olm_list.owner && of_value.allocation == olm_list.owner;
+			const bool         b_mayChangeOwnership = olm_list.owner &&
 			                                  (b_list ? !path.entries.contains(h_value.identity) || !path.entries.at(h_value.identity).empty() :
 			                                            mayRunDestructor(of_value.allocation));
 			if (h_value.identity && h_value.presence == Presence::Present) {
@@ -968,8 +967,8 @@ StorageOwner LifetimeChecker::storageOwner (const Expression &target) const {
 }
 
 void LifetimeChecker::write (const Statement &node, const Expression &target, const ExpressionPtr &value, const ExpressionPtr &compound, Path &path) {
-	const FieldAccessExpression *fa_field   = dynamic_cast<const FieldAccessExpression *>(&target);
-	const IndexExpression       *ie_index   = dynamic_cast<const IndexExpression *>(&target);
+	const FieldAccessExpression                    *fa_field      = dynamic_cast<const FieldAccessExpression *>(&target);
+	const IndexExpression                          *ie_index      = dynamic_cast<const IndexExpression *>(&target);
 	const decltype(bf_facts.writes)::const_iterator it_write      = bf_facts.writes.find(&node);
 	const bool                                      b_indexUpdate = ie_index && it_write != bf_facts.writes.end() && it_write->second.indexed &&
 	                           isUpdate(it_write->second.symbol->name.get_operator());
@@ -986,8 +985,8 @@ void LifetimeChecker::write (const Statement &node, const Expression &target, co
 		unknownEffect(path);
 		return;
 	}
-	const Expression            &e_receiver = fa_field ? *fa_field->receiver : *ie_index->array;
-	const StorageOwner           so_owner   = storageOwner(target);
+	const Expression  &e_receiver = fa_field ? *fa_field->receiver : *ie_index->array;
+	const StorageOwner so_owner   = storageOwner(target);
 	if (so_owner.receiver) m_observed.try_emplace(so_owner.receiver);
 	const Handle h_receiver = scalar(e_receiver, path);
 	const Handle h_owner    = so_owner.receiver ? m_observed.at(so_owner.receiver) : so_owner.implicit ? path.bindings[&lb_job.context->name] : Handle{};
@@ -1142,11 +1141,11 @@ void LifetimeChecker::statement (const Statement &node, Path &path) {
 }
 
 void LifetimeChecker::loop (const LoopStatement &node, Path &path) {
-	const ForStatement     *fs_for   = dynamic_cast<const ForStatement *>(&node);
-	const WhileStatement   *ws_while = dynamic_cast<const WhileStatement *>(&node);
-	const DoWhileStatement *ds_do    = dynamic_cast<const DoWhileStatement *>(&node);
-	const LoopBody         &body     = fs_for ? fs_for->body : ws_while ? ws_while->body : ds_do->body;
-	const LoopTarget       *target   = node.get_loop_target().get();
+	const ForStatement        *fs_for   = dynamic_cast<const ForStatement *>(&node);
+	const WhileStatement      *ws_while = dynamic_cast<const WhileStatement *>(&node);
+	const DoWhileStatement    *ds_do    = dynamic_cast<const DoWhileStatement *>(&node);
+	const LoopBody            &body     = fs_for ? fs_for->body : ws_while ? ws_while->body : ds_do->body;
+	const LoopTarget          *target   = node.get_loop_target().get();
 	std::optional<Handle>      opt_first;
 	std::optional<std::size_t> opt_count;
 	if (fs_for) {

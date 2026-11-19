@@ -127,8 +127,14 @@ typedef<class> C : A, B { override: pub mt<V> make<V>() = V::new(1) }
 
 TEST (SemanticDispatch, PreservesTheRootVirtualContractAcrossThreeClassLevels) {
 	const CheckedProgram cp_program = checkSource(R"(typedef<class> Leaf : Mid {}
-typedef<class> Mid : Base { override: pub mt<int, bool> read(int renamed) = renamed, true }
-typedef<class> Base { virtual: pub mt<int, bool> read(opt<int> count ?: 2) = count, false }
+typedef<class> Mid(int seed) : Base {
+    pub Mid() : (0) {}
+    override: pub mt<int, bool> read(int renamed) = renamed, true
+}
+typedef<class> Base(int seed) {
+    pub Base() : (0) {}
+    virtual: pub mt<int, bool> read(opt<int> count ?: 2) = count, false
+}
 fn<int, bool> base(Base item) = item.read()
 fn<int, bool> leaf(Leaf item) = item.read(count=3)
 )");
@@ -154,7 +160,8 @@ fn<int, bool> leaf(Leaf item) = item.read(count=3)
 }
 
 TEST (SemanticDispatch, ResolvesStateContractsSelectionsAndOverloadsOnTheHost) {
-	const CheckedProgram cp_program = checkSource(R"(typedef<class> Host {
+	const CheckedProgram cp_program = checkSource(R"(typedef<class> Host(int seed) {
+    pub Host() : (0) {}
     pub state<int, bool> ::score(opt<int> power ?: 1, opt<int> bonus ?: power)
     default: pub state<void> Ready {
         mt<int, bool> score(int first, int second) = first + second, true
@@ -162,7 +169,8 @@ TEST (SemanticDispatch, ResolvesStateContractsSelectionsAndOverloadsOnTheHost) {
     }
     pub mt<int> score(int first, int second) = first - second
 }
-typedef<class> Child : Host {
+typedef<class> Child(int seed) : Host {
+    pub Child() : (0) {}
     default: (1) pub state<int> Busy {
         mt<int, bool> score(int a, int b) = state, false
         pub mt<bool> score(bool pass) = pass
@@ -210,18 +218,29 @@ TEST (SemanticDispatch, RejectsMismatchedStateContractsAndPayloads) {
 	expectError(s_host + "fn bad(C? item) { item::read() }", Code::NULLABLE_PAYLOAD_ACCESS);
 	for (const char *s_state : { "default: (false) state<int> Ready {}", "default: (1) state<void> Ready {}", "default: state<int> Ready {}" })
 		expectError("typedef<class> C { " + std::string(s_state) + " }", Code::INVALID_STATE_PAYLOAD);
-	expectError("typedef<class> C { state<void> Ready { mt<int> read() = state } }", Code::UNKNOWN_NAME);
-	expectError("typedef<class> C { state<void> A { pub mt<int> f(int x) = x }\n state<void> B { pub mt<int> f(int y) = y } }",
+	expectError("typedef<class> C { default: state<void> Ready { mt<int> read() = state } }", Code::UNKNOWN_NAME);
+	expectError("typedef<class> C { default: state<void> A { pub mt<int> f(int x) = x }\n state<void> B { pub mt<int> f(int y) = y } }",
 	            Code::INVALID_STATE_CONTRACT);
-	expectError("typedef<class> C { pub state<int> ::f()\n state<void> A { mt<bool> f() = true } }", Code::INVALID_STATE_CONTRACT);
-	expectError("typedef<class> C { state<void> Ready { mt<int> f(opt<int> x ?: 1) = x } }", Code::INVALID_STATE_CONTRACT);
+	expectError("typedef<class> C { pub state<int> ::f()\n default: state<void> A { mt<bool> f() = true } }", Code::INVALID_STATE_CONTRACT);
+	expectError("typedef<class> C { default: state<void> Ready { mt<int> f(opt<int> x ?: 1) = x } }", Code::INVALID_STATE_CONTRACT);
 	expectError("typedef<class> C { default: state<void> A {}\n default: state<void> B {} }", Code::INVALID_STATE_DECLARATION);
 	expectError("typedef<state<void>> Bad for int {}", Code::INVALID_STATE_ATTACHMENT);
 }
 
+TEST (SemanticDispatch, RequiresADefaultWhereStatesAreIntroduced) {
+	expectError("typedef<class> Host { state<void> Ready {} }", Code::INVALID_STATE_DECLARATION);
+	expectError("typedef<state<void>> Ready for Host {}\ntypedef<class> Host { state Ready }", Code::INVALID_STATE_DECLARATION);
+	const std::string s_parent = "typedef<class> Base(int seed) { pub Base() : (0) {}\n default: state<void> Ready {} }\n";
+	expectError(s_parent + "typedef<class> Child : Base { state<void> Busy {} }", Code::INVALID_STATE_DECLARATION);
+	expectError(s_parent + "typedef<state<void>> Busy for Base {}\ntypedef<class> Child : Base { state Busy }", Code::INVALID_STATE_DECLARATION);
+	EXPECT_NO_THROW(checkSource(s_parent + "typedef<class> Child : Base {}"));
+	EXPECT_NO_THROW(checkSource(s_parent + "typedef<state<void>> Busy for Base {}\ntypedef<class> Child : Base { default: state Busy }"));
+}
+
 TEST (SemanticDispatch, MaterializesGenericImplementationsSelectedThroughStaticContracts) {
-	const CheckedProgram cp_program = checkSource(R"(typedef<interface> I { pub mt<V> echo<V>(V label) }
-typedef<class> Base {
+	const CheckedProgram                                            cp_program = checkSource(R"(typedef<interface> I { pub mt<V> echo<V>(V label) }
+typedef<class> Base(int seed) {
+    pub Base() : (0) {}
     virtual: pub mt<X> get<X>(X value) = value
     pub state<T> ::read<T>(T item)
     default: state<void> Ready { mt<U> read<U>(U renamed) = renamed }
@@ -229,7 +248,7 @@ typedef<class> Base {
 typedef<class> Child<A> : Base, I {
     override: pub mt<B> echo<B>(B own) = own
     override: pub mt<Y> get<Y>(Y name) = name
-    state<void> Busy { mt<W> read<W>(W other) = other }
+    default: state<void> Busy { mt<W> read<W>(W other) = other }
 }
 fn<bool> face(I item) = item.echo<bool>(label=true)
 fn<int> virtualCall(Base item) = item.get<int>(value=1)
@@ -262,7 +281,7 @@ typedef<class> A : Host {
 )";
 	const CheckedProgram cp_program = checkSource(s_decls + R"(typedef<class> B<T> : Host {
     override: pub mt<int> id() = 2
-    state Shared
+    default: state Shared
     pub state<int> Ready {}
 }
 fn<bool> a(A item) = item::ready()
@@ -278,16 +297,17 @@ fn<bool> b(B<int> item) = item::ready()
 	const GenericInstance &gi_b = cp_program.instances.at({ &sym_query, rt_b, {} });
 	EXPECT_EQ(gi_b.body.expressions.at(&bodyExpression(sym_query)).symbol, &global(cp_program, "B").members.at("Ready").front());
 	EXPECT_EQ(cp_program.dispatchTables.at(rt_b).states.at("Shared").definition, &sym_shared);
-	expectError(s_decls + "typedef<class> Bad : Host { override: pub mt<int> id() = 3; state Shared }", Code::INVALID_STATE_TARGET);
-	expectError("typedef<class> Host { def<int> hidden = 1; state Shared }\ntypedef<state<void>> Shared for Host { pub mt<int> bad() = self.hidden }",
-	            Code::PRIVATE_CLASS_MEMBER);
+	expectError(s_decls + "typedef<class> Bad : Host { override: pub mt<int> id() = 3; default: state Shared }", Code::INVALID_STATE_TARGET);
+	expectError(
+	        "typedef<class> Host { def<int> hidden = 1; default: state Shared }\ntypedef<state<void>> Shared for Host { pub mt<int> bad() = self.hidden }",
+	        Code::PRIVATE_CLASS_MEMBER);
 }
 
 TEST (SemanticDispatch, ChecksEveryPublicSignatureIncludingBoundsAndInferredStateMethods) {
 	const std::string s_types = "typedef<class> Secret {}\npub typedef<class> Box<T> {}\n";
 	for (const char *s_decl : { "pub fn f<T: Secret>(T x) {}", "pub fn f<T: new(Box<Secret> value)>(T x) {}", "pub typedef<class> Api<T = Secret> {}",
 	                            "pub typedef<interface> Api { pub mt<Box<Secret>[]> leak() }", "pub typedef<class> Api { pub def<Secret?> leaked = null }",
-	                            "pub typedef<class> Api { state<void> Hidden { pub mt<Secret> leak(Secret item) = item } }" }) {
+	                            "pub typedef<class> Api { default: state<void> Hidden { pub mt<Secret> leak(Secret item) = item } }" }) {
 		expectError(s_types + s_decl, Code::PRIVATE_GENERIC_SIGNATURE);
 	}
 	EXPECT_NO_THROW(checkSource(s_types + "pub typedef<class> Api { mt<Secret> internal(Secret item) = item }"));
@@ -296,7 +316,8 @@ TEST (SemanticDispatch, ChecksEveryPublicSignatureIncludingBoundsAndInferredStat
 TEST (SemanticDispatch, InheritsGenericMethodBoundsAndConstructorGuarantees) {
 	const CheckedProgram   cp_program = checkSource(R"(typedef<interface> Label { pub mt<int> read() }
 typedef<class> Value : Label { override: pub mt<int> read() = 5 }
-typedef<class> Base {
+typedef<class> Base(int seed) {
+    pub Base() : (0) {}
     virtual: pub mt<int> describe<T: Label>(T value) = value.read()
     virtual: pub mt<T> make<T: new(int count)>(int value) = T::new(count=value)
 }

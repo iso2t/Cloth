@@ -83,7 +83,7 @@ fn<float<64>> floating(float<64> n) = pick(1.5, n)
 
 TEST (SemanticGenerics, SettlesOrdinaryOverloadsBeforeInferringGenericCandidates) {
 	using Code                      = cde::DiagnosticCode;
-	const CheckedProgram cp_program = checkSource(R"(typedef<class> Base {}
+	const CheckedProgram cp_program = checkSource(R"(typedef<class> Base(int seed) { pub Base() : (0) {} }
 typedef<class> Child : Base {}
 fn<string> pick(Base value) = "base"
 fn<T> pick<T>(T value) = value
@@ -229,7 +229,8 @@ fn<int?> optional(Box<int?> box) = box.copy(null)
 }
 
 TEST (SemanticGenerics, RetainsBothTheVirtualContractAndTheOverridingInstance) {
-	const CheckedProgram  cp_program = checkSource(R"(typedef<class> Base<T> {
+	const CheckedProgram  cp_program = checkSource(R"(typedef<class> Base<T>(int seed) {
+    pub Base() : (0) {}
     virtual: pub mt<U> read<U>(U value) = value
 }
 typedef<class> Child<T> : Base<T> {
@@ -267,7 +268,10 @@ fn<Box<bool>> use(Box<int> box) = box.make()
 }
 
 TEST (SemanticGenerics, PreservesTheOverloadProvenByANominalBound) {
-	const CheckedProgram   cp_program = checkSource(R"(typedef<class> Base { pub mt<int> pick(Base x) = 1 }
+	const CheckedProgram   cp_program = checkSource(R"(typedef<class> Base(int seed) {
+    pub Base() : (0) {}
+    pub mt<int> pick(Base x) = 1
+}
 typedef<class> Child : Base { pub mt<bool> pick(Child x) = true }
 fn<int> read<T: Base>(T value) = value.pick(value)
 fn<int> use(Child item) = read(item)

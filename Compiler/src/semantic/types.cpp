@@ -785,6 +785,9 @@ void Analyzer::resolveDeclaration (const Symbol &symbol) {
 		if (const auto *cd = dynamic_cast<const ClassDeclaration *>(td)) {
 			for (const ClassParentClause &parent : cd->parents) {
 				const ResolvedType &rt_parent = info.parents.emplace_back(valueType(parent.type));
+				if (asInterface(rt_parent.declaration) && parent.constructorArguments)
+					fail(Code::INVALID_INTERFACE_HEADER, parent.span, "An interface clause takes no constructor arguments",
+					     &rt_parent.declaration->name);
 				if (rt_parent.declaration == &objectRoot() && parent.constructorArguments && !parent.constructorArguments->empty())
 					fail(Code::INVALID_CLASS_MEMBER, parent.span, std::format("{} takes no base arguments", rt_parent.name));
 			}
@@ -825,7 +828,7 @@ void Analyzer::checkBounds (const TypeParameterDeclaration &parameter, const Sub
 	const ResolvedType                                       rt_actual  = boundShape(arguments.at(&parameter));
 	const Symbol                                            &sym_origin = *m_genericOwners.at(pc_contract.parameter);
 	const std::function<ResolvedType(const TypeReference &)> resolve    = [&] (const TypeReference &reference) {
-		return substitute(substitute(type(reference, sym_origin), pc_contract.arguments), arguments);
+                return substitute(substitute(type(reference, sym_origin), pc_contract.arguments), arguments);
 	};
 	checkBoundInterfaces(*this, *pc_contract.parameter, resolve, &where);
 	for (const TypeParameterBound &tp_bound : pc_contract.parameter->bounds) {
@@ -1068,7 +1071,7 @@ void Analyzer::checkDeclarations () {
 	for (const Symbol *sym : v_order) {
 		const DeclarationInfo &info = declarations.at(sym);
 		if (const TypeParameterList *tp = typeParameters(*sym)) {
-			Substitutions         m_defaults = argumentsOf(ownerType(*sym));
+			Substitutions m_defaults = argumentsOf(ownerType(*sym));
 			for (const TypeParameterDeclaration &param : tp->parameters) {
 				checkDeclaredBounds(param, *sym);
 				if (param.defaultType) {

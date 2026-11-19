@@ -34,12 +34,12 @@ inline constexpr std::string_view S_ELEMENT = "element", S_RANK = "rank", S_EXTE
 inline constexpr std::string_view S_ISARRAY = "isarray", S_HASEXTENT = "hasextent", S_ISUNSIGNED = "isunsigned", S_ISNUMERIC = "isnumeric";
 }
 
-std::string_view             unsignedIntegerSpelling ();
-double                       floatingLiteral (std::string_view text, unsigned width);
-NumericConstant              numericLimit (const ResolvedType &type, TargetLayout layout, bool maximum);
-void                         checkNumeric (const Expression &node, ExpressionInfo &result, const BodyFacts &facts, TargetLayout layout);
-void                         requireFinite (const Expression &operand, const BodyFacts &facts, cde::DiagnosticCode code);
-std::string                  arraySuffix (std::string_view extent = {});
+std::string_view unsignedIntegerSpelling ();
+double           floatingLiteral (std::string_view text, unsigned width);
+NumericConstant  numericLimit (const ResolvedType &type, TargetLayout layout, bool maximum);
+void             checkNumeric (const Expression &node, ExpressionInfo &result, const BodyFacts &facts, TargetLayout layout);
+void             requireFinite (const Expression &operand, const BodyFacts &facts, cde::DiagnosticCode code);
+std::string      arraySuffix (std::string_view extent = {});
 enum class ElementEvidence { None, Literal, Typed };
 ElementEvidence              elementEvidence (const Expression &operand);
 std::optional<ArrayMutation> arrayMutationNamed (std::string_view name);
@@ -124,23 +124,23 @@ class Analyzer {
 		const Symbol               *state;
 	};
 
-	void                   checkBodies ();
+	void                        checkBodies ();
 	[[nodiscard]] const Symbol *entryPoint () const;
-	void                   recordLifetimeBody (LifetimeBody body, bool initializationMayCall);
-	[[nodiscard]] bool     preservesNewReceiver (const ResolvedType &host, const Symbol &constructor) const;
-	const ResultTypes     &resultsOf (const Symbol &symbol);
-	void                   useType (const ResolvedType &type, const Symbol &context, const TokenSpan &where);
-	const GenericInstance *useCallable (const Symbol &symbol, const Substitutions &arguments, const Symbol &context, const TokenSpan &where,
-	                                    const ResolvedType *stateHost = nullptr);
-	void                   useDispatch (const CallDispatch &dispatch, const Substitutions &arguments, const Symbol &context, const TokenSpan &where);
-	const Symbol          *constructorFor (const ResolvedType &type, const ResultTypes &parameters, const Symbol *access) const;
-	Candidate              boundMethod (const ExpressionInfo &call, const ResolvedType &receiver, const std::vector<Candidate> &candidates,
-	                                    const Substitutions &arguments) const;
-	bool                   accessible (const Candidate &candidate, const Symbol &context) const;
-	const TypeDispatch    &dispatchFor (const ResolvedType &receiver) const;
-	bool                   hasStateName (const Symbol &context, std::string_view name) const;
-	const BodyFacts       &openBody (const ResolvedType *attachment) const;
-	const GenericInstance *guaranteeOwner (const Symbol &guarantee, const Substitutions &arguments, const Symbol &context, const TokenSpan &where);
+	void                        recordLifetimeBody (LifetimeBody body, bool initializationMayCall);
+	[[nodiscard]] bool          preservesNewReceiver (const ResolvedType &host, const Symbol &constructor) const;
+	const ResultTypes          &resultsOf (const Symbol &symbol);
+	void                        useType (const ResolvedType &type, const Symbol &context, const TokenSpan &where);
+	const GenericInstance      *useCallable (const Symbol &symbol, const Substitutions &arguments, const Symbol &context, const TokenSpan &where,
+	                                         const ResolvedType *stateHost = nullptr);
+	void                        useDispatch (const CallDispatch &dispatch, const Substitutions &arguments, const Symbol &context, const TokenSpan &where);
+	const Symbol               *constructorFor (const ResolvedType &type, const ResultTypes &parameters, const Symbol *access) const;
+	Candidate                   boundMethod (const ExpressionInfo &call, const ResolvedType &receiver, const std::vector<Candidate> &candidates,
+	                                         const Substitutions &arguments) const;
+	bool                        accessible (const Candidate &candidate, const Symbol &context) const;
+	const TypeDispatch         &dispatchFor (const ResolvedType &receiver) const;
+	bool                        hasStateName (const Symbol &context, std::string_view name) const;
+	const BodyFacts            &openBody (const ResolvedType *attachment) const;
+	const GenericInstance      *guaranteeOwner (const Symbol &guarantee, const Substitutions &arguments, const Symbol &context, const TokenSpan &where);
 
     private:
 	const Symbol                                    *sym_number     = nullptr;
@@ -196,36 +196,36 @@ class Analyzer {
 		std::size_t         next = 0;
 	};
 
-	std::map<ResolvedType, StorageEdges>         m_storage;
-	[[nodiscard]] const Symbol                  *instanceOwner (const Symbol &symbol) const;
-	[[nodiscard]] bool                           isTemplate (const Symbol &symbol) const;
-	[[nodiscard]] Substitutions                  instanceArguments (const InstanceKey &key) const;
-	[[nodiscard]] bool                           hasConstructorProof (const ResolvedType &type, const ResultTypes &parameters) const;
-	void                                         checkInstances ();
-	void                                         completeInstance (const InstanceWork &work);
-	void                                         checkStorage () const;
-	void                                         collectSignature (const Symbol &symbol);
-	void                                         useDeclaredBounds (const Symbol &symbol, const Substitutions &arguments);
-	void                                         visitTypeMembers (const ResolvedType &type, const Substitutions &arguments, GenericInstance *instance);
-	const GenericInstance                       *useInstance (InstanceKey key, const Symbol &context, const TokenSpan &where);
-	const GenericInstance                       *enqueue (InstanceKey key, const TokenSpan &where, bool symbolic);
-	std::vector<Names>                           v_names;
-	Candidates                                   v_order;
+	std::map<ResolvedType, StorageEdges> m_storage;
+	[[nodiscard]] const Symbol          *instanceOwner (const Symbol &symbol) const;
+	[[nodiscard]] bool                   isTemplate (const Symbol &symbol) const;
+	[[nodiscard]] Substitutions          instanceArguments (const InstanceKey &key) const;
+	[[nodiscard]] bool                   hasConstructorProof (const ResolvedType &type, const ResultTypes &parameters) const;
+	void                                 checkInstances ();
+	void                                 completeInstance (const InstanceWork &work);
+	void                                 checkStorage () const;
+	void                                 collectSignature (const Symbol &symbol);
+	void                                 useDeclaredBounds (const Symbol &symbol, const Substitutions &arguments);
+	void                                 visitTypeMembers (const ResolvedType &type, const Substitutions &arguments, GenericInstance *instance);
+	const GenericInstance               *useInstance (InstanceKey key, const Symbol &context, const TokenSpan &where);
+	const GenericInstance               *enqueue (InstanceKey key, const TokenSpan &where, bool symbolic);
+	std::vector<Names>                   v_names;
+	Candidates                           v_order;
 	// A unit can be reached through several imports. Only selections from the standard library confer a library path.
 	using LibraryPaths = std::map<std::size_t, std::set<std::string, std::less<>>>;
-	LibraryPaths                                 m_libraryPaths;
-	void                                         loadImports ();
-	void                                         registerIntrinsics ();
-	void                                         checkIntrinsicSignature (const Symbol &symbol, LibraryIntrinsic operation) const;
-	void                                         registerScope (const SymbolScope &scope, std::size_t file, const Symbol *owner);
-	void                                         resolveDeclaration (const Symbol &symbol);
-	ResolvedType                                 resolveType (const TypeReference &reference, const Symbol &context, unsigned depth, bool allowOpen,
-	                                                          std::set<const TypeParameterDeclaration *> &activeDefaults) const;
-	void                                         checkParameterNames (const Symbol &symbol) const;
-	void                                         checkDeclaredBounds (const TypeParameterDeclaration &parameter, const Symbol &symbol) const;
-	void checkArrayBound (const TypeParameterDeclaration &parameter, const ResolvedType &shape, const TokenSpan &where) const;
-	void                                         checkDeclarations ();
-	void                                         checkOverload (const Symbol &symbol, const Substitutions &arguments, const TokenSpan *application) const;
+	LibraryPaths m_libraryPaths;
+	void         loadImports ();
+	void         registerIntrinsics ();
+	void         checkIntrinsicSignature (const Symbol &symbol, LibraryIntrinsic operation) const;
+	void         registerScope (const SymbolScope &scope, std::size_t file, const Symbol *owner);
+	void         resolveDeclaration (const Symbol &symbol);
+	ResolvedType resolveType (const TypeReference &reference, const Symbol &context, unsigned depth, bool allowOpen,
+	                          std::set<const TypeParameterDeclaration *> &activeDefaults) const;
+	void         checkParameterNames (const Symbol &symbol) const;
+	void         checkDeclaredBounds (const TypeParameterDeclaration &parameter, const Symbol &symbol) const;
+	void         checkArrayBound (const TypeParameterDeclaration &parameter, const ResolvedType &shape, const TokenSpan &where) const;
+	void         checkDeclarations ();
+	void         checkOverload (const Symbol &symbol, const Substitutions &arguments, const TokenSpan *application) const;
 	mutable std::map<ResolvedType, TypeDispatch> m_dispatch;
 	using MethodGroup  = std::vector<MethodRef>;
 	using MethodGroups = std::map<std::string, std::vector<MethodGroup>, std::less<>>;
@@ -331,10 +331,10 @@ class BodyChecker {
 	void                             enumValue (const EnumFieldDeclaration &field, const Expression &value, const Token *caseName);
 	std::optional<ProviderSelection> textConversion (const ResolvedType &type, const TokenSpan &use);
 	ExpressionInfo                   providerAccess (const ProviderAccessExpression &node);
-	const GuardedPayload            *gp_payload       = nullptr;
-	ReceiverPhase                    rp_receiverPhase = ReceiverPhase::Ready;
-	const ParameterDeclaration      *pd_default       = nullptr;
-	bool                             b_nestedFunction = false;
+	const GuardedPayload            *gp_payload        = nullptr;
+	ReceiverPhase                    rp_receiverPhase  = ReceiverPhase::Ready;
+	const ParameterDeclaration      *pd_default        = nullptr;
+	const Token                     *t_deferredBinding = nullptr;
 	Analyzer                        &analyzer;
 	const Symbol                    &context;
 	BodyFacts                       &bf_facts;
@@ -399,15 +399,15 @@ class BodyChecker {
 	};
 
 	using ReceiverProofs = std::vector<ReceiverProof>;
-	[[nodiscard]] ReceiverProofs            receiverProofs (const Expression *receiver) const;
-	void                                    requireReceiverProofs (const ReceiverProofs &proofs) const;
-	void                                    narrowRead (ExpressionInfo &value, const StoragePlace &place) const;
-	TestPaths                               test (const Expression &node);
-	TestPaths                               splitTest (const Expression &node, const ExpressionInfo &result);
-	bool                                    checkStatement (const Statement &node);
-	void                                    finishStatement (const Statement &node, bool fallsThrough, const Exits &incoming);
-	void                                    typeBody ();
-	void                                    leaveScope ();
+	[[nodiscard]] ReceiverProofs receiverProofs (const Expression *receiver) const;
+	void                         requireReceiverProofs (const ReceiverProofs &proofs) const;
+	void                         narrowRead (ExpressionInfo &value, const StoragePlace &place) const;
+	TestPaths                    test (const Expression &node);
+	TestPaths                    splitTest (const Expression &node, const ExpressionInfo &result);
+	bool                         checkStatement (const Statement &node);
+	void                         finishStatement (const Statement &node, bool fallsThrough, const Exits &incoming);
+	void                         typeBody ();
+	void                         leaveScope ();
 
 	struct ArgumentProbe {
 		std::optional<ExpressionInfo> result;
@@ -415,10 +415,11 @@ class BodyChecker {
 	};
 
 	FlowState fs_flow;
-	bool      record = true;
+	bool      record              = true;
 	bool      b_inferenceDefaults = false;
 
 	[[nodiscard]] const Binding *local (const std::string &name) const;
+	[[nodiscard]] const Binding *assignmentBinding (const Token &target) const;
 	void                         bind (const Token &name, std::optional<ResolvedType> type, bool mutableBinding, bool deferred = false);
 	void                         checkDefaultName (const Token &name) const;
 	bool                         readOnlyDefaultRoot (const Expression &node) const;
@@ -449,8 +450,8 @@ class BodyChecker {
 	bool                     statePayload (const ExpressionPtr &payload, const ResolvedType &required, const TokenSpan &span, const Token &state);
 	ExpressionInfo           transition (const Candidate &state, const ExpressionPtr &payload, const TokenSpan &span);
 	ExpressionInfo           typeCheck (const TypeCheckExpression &node);
-	ExpressionInfo               binary (const BinaryExpression &node, const ResolvedType *expected, bool allowContexts = true);
-	ExpressionInfo               elvis (const ElvisExpression &node, const ResultTypes *expected);
+	ExpressionInfo           binary (const BinaryExpression &node, const ResolvedType *expected, bool allowContexts = true);
+	ExpressionInfo           elvis (const ElvisExpression &node, const ResultTypes *expected);
 	std::optional<ExpressionInfo> binaryOperator (const BinaryExpression &node, const ResolvedType *expected, bool allowContexts);
 	ExpressionInfo                equality (const BinaryExpression &node, const ResolvedType &left, const ResolvedType &right);
 	std::optional<Candidate>      selectOperator (const Token &op, const TokenSpan &span, const ResolvedType &left, const ResolvedType &right,

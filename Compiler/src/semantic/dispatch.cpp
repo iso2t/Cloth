@@ -385,7 +385,8 @@ void Analyzer::buildStates (const ResolvedType &receiver, TypeDispatch &table) c
 			table.stateMethods.push_back({ mr_contract, {} });
 		}
 	}
-	const Symbol *sym_initial = nullptr;
+	const std::size_t st_inheritedStates = table.states.size();
+	const Symbol     *sym_initial        = nullptr;
 	for (const ClassMember &cm_member : asClass(&sym_host)->members) {
 		const StateClassMemberPtr       *sc_member = std::get_if<StateClassMemberPtr>(&cm_member.value);
 		const StateSelectionDeclaration *ss_state  = sc_member ? dynamic_cast<const StateSelectionDeclaration *>(sc_member->get()) : nullptr;
@@ -441,6 +442,9 @@ void Analyzer::buildStates (const ResolvedType &receiver, TypeDispatch &table) c
 			}
 		}
 	}
+	if (!sym_initial && table.states.size() != st_inheritedStates)
+		fail(Code::INVALID_STATE_DECLARATION, sym_host.name.get_span(),
+		     std::format("Class '{}' must select an initial state with '{}{}'", sym_host.name.get_lexeme(), to_string(kDefault), to_string(oColon)));
 }
 
 bool Analyzer::hasStateName (const Symbol &context, std::string_view name) const {

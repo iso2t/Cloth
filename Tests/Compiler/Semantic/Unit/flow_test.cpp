@@ -115,8 +115,8 @@ TEST (SemanticFlow, UsesBindingAndFieldIdentityAndInvalidatesResolvedWrites) {
 	EXPECT_NO_THROW(checkSource("fn f(bool flag, int? value) { if (value != null) { if (flag) { def<int?> value = null }; def v = value + 1 } }"));
 	expectError("fn<int> f(int? value) { def<int> clear = { value = null; return 1 }; if (value != null) { clear; return value }; return 0 }",
 	            Code::RETURN_TYPE);
-	EXPECT_NO_THROW(checkSource(
-	        "typedef<class> Base {}\ntypedef<class> Child : Base { pub mt<int> read() = 1 }\nfn<int> test(Base? value) { if (value is Child) return value.read(); return 0 }"));
+	EXPECT_NO_THROW(checkSource("typedef<class> Base(int seed) { pub Base() : (0) {} }\ntypedef<class> Child : Base { pub mt<int> read() = 1 }\n"
+	                            "fn<int> test(Base? value) { if (value is Child) return value.read(); return 0 }"));
 }
 
 TEST (SemanticFlow, CarriesPresenceThroughGuardsAndExitingFallbacks) {
@@ -230,7 +230,7 @@ TEST (SemanticFlow, RequiresStoredArraysToStayPresentThroughMutationArguments) {
 TEST (SemanticFlow, InvalidatesSharedPresenceWhenArrayElementEqualityCanCallUserCode) {
 	const std::string s_box = R"(typedef<class> Box { pub def<string?> name = "live" }
 typedef<struct> Probe { Box box; pub operator ==(Probe other) { self.box.name = null; return true } }
-typedef<class> Base {}
+typedef<class> Base(int seed) { pub Base() : (0) {} }
 typedef<class> Child : Base { pub operator ==(Object other) = true }
 typedef<interface> View {}
 typedef<class> Viewed : View { pub operator ==(Object other) = true }
