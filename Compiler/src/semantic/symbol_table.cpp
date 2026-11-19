@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <algorithm>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -66,14 +67,17 @@ void collectClassState (SymbolScope &scope, const StateClassMember &member) {
 }
 
 void collectClassMembers (SymbolScope &scope, const ClassDeclaration &type) {
+	std::size_t st_fieldIndex = 0;
 	for (const ClassParameterDeclaration &cpd_parameter : type.parameters) {
 		if (cpd_parameter.fieldKeyword) {
-			declare(scope, SymbolKind::Field, cpd_parameter.parameter.name, cpd_parameter.visibility, &cpd_parameter);
+			Symbol &sym_field         = declare(scope, SymbolKind::Field, cpd_parameter.parameter.name, cpd_parameter.visibility, &cpd_parameter);
+			sym_field.classFieldIndex = st_fieldIndex++;
 		}
 	}
 	for (const ClassMember &cm_member : type.members) {
 		if (const ClassFieldDeclaration *cfd_field = std::get_if<ClassFieldDeclaration>(&cm_member.value)) {
-			declare(scope, SymbolKind::Field, cfd_field->name, cfd_field->visibility, cfd_field);
+			Symbol &sym_field         = declare(scope, SymbolKind::Field, cfd_field->name, cfd_field->visibility, cfd_field);
+			sym_field.classFieldIndex = st_fieldIndex++;
 		} else if (const MethodDeclaration *md_method = std::get_if<MethodDeclaration>(&cm_member.value)) {
 			collectMethod(scope, *md_method);
 		} else if (const ConstructorDeclaration *cd_constructor = std::get_if<ConstructorDeclaration>(&cm_member.value)) {

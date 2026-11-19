@@ -19,9 +19,6 @@ Cloth also incorporates a first class state system, in which an object can exist
 states or no states, allowing certain parameters to be valid or invalid, moving beyond just
 normal boolean expressions with explicit syntax.
 
-For the C++ frontend's two semantic passes, planned checks, and regression cases,
-see the `semantic analysis migration plan <compiler/Semantic%20Migration.rst>`_.
-
 Contributing
 ------------
 

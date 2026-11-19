@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <format>
 
+#include <ast/decl/class_declaration.hpp>
 #include <lexer/lexer.hpp>
 #include <parser/parser.hpp>
 #include <semantic/checker.hpp>
@@ -63,6 +64,16 @@ std::string ResolvedType::spelling () const {
 		s_result += s_suffix;
 	}
 	return s_result;
+}
+
+ResultKind ExpressionInfo::resultKind () const {
+	if (!fallsThrough) return ResultKind::Never;
+	if (types.empty()) return ResultKind::Empty;
+	return types.size() == 1 ? ResultKind::Single : ResultKind::Multiple;
+}
+
+ExpressionInfo ExpressionInfo::never () {
+	return { .types = {}, .fallsThrough = false };
 }
 
 CheckedProgram::CheckedProgram (SymbolTable entry) {
@@ -149,6 +160,9 @@ void Analyzer::registerScope (const SymbolScope &scope, std::size_t file, const 
 	for (const SymbolScope::value_type &entry : scope) {
 		for (const Symbol &sym : entry.second) {
 			declarations.emplace(&sym, DeclarationInfo{ file, owner });
+			if (sym.kind == SymbolKind::Constructor && dynamic_cast<const PrimaryConstructorDeclaration *>(callable(sym))) {
+				declarations.at(owner).primaryConstructor = &sym;
+			}
 			v_order.push_back(&sym);
 			if (const TypeParameterList *parameters = typeParameters(sym)) {
 				for (const TypeParameterDeclaration &parameter : parameters->parameters) {
@@ -276,6 +290,10 @@ Candidates Analyzer::lookup (const Symbol &context, const std::string &name) con
 			return v_found;
 		}
 	}
+	return lookupFile(context, name);
+}
+
+Candidates Analyzer::lookupFile (const Symbol &context, const std::string &name) const {
 	const Names &names = v_names[declarations.at(&context).file];
 	const auto   it    = names.find(name);
 	return it == names.end() ? Candidates{} : it->second;
@@ -315,7 +333,25 @@ void Analyzer::requireAccess (const Symbol &symbol, const Symbol &context, const
 
 void Analyzer::checkBodies () {
 	for (const Symbol *sym : v_order) {
+		if (sym->classFieldIndex) {
+			continue;
+		}
+		const Symbol *sym_primary = declarations.at(sym).primaryConstructor;
+		if (sym_primary) {
+			checkBodyOf(*sym_primary);
+		}
 		checkBodyOf(*sym);
+		if (!sym_primary) {
+			continue;
+		}
+		const ClassDeclaration &cd_class = static_cast<const ClassDeclaration &>(*std::get<const TypeDeclaration *>(sym->declaration));
+		// The primary checked its defaults and the class checked its base call. Field initializers now follow source order.
+		for (const ClassMember &cm_member : cd_class.members) {
+			if (const ClassFieldDeclaration *cfd_field = std::get_if<ClassFieldDeclaration>(&cm_member.value)) {
+				const std::vector<Symbol> &v_group = sym->members.at(cfd_field->name.get_lexeme());
+				checkBodyOf(*std::ranges::find(v_group, SymbolKind::Field, &Symbol::kind));
+			}
+		}
 	}
 }
 

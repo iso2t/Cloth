@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <ast/decl/class_declaration.hpp>
+#include <ast/stmt/statements.hpp>
 #include <cde/cloth_diagnostic.hpp>
 #include <lexer/lexer.hpp>
 #include <parser/parser.hpp>
@@ -25,6 +27,195 @@ void expectError (const std::string &source, cde::DiagnosticCode code) {
 		ASSERT_FALSE(error.get_source_labels().empty());
 		EXPECT_NE(error.get_source_labels().front().span.source, nullptr);
 	}
+}
+
+const Expression &bodyExpression (const Symbol &symbol) {
+	const CallableSignature &cs_function = *std::get<const CallableSignature *>(symbol.declaration);
+	return *std::get<ExpressionBody>(cs_function.executableBody()->value).expression;
+}
+
+TEST (SemanticChecking, RetainsWrittenArgumentsAndDeclarationSiteDefaults) {
+	const CheckedProgram     cp_program = checkSource(R"(fn<int, bool> use(int helper) = pick(ok = true, n = helper)
+fn<int> helper(int n) = n
+fn<int, bool> pick(opt<int> start ?: 2, int n, opt<int> extra ?: helper(n), bool ok) = extra, ok
+fn<int, bool> positional() = pick(4, false)
+fn<int?> maybe(opt<int?> n ?: 7) = n
+fn<int?> supplied() = maybe(null)
+fn<int?> omitted() = maybe()
+)");
+	const SymbolScope       &ss_globals = cp_program.units.front()->get_globals();
+	const Symbol            &sym_pick   = ss_globals.at("pick").front();
+	const CallableSignature &cs_pick    = *std::get<const CallableSignature *>(sym_pick.declaration);
+	const CallExpression    &ce_call    = dynamic_cast<const CallExpression &>(bodyExpression(ss_globals.at("use").front()));
+	const ExpressionInfo    &ei_call    = cp_program.expressions.at(&ce_call);
+	EXPECT_EQ(ei_call.symbol, &sym_pick);
+	ASSERT_EQ(ei_call.argumentContract, &sym_pick);
+	EXPECT_EQ(ei_call.parameterForArgument, (std::vector<std::size_t>{ 3, 1 }));
+	EXPECT_EQ(ei_call.omittedParameters, (std::vector<std::size_t>{ 0, 2 }));
+	EXPECT_EQ(ei_call.types, (ResultTypes{ ResolvedType(kInteger), ResolvedType(kBoolean) }));
+	const CallableSignature &cs_use = *std::get<const CallableSignature *>(ss_globals.at("use").front().declaration);
+	EXPECT_EQ(cp_program.expressions.at(ce_call.suppliedArguments[1].expression.get()).binding, &cs_use.parameters.front().name);
+	const CallExpression &ce_default = dynamic_cast<const CallExpression &>(*cs_pick.parameters[2].defaultValue);
+	EXPECT_EQ(cp_program.expressions.at(&ce_default).symbol, &ss_globals.at("helper").front());
+	EXPECT_EQ(cp_program.expressions.at(ce_default.suppliedArguments.front().expression.get()).binding, &cs_pick.parameters[1].name);
+	const ExpressionInfo &ei_positional = cp_program.expressions.at(&bodyExpression(ss_globals.at("positional").front()));
+	EXPECT_EQ(ei_positional.parameterForArgument, (std::vector<std::size_t>{ 1, 3 }));
+	EXPECT_EQ(ei_positional.omittedParameters, ei_call.omittedParameters);
+	EXPECT_TRUE(cp_program.expressions.at(&bodyExpression(ss_globals.at("supplied").front())).omittedParameters.empty());
+	EXPECT_EQ(cp_program.expressions.at(&bodyExpression(ss_globals.at("omitted").front())).omittedParameters, (std::vector<std::size_t>{ 0 }));
+}
+
+TEST (SemanticChecking, UsesTheStaticParameterContractForMethodsAndConstruction) {
+	const CheckedProgram  cp_program = checkSource(R"(typedef<class> Base {
+    pub Base(opt<int> n ?: 1) : () {}
+    virtual: pub mt<int> read(opt<int> count ?: 2) = count
+}
+typedef<class> Child : Base() {
+    override: pub mt<int> read(int renamed) = renamed
+}
+fn<int> derived(Child child) = child.read()
+fn<int> labeled(Child child) = child.read(count = 7)
+fn<int> base(Base item) = item.read()
+)");
+	const SymbolScope    &ss_globals = cp_program.units.front()->get_globals();
+	const Symbol         &sym_base = ss_globals.at("Base").front(), &sym_child = ss_globals.at("Child").front();
+	const Symbol         &sym_contract = sym_base.members.at("read").front(), &sym_override = sym_child.members.at("read").front();
+	const ExpressionInfo &ei_derived = cp_program.expressions.at(&bodyExpression(ss_globals.at("derived").front()));
+	EXPECT_EQ(ei_derived.symbol, &sym_override);
+	EXPECT_EQ(ei_derived.argumentContract, &sym_contract);
+	EXPECT_EQ(ei_derived.omittedParameters, (std::vector<std::size_t>{ 0 }));
+	const ExpressionInfo &ei_labeled = cp_program.expressions.at(&bodyExpression(ss_globals.at("labeled").front()));
+	EXPECT_EQ(ei_labeled.argumentContract, &sym_contract);
+	EXPECT_EQ(ei_labeled.parameterForArgument, (std::vector<std::size_t>{ 0 }));
+	EXPECT_TRUE(ei_labeled.omittedParameters.empty());
+	EXPECT_EQ(cp_program.expressions.at(&bodyExpression(ss_globals.at("base").front())).symbol, &sym_contract);
+	const ClassDeclaration &cd_child  = dynamic_cast<const ClassDeclaration &>(*std::get<const TypeDeclaration *>(sym_child.declaration));
+	const ExpressionInfo   &ei_parent = cp_program.parentConstructors.at(&cd_child.parents.front());
+	ASSERT_NE(ei_parent.argumentContract, nullptr);
+	EXPECT_EQ(ei_parent.symbol, ei_parent.argumentContract);
+	EXPECT_EQ(ei_parent.omittedParameters, (std::vector<std::size_t>{ 0 }));
+	EXPECT_EQ(cp_program.declarations.at(ei_parent.argumentContract).owner, &sym_base);
+}
+
+TEST (SemanticChecking, ChecksDefaultsEvenWhenEveryCallSuppliesTheArgument) {
+	using Code = cde::DiagnosticCode;
+	expectError("fn f(opt<int> n ?: n) {}\nfn test() = f(2)", Code::INVALID_PARAMETER_DEFAULT);
+	expectError("fn f(opt<int> n ?: later, int later) {}", Code::INVALID_PARAMETER_DEFAULT);
+	expectError("fn f(opt<int> n ?: caller) {}\nfn test(int caller) = f()", Code::UNKNOWN_NAME);
+	expectError("fn f(opt<int> n ?: if (true) { return 1 } else { 2 }) {}", Code::INVALID_PARAMETER_DEFAULT);
+	expectError("fn f(int[] n, opt<int> x ?: if (true) { n[0] = 1\n n[0] } else { 0 }) {}", Code::INVALID_PARAMETER_DEFAULT);
+	expectError("fn f(int n, opt<int> x ?: if (true) { def<int> edit = { n++\n return n }\n edit } else { 0 }) {}", Code::INVALID_PARAMETER_DEFAULT);
+	EXPECT_NO_THROW(checkSource("fn f(int n, opt<int> x ?: if (true) { def<int> read = { return n }\n read } else { 0 }) { n++ }"));
+	expectError("fn f(opt<int> n ?: 1, int required) {}\nfn use() = f()", Code::INVALID_ARGUMENT_BINDING);
+	expectError("fn<int> f(int<8> x) = 1\nfn<int, bool> f(int<64> x, opt<bool> flag ?: true) = 2, flag\nfn<int> use() = f(1)", Code::AMBIGUOUS_CALL);
+}
+
+TEST (SemanticChecking, DistinguishesOrderedResultsEmptyAndNoncontinuingExpressions) {
+	const CheckedProgram  cp_program = checkSource(R"(fn<int<8>, bool> choose(bool flag) = if (flag) { return 1, true } else { 2, false }
+fn<int<8>, bool> exit(bool flag) = if (flag) { return choose(flag) } else { return 3, true }
+fn<int<8>, bool> list(bool flag) = if (flag) { return 1, true } else { return 2, false }, false
+fn noop() {}
+fn empty() = noop()
+fn<int> single() = 1
+fn<int<8>, bool> receive(bool flag) {
+    def n, ok = choose(flag)
+    n, ok = if (flag) { return n, ok } else { 4, false }
+    return n, ok
+}
+)");
+	const SymbolScope    &ss_globals = cp_program.units.front()->get_globals();
+	const IfExpression   &ie_choose  = dynamic_cast<const IfExpression &>(bodyExpression(ss_globals.at("choose").front()));
+	const ResultTypes    &v_expected = cp_program.declarations.at(&ss_globals.at("choose").front()).returns;
+	const ExpressionInfo &ei_choose  = cp_program.expressions.at(&ie_choose);
+	ASSERT_EQ(ei_choose.resultKind(), ResultKind::Multiple);
+	EXPECT_EQ(ei_choose.types, v_expected);
+	ASSERT_EQ(v_expected.size(), 2u);
+	EXPECT_EQ(v_expected[0].spelling(), "int<8>");
+	EXPECT_EQ(v_expected[1], ResolvedType(kBoolean));
+	EXPECT_EQ(cp_program.expressions.at(&bodyExpression(ss_globals.at("empty").front())).resultKind(), ResultKind::Empty);
+	EXPECT_EQ(cp_program.expressions.at(&bodyExpression(ss_globals.at("single").front())).resultKind(), ResultKind::Single);
+	for (const std::string_view s_name : { "exit", "list" }) {
+		const ExpressionInfo &ei_exit = cp_program.expressions.at(&bodyExpression(ss_globals.find(s_name)->second.front()));
+		EXPECT_EQ(ei_exit.resultKind(), ResultKind::Never);
+		EXPECT_TRUE(ei_exit.types.empty());
+	}
+	const CallableSignature       &cs_receive = *std::get<const CallableSignature *>(ss_globals.at("receive").front().declaration);
+	const BlockBody               &bb_receive = std::get<BlockBody>(cs_receive.executableBody()->value);
+	const BindingGroupDeclaration &bg_group   = dynamic_cast<const BindingGroupDeclaration &>(*bb_receive.statements[0]);
+	EXPECT_EQ(cp_program.localTypes.at(&bg_group.targets[0].get_token()), v_expected[0]);
+	EXPECT_EQ(cp_program.localTypes.at(&bg_group.targets[1].get_token()), v_expected[1]);
+	const MultiAssignmentStatement &ma_assign = dynamic_cast<const MultiAssignmentStatement &>(*bb_receive.statements[1]);
+	EXPECT_EQ(cp_program.expressions.at(ma_assign.value.get()).types, v_expected);
+}
+
+TEST (SemanticChecking, ChecksArityAndEveryResultSlotEvenAfterAnExit) {
+	using Code = cde::DiagnosticCode;
+	expectError("fn<int, bool> f() = 1", Code::RESULT_ARITY);
+	expectError("fn<int, bool> f(bool b) = if (b) { 1, true } else { 2 }", Code::BRANCH_RESULT_ARITY);
+	expectError("fn<int, bool> f() = if (true) { 1, true } else { 2, 3 }", Code::BRANCH_TYPE_MISMATCH);
+	expectError("fn<int, bool> f() { return 1, 2 }", Code::RETURN_TYPE);
+	expectError("fn<int, int<8>> f() = if (true) { return 1, 2 } else { return 3, 4 }, 128", Code::INTEGER_RANGE);
+	expectError("fn f(bool b) = if (b) { 1, true } else { 2, false }", Code::VALUE_IN_VOID);
+	expectError("fn noop() {}\nfn f() { def a, b = noop() }", Code::VOID_VALUE);
+	expectError("fn<int, bool> pair() = 1, true\nfn f() { def x = pair() }", Code::MULTIPLE_RESULTS_IN_SCALAR);
+	EXPECT_NO_THROW(checkSource("fn<int> f(bool flag) { def<int, int> a, b = if (flag) { return 1 } else { return 2 }\n return a + b }"));
+	EXPECT_NO_THROW(checkSource("fn<int> f(bool flag, int x) { x = if (flag) { return 1 } else { return 2 } }"));
+}
+
+TEST (SemanticChecking, CommitsOnlyTheSelectedOverloadInWrittenOrder) {
+	const CheckedProgram       cp_program = checkSource(R"(fn consume(int<8> n) {}
+fn consume(int<64> n) {}
+fn<int, bool> pair() = 1, true
+fn<int, bool> run(bool flag) {
+    consume(if (flag) { return pair() } else { 1000 })
+    return pair()
+}
+)");
+	const SymbolScope         &ss_globals = cp_program.units.front()->get_globals();
+	const CallableSignature   &cs_run     = *std::get<const CallableSignature *>(ss_globals.at("run").front().declaration);
+	const BlockBody           &bb_run     = std::get<BlockBody>(cs_run.executableBody()->value);
+	const ExpressionStatement &es_call    = dynamic_cast<const ExpressionStatement &>(*bb_run.statements.front());
+	const CallExpression      &ce_call    = dynamic_cast<const CallExpression &>(*es_call.expression);
+	const ExpressionInfo      &ei_call    = cp_program.expressions.at(&ce_call);
+	EXPECT_EQ(ei_call.symbol, &ss_globals.at("consume")[1]);
+	const IfExpression &ie_arg = dynamic_cast<const IfExpression &>(*ce_call.suppliedArguments.front().expression);
+	EXPECT_EQ(cp_program.expressions.at(&ie_arg).types.front().width, 64u);
+	const ReturnStatement &rs_return    = dynamic_cast<const ReturnStatement &>(*ie_arg.branches.front().statements.front());
+	const ExpressionInfo  &ei_forwarded = cp_program.expressions.at(rs_return.value.get());
+	EXPECT_EQ(ei_forwarded.symbol, &ss_globals.at("pair").front());
+	EXPECT_EQ(ei_forwarded.resultKind(), ResultKind::Multiple);
+	using Code = cde::DiagnosticCode;
+	expectError("fn use(int x, int<8> n) {}\nfn f(int? x) { if (x != null) { use(n = if (true) { x = null\n 1 } else { 2 }, x = x) } }",
+	            Code::NO_MATCHING_CALL);
+	expectError("fn use(int<8> x) {}\nfn use(int<64> x) {}\nfn<int<8>> f(bool b) { use(if (b) { return 128 } else { 1 })\n return 2 }",
+	            Code::INTEGER_RANGE);
+	std::string s_nested = "0";
+	for (std::size_t st_level = 0; st_level < 24; ++st_level) s_nested = "sum(1, " + s_nested + ")";
+	EXPECT_NO_THROW(checkSource("fn<int> sum(int<8> n, int x) = x\nfn<int> sum(int<8> n, bool flag) = 0\nfn<int> use() = " + s_nested));
+}
+
+TEST (SemanticChecking, KeepsGuardedAndExitedArgumentPathsDistinct) {
+	const CheckedProgram           cp_program = checkSource(R"(typedef<class> Counter { pub mt<int> count(int n) = n }
+fn<int?> read(Counter? value, bool flag) = value?.count(if (flag) { return 1 } else { return 2 })
+)");
+	const GuardedAccessExpression &ga_read =
+	        dynamic_cast<const GuardedAccessExpression &>(bodyExpression(cp_program.units.front()->get_globals().at("read").front()));
+	const ExpressionInfo &ei_access = cp_program.expressions.at(&ga_read);
+	EXPECT_EQ(ei_access.resultKind(), ResultKind::Single);
+	ASSERT_EQ(ei_access.types.size(), 1u);
+	EXPECT_EQ(ei_access.types.front().spelling(), "int?");
+	const ExpressionInfo &ei_present = cp_program.expressions.at(ga_read.continuation.get());
+	EXPECT_EQ(ei_present.resultKind(), ResultKind::Never);
+	EXPECT_TRUE(ei_present.types.empty());
+	ASSERT_NE(ei_present.argumentContract, nullptr);
+	EXPECT_EQ(ei_present.argumentContract->name.get_lexeme(), "count");
+	using Code = cde::DiagnosticCode;
+	expectError("typedef<class> C { pub mt<int, bool> pair() = 1, true }\nfn f(C? c) { c?.pair() }", Code::MULTIPLE_RESULTS_IN_SCALAR);
+	expectError("fn sink(int x) {}\nfn<int> f(bool b) { while (true) { sink(if (b) { break } else { 3 }) } }", Code::MISSING_RETURN);
+	EXPECT_NO_THROW(checkSource(
+	        "fn sink(int a, int b) {}\nfn<int> f(bool b) { while (true) { sink(if (b) { return 1 } else { return 2 }, if (b) { break } else { 3 }) } }"));
+	EXPECT_NO_THROW(checkSource(
+	        "fn<int, bool> f(bool b) { while (true) { (if (b) { return 1, true } else { return 2, false }), if (b) { break } else { true } } }"));
 }
 
 TEST (SemanticChecking, RetainsSelectedOverloadAndLexicalBinding) {
@@ -166,6 +357,84 @@ fn<int> work() {
 	expectError("typedef<class> Box(int x)\nfn<Box> leak() = Box::new(1)", Code::PRIVATE_CLASS_MEMBER);
 	expectError("typedef<class> Lamp { state Missing }", Code::INVALID_STATE_ATTACHMENT);
 	expectError("typedef<class> C { pub state<int> On {} }\nfn bad(C c) { c -> On() }", Code::INVALID_STATE_PAYLOAD);
+}
+
+TEST (SemanticChecking, DelegatesToThePrimaryAndKeepsOrdinaryConstructorOverloads) {
+	const CheckedProgram          cp_program    = checkSource(R"(typedef<class> Counter(def<int<8>> seed) {
+    pub Counter(bool flag) : (1) { self.seed = 2 }
+    Counter(int number) : (number -> int<8>) {}
+}
+fn<Counter> make() = Counter::new(true)
+)");
+	const SymbolScope            &ss_globals    = cp_program.units.front()->get_globals();
+	const Symbol                 &sym_counter   = ss_globals.at("Counter").front();
+	const ClassDeclaration       &cd_counter    = dynamic_cast<const ClassDeclaration &>(*std::get<const TypeDeclaration *>(sym_counter.declaration));
+	const ConstructorDeclaration &cd_secondary  = std::get<ConstructorDeclaration>(cd_counter.members.front().value);
+	const ExpressionInfo         &ei_delegation = cp_program.expressions.at(&cd_secondary.delegation);
+	ASSERT_NE(ei_delegation.symbol, nullptr);
+	EXPECT_EQ(ei_delegation.symbol, cp_program.declarations.at(&sym_counter).primaryConstructor);
+	const PrimaryConstructorDeclaration *pcd_primary =
+	        dynamic_cast<const PrimaryConstructorDeclaration *>(std::get<const CallableSignature *>(ei_delegation.symbol->declaration));
+	ASSERT_NE(pcd_primary, nullptr);
+	EXPECT_EQ(pcd_primary->owner.get(), &cd_counter);
+	EXPECT_EQ(ei_delegation.parameterForArgument, (std::vector<std::size_t>{ 0 }));
+	const ExpressionInfo &ei_argument = cp_program.expressions.at(cd_secondary.delegation.suppliedArguments.front().expression.get());
+	ASSERT_EQ(ei_argument.types.size(), 1u);
+	EXPECT_EQ(ei_argument.types.front().width, 8u);
+
+	const CallableSignature &cs_make     = *std::get<const CallableSignature *>(ss_globals.at("make").front().declaration);
+	const Expression        &e_creation  = *std::get<ExpressionBody>(cs_make.executableBody()->value).expression;
+	const ExpressionInfo    &ei_creation = cp_program.expressions.at(&e_creation);
+	ASSERT_NE(ei_creation.symbol, nullptr);
+	EXPECT_EQ(std::get<const CallableSignature *>(ei_creation.symbol->declaration), &cd_secondary);
+}
+
+TEST (SemanticChecking, ReadsFieldsInDeclarationOrderAndKeepsOtherInstancesIndependent) {
+	const CheckedProgram         cp_program = checkSource(R"(typedef<class> Base { pub def<int> inherited = 1 }
+typedef<class> Sample(int seed, def<int> offset ?: seed, def<Sample> other) : Base {
+    def<int> z = seed + self.offset
+    def<int> a = z + self.z
+    def<int> total = self.inherited + other.last + self.other.read()
+    def<int> last = 1
+    mt<int> read() = self.last
+}
+)");
+	const Symbol                &sym_sample = cp_program.units.front()->get_globals().at("Sample").front();
+	const Symbol                &sym_z      = sym_sample.members.at("z").front();
+	const ClassFieldDeclaration &cfd_a      = *std::get<const ClassFieldDeclaration *>(sym_sample.members.at("a").front().declaration);
+	const BinaryExpression      &be_sum     = dynamic_cast<const BinaryExpression &>(*cfd_a.initializer);
+	EXPECT_EQ(cp_program.expressions.at(be_sum.left.get()).symbol, &sym_z);
+	EXPECT_EQ(cp_program.expressions.at(be_sum.right.get()).symbol, &sym_z);
+}
+
+TEST (SemanticChecking, ChecksTheReceiverDuringConstructorDefaultsAndDelegation) {
+	using Code = cde::DiagnosticCode;
+	expectError("typedef<class> C(def<int> x ?: self.x)", Code::PARTIAL_CLASS_INSTANCE);
+	expectError("typedef<class> C(def<int> x) { C(float y) : (self.x) {} }", Code::PARTIAL_CLASS_INSTANCE);
+	expectError("typedef<class> Base(int x)\ntypedef<class> C(def<int> x) : Base(self.x)", Code::PARTIAL_CLASS_INSTANCE);
+	expectError("typedef<class> C(def<int> x ?: if (true) { return } else { 1 })", Code::INVALID_PARAMETER_DEFAULT);
+	EXPECT_NO_THROW(checkSource("fn<int> seed() = 1\ntypedef<class> C(def<int> x ?: seed()) { mt<bool> seed() = false }"));
+}
+
+TEST (SemanticChecking, RestrictsUsesOfTheInstanceDuringFieldInitialization) {
+	using Code = cde::DiagnosticCode;
+	expectError("typedef<class> C { def<int> a = b\ndef<int> b = 1 }", Code::PARTIAL_CLASS_INSTANCE);
+	expectError("typedef<class> C { def<int> a = self.a }", Code::PARTIAL_CLASS_INSTANCE);
+	expectError("fn<int> take(C c) = 1\ntypedef<class> C { def<int> x = take(self) }", Code::PARTIAL_CLASS_INSTANCE);
+	expectError("typedef<class> C { def<int> a = read()\nmt<int> read() = 1 }", Code::PARTIAL_CLASS_INSTANCE);
+	expectError("typedef<class> C { def<int> a = self.read()\nmt<int> read() = 1 }", Code::PARTIAL_CLASS_INSTANCE);
+	expectError("typedef<class> C { def<int> a = 1\ndef<int> b = if (true) { a = 2; a } else { 0 } }", Code::PARTIAL_CLASS_INSTANCE);
+	expectError("typedef<class> C(def<int[1]> a) { def<int> x = if (true) { self.a[0] = 9; self.a[0] } else { 0 } }", Code::PARTIAL_CLASS_INSTANCE);
+	expectError("typedef<class> Other(pub def<int> n)\ntypedef<class> C(def<Other> other) { def<int> x = if (true) { self.other.n = 2; 1 } else { 0 } }",
+	            Code::PARTIAL_CLASS_INSTANCE);
+	expectError("typedef<struct> S { pub mt<int> read() = 1 }\ntypedef<class> C(def<S> s) { def<int> x = self.s.read() }", Code::PARTIAL_CLASS_INSTANCE);
+	expectError("typedef<class> C { def<int> x = if (true) { return } else { 0 } }", Code::PARTIAL_CLASS_INSTANCE);
+	EXPECT_NO_THROW(checkSource(R"(typedef<class> C {
+    default: state<void> Ready {}
+    def<bool> ready = self is Ready
+    def<int> first = if (true) { def<int> local := { return 1 }; local } else { 0 }
+}
+)"));
 }
 
 TEST (SemanticChecking, ResolvesUpdatesAndDistinguishesStateTypeAndValueTests) {

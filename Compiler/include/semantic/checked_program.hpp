@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <deque>
 #include <map>
 #include <memory>
@@ -18,6 +19,7 @@
 namespace cloth {
 
 struct BinaryExpression;
+struct ClassParentClause;
 struct TypeCheckExpression;
 
 struct ResolvedType {
@@ -46,32 +48,48 @@ using Substitutions = std::map<const TypeParameterDeclaration *, ResolvedType>;
 struct DeclarationInfo {
 	std::size_t                 file;
 	const Symbol               *owner;
-	ResultTypes                 parameters    = {};
-	ResultTypes                 returns       = {};
-	ResultTypes                 parents       = {};
-	std::optional<ResolvedType> value         = {};
-	const Symbol               *attachedState = nullptr;
-	bool                        inferResult   = false;
+	ResultTypes                 parameters         = {};
+	ResultTypes                 returns            = {};
+	ResultTypes                 parents            = {};
+	std::optional<ResolvedType> value              = {};
+	const Symbol               *attachedState      = nullptr;
+	bool                        inferResult        = false;
+	const Symbol               *primaryConstructor = nullptr;
 };
 
+// Stored paths select storage in the enclosing instance. Indirect paths continue
+// through a reference or a user-defined index operation.
+enum class ReceiverFieldPath { None, Stored, Indirect };
+
+enum class ResultKind { Empty, Single, Multiple, Never };
+
 struct ExpressionInfo {
-	ResultTypes              types;
-	const Symbol            *symbol               = nullptr;
-	const Token             *binding              = nullptr;
+	ResultTypes   types;
+	const Symbol *symbol  = nullptr;
+	const Token  *binding = nullptr;
+	// Owns the labels, default expressions and generic parameters used to bind this call.
+	const Symbol *argumentContract = nullptr;
+	// Supplied expressions stay in source order. Omitted parameters follow in declaration order.
 	std::vector<std::size_t> parameterForArgument = {};
+	std::vector<std::size_t> omittedParameters    = {};
 	bool                     fallsThrough         = true;
 	Substitutions            typeArguments        = {};
+	ReceiverFieldPath        receiverFieldPath    = ReceiverFieldPath::None;
+
+	[[nodiscard]] ResultKind resultKind () const;
+	static ExpressionInfo    never ();
 };
 
 struct CheckedProgram {
 	explicit CheckedProgram (SymbolTable entry);
 
 	// Keep the parsed units and generated declarations alive for the semantic results.
-	std::vector<std::unique_ptr<const SymbolTable>>        units;
-	std::deque<Symbol>                                     constructorRequirements;
-	std::unordered_map<const Symbol *, DeclarationInfo>    declarations;
-	std::unordered_map<const Expression *, ExpressionInfo> expressions;
-	std::unordered_map<const Token *, ResolvedType>        localTypes;
+	std::vector<std::unique_ptr<const SymbolTable>>               units;
+	std::deque<Symbol>                                            constructorRequirements;
+	std::unordered_map<const Symbol *, DeclarationInfo>           declarations;
+	std::unordered_map<const Expression *, ExpressionInfo>        expressions;
+	std::unordered_map<const ClassParentClause *, ExpressionInfo> parentConstructors;
+	std::unordered_map<const Token *, ResolvedType>               localTypes;
 	// An "is" target can resolve to a value after parsing. Keep that expression alive with its bindings.
 	std::unordered_map<const TypeCheckExpression *, std::shared_ptr<const BinaryExpression>> valueTests;
 	std::unordered_map<const Statement *, ExpressionInfo>                                    writes;

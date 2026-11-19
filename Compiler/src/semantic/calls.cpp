@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <ranges>
+#include <variant>
 
 #include <semantic/checker.hpp>
 #include <token/token.hpp>
@@ -9,49 +10,68 @@
 namespace cloth::semantic {
 namespace {
 
-std::optional<std::vector<std::size_t>> placeArguments (const std::vector<CallArgument> &args, const std::vector<ParameterDeclaration> &params) {
-	std::vector destinations(args.size(), params.size());
-	std::vector supplied(params.size(), false);
-	std::size_t positional = 0;
-	for (std::size_t i = 0; i < args.size(); ++i) {
-		if (!args[i].label) {
-			++positional;
+struct ArgumentPlacement {
+	std::vector<std::size_t> destinations;
+	std::vector<std::size_t> omitted;
+};
+
+struct BindingProblem {
+	TokenSpan    span;
+	std::string  message;
+	const Token *declaration;
+};
+
+using PlacementResult = std::variant<ArgumentPlacement, BindingProblem>;
+
+PlacementResult placeArguments (const std::vector<CallArgument> &arguments, const Symbol &symbol, const TokenSpan &span) {
+	const std::vector<ParameterDeclaration> &v_parameters = callable(symbol)->parameters;
+	ArgumentPlacement                        ap_placement{ std::vector<std::size_t>(arguments.size()), {} };
+	std::vector<const Token *>               v_labels(v_parameters.size());
+	std::size_t                              st_positional = 0;
+	for (std::size_t st_source = 0; st_source < arguments.size(); ++st_source) {
+		const std::optional<Token> &opt_label = arguments[st_source].label;
+		if (!opt_label) {
+			++st_positional;
 			continue;
 		}
-		const auto it =
-		        std::ranges::find_if(params, [&] (const ParameterDeclaration &p) { return p.name.get_lexeme() == args[i].label->get_lexeme(); });
-		if (it == params.end()) {
-			return std::nullopt;
+		const std::vector<ParameterDeclaration>::const_iterator it_parameter = std::ranges::find_if(
+		        v_parameters, [&] (const ParameterDeclaration &parameter) { return parameter.name.get_lexeme() == opt_label->get_lexeme(); });
+		if (it_parameter == v_parameters.end()) {
+			return BindingProblem{ opt_label->get_span(), "Unknown argument label '" + opt_label->get_lexeme() + "'", &symbol.name };
 		}
-		destinations[i]           = static_cast<std::size_t>(it - params.begin());
-		supplied[destinations[i]] = true;
+		const std::size_t st_slot            = static_cast<std::size_t>(it_parameter - v_parameters.begin());
+		ap_placement.destinations[st_source] = st_slot;
+		v_labels[st_slot]                    = &*opt_label;
 	}
-	std::size_t required = 0;
-	for (std::size_t i = 0; i < params.size(); ++i) {
-		if (!supplied[i] && !params[i].isOptional()) {
-			++required;
+	std::size_t st_required = 0;
+	for (std::size_t st_slot = 0; st_slot < v_parameters.size(); ++st_slot) {
+		if (!v_labels[st_slot] && !v_parameters[st_slot].isOptional()) {
+			++st_required;
 		}
 	}
-	std::size_t next = 0;
-	for (std::size_t i = 0; i < params.size(); ++i) {
-		if (!params[i].isOptional() && !supplied[i]) {
-			--required;
+	std::size_t st_next = 0;
+	for (std::size_t st_slot = 0; st_slot < v_parameters.size(); ++st_slot) {
+		const ParameterDeclaration &pd_parameter = v_parameters[st_slot];
+		const Token                *t_label      = v_labels[st_slot];
+		if (!pd_parameter.isOptional() && !t_label) {
+			--st_required;
 		}
-		if (next < positional && (!params[i].isOptional() || positional - next > required)) {
-			if (supplied[i]) {
-				return std::nullopt;
+		if (st_next < st_positional && (!pd_parameter.isOptional() || st_positional - st_next > st_required)) {
+			if (t_label) {
+				return BindingProblem{ t_label->get_span(), "Parameter '" + t_label->get_lexeme() + "' is supplied twice", &pd_parameter.name };
 			}
-			destinations[next++] = i;
-			supplied[i]          = true;
-		}
-		if (!supplied[i] && !params[i].isOptional()) {
-			return std::nullopt;
+			ap_placement.destinations[st_next++] = st_slot;
+		} else if (!t_label) {
+			if (!pd_parameter.isOptional()) {
+				return BindingProblem{ span, "Missing required argument '" + pd_parameter.name.get_lexeme() + "'", &pd_parameter.name };
+			}
+			ap_placement.omitted.push_back(st_slot);
 		}
 	}
-	if (next != positional) {
-		return std::nullopt;
+	if (st_next < st_positional) {
+		return BindingProblem{ arguments[st_next].get_span(), "Too many positional arguments", &symbol.name };
 	}
-	return destinations;
+	return ap_placement;
 }
 
 void inferArguments (const ResolvedType &pattern, ResolvedType actual, const TypeParameterList &generic, Substitutions &args) {
@@ -80,21 +100,82 @@ void inferArguments (const ResolvedType &pattern, ResolvedType actual, const Typ
 	}
 }
 
-bool contextualFailure (const Code code) {
+bool contextualFailure (const cde::ClothDiagnostic &error) {
+	if (dynamic_cast<const ReturnDiagnostic *>(&error)) return false;
+	const Code code = error.get_code();
 	return code == Code::TYPE_MISMATCH || code == Code::INTEGER_RANGE || code == Code::FLOAT_RANGE || code == Code::INVALID_ARRAY ||
 	       code == Code::INVALID_STRUCT_LITERAL || code == Code::BRANCH_TYPE_MISMATCH || code == Code::INVALID_NULLABLE_TYPE ||
 	       code == Code::MIXED_INTEGERS;
 }
 
-struct Match {
-	const Symbol            *symbol;
-	std::vector<std::size_t> destinations;
-	ResultTypes              parameters;
-	Substitutions            substitutions;
-	int                      rank;
-	std::size_t              omitted;
+struct PlacedCandidate {
+	const Candidate  &candidate;
+	ArgumentPlacement placement;
 };
 
+std::vector<PlacedCandidate> bindCandidates (const Token &name, const TokenSpan &span, const std::vector<CallArgument> &arguments,
+                                             const std::vector<Candidate> &group, bool named) {
+	std::vector<PlacedCandidate>  v_placed;
+	std::optional<BindingProblem> opt_firstProblem;
+	bool                          b_optional = false;
+	for (const Candidate &c_candidate : group) {
+		PlacementResult pr_result = placeArguments(arguments, *c_candidate.symbol, span);
+		if (ArgumentPlacement *ap_placement = std::get_if<ArgumentPlacement>(&pr_result)) {
+			v_placed.push_back({ c_candidate, std::move(*ap_placement) });
+		} else {
+			if (!opt_firstProblem) opt_firstProblem = std::get<BindingProblem>(std::move(pr_result));
+			b_optional |= std::ranges::any_of(callable(*c_candidate.symbol)->parameters, &ParameterDeclaration::isOptional);
+		}
+	}
+	if (v_placed.empty()) {
+		if (named || b_optional) fail(Code::INVALID_ARGUMENT_BINDING, opt_firstProblem->span, opt_firstProblem->message, opt_firstProblem->declaration);
+		fail(Code::CALL_ARITY, span, "No overload of '" + name.get_lexeme() + "' accepts these arguments", &group.front().symbol->name);
+	}
+	return v_placed;
+}
+
+enum class MatchRank { Exact, Assignable, Contextual };
+
+struct Match {
+	const Symbol     *symbol;
+	const Symbol     *contract;
+	ArgumentPlacement placement;
+	ResultTypes       parameters;
+	Substitutions     substitutions;
+	MatchRank         rank;
+
+	[[nodiscard]] std::size_t omittedCount () const {
+		return placement.omitted.size();
+	}
+};
+}
+
+bool BodyChecker::checkArguments (const std::vector<CallArgument> &arguments, const ResultTypes &parameters, const std::vector<ArgumentProbe> &probes,
+                                  bool contextual) {
+	bool                       b_continues = true;
+	std::optional<BodyChecker> opt_unreachable;
+	for (std::size_t st_source = 0; st_source < arguments.size(); ++st_source) {
+		const ResolvedType  &rt_parameter = parameters[st_source];
+		const Expression    &e_argument   = *arguments[st_source].expression;
+		BodyChecker         &bc_operand   = onPath(b_continues, opt_unreachable);
+		const ArgumentProbe &ap_probe     = probes[st_source];
+		const bool           b_sameInput  = ap_probe.result && ap_probe.before == bc_operand.fs_flow;
+		const bool           b_fits = b_sameInput && (!ap_probe.result->fallsThrough || analyzer.accepts(rt_parameter, ap_probe.result->types.front()));
+		// A nested function or method call has a fixed return contract. Only construction can infer class arguments from the expected type.
+		if (b_sameInput && !b_fits && dynamic_cast<const CallSite *>(&e_argument) && !dynamic_cast<const ClassCreationExpression *>(&e_argument)) {
+			require(ap_probe.result->types, { rt_parameter }, e_argument.get_span());
+		}
+		if (b_fits && !record) {
+			// Reuse an already typed operand only with the same incoming facts, then carry its effects to the next written argument.
+			bc_operand.fs_flow = ap_probe.after;
+			b_continues &= ap_probe.result->fallsThrough;
+			continue;
+		}
+		const std::optional<ResolvedType> opt_actual = bc_operand.scalar(e_argument, contextual && !b_fits ? &rt_parameter : nullptr);
+		if (opt_actual) require({ *opt_actual }, { rt_parameter }, e_argument.get_span());
+		b_continues &= opt_actual.has_value();
+	}
+	return b_continues;
 }
 
 ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, const std::vector<CallArgument> &arguments, const std::vector<Candidate> &group,
@@ -103,49 +184,54 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 	if (group.empty()) {
 		fail(Code::UNKNOWN_NAME, name.get_span(), "Unknown callable '" + spelling + "'");
 	}
-	std::set<std::string> labels;
+	std::map<std::string, const Token *> labels;
 	for (const CallArgument &arg : arguments) {
 		if (!arg.label && !labels.empty()) {
 			fail(Code::INVALID_ARGUMENT_BINDING, arg.get_span(), "Positional arguments must precede named arguments");
 		}
-		if (arg.label && !labels.insert(arg.label->get_lexeme()).second) {
-			fail(Code::INVALID_ARGUMENT_BINDING, arg.label->get_span(), "Duplicate argument label");
+		if (arg.label) {
+			const std::pair<decltype(labels)::iterator, bool> it_inserted = labels.emplace(arg.label->get_lexeme(), &*arg.label);
+			if (!it_inserted.second) {
+				fail(Code::INVALID_ARGUMENT_BINDING, arg.label->get_span(), "Duplicate argument label", it_inserted.first->second);
+			}
 		}
 	}
+	std::vector<PlacedCandidate>             v_placed = bindCandidates(name, span, arguments, group, !labels.empty());
 	std::vector<std::optional<ResolvedType>> explicitTypes;
 	if (typeArguments) {
 		for (const TypeReference &ref : typeArguments->arguments) {
 			explicitTypes.push_back(ref.is_placeholder() ? std::nullopt : std::optional{ analyzer.checkedType(ref, context) });
 		}
 	}
-	std::vector<std::optional<ResolvedType>> ordinary;
-	BodyChecker                              natural = *this;
+	std::vector<ArgumentProbe> v_probes;
+	BodyChecker                natural            = *this;
+	natural.record                                = false;
+	bool                       b_naturalContinues = true;
+	std::optional<BodyChecker> opt_unreachable;
 	for (const CallArgument &arg : arguments) {
+		BodyChecker  &bc_input = natural.onPath(b_naturalContinues, opt_unreachable);
+		ArgumentProbe ap_probe{ .result = {}, .before = bc_input.fs_flow, .after = bc_input.fs_flow };
 		if (knownArguments) {
-			ordinary.emplace_back(knownArguments->at(ordinary.size()));
-			continue;
-		}
-		try {
-			ordinary.emplace_back(natural.scalar(*arg.expression));
-		} catch (const cde::ClothDiagnostic &error) {
-			if (!contextualFailure(error.get_code())) {
-				throw;
+			ap_probe.result = ExpressionInfo{ { knownArguments->at(v_probes.size()) } };
+		} else {
+			BodyChecker bc_operand = bc_input;
+			try {
+				ap_probe.result = bc_operand.scalarInfo(*arg.expression);
+				ap_probe.after = bc_input.fs_flow = std::move(bc_operand.fs_flow);
+				b_naturalContinues &= ap_probe.result->fallsThrough;
+			} catch (const cde::ClothDiagnostic &error) {
+				if (!contextualFailure(error)) throw;
 			}
-			ordinary.emplace_back();
 		}
+		v_probes.push_back(std::move(ap_probe));
 	}
 	std::vector<Match> matches;
-	bool               placed       = false;
 	const Symbol      *inaccessible = nullptr;
-	for (const Candidate &candidate : group) {
-		const Symbol            &symbol       = *candidate.symbol;
-		const CallableSignature &signature    = *callable(symbol);
-		const DeclarationInfo   &info         = analyzer.declarations.at(&symbol);
-		const auto               destinations = placeArguments(arguments, signature.parameters);
-		if (!destinations) {
-			continue;
-		}
-		placed                                 = true;
+	for (PlacedCandidate &pc_placed : v_placed) {
+		const Candidate         &candidate     = pc_placed.candidate;
+		ArgumentPlacement       &ap_placement  = pc_placed.placement;
+		const Symbol            &symbol        = *candidate.symbol;
+		const DeclarationInfo   &info          = analyzer.declarations.at(&symbol);
 		Substitutions            substitutions = candidate.arguments;
 		const TypeParameterList *generic       = candidate.inferOwner ? candidate.inferOwner : typeParameters(symbol);
 		const std::size_t        count         = generic ? generic->parameters.size() : 0;
@@ -158,9 +244,10 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 			}
 		}
 		if (generic) {
-			for (std::size_t i = 0; i < ordinary.size(); ++i) {
-				if (ordinary[i]) {
-					inferArguments(info.parameters[(*destinations)[i]], *ordinary[i], *generic, substitutions);
+			for (std::size_t i = 0; i < v_probes.size(); ++i) {
+				const std::optional<ExpressionInfo> &opt_result = v_probes[i].result;
+				if (opt_result && opt_result->fallsThrough) {
+					inferArguments(info.parameters[ap_placement.destinations[i]], opt_result->types.front(), *generic, substitutions);
 				}
 			}
 		}
@@ -183,46 +270,50 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 		if (!viable) {
 			continue;
 		}
-		Match match{ .symbol        = &symbol,
-			     .destinations  = *destinations,
+		Match match{ .symbol        = candidate.overridingMethod ? candidate.overridingMethod : &symbol,
+			     .contract      = &symbol,
+			     .placement     = std::move(ap_placement),
 			     .parameters    = {},
 			     .substitutions = {},
-			     .rank          = 0,
-			     .omitted       = signature.parameters.size() - arguments.size() };
+			     .rank          = MatchRank::Exact };
 		for (std::size_t i = 0; i < arguments.size(); ++i) {
-			const ResolvedType parameter = substitute(info.parameters[(*destinations)[i]], substitutions);
+			const ResolvedType parameter = substitute(info.parameters[match.placement.destinations[i]], substitutions);
 			match.parameters.push_back(parameter);
-			if (ordinary[i] && *ordinary[i] == parameter) {
+			const std::optional<ExpressionInfo> &opt_result = v_probes[i].result;
+			if (opt_result && opt_result->fallsThrough && opt_result->types.front() == parameter) {
 				continue;
 			}
-			if (ordinary[i] && analyzer.accepts(parameter, *ordinary[i])) {
-				match.rank = std::max(match.rank, 1);
+			if (opt_result && (!opt_result->fallsThrough || analyzer.accepts(parameter, opt_result->types.front()))) {
+				match.rank = std::max(match.rank, MatchRank::Assignable);
 				continue;
 			}
+			match.rank = MatchRank::Contextual;
+		}
+		if (match.rank == MatchRank::Contextual) {
 			BodyChecker trial = *this;
 			trial.record      = false;
 			try {
-				viable = analyzer.accepts(parameter, trial.scalar(*arguments[i].expression, &parameter));
+				trial.checkArguments(arguments, match.parameters, v_probes, true);
 			} catch (const cde::ClothDiagnostic &error) {
 				if (error.get_code() == Code::PRIVATE_CLASS_MEMBER || error.get_code() == Code::PRIVATE_NESTED_TYPE) {
-					if (group.size() == 1) {
+					if (group.size() == 1 || dynamic_cast<const ReturnDiagnostic *>(&error)) {
 						throw;
 					}
-				} else if (!contextualFailure(error.get_code())) {
+				} else if (!contextualFailure(error)) {
 					throw;
 				}
 				viable = false;
 			}
-			if (!viable) {
-				break;
-			}
-			match.rank = 2;
 		}
 		if (!viable) {
 			continue;
 		}
 		if (!analyzer.accessible(symbol, context)) {
 			inaccessible = &symbol;
+			continue;
+		}
+		if (candidate.overridingMethod && !analyzer.accessible(*candidate.overridingMethod, context)) {
+			inaccessible = candidate.overridingMethod;
 			continue;
 		}
 		match.substitutions = std::move(substitutions);
@@ -232,38 +323,44 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 		if (inaccessible) {
 			analyzer.requireAccess(*inaccessible, context, span);
 		}
-		const Code code = placed ? Code::NO_MATCHING_CALL : labels.empty() ? Code::CALL_ARITY : Code::INVALID_ARGUMENT_BINDING;
-		fail(code, span, "No overload of '" + spelling + "' accepts these arguments", &group.front().symbol->name);
+		fail(Code::NO_MATCHING_CALL, span, "No overload of '" + spelling + "' accepts these arguments", &group.front().symbol->name);
 	}
-	const int rank = std::ranges::min_element(matches, {}, &Match::rank)->rank;
-	std::erase_if(matches, [rank] (const Match &m) { return m.rank != rank; });
+	const MatchRank mr_best = std::ranges::min_element(matches, {}, &Match::rank)->rank;
+	std::erase_if(matches, [mr_best] (const Match &match) { return match.rank != mr_best; });
 	if (std::ranges::all_of(matches, [&] (const Match &m) { return m.parameters == matches.front().parameters; })) {
-		const std::size_t omitted = std::ranges::min_element(matches, {}, &Match::omitted)->omitted;
-		std::erase_if(matches, [omitted] (const Match &m) { return m.omitted != omitted; });
-		if (std::ranges::any_of(matches, [] (const Match &m) { return !typeParameters(*m.symbol); })) {
-			std::erase_if(matches, [] (const Match &m) { return typeParameters(*m.symbol) != nullptr; });
+		const std::size_t st_omitted = std::ranges::min_element(matches, {}, &Match::omittedCount)->omittedCount();
+		std::erase_if(matches, [st_omitted] (const Match &match) { return match.omittedCount() != st_omitted; });
+		if (std::ranges::any_of(matches, [] (const Match &m) { return !typeParameters(*m.contract); })) {
+			std::erase_if(matches, [] (const Match &m) { return typeParameters(*m.contract) != nullptr; });
 		}
 	}
 	if (matches.size() != 1) {
 		fail(Code::AMBIGUOUS_CALL, span, "Ambiguous call to '" + spelling + "'", &matches.front().symbol->name);
 	}
-	const Match &best = matches.front();
-	for (std::size_t i = 0; i < arguments.size(); ++i) {
-		if (!ordinary[i] || !analyzer.accepts(best.parameters[i], *ordinary[i])) {
-			expect(*arguments[i].expression, best.parameters[i]);
+	Match &best        = matches.front();
+	bool   b_continues = true;
+	if (!knownArguments || best.rank == MatchRank::Contextual) {
+		// Only the selected contract commits facts. Replay written arguments in source order.
+		if (!record && best.rank != MatchRank::Contextual) {
+			fs_flow     = std::move(natural.fs_flow);
+			b_continues = b_naturalContinues;
+		} else {
+			b_continues = checkArguments(arguments, best.parameters, v_probes, best.rank == MatchRank::Contextual);
 		}
 	}
 	ResultTypes results;
-	for (const ResolvedType &rt : analyzer.resultsOf(*best.symbol)) {
+	for (const ResolvedType &rt : analyzer.resultsOf(*best.contract)) {
 		results.push_back(substitute(rt, best.substitutions));
 	}
 	remember(name, best.symbol->name);
 	return { .types                = std::move(results),
 		 .symbol               = best.symbol,
 		 .binding              = nullptr,
-		 .parameterForArgument = best.destinations,
-		 .fallsThrough         = true,
-		 .typeArguments        = best.substitutions };
+		 .argumentContract     = best.contract,
+		 .parameterForArgument = std::move(best.placement.destinations),
+		 .omittedParameters    = std::move(best.placement.omitted),
+		 .fallsThrough         = b_continues,
+		 .typeArguments        = std::move(best.substitutions) };
 }
 
 }

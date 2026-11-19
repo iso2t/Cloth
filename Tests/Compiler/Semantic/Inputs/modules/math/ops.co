@@ -2,3 +2,4 @@
 using main: identity
 fn<int> helper(int x) = identity(x)
 pub fn<int> twice(int x) = helper(x) + x
+pub fn<int> adjusted(int start, opt<int> delta ?: helper(start), int end) = end + delta

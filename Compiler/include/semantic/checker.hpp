@@ -34,6 +34,12 @@ using Code       = cde::DiagnosticCode;
 using Candidates = std::vector<const Symbol *>;
 using Names      = std::map<std::string, Candidates, std::less<>>;
 
+// An enclosing return contract is fixed even while its containing argument is being probed.
+struct ReturnDiagnostic : cde::ClothDiagnostic {
+	explicit ReturnDiagnostic (const ClothDiagnostic &error) : ClothDiagnostic(error) {
+	}
+};
+
 [[noreturn]] void        fail (Code code, const TokenSpan &span, std::string message, const Token *related = nullptr);
 const CallableSignature *callable (const Symbol &symbol);
 const TypeParameterList *typeParameters (const Symbol &symbol);
@@ -41,9 +47,12 @@ ResolvedType             substitute (ResolvedType type, const Substitutions &arg
 
 struct Candidate {
 	const Symbol            *symbol;
-	Substitutions            arguments  = {};
-	const TypeParameterList *inferOwner = nullptr;
+	Substitutions            arguments        = {};
+	const TypeParameterList *inferOwner       = nullptr;
+	const Symbol            *overridingMethod = nullptr;
 };
+
+enum class MemberLookup { Declaration, CallContract };
 
 class Analyzer {
     public:
@@ -58,7 +67,9 @@ class Analyzer {
 	[[nodiscard]] ResolvedType                    ownerType (const Symbol &symbol) const;
 	[[nodiscard]] Substitutions                   argumentsOf (const ResolvedType &type) const;
 	[[nodiscard]] Candidates                      lookup (const Symbol &context, const std::string &name) const;
-	[[nodiscard]] std::vector<Candidate>          members (const ResolvedType &type, std::string_view name, SymbolKind kind) const;
+	[[nodiscard]] Candidates                      lookupFile (const Symbol &context, const std::string &name) const;
+	[[nodiscard]] std::vector<Candidate>          members (const ResolvedType &type, std::string_view name, SymbolKind kind,
+	                                                       MemberLookup lookup = MemberLookup::Declaration) const;
 	[[nodiscard]] bool                            accessible (const Symbol &symbol, const Symbol &context) const;
 	void                                          requireAccess (const Symbol &symbol, const Symbol &context, const TokenSpan &use) const;
 	[[nodiscard]] bool                            accepts (const ResolvedType &expected, const ResolvedType &actual) const;
@@ -83,10 +94,11 @@ class Analyzer {
 };
 
 struct Binding {
-	ResolvedType type;
-	const Token *name;
-	bool         mutableBinding;
-	bool         deferred = false;
+	// An unannotated binding after a noncontinuing initializer has no stored value.
+	std::optional<ResolvedType> type;
+	const Token                *name;
+	bool                        mutableBinding;
+	bool                        deferred = false;
 };
 
 class BodyChecker {
@@ -95,32 +107,72 @@ class BodyChecker {
 	void check ();
 
     private:
+	enum class ReceiverPhase { Ready, ConstructorDefault, Delegation, FieldInitializer };
+
+	struct Receiver {
+		ResolvedType      type;
+		bool              isType       = false;
+		ReceiverFieldPath fieldPath    = ReceiverFieldPath::None;
+		bool              fallsThrough = true;
+	};
+
+	struct GuardedPayload {
+		const GuardedReceiver &node;
+		ExpressionInfo         value;
+	};
+
+	const GuardedPayload                       *gp_payload       = nullptr;
+	ReceiverPhase                               rp_receiverPhase = ReceiverPhase::Ready;
+	const ParameterDeclaration                 *pd_default       = nullptr;
+	bool                                        b_nestedFunction = false;
 	Analyzer                                   &analyzer;
 	const Symbol                               &context;
 	const Symbol                               *owner;
 	ResultTypes                                 returns;
 	std::vector<std::map<std::string, Binding>> scopes{ 1 };
 	using Narrowing = std::map<const Token *, ResolvedType>;
-	Narrowing narrowed;
-	unsigned  loopDepth       = 0;
-	bool      loopMayBreak    = false;
-	bool      loopMayContinue = false;
-	bool      record          = true;
+
+	struct FlowState {
+		Narrowing narrowed;
+		bool      loopMayBreak                        = false;
+		bool      loopMayContinue                     = false;
+		bool      operator==(const FlowState &) const = default;
+	};
+
+	struct ArgumentProbe {
+		std::optional<ExpressionInfo> result;
+		FlowState                     before, after;
+	};
+
+	FlowState fs_flow;
+	unsigned  loopDepth = 0;
+	bool      record    = true;
 
 	[[nodiscard]] const Binding *local (const std::string &name) const;
-	void                         bind (const Token &name, ResolvedType type, bool mutableBinding, bool deferred = false);
+	void                         bind (const Token &name, std::optional<ResolvedType> type, bool mutableBinding, bool deferred = false);
+	void                         checkDefaultName (const Token &name) const;
+	bool                         readOnlyDefaultRoot (const Expression &node) const;
 	[[nodiscard]] ResolvedType   selfType () const;
+	[[nodiscard]] bool           hasInstance () const;
+	void                         checkFieldRead (const Symbol &field, const Token &use) const;
+	void                         checkFieldWrite (const ExpressionInfo &target, const TokenSpan &span) const;
+	ResolvedType                 recordSelf (const Expression &node);
 	ExpressionInfo               call (const CallExpression &node);
 	ExpressionInfo               create (const ClassCreationExpression &node, const ResolvedType *hint);
 	ExpressionInfo               cast (const CastExpression &node);
 	bool                         loop (const LoopStatement &node);
 	ExpressionInfo               expression (const Expression &node, const ResultTypes *expected = nullptr, bool discard = false);
-	ExpressionInfo               infer (const Expression &node, const ResultTypes *expected, bool discard);
-	ResolvedType                 scalar (const Expression &node, const ResolvedType *expected = nullptr);
+	BodyChecker                 &onPath (bool reachable, std::optional<BodyChecker> &unreachable);
+	bool           checkArguments (const std::vector<CallArgument> &arguments, const ResultTypes &parameters, const std::vector<ArgumentProbe> &probes,
+	                               bool contextual);
+	ExpressionInfo infer (const Expression &node, const ResultTypes *expected, bool discard);
+	std::optional<ResolvedType> scalar (const Expression &node, const ResolvedType *expected = nullptr);
+	ExpressionInfo              scalarInfo (const Expression &node, const ResolvedType *expected = nullptr);
 	void                     require (const ResultTypes &actual, const ResultTypes &expected, const TokenSpan &span, Code code = Code::TYPE_MISMATCH) const;
-	void                     expect (const Expression &node, const ResolvedType &type);
+	bool                     expect (const Expression &node, const ResolvedType &type);
+	void                     checkReturn (const Expression &node);
 	ExpressionInfo           name (const Token &token);
-	ResolvedType             receiver (const Expression &node, bool &isType, bool allowOpen = false);
+	std::optional<Receiver>  receiver (const Expression &node, bool allowOpen = false);
 	ExpressionInfo           field (const FieldAccessExpression &node);
 	std::optional<Candidate> stateTarget (const ResolvedType &receiver, const Token &name);
 	ExpressionInfo           transition (const Candidate &state, const ExpressionPtr &payload, const TokenSpan &span);
@@ -131,12 +183,12 @@ class BodyChecker {
 	ExpressionInfo condition (const IfExpression &node, const ResultTypes *expected, bool discard);
 	ExpressionInfo block (const std::vector<StatementPtr> &statements, const ResultTypes *expected = nullptr, bool value = false);
 	bool           statement (const Statement &node);
-	void           assign (const Token &name, const ResolvedType &value);
+	void           assign (const Token &name, const std::optional<ResolvedType> &value);
 	bool           receive (const std::vector<ReceivingTarget> &targets, const Expression &producer, const std::vector<TypeReference> *annotations,
 	                        bool mutableBinding = false);
 	void           writable (const Expression &target);
-	bool           updateOperator (const Statement &statement, const ResolvedType &receiver, const Token &op, const ExpressionPtr &rhs);
-	void writeMember (const Statement &statement, const ExpressionPtr &target, const Token &op, const ExpressionPtr &rhs, const ExpressionPtr &compound);
+	std::optional<ExpressionInfo> updateOperator (const Statement &statement, const ResolvedType &receiver, const Token &op, const ExpressionPtr &rhs);
+	bool writeMember (const Statement &statement, const ExpressionPtr &target, const Token &op, const ExpressionPtr &rhs, const ExpressionPtr &compound);
 	void checkBody (const FunctionBody &body);
 	void remember (const Token &use, const Token &declaration) const;
 	void refine (const Expression &test, bool truth);

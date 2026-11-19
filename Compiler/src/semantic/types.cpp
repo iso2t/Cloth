@@ -243,7 +243,7 @@ bool Analyzer::sameSignature (const Candidate &left, const Candidate &right, boo
 	return sameTypes(first.parameters, second.parameters) && (!includeResults || sameTypes(first.returns, second.returns));
 }
 
-std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_view name, SymbolKind kind) const {
+std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_view name, SymbolKind kind, MemberLookup lookup) const {
 	std::vector<Candidate> v_members;
 	if (!type.suffixes.empty()) {
 		return v_members;
@@ -299,23 +299,32 @@ std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_
 	// A diamond can reach one declaration twice. A derived override also occupies its parent's callable slot.
 	std::vector<Candidate> unique;
 	for (const Candidate &candidate : v_members) {
-		const DeclarationInfo &current = declarations.at(candidate.symbol);
-		const bool             hidden  = std::ranges::any_of(unique, [&] (const Candidate &prior) {
-                        if (prior.symbol == candidate.symbol) {
-                                return prior.arguments == candidate.arguments;
-                        }
-                        const DeclarationInfo &previous = declarations.at(prior.symbol);
-                        if (kind != SymbolKind::Method || previous.owner == current.owner || !previous.owner || !current.owner ||
-                            !sameSignature(prior, candidate)) {
-                                return false;
-                        }
-                        if (asClass(previous.owner) && asInterface(current.owner)) {
-                                return true;
-                        }
-                        return accepts(substitute(ownerType(*current.owner), candidate.arguments), substitute(ownerType(*previous.owner), prior.arguments));
-                });
-		if (!hidden) {
+		const DeclarationInfo                 &current  = declarations.at(candidate.symbol);
+		const std::vector<Candidate>::iterator it_prior = std::ranges::find_if(unique, [&] (const Candidate &prior) {
+			if (prior.symbol == candidate.symbol) {
+				return prior.arguments == candidate.arguments;
+			}
+			const DeclarationInfo &previous = declarations.at(prior.symbol);
+			if (kind != SymbolKind::Method || previous.owner == current.owner || !previous.owner || !current.owner ||
+			    !sameSignature(prior, candidate)) {
+				return false;
+			}
+			if (asClass(previous.owner) && asInterface(current.owner)) {
+				return true;
+			}
+			return accepts(substitute(ownerType(*current.owner), candidate.arguments), substitute(ownerType(*previous.owner), prior.arguments));
+		});
+		if (it_prior == unique.end()) {
 			unique.push_back(candidate);
+		} else if (lookup == MemberLookup::CallContract && it_prior->symbol != candidate.symbol && asClass(current.owner)) {
+			const auto *md_base     = dynamic_cast<const MethodDeclaration *>(callable(*candidate.symbol));
+			const auto *md_override = dynamic_cast<const MethodDeclaration *>(callable(*it_prior->symbol));
+			// An override supplies a body. Calls retain the original labels, defaults and generic parameter identities.
+			if (md_base && md_base->virtualPrefix && md_override && md_override->overridePrefix) {
+				const Symbol *sym_override = it_prior->symbol;
+				*it_prior                  = candidate;
+				it_prior->overridingMethod = sym_override;
+			}
 		}
 	}
 	return unique;

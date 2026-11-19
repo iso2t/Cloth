@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <format>
+#include <functional>
 #include <ranges>
 
 #include <ast/decl/enum_declaration.hpp>
@@ -40,13 +41,40 @@ void BodyChecker::remember (const Token &use, const Token &declaration) const {
 	}
 }
 
-void BodyChecker::bind (const Token &name, ResolvedType type, const bool mutableBinding, const bool deferred) {
+void BodyChecker::bind (const Token &name, std::optional<ResolvedType> type, const bool mutableBinding, const bool deferred) {
 	const auto [fst, snd] = scopes.back().emplace(
 	        name.get_lexeme(), Binding{ .type = std::move(type), .name = &name, .mutableBinding = mutableBinding, .deferred = deferred });
 	if (!snd) {
 		fail(Code::DUPLICATE_BINDING, name.get_span(), "Duplicate binding '" + name.get_lexeme() + "'", fst->second.name);
 	}
-	if (record) analyzer.program.localTypes[&name] = fst->second.type;
+	if (record && fst->second.type) analyzer.program.localTypes[&name] = *fst->second.type;
+}
+
+void BodyChecker::checkDefaultName (const Token &name) const {
+	if (!pd_default || local(name.get_lexeme())) return;
+	for (const ParameterDeclaration &pd_parameter : callable(context)->parameters) {
+		if (pd_parameter.name.get_lexeme() == name.get_lexeme()) {
+			fail(Code::INVALID_PARAMETER_DEFAULT, name.get_span(), "A default can only read earlier parameters", &pd_parameter.name);
+		}
+	}
+}
+
+bool BodyChecker::readOnlyDefaultRoot (const Expression &node) const {
+	if (!pd_default) return false;
+	if (const FieldAccessExpression *fa_field = dynamic_cast<const FieldAccessExpression *>(&node)) return readOnlyDefaultRoot(*fa_field->receiver);
+	if (const IndexExpression *ie_index = dynamic_cast<const IndexExpression *>(&node)) return readOnlyDefaultRoot(*ie_index->array);
+	if (const CastExpression *ce_cast = dynamic_cast<const CastExpression *>(&node)) return readOnlyDefaultRoot(*ce_cast->operand);
+	if (const GuardedReceiver *gr_receiver = dynamic_cast<const GuardedReceiver *>(&node)) return readOnlyDefaultRoot(*gr_receiver->source);
+	if (const GuardedAccessExpression *ga_access = dynamic_cast<const GuardedAccessExpression *>(&node))
+		return readOnlyDefaultRoot(*ga_access->continuation);
+	const NameExpression *ne_name = dynamic_cast<const NameExpression *>(&node);
+	if (!ne_name) return false;
+	const std::string &s_name = ne_name->name.get_lexeme();
+	if (const Binding *b_binding = local(s_name)) {
+		return std::ranges::any_of(callable(context)->parameters,
+		                           [b_binding] (const ParameterDeclaration &parameter) { return &parameter.name == b_binding->name; });
+	}
+	return hasInstance() && (s_name == to_string(kSelf) || !analyzer.members(selfType(), s_name, SymbolKind::Field).empty());
 }
 
 ResolvedType BodyChecker::selfType () const {
@@ -58,6 +86,23 @@ ResolvedType BodyChecker::selfType () const {
 		return state.owner ? analyzer.ownerType(*state.owner) : state.parents.front();
 	}
 	return analyzer.ownerType(*owner);
+}
+
+bool BodyChecker::hasInstance () const {
+	return owner && rp_receiverPhase != ReceiverPhase::ConstructorDefault && rp_receiverPhase != ReceiverPhase::Delegation;
+}
+
+void BodyChecker::checkFieldRead (const Symbol &field, const Token &use) const {
+	if (rp_receiverPhase == ReceiverPhase::FieldInitializer && field.classFieldIndex && analyzer.declarations.at(&field).owner == owner &&
+	    *field.classFieldIndex >= context.classFieldIndex.value()) {
+		fail(Code::PARTIAL_CLASS_INSTANCE, use.get_span(), std::format("Field '{}' has not been initialized", use.get_lexeme()), &field.name);
+	}
+}
+
+void BodyChecker::checkFieldWrite (const ExpressionInfo &target, const TokenSpan &span) const {
+	if (rp_receiverPhase == ReceiverPhase::FieldInitializer && target.receiverFieldPath != ReceiverFieldPath::None) {
+		fail(Code::PARTIAL_CLASS_INSTANCE, span, "Instance fields are read-only during field initialization");
+	}
 }
 
 void BodyChecker::require (const ResultTypes &actual, const ResultTypes &expected, const TokenSpan &span, const Code code) const {
@@ -72,9 +117,39 @@ void BodyChecker::require (const ResultTypes &actual, const ResultTypes &expecte
 	}
 }
 
-void BodyChecker::expect (const Expression &node, const ResolvedType &type) {
-	const ResolvedType actual = scalar(node, &type);
-	require({ actual }, { type }, node.get_span());
+bool BodyChecker::expect (const Expression &node, const ResolvedType &type) {
+	const std::optional<ResolvedType> opt_actual = scalar(node, &type);
+	if (opt_actual) require({ *opt_actual }, { type }, node.get_span());
+	return opt_actual.has_value();
+}
+
+void BodyChecker::checkReturn (const Expression &node) {
+	ExpressionInfo ei_result;
+	try {
+		ei_result = expression(node, &returns);
+	} catch (const cde::ClothDiagnostic &error) {
+		throw ReturnDiagnostic(error);
+	}
+	if (!ei_result.fallsThrough) return;
+	if (returns.empty() && !ei_result.types.empty()) {
+		fail(Code::VALUE_IN_VOID, node.get_span(), "This callable declares no results", &context.name);
+	}
+	if (ei_result.types.size() != returns.size()) {
+		const Code dc_code = returns.size() == 1 && ei_result.types.empty() ? Code::RETURN_TYPE : Code::RESULT_ARITY;
+		fail(dc_code, node.get_span(), std::format("Expected {} result(s), found {}", returns.size(), ei_result.types.size()), &context.name);
+	}
+	const ResultListExpression *rl_list = dynamic_cast<const ResultListExpression *>(&node);
+	for (std::size_t st_slot = 0; st_slot < returns.size(); ++st_slot) {
+		if (!analyzer.accepts(returns[st_slot], ei_result.types[st_slot])) {
+			if (returns.size() == 1) {
+				fail(Code::RETURN_TYPE, node.get_span(),
+				     "Expected " + returns.front().spelling() + ", found " + ei_result.types.front().spelling(), &context.name);
+			}
+			fail(Code::RETURN_TYPE, rl_list ? rl_list->values[st_slot]->get_span() : node.get_span(),
+			     std::format("Expected {} for result {}, found {}", returns[st_slot].spelling(), st_slot + 1, ei_result.types[st_slot].spelling()),
+			     &context.name);
+		}
+	}
 }
 
 void BodyChecker::checkBody (const FunctionBody &body) {
@@ -88,36 +163,43 @@ void BodyChecker::checkBody (const FunctionBody &body) {
 			fail(Code::MISSING_RETURN, block->span, "Not every path returns a value", &context.name);
 		}
 	} else if (const ExpressionBody *bodyExpr = std::get_if<ExpressionBody>(&body.value)) {
-		if (const ExpressionInfo result = expression(*bodyExpr->expression, &returns, returns.empty()); result.fallsThrough) {
-			require(result.types, returns, bodyExpr->expression->get_span(), returns.empty() ? Code::VALUE_IN_VOID : Code::RETURN_TYPE);
-		}
+		checkReturn(*bodyExpr->expression);
 	}
 }
 
 void BodyChecker::check () {
 	const DeclarationInfo &info = analyzer.declarations.at(&context);
 	if (const CallableSignature *signature = callable(context)) {
+		if (context.kind == SymbolKind::Constructor) {
+			rp_receiverPhase = ReceiverPhase::ConstructorDefault;
+		}
 		for (std::size_t i = 0; i < signature->parameters.size(); ++i) {
 			const ParameterDeclaration &param = signature->parameters[i];
 			if (param.defaultValue) {
-				expect(*param.defaultValue, info.parameters[i]);
+				BodyChecker bc_default = *this;
+				bc_default.pd_default  = &param;
+				bc_default.expect(*param.defaultValue, info.parameters[i]);
 			}
 			bind(param.name, info.parameters[i], param.isMutable());
 		}
-		if (const auto *ctor = dynamic_cast<const ConstructorDeclaration *>(signature)) {
-			auto group = analyzer.members(selfType(), owner->name.get_lexeme(), SymbolKind::Constructor);
-			std::erase_if(group, [&] (const Candidate &c) { return c.symbol == &context; });
-			const ConstructorDelegation &d        = ctor->delegation;
-			const ExpressionInfo         selected = invoke(d.name, d.span, d.suppliedArguments, group);
+		if (const ConstructorDeclaration *cd_constructor = dynamic_cast<const ConstructorDeclaration *>(signature)) {
+			rp_receiverPhase = ReceiverPhase::Delegation;
+			const Candidate              c_primary{ analyzer.declarations.at(owner).primaryConstructor, analyzer.argumentsOf(selfType()) };
+			const ConstructorDelegation &cd_delegation = cd_constructor->delegation;
+			const ExpressionInfo         ei_call = invoke(cd_delegation.name, cd_delegation.span, cd_delegation.suppliedArguments, { c_primary });
 			if (record) {
-				analyzer.program.expressions[&d] = selected;
+				analyzer.program.expressions[&cd_delegation] = ei_call;
 			}
 		}
+		rp_receiverPhase = ReceiverPhase::Ready;
 		if (const FunctionBody *body = signature->executableBody()) {
 			if (info.inferResult) {
-				const auto        &inferred                    = std::get<ExpressionBody>(body->value);
-				const ResolvedType result                      = scalar(*inferred.expression);
-				analyzer.declarations.at(&context).returns     = { result };
+				const auto                       &inferred   = std::get<ExpressionBody>(body->value);
+				const std::optional<ResolvedType> opt_result = scalar(*inferred.expression);
+				if (!opt_result)
+					fail(Code::INVALID_OPERATOR_DECLARATION, inferred.expression->get_span(),
+					     "Cannot infer an operator result from a body that always exits", &context.name);
+				analyzer.declarations.at(&context).returns     = { *opt_result };
 				analyzer.declarations.at(&context).inferResult = false;
 			} else {
 				checkBody(*body);
@@ -144,15 +226,18 @@ void BodyChecker::check () {
 		}
 	}
 	if (context.kind == SymbolKind::Type && cd) {
+		rp_receiverPhase = ReceiverPhase::Delegation;
 		for (std::size_t i = 0; i < cd->parents.size(); ++i) {
 			if (cd->parents[i].constructorArguments) {
-				const ResolvedType &parent = info.parents[i];
-				invoke(cd->parents[i].type.get_name(), cd->parents[i].span, *cd->parents[i].constructorArguments,
-				       analyzer.members(parent, parent.name, SymbolKind::Constructor));
+				const ResolvedType &parent  = info.parents[i];
+				ExpressionInfo      ei_call = invoke(cd->parents[i].type.get_name(), cd->parents[i].span, *cd->parents[i].constructorArguments,
+				                                     analyzer.members(parent, parent.name, SymbolKind::Constructor));
+				if (record) analyzer.program.parentConstructors.emplace(&cd->parents[i], std::move(ei_call));
 			}
 		}
 	} else if (context.kind == SymbolKind::Field) {
 		if (const auto field = std::get_if<const ClassFieldDeclaration *>(&context.declaration)) {
+			rp_receiverPhase = ReceiverPhase::FieldInitializer;
 			expect(*(*field)->initializer, *info.value);
 		} else if (const auto field = std::get_if<const EnumFieldDeclaration *>(&context.declaration); field && (*field)->defaultValue) {
 			expect(*(*field)->defaultValue, *info.value);
@@ -186,6 +271,13 @@ void BodyChecker::check () {
 	}
 }
 
+BodyChecker &BodyChecker::onPath (bool reachable, std::optional<BodyChecker> &unreachable) {
+	if (reachable) return *this;
+	// Keep checking later source without letting its writes or jumps escape an exited path.
+	if (!unreachable) unreachable.emplace(*this);
+	return *unreachable;
+}
+
 ExpressionInfo BodyChecker::block (const std::vector<StatementPtr> &statements, const ResultTypes *expected, const bool value) {
 	scopes.emplace_back();
 
@@ -201,8 +293,7 @@ ExpressionInfo BodyChecker::block (const std::vector<StatementPtr> &statements, 
 	std::optional<BodyChecker> unreachable;
 	for (const StatementPtr &stmt : statements) {
 		if (!result.fallsThrough) {
-			if (!unreachable) unreachable.emplace(*this);
-			unreachable->statement(*stmt);
+			onPath(false, unreachable).statement(*stmt);
 			continue;
 		}
 		if (value && &stmt == &statements.back()) {
@@ -246,93 +337,109 @@ void BodyChecker::refine (const Expression &test, const bool truth) {
 		operand = binary->left.get();
 	}
 	const auto *name = dynamic_cast<const NameExpression *>(operand);
-	if (const Binding *binding = name ? local(name->name.get_lexeme()) : nullptr; binding && binding->type.nullable()) {
-		narrowed[binding->name] = binding->type.element();
+	if (const Binding *binding = name ? local(name->name.get_lexeme()) : nullptr; binding && binding->type && binding->type->nullable()) {
+		fs_flow.narrowed[binding->name] = binding->type->element();
 	}
 }
 
 ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTypes *expected, const bool discard) {
-	std::optional<ResultTypes> common;
-	bool                       fallsThrough = false;
-	std::optional<Narrowing>   joined;
-	const auto                 join = [&] {
-                if (!joined) {
-                        joined = narrowed;
-                } else {
-                        std::erase_if(*joined, [&] (const Narrowing::value_type &fact) {
-                                const auto it = narrowed.find(fact.first);
-                                return it == narrowed.end() || it->second != fact.second;
-                        });
-                }
+	std::optional<ResultTypes>                   opt_common;
+	std::optional<Narrowing>                     opt_joined;
+	const std::function<void(const Narrowing &)> join = [&] (const Narrowing &facts) {
+		if (!opt_joined) {
+			opt_joined = facts;
+			return;
+		}
+		std::erase_if(*opt_joined, [&facts] (const Narrowing::value_type &fact) {
+			const Narrowing::const_iterator it_fact = facts.find(fact.first);
+			return it_fact == facts.end() || it_fact->second != fact.second;
+		});
 	};
-	const auto branch = [&] (const std::vector<StatementPtr> &statements, const TokenSpan &span) {
-		const ResultTypes   *hint   = expected ? expected : common ? &*common : nullptr;
-		const ExpressionInfo result = block(statements, hint, !discard);
-		if (!result.fallsThrough) {
-			return;
+	const std::function<void(const std::vector<StatementPtr> &, const TokenSpan &, bool)> branch = [&] (const std::vector<StatementPtr> &statements,
+	                                                                                                    const TokenSpan &span, bool reachable) {
+		BodyChecker          bc_branch = *this;
+		const ExpressionInfo ei_result = bc_branch.block(statements, expected, !discard);
+		if (reachable) {
+			fs_flow.loopMayBreak |= bc_branch.fs_flow.loopMayBreak;
+			fs_flow.loopMayContinue |= bc_branch.fs_flow.loopMayContinue;
+			if (ei_result.fallsThrough) join(bc_branch.fs_flow.narrowed);
 		}
-		fallsThrough = true;
-		join();
-		if (discard) {
-			return;
-		}
-		if (result.types.empty()) {
+		if (!ei_result.fallsThrough || discard) return;
+		if (statements.empty() || !dynamic_cast<const ExpressionStatement *>(statements.back().get())) {
 			fail(Code::MISSING_BRANCH_VALUE, span, "Conditional branch needs a value");
 		}
-		if (common) {
-			if (result.types.size() == common->size()) {
-				for (std::size_t i = 0; i < result.types.size(); ++i) {
-					if (expected && expected->size() == common->size() && analyzer.accepts((*expected)[i], (*common)[i]) &&
-					    analyzer.accepts((*expected)[i], result.types[i])) {
-						(*common)[i] = (*expected)[i];
-					} else if (analyzer.accepts(result.types[i], (*common)[i])) {
-						(*common)[i] = result.types[i];
-					}
-				}
+		if (!opt_common) {
+			opt_common = ei_result.types;
+			return;
+		}
+		const ResultTypes &v_next  = ei_result.types;
+		const TokenSpan    ts_tail = statements.back()->get_span();
+		if (v_next.size() != opt_common->size()) {
+			const Code dc_code = v_next.size() > 1 || opt_common->size() > 1 ? Code::BRANCH_RESULT_ARITY : Code::BRANCH_TYPE_MISMATCH;
+			fail(dc_code, ts_tail, std::format("Conditional branches produce {} and {} results", opt_common->size(), v_next.size()));
+		}
+		for (std::size_t st_slot = 0; st_slot < v_next.size(); ++st_slot) {
+			ResolvedType &rt_common = (*opt_common)[st_slot];
+			if (v_next[st_slot] == rt_common) continue;
+			if (expected && expected->size() == v_next.size() && analyzer.accepts((*expected)[st_slot], rt_common) &&
+			    analyzer.accepts((*expected)[st_slot], v_next[st_slot])) {
+				rt_common = (*expected)[st_slot];
+			} else {
+				fail(Code::BRANCH_TYPE_MISMATCH, ts_tail,
+				     std::format("Conditional result {} has types {} and {}", st_slot + 1, rt_common.spelling(), v_next[st_slot].spelling()));
 			}
-			require(result.types, *common, span, Code::BRANCH_TYPE_MISMATCH);
-		} else {
-			common = result.types;
 		}
 	};
-	for (const auto &[condition, statements, span] : node.branches) {
-		if (const ResolvedType test = scalar(*condition); test != ResolvedType(kBoolean)) {
-			fail(Code::NON_BOOLEAN_CONDITION, condition->get_span(),
+	bool b_remaining = true;
+	for (const ConditionalBranch &cb_branch : node.branches) {
+		const std::optional<ResolvedType> opt_test = scalar(*cb_branch.condition);
+		if (opt_test && *opt_test != ResolvedType(kBoolean)) {
+			fail(Code::NON_BOOLEAN_CONDITION, cb_branch.condition->get_span(),
 			     std::format("An {} condition must be {}", to_string(kIf), to_string(kBoolean)));
 		}
-		const Narrowing incoming = narrowed;
-		refine(*condition, true);
-		branch(statements, span);
-		narrowed = incoming;
-		refine(*condition, false);
+		const BooleanLiteral *bl_test = dynamic_cast<const BooleanLiteral *>(cb_branch.condition.get());
+		b_remaining &= opt_test.has_value();
+		const Narrowing n_incoming = fs_flow.narrowed;
+		refine(*cb_branch.condition, true);
+		branch(cb_branch.statements, cb_branch.span, b_remaining && (!bl_test || bl_test->value));
+		fs_flow.narrowed = n_incoming;
+		refine(*cb_branch.condition, false);
+		b_remaining &= !bl_test || !bl_test->value;
 	}
 	if (node.otherwise) {
-		branch(*node.otherwise, *node.otherwiseSpan);
-	} else if (!discard) {
+		branch(*node.otherwise, *node.otherwiseSpan, b_remaining);
+	} else if (!discard && (b_remaining || opt_joined)) {
 		fail(Code::MISSING_ELSE, node.get_span(), std::format("A conditional value requires {}", to_string(kElse)));
-	} else {
-		fallsThrough = true;
-		join();
+	} else if (b_remaining) {
+		join(fs_flow.narrowed);
 	}
-	narrowed = joined.value_or(Narrowing{});
-	return { .types = common.value_or(ResultTypes{}), .symbol = nullptr, .binding = nullptr, .parameterForArgument = {}, .fallsThrough = fallsThrough };
+	if (!opt_joined) return ExpressionInfo::never();
+	fs_flow.narrowed = std::move(*opt_joined);
+	return { opt_common.value_or(ResultTypes{}) };
 }
 
-void BodyChecker::assign (const Token &target, const ResolvedType &value) {
-	const ExpressionInfo binding = name(target);
-	if (const Binding *b = local(target.get_lexeme()); b && (!b->mutableBinding || b->deferred)) {
-		fail(Code::IMMUTABLE_BINDING, target.get_span(), "Cannot assign to immutable binding '" + target.get_lexeme() + "'", b->name);
+void BodyChecker::assign (const Token &target, const std::optional<ResolvedType> &value) {
+	const ExpressionInfo ei_binding = name(target);
+	checkFieldWrite(ei_binding, target.get_span());
+	if (pd_default && readOnlyDefaultRoot(NameExpression(target))) {
+		fail(Code::INVALID_PARAMETER_DEFAULT, target.get_span(), "Parameter defaults can only read the receiver and earlier parameters",
+		     &pd_default->name);
 	}
-	if (!binding.binding && (!binding.symbol || binding.symbol->kind != SymbolKind::Field)) {
+	const Binding *b_local = local(target.get_lexeme());
+	if (b_local && (!b_local->mutableBinding || b_local->deferred)) {
+		fail(Code::IMMUTABLE_BINDING, target.get_span(), "Cannot assign to immutable binding '" + target.get_lexeme() + "'", b_local->name);
+	}
+	if (!ei_binding.binding && (!ei_binding.symbol || ei_binding.symbol->kind != SymbolKind::Field)) {
 		fail(Code::EXPECTED_BINDING, target.get_span(), "Expected a writable binding");
 	}
-	if (binding.symbol && std::holds_alternative<const EnumFieldDeclaration *>(binding.symbol->declaration))
-		fail(Code::INVALID_FIELD_TARGET, target.get_span(), "Enum payload fields are read-only", &binding.symbol->name);
-	if (const Binding *b = local(target.get_lexeme())) {
-		require({ value }, { b->type }, target.get_span());
-		narrowed.erase(b->name);
-	} else {
-		require({ value }, binding.types, target.get_span());
+	if (ei_binding.symbol && std::holds_alternative<const EnumFieldDeclaration *>(ei_binding.symbol->declaration)) {
+		fail(Code::INVALID_FIELD_TARGET, target.get_span(), "Enum payload fields are read-only", &ei_binding.symbol->name);
+	}
+	if (b_local) {
+		if (value && b_local->type) require({ *value }, { *b_local->type }, target.get_span());
+		fs_flow.narrowed.erase(b_local->name);
+	} else if (value) {
+		require({ *value }, ei_binding.types, target.get_span());
 	}
 }
 
@@ -352,14 +459,26 @@ bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Ex
 			if (std::holds_alternative<ReceivingTarget::Discard>(target.value))
 				expected.emplace_back();
 			else if (const Binding *binding = local(target.get_token().get_lexeme()))
-				expected.push_back(binding->type);
+				expected.push_back(binding->type.value_or(ResolvedType{}));
 			else
 				expected.push_back(name(target.get_token()).types.front());
 		}
 	}
 	ExpressionInfo result = expression(producer, expected.empty() ? nullptr : &expected);
-	if (!result.fallsThrough) return false;
-	const bool broadcast = result.types.size() == 1;
+	if (!result.fallsThrough) {
+		for (std::size_t st_slot = 0; st_slot < targets.size(); ++st_slot) {
+			if (std::holds_alternative<ReceivingTarget::Discard>(targets[st_slot].value)) continue;
+			const Token &t_target = targets[st_slot].get_token();
+			if (annotations) {
+				bind(t_target, expected.empty() ? std::nullopt : std::optional{ expected[expected.size() == 1 ? 0 : st_slot] }, mutableBinding);
+			} else {
+				assign(t_target, std::nullopt);
+			}
+		}
+		return false;
+	}
+	if (result.resultKind() == ResultKind::Empty) fail(Code::VOID_VALUE, producer.get_span(), "Assignment requires a value");
+	const bool broadcast = result.resultKind() == ResultKind::Single;
 	if (!broadcast && result.types.size() != targets.size()) fail(Code::RECEPTION_ARITY, producer.get_span(), "Target count does not match result count");
 	if (annotations && !expected.empty() && ((broadcast && expected.size() > 1) || (!broadcast && expected.size() == 1)))
 		fail(Code::RECEPTION_ANNOTATIONS, producer.get_span(), "Use one shared annotation for a scalar or one annotation per result");
@@ -367,7 +486,7 @@ bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Ex
 		if (const auto shared = std::ranges::find_if(expected, [] (const ResolvedType &t) { return !t.name.empty(); });
 		    shared != expected.end() && !analyzer.accepts(*shared, result.types.front()) &&
 		    std::ranges::all_of(expected, [&] (const ResolvedType &t) { return t.name.empty() || t == *shared; }))
-			result.types = { scalar(producer, &*shared) };
+			result = scalarInfo(producer, &*shared);
 	}
 	for (std::size_t i = 0; i < targets.size(); ++i) {
 		const ResolvedType &actual   = result.types[broadcast ? 0 : i];
@@ -407,10 +526,11 @@ void BodyChecker::writable (const Expression &target) {
 	}
 }
 
-bool BodyChecker::updateOperator (const Statement &statement, const ResolvedType &receiver, const Token &op, const ExpressionPtr &rhs) {
+std::optional<ExpressionInfo> BodyChecker::updateOperator (const Statement &statement, const ResolvedType &receiver, const Token &op,
+                                                           const ExpressionPtr &rhs) {
 	const std::vector<Candidate> candidates = analyzer.members(receiver, op.get_lexeme(), SymbolKind::Operator);
 	if (candidates.empty()) {
-		return false;
+		return std::nullopt;
 	}
 	std::vector<CallArgument> arguments;
 	if (rhs) {
@@ -420,13 +540,20 @@ bool BodyChecker::updateOperator (const Statement &statement, const ResolvedType
 	if (record) {
 		analyzer.program.writes[&statement] = selected;
 	}
-	return true;
+	return selected;
 }
 
-void BodyChecker::writeMember (const Statement &statement, const ExpressionPtr &target, const Token &op, const ExpressionPtr &rhs,
+bool BodyChecker::writeMember (const Statement &statement, const ExpressionPtr &target, const Token &op, const ExpressionPtr &rhs,
                                const ExpressionPtr &compound) {
+	if (readOnlyDefaultRoot(*target)) {
+		fail(Code::INVALID_PARAMETER_DEFAULT, target->get_span(), "Parameter defaults can only read the receiver and earlier parameters",
+		     &pd_default->name);
+	}
 	if (const auto *index = dynamic_cast<const IndexExpression *>(target.get())) {
-		if (const ResolvedType receiver = scalar(*index->array); !receiver.array() && receiver.declaration) {
+		const ExpressionInfo ei_array = scalarInfo(*index->array);
+		if (ei_array.fallsThrough && !ei_array.types.front().array() && ei_array.types.front().declaration) {
+			const ResolvedType &receiver = ei_array.types.front();
+			checkFieldWrite(ei_array, target->get_span());
 			const auto setters = analyzer.members(receiver, to_string(oIndexWrite), SymbolKind::Operator);
 			if (setters.empty()) {
 				fail(Code::INVALID_FIELD_TARGET, target->get_span(),
@@ -438,29 +565,36 @@ void BodyChecker::writeMember (const Statement &statement, const ExpressionPtr &
 				if (record) {
 					analyzer.program.writes[&statement] = selected;
 				}
-				return;
+				return selected.fallsThrough;
 			}
 			// An indexed postfix update reads the element and stores its updated value through the setter.
-			if (const ResolvedType read = scalar(*target); !read.integer() && !read.floating()) {
+			if (const std::optional<ResolvedType> opt_read = scalar(*target); opt_read && !opt_read->integer() && !opt_read->floating()) {
 				fail(Code::UNARY_OPERAND, op.get_span(), "Postfix update needs a numeric element");
 			}
 			const ExpressionInfo selected = invoke(op, statement.get_span(), { { .expression = index->index }, { .expression = target } }, setters);
 			if (record) {
 				analyzer.program.writes[&statement] = selected;
 			}
-			return;
+			return selected.fallsThrough;
 		}
 	}
-	const ResolvedType rt = scalar(*target);
+	const ExpressionInfo ei_target = scalarInfo(*target);
+	if (!ei_target.fallsThrough) {
+		if (rhs) scalar(*rhs);
+		return false;
+	}
+	checkFieldWrite(ei_target, target->get_span());
+	const ResolvedType &rt = ei_target.types.front();
 	writable(*target);
-	if ((compound || !rhs) && updateOperator(statement, rt, op, rhs)) {
-		return;
+	if (compound || !rhs) {
+		if (const std::optional<ExpressionInfo> opt_call = updateOperator(statement, rt, op, rhs)) return opt_call->fallsThrough;
 	}
 	if (compound || rhs) {
-		expect(compound ? *compound : *rhs, rt);
+		return expect(compound ? *compound : *rhs, rt);
 	} else if (!rt.integer() && !rt.floating()) {
 		fail(Code::UNARY_OPERAND, op.get_span(), "Update needs a numeric target");
 	}
+	return true;
 }
 
 bool BodyChecker::statement (const Statement &node) {
@@ -468,13 +602,18 @@ bool BodyChecker::statement (const Statement &node) {
 		return expression(*s->expression, nullptr, true).fallsThrough;
 	}
 	if (const auto *s = dynamic_cast<const ReturnStatement *>(&node)) {
+		if (pd_default && !b_nestedFunction) {
+			fail(Code::INVALID_PARAMETER_DEFAULT, s->span, std::format("'{}' cannot leave a parameter default", to_string(kReturn)),
+			     &pd_default->name);
+		}
+		if (!b_nestedFunction && rp_receiverPhase != ReceiverPhase::Ready) {
+			fail(Code::PARTIAL_CLASS_INSTANCE, s->span, std::format("'{}' cannot leave class initialization", to_string(kReturn)));
+		}
 		if (!s->value && !returns.empty()) {
 			fail(Code::RETURN_VALUE_REQUIRED, s->span, "A return value is required");
 		}
 		if (s->value) {
-			if (const ExpressionInfo result = expression(*s->value, &returns); result.fallsThrough) {
-				require(result.types, returns, s->span, returns.empty() ? Code::VALUE_IN_VOID : Code::RETURN_TYPE);
-			}
+			checkReturn(*s->value);
 		}
 		return false;
 	}
@@ -483,45 +622,54 @@ bool BodyChecker::statement (const Statement &node) {
 		if (s->type) {
 			annotation = analyzer.checkedType(*s->type, context);
 		}
-		const ResolvedType actual = scalar(*s->initializer, annotation ? &*annotation : nullptr);
-		if (annotation) {
-			require({ actual }, { *annotation }, s->initializer->get_span());
+		const std::optional<ResolvedType> opt_actual = scalar(*s->initializer, annotation ? &*annotation : nullptr);
+		if (annotation && opt_actual) {
+			require({ *opt_actual }, { *annotation }, s->initializer->get_span());
 		}
-		if (!annotation && actual.name == to_string(kNull)) {
+		if (!annotation && opt_actual && opt_actual->name == to_string(kNull)) {
 			fail(Code::EXPLICIT_NULLABLE_TYPE, s->span, std::format("A {} initializer requires an explicit nullable type", to_string(kNull)));
 		}
-		bind(s->name, annotation.value_or(actual), s->isMutable, dynamic_cast<const FunctionBlockExpression *>(s->initializer.get()) != nullptr);
+		bind(s->name, annotation ? annotation : opt_actual, s->isMutable,
+		     dynamic_cast<const FunctionBlockExpression *>(s->initializer.get()) != nullptr);
+		return opt_actual.has_value();
 	} else if (const auto *s = dynamic_cast<const BindingGroupDeclaration *>(&node)) {
 		return receive(s->targets, *s->initializer, &s->types, s->isMutable);
 	} else if (const auto *s = dynamic_cast<const AssignmentStatement *>(&node)) {
-		const Binding     *binding = local(s->name.get_lexeme());
-		const ResolvedType type    = binding ? binding->type : name(s->name).types.front();
-		if (const BinaryExpression *compound = s->get_compound();
-		    compound && updateOperator(node, scalar(*compound->left), *s->compoundOperator, compound->right)) {
-			assign(s->name, type);
-		} else {
-			assign(s->name, scalar(*s->value, &type));
+		const Binding                    *binding  = local(s->name.get_lexeme());
+		const std::optional<ResolvedType> opt_type = binding ? binding->type : std::optional{ name(s->name).types.front() };
+		if (const BinaryExpression *compound = s->get_compound()) {
+			const std::optional<ResolvedType> opt_left = scalar(*compound->left);
+			if (opt_left) {
+				if (const std::optional<ExpressionInfo> opt_update = updateOperator(node, *opt_left, *s->compoundOperator, compound->right)) {
+					assign(s->name, opt_type);
+					return opt_update->fallsThrough;
+				}
+			}
 		}
+		const std::optional<ResolvedType> opt_value = scalar(*s->value, opt_type ? &*opt_type : nullptr);
+		assign(s->name, opt_value);
+		return opt_value.has_value();
 	} else if (const auto *s = dynamic_cast<const MultiAssignmentStatement *>(&node)) {
 		return receive(s->targets, *s->value, nullptr);
 	} else if (const auto *s = dynamic_cast<const UpdateStatement *>(&node)) {
-		const ResolvedType rt = scalar(*s->target);
-		if (!updateOperator(node, rt, s->op, nullptr) && !rt.integer() && !rt.floating()) {
+		const std::optional<ResolvedType> opt_target = scalar(*s->target);
+		if (opt_target && !updateOperator(node, *opt_target, s->op, nullptr) && !opt_target->integer() && !opt_target->floating()) {
 			fail(Code::UNARY_OPERAND, s->op.get_span(), "Update needs a numeric binding or a matching operator");
 		}
-		assign(s->name, rt);
+		assign(s->name, opt_target);
+		return opt_target.has_value();
 	} else if (const auto *s = dynamic_cast<const ElementAssignmentStatement *>(&node)) {
-		writeMember(node, s->target, s->op, s->value, s->compound);
+		return writeMember(node, s->target, s->op, s->value, s->compound);
 	} else if (const auto *s = dynamic_cast<const FieldWriteStatement *>(&node)) {
-		writeMember(node, s->target, s->op, s->value, s->compound);
+		return writeMember(node, s->target, s->op, s->value, s->compound);
 	} else if (const auto *s = dynamic_cast<const LoopJumpStatement *>(&node)) {
 		if (!loopDepth) {
 			fail(Code::INVALID_LOOP_JUMP, s->get_span(), "Loop jump outside a loop");
 		}
 		if (s->isContinue()) {
-			loopMayContinue = true;
+			fs_flow.loopMayContinue = true;
 		} else {
-			loopMayBreak = true;
+			fs_flow.loopMayBreak = true;
 		}
 		return false;
 	} else if (const auto *s = dynamic_cast<const LoopStatement *>(&node)) {
@@ -530,42 +678,53 @@ bool BodyChecker::statement (const Statement &node) {
 		for (const auto &scope : scopes) {
 			for (const auto &entries : scope | std::views::values) {
 				if (entries.mutableBinding) {
-					narrowed.erase(entries.name);
+					fs_flow.narrowed.erase(entries.name);
 				}
 			}
 		}
-		const bool outerBreak = std::exchange(loopMayBreak, false), outerContinue = std::exchange(loopMayContinue, false);
+		const bool outerBreak = std::exchange(fs_flow.loopMayBreak, false), outerContinue = std::exchange(fs_flow.loopMayContinue, false);
 		bool       fallsThrough = true;
 		if (const auto *f = dynamic_cast<const ForStatement *>(s)) {
 			std::optional<ResolvedType> annotation;
 			if (f->binding.type) {
 				annotation = analyzer.checkedType(*f->binding.type, context);
 			}
-			ResolvedType rt;
+			std::optional<ResolvedType> opt_element;
 			if (const ForSource::Range *range = std::get_if<ForSource::Range>(&f->source.value)) {
-				rt = scalar(*range->start, annotation ? &*annotation : nullptr);
-				if (!rt.integer()) {
+				opt_element                               = scalar(*range->start, annotation ? &*annotation : nullptr);
+				const std::optional<ResolvedType> opt_end = scalar(*range->end, opt_element ? &*opt_element :
+				                                                                annotation  ? &*annotation :
+				                                                                              nullptr);
+				fallsThrough                              = opt_element.has_value() && opt_end.has_value();
+				if ((opt_element && !opt_element->integer()) || (opt_end && !opt_end->integer())) {
 					fail(Code::INVALID_FOR_LOOP, range->span, "Range endpoint must be an integer");
 				}
-				expect(*range->end, rt);
+				if (opt_element && opt_end) require({ *opt_end }, { *opt_element }, range->end->get_span());
+				if (!opt_element) opt_element = opt_end;
 			} else {
-				if (const ResolvedType source = scalar(*std::get<ForSource::Elements>(f->source.value).expression); source.array()) {
-					rt = source.element();
-				} else if (source.name == "range" && !source.arguments.empty()) {
-					rt = source.arguments.front();
+				const std::optional<ResolvedType> opt_source = scalar(*std::get<ForSource::Elements>(f->source.value).expression);
+				if (!opt_source) {
+					fallsThrough = false;
+				} else if (opt_source->array()) {
+					opt_element = opt_source->element();
+				} else if (opt_source->name == "range" && !opt_source->arguments.empty()) {
+					opt_element = opt_source->arguments.front();
 				} else {
 					fail(Code::INVALID_FOR_LOOP, f->source.get_span(), "Expected an array or range");
 				}
 			}
-			if (annotation) {
-				require({ rt }, { *annotation }, f->binding.get_span());
+			if (annotation && opt_element) {
+				require({ *opt_element }, { *annotation }, f->binding.get_span());
 			}
 			scopes.emplace_back();
-			bind(f->binding.name, annotation.value_or(rt), true);
+			bind(f->binding.name, annotation ? annotation : opt_element, true);
 			if (f->stepper) {
 				remember(f->stepper->target, f->binding.name);
 				if (f->stepper->value) {
-					expect(*f->stepper->value, rt);
+					if (opt_element)
+						expect(*f->stepper->value, *opt_element);
+					else
+						scalar(*f->stepper->value);
 				}
 			}
 			block(f->body.statements);
@@ -575,26 +734,25 @@ bool BodyChecker::statement (const Statement &node) {
 			const auto          *d    = dynamic_cast<const DoWhileStatement *>(s);
 			const ExpressionPtr &test = w ? w->condition : d->condition;
 			if (w) {
-				expect(*test, ResolvedType(kBoolean));
+				fallsThrough = expect(*test, ResolvedType(kBoolean));
 				refine(*test, true);
 			}
-			const ExpressionInfo body = block(w ? w->body.statements : d->body.statements);
-			if (d) {
-				expect(*test, ResolvedType(kBoolean));
-			}
-			const auto *literal = dynamic_cast<const BooleanLiteral *>(test.get());
-			fallsThrough        = loopMayBreak || (!(literal && literal->value) && (w || body.fallsThrough || loopMayContinue));
+			const ExpressionInfo body            = block(w ? w->body.statements : d->body.statements);
+			const bool           b_testContinues = w || expect(*test, ResolvedType(kBoolean));
+			const auto          *literal         = dynamic_cast<const BooleanLiteral *>(test.get());
+			fallsThrough &= fs_flow.loopMayBreak ||
+			                (b_testContinues && !(literal && literal->value) && (w || body.fallsThrough || fs_flow.loopMayContinue));
 		}
 		--loopDepth;
 		for (const auto &scope : scopes) {
 			for (const auto &entry : scope | std::views::values) {
 				if (entry.mutableBinding) {
-					narrowed.erase(entry.name);
+					fs_flow.narrowed.erase(entry.name);
 				}
 			}
 		}
-		loopMayBreak    = outerBreak;
-		loopMayContinue = outerContinue;
+		fs_flow.loopMayBreak    = outerBreak;
+		fs_flow.loopMayContinue = outerContinue;
 		return fallsThrough;
 	} else {
 		fail(Code::INTERNAL, node.get_span(), "Unrecognized statement in semantic analysis");

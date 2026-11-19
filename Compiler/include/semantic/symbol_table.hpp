@@ -2,9 +2,11 @@
 
 #pragma once
 
+#include <cstddef>
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -56,6 +58,8 @@ struct Symbol {
 	Token             name;
 	SymbolDeclaration declaration;
 	SymbolScope       members;
+	// Initialization order within the declaring class, starting with parameter fields.
+	std::optional<std::size_t> classFieldIndex = std::nullopt;
 };
 
 // Owns the syntax backing every declaration reference, including synthesized primary constructors.
