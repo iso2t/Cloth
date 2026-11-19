@@ -43,6 +43,8 @@ struct ResolvedType {
 	// Suffixes are ordered from the element outward, so int?[] differs from int[]?.
 	std::vector<std::string> suffixes;
 	unsigned                 width = 0;
+	// A symbolic leaf of a nullable or array bound selects its payload from the eventual argument.
+	std::size_t projectedSuffixes = 0;
 
 	explicit ResolvedType (std::string name = {});
 	explicit ResolvedType (Keyword keyword);

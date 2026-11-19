@@ -303,7 +303,7 @@ fn<int> check(Derived d) = through(d) + d.read(3) + d.read()
 )"));
 	using Code = cde::DiagnosticCode;
 	expectError("fn<T> choose<T>(T x) = x\nfn<U> choose<U>(U y) = y", Code::DUPLICATE_FUNCTION);
-	expectError("typedef<interface> I {}\nfn<T> constrained<T:I>(T x) = x\nfn<int> wrong() = constrained(1)", Code::NO_MATCHING_CALL);
+	expectError("typedef<interface> I {}\nfn<T> constrained<T:I>(T x) = x\nfn<int> wrong() = constrained(1)", Code::UNSATISFIED_GENERIC_BOUND);
 	expectError("typedef<class> A : B\ntypedef<class> B : A", Code::INTERFACE_INHERITANCE_CYCLE);
 	expectError("typedef<interface> I { pub mt<int> get() }\ntypedef<class> C : I", Code::MISSING_INTERFACE_IMPLEMENTATION);
 	expectError("typedef<interface> I { pub mt<int> get() }\ntypedef<class> C : I { mt<int> get() = 0 }", Code::INCOMPATIBLE_INTERFACE_REQUIREMENT);
@@ -443,7 +443,7 @@ fn<Cell<int>> inferred() = Cell::new(5)
 fn<Cell<int>> factory() = construct<Cell<int>>(5)
 )"));
 	expectError("typedef<class> Hidden(int value)\nfn<T> make<T: new(int value)>() = T::new(1)\nfn<Hidden> run() = make<Hidden>()",
-	            cde::DiagnosticCode::NO_MATCHING_CALL);
+	            cde::DiagnosticCode::UNSATISFIED_GENERIC_BOUND);
 }
 
 TEST (SemanticChecking, ChecksGroupedBindingsAndTheirDeclaredTypes) {

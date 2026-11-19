@@ -51,6 +51,12 @@ The output is `build/Cloth-Standard-Library.o`.
 
 ## Use library sources
 
+Import `using cloth.lang.num.Number : Number` to write a numeric bound such
+as `fn<T> twice<T: Number>(T value) = value + value`. Signed and unsigned
+integers, target-sized integers, and floating-point types satisfy this
+interface. A numeric type parameter retains its caller's exact type. Classes
+can implement `Number` explicitly and provide the operators their callers use.
+
 Toolchains that bundle this library make its source root available automatically;
 consumers still import each declaration explicitly. Select another checkout with
 `--stdlib PATH` on either command. The

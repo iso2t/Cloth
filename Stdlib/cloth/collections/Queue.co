@@ -1,8 +1,7 @@
 using cloth.collections.Deque : Deque
 
-pub typedef<class> Queue<T> {
-
-    def<Deque<T>> items = Deque<T>::new
+pub typedef<class> Queue<T>(def<Deque<T>> items) {
+    pub Queue() : (Deque<T>::new) {}
 
     pub mt enqueue(T value) = items.pushBack(value)
 
@@ -18,5 +17,5 @@ pub typedef<class> Queue<T> {
 
     pub mt reserve(usize minimum) = items.reserve(minimum)
 
-    ~Queue { items::delete }
+    pub ~Queue { items::delete }
 }

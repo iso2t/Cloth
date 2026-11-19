@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using cloth.collections.List: List
+using cloth.collections.Deque: Deque
+using cloth.collections.Queue: Queue
+using cloth.collections.Stack: Stack
+using cloth.io.path.Path: Path, pathOf
+using cloth.io.fs.File: File, FileError
+
+fn<int> throughCollections() {
+    def list = List<int>::new
+    list.append(1)
+    list[0] = 2
+    def deque = Deque<int>::new
+    deque.pushBack(list[0])
+    def queue = Queue<int>::new
+    queue.enqueue(deque.popFront())
+    def stack = Stack<int>::new
+    stack.push(queue.dequeue())
+    def value = stack.pop()
+    stack::delete
+    queue::delete
+    deque::delete
+    list::delete
+    return value
+}
+
+fn<bool> fileAccess(string spelling) {
+    def<Path> path = pathOf(spelling)
+    def file = File::new(path)
+    def other = File::new(path.spelling)
+    def<FileError?> opened = file.open()
+    def<unsigned int<8>[]?, FileError?> _, error = other.read(0)
+    other::delete
+    file::delete
+    return opened == null && error == FileError.NotOpen
+}
+
+// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 32 --stdlib "%/S/../../../Stdlib" --src "%/s"
+// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 64 --stdlib "%/S/../../../Stdlib" --src "%/s"

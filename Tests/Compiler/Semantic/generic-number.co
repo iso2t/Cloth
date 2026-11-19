@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using cloth.lang.num.Number: Number
+
+fn<T> twice<T: Number>(T value) = value + value
+fn<T> forward<T: Number>(T value) = twice(value)
+fn<range<T>> interval<T: Number>(T first, T last) = first .. last
+fn<bool> less<T: Number>(T a, T b) = a < b
+fn<string> describe<T: Number>(T value) = value::str
+
+fn<T> maybeTwice<T: Number?>(T value) {
+    if (value == null) return null
+    return value + value
+}
+
+fn<T> doubleFirst<T: Number[]>(T values) {
+    values[0] = twice(values[0])
+    return values
+}
+
+typedef<class> Amount : Number {
+    pub operator +(Amount other) -> Amount = self
+}
+
+fn use(int<8> small, unsigned int<16> word, isize offset, usize count, float<64> real, int<8>? maybe, float[] items, Amount amount) {
+    def<int<8>> a = forward(small)
+    def<unsigned int<16>> b = forward(word)
+    def<isize> c = twice(offset)
+    def<usize> d = twice(count)
+    def<range<float<64>>> span = interval(real, real)
+    def<bool> ordered = less(real, real)
+    def<string> text = describe(real)
+    def<int<8>?> possible = maybeTwice(maybe)
+    def<float[]> doubled = doubleFirst(items)
+    def<Amount> total = twice(amount)
+}
+
+// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 32 --stdlib "%/S/../../../Stdlib" --src "%/s"
+// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 64 --stdlib "%/S/../../../Stdlib" --src "%/s"

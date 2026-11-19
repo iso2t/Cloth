@@ -40,6 +40,8 @@ NumericConstant              numericLimit (const ResolvedType &type, TargetLayou
 void                         checkNumeric (const Expression &node, ExpressionInfo &result, const BodyFacts &facts, TargetLayout layout);
 void                         requireFinite (const Expression &operand, const BodyFacts &facts, cde::DiagnosticCode code);
 std::string                  arraySuffix (std::string_view extent = {});
+enum class ElementEvidence { None, Literal, Typed };
+ElementEvidence              elementEvidence (const Expression &operand);
 std::optional<ArrayMutation> arrayMutationNamed (std::string_view name);
 bool                         hasArrayShape (const ResolvedType &type);
 ResolvedType                 comparisonShape (ResolvedType type, const ArrayLiteral *literal = nullptr);
@@ -104,13 +106,16 @@ class Analyzer {
 	[[nodiscard]] bool                            accessible (const Symbol &symbol, const Symbol &context) const;
 	void                                          requireAccess (const Symbol &symbol, const Symbol &context, const TokenSpan &use) const;
 	[[nodiscard]] bool                            accepts (const ResolvedType &expected, const ResolvedType &actual) const;
+	[[nodiscard]] bool                            numeric (const ResolvedType &type) const;
+	[[nodiscard]] ResolvedType                    boundShape (const ResolvedType &type) const;
+	[[nodiscard]] ResultTypes                     applicationsOf (const ResolvedType &actual, const Symbol &definition) const;
 	[[nodiscard]] bool                            supportsEquality (const ResolvedType &type) const;
 	[[nodiscard]] bool                            classEqualityMayCall (const ResolvedType &type, Operator operation = oEqual) const;
 	[[nodiscard]] bool                            mayBeAbsent (const ResolvedType &type) const;
 	[[nodiscard]] bool                            hasMultipleTypeBounds (const ResolvedType &type) const;
 	[[nodiscard]] bool                            referenceType (const ResolvedType &type) const;
 	void                                          checkBounds (const ResolvedType &type, const TokenSpan &where, const Symbol &use) const;
-	bool satisfies (const TypeParameterDeclaration &parameter, const Substitutions &arguments, const Symbol &declaration, const Symbol &use) const;
+	void checkBounds (const TypeParameterDeclaration &parameter, const Substitutions &arguments, const Symbol &use, const TokenSpan &where) const;
 
 	struct LifetimeBody {
 		const Symbol               *context;
@@ -138,6 +143,7 @@ class Analyzer {
 	const GenericInstance *guaranteeOwner (const Symbol &guarantee, const Substitutions &arguments, const Symbol &context, const TokenSpan &where);
 
     private:
+	const Symbol                                    *sym_number     = nullptr;
 	const Symbol                                    *sym_owningList = nullptr;
 	std::set<std::string, std::less<>>               s_operatorNames;
 	std::vector<LifetimeBody>                        v_lifetimeBodies;
@@ -213,6 +219,11 @@ class Analyzer {
 	void                                         checkIntrinsicSignature (const Symbol &symbol, LibraryIntrinsic operation) const;
 	void                                         registerScope (const SymbolScope &scope, std::size_t file, const Symbol *owner);
 	void                                         resolveDeclaration (const Symbol &symbol);
+	ResolvedType                                 resolveType (const TypeReference &reference, const Symbol &context, unsigned depth, bool allowOpen,
+	                                                          std::set<const TypeParameterDeclaration *> &activeDefaults) const;
+	void                                         checkParameterNames (const Symbol &symbol) const;
+	void                                         checkDeclaredBounds (const TypeParameterDeclaration &parameter, const Symbol &symbol) const;
+	void checkArrayBound (const TypeParameterDeclaration &parameter, const ResolvedType &shape, const TokenSpan &where) const;
 	void                                         checkDeclarations ();
 	void                                         checkOverload (const Symbol &symbol, const Substitutions &arguments, const TokenSpan *application) const;
 	mutable std::map<ResolvedType, TypeDispatch> m_dispatch;
@@ -245,6 +256,8 @@ class Analyzer {
 	const Symbol                                        *standaloneState (const Symbol &member) const;
 	void checkAttachedBody (const Symbol &member, const ResolvedType &host, BodyFacts &facts, const Substitutions &arguments, DeclarationInfo &signature);
 	ParameterContract        parameterContract (const TypeParameterDeclaration &parameter) const;
+	ResultTypes              typeBounds (const ResolvedType &parameter) const;
+	bool                     acceptsBound (const ResolvedType &required, const ResolvedType &actual) const;
 	bool                     sameSignature (const Candidate &left, const Candidate &right, bool includeResults = false) const;
 	void                     checkBodyOf (const Symbol &symbol);
 	std::set<const Symbol *> s_checking, s_checked;
@@ -403,6 +416,7 @@ class BodyChecker {
 
 	FlowState fs_flow;
 	bool      record = true;
+	bool      b_inferenceDefaults = false;
 
 	[[nodiscard]] const Binding *local (const std::string &name) const;
 	void                         bind (const Token &name, std::optional<ResolvedType> type, bool mutableBinding, bool deferred = false);
@@ -415,7 +429,7 @@ class BodyChecker {
 	void                         checkFieldWrite (const ExpressionInfo &target, const TokenSpan &span) const;
 	ResolvedType                 recordSelf (const Expression &node);
 	ExpressionInfo               call (const CallExpression &node);
-	ExpressionInfo               create (const ClassCreationExpression &node, const ResolvedType *hint);
+	ExpressionInfo               create (const ClassCreationExpression &node);
 	ExpressionInfo               cast (const CastExpression &node);
 	bool                         loop (const LoopStatement &node);
 	ExpressionInfo               expression (const Expression &node, const ResultTypes *expected = nullptr, bool discard = false);

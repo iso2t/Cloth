@@ -24,6 +24,8 @@ BodyChecker::BodyChecker (Analyzer &analyzer, const Symbol &context, BodyFacts &
         owner(analyzer.declarations.at(&context).owner),
         rt_attachment(attachment),
         returns(signature.returns) {
+	for (ResolvedType &rt_result : returns)
+		if (rt_result.parameter) rt_result = analyzer.boundShape(rt_result);
 	while (owner && owner->kind != SymbolKind::Type && owner->kind != SymbolKind::State) {
 		owner = analyzer.declarations.at(owner).owner;
 	}
@@ -46,6 +48,7 @@ void BodyChecker::remember (const Token &use, const Token &declaration) const {
 }
 
 void BodyChecker::bind (const Token &name, std::optional<ResolvedType> type, const bool mutableBinding, const bool deferred) {
+	if (type && type->parameter) type = analyzer.boundShape(*type);
 	const auto [fst, snd] = scopes.back().emplace(
 	        name.get_lexeme(), Binding{ .type = std::move(type), .name = &name, .mutableBinding = mutableBinding, .deferred = deferred });
 	if (!snd) {
@@ -94,6 +97,7 @@ ResolvedType BodyChecker::selfType () const {
 ResolvedType BodyChecker::bodyType (const TypeReference &reference, const bool allowOpen) const {
 	ResolvedType rt_type = analyzer.checkedType(reference, context, m_arguments, allowOpen);
 	if (record && !allowOpen) analyzer.useType(rt_type, context, reference.get_span());
+	if (rt_type.parameter) return analyzer.boundShape(rt_type);
 	return rt_type;
 }
 
@@ -691,7 +695,7 @@ bool BodyChecker::writeStorage (const Statement &statement, const ExpressionPtr 
 		} else
 			invalidateShared();
 		return opt_value.has_value();
-	} else if (!rt.integer() && !rt.floating()) {
+	} else if (!analyzer.numeric(rt)) {
 		fail(Code::UNARY_OPERAND, op.get_span(), "Update needs a numeric target");
 	}
 	return true;
@@ -762,7 +766,7 @@ bool BodyChecker::checkStatement (const Statement &node) {
 	}
 	if (const auto *s = dynamic_cast<const UpdateStatement *>(&node)) {
 		const std::optional<ResolvedType> opt_target = scalar(*s->target);
-		if (opt_target && !updateOperator(node, *opt_target, s->op, nullptr) && !opt_target->integer() && !opt_target->floating()) {
+		if (opt_target && !updateOperator(node, *opt_target, s->op, nullptr) && !analyzer.numeric(*opt_target)) {
 			fail(Code::UNARY_OPERAND, s->op.get_span(), "Update needs a numeric binding or a matching operator");
 		}
 		assign(s->name, opt_target);

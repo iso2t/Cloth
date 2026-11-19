@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <algorithm>
+#include <filesystem>
 #include <format>
+#include <functional>
 
 #include <ast/decl/class_declaration.hpp>
 #include <ast/stmt/statements.hpp>
@@ -57,6 +59,138 @@ fn<int> ordinary() = pick(1)
 	          &cp_program.instances.at({ &sym_choose, std::nullopt, { ResolvedType(kBoolean), ResolvedType(kInteger) } }));
 	EXPECT_EQ(callIn(cp_program, "ordinary").instance, nullptr);
 	EXPECT_EQ(cp_program.instances.size(), 2u);
+}
+
+TEST (SemanticGenerics, InfersExactTypesBeforeContextualizingLiterals) {
+	const CheckedProgram   cp_program = checkSource(R"(fn<T> pick<T>(T a, T b) = a
+fn<T> first<T>(T[] data, T sample) = sample
+fn<int<8>> left(int<8> n) = pick(1, n)
+fn<int<8>> right(int<8> n) = pick(n, 1)
+fn<int<8>> named(int<8> n) = pick(b=n, a=1+2)
+fn<int<8>> array(int<8> n) = first([1, 2], n)
+fn<int[]> growable(int[] xs, int n) = pick([n], xs)
+fn<float<64>> floating(float<64> n) = pick(1.5, n)
+)");
+	const GenericInstance *gi_pick    = callIn(cp_program, "left").instance;
+	ASSERT_NE(gi_pick, nullptr);
+	EXPECT_EQ(gi_pick, callIn(cp_program, "right").instance);
+	EXPECT_EQ(gi_pick, callIn(cp_program, "named").instance);
+	EXPECT_EQ(gi_pick->signature.returns.front().width, 8u);
+	EXPECT_EQ(callIn(cp_program, "array").types, gi_pick->signature.returns);
+	EXPECT_EQ(callIn(cp_program, "growable").types.front().spelling(), "int[]");
+	EXPECT_EQ(callIn(cp_program, "floating").types.front().width, 64u);
+}
+
+TEST (SemanticGenerics, SettlesOrdinaryOverloadsBeforeInferringGenericCandidates) {
+	using Code                      = cde::DiagnosticCode;
+	const CheckedProgram cp_program = checkSource(R"(typedef<class> Base {}
+typedef<class> Child : Base {}
+fn<string> pick(Base value) = "base"
+fn<T> pick<T>(T value) = value
+fn<string> ordinary(Child item) = pick(item)
+fn<int> generic() = pick(1)
+typedef<class> Methods {
+    pub mt<bool> test(int<8> value) = true
+    pub mt<T> test<T>(T value) = value
+}
+fn<bool> method(Methods methods) = methods.test(1)
+)");
+	EXPECT_EQ(callIn(cp_program, "ordinary").instance, nullptr);
+	EXPECT_NE(callIn(cp_program, "generic").instance, nullptr);
+	EXPECT_EQ(callIn(cp_program, "method").instance, nullptr);
+	expectError("fn pick(int<8> v) {}\nfn pick(int<64> v) {}\nfn pick<T>(T v) {}\nfn use() { pick(1) }", Code::AMBIGUOUS_CALL);
+	expectError("fn pick<T>(T a, int b) {}\nfn pick<T,U>(T a, U b) {}\nfn use() { pick(true,1) }", Code::AMBIGUOUS_CALL);
+}
+
+TEST (SemanticGenerics, ReportsConflictingEvidenceAtBothArgumentsAndTheDeclaration) {
+	using Code = cde::DiagnosticCode;
+	try {
+		checkSource("fn pick<T>(T a, T b) {}\nfn use(int a,bool b) { pick(\n a,\n b) }");
+		FAIL() << "Expected incompatible type evidence";
+	} catch (const cde::ClothDiagnostic &error) {
+		EXPECT_EQ(error.get_code(), Code::GENERIC_INFERENCE_FAILED);
+		const std::vector<cde::SourceLabel> &v_labels = error.get_source_labels();
+		ASSERT_EQ(v_labels.size(), 3u);
+		EXPECT_EQ(v_labels[0].span.startLine, 3u);
+		EXPECT_EQ(v_labels[1].span.startLine, 4u);
+		EXPECT_EQ(v_labels[2].span.startLine, 1u);
+	}
+	expectError("fn f<T>(T v) {}\nfn use() { f(null) }", Code::GENERIC_INFERENCE_FAILED);
+	expectError("fn f<T>(T[] v) {}\nfn use() { f([]) }", Code::GENERIC_INFERENCE_FAILED);
+	expectError("fn f<T>(T v) {}\nfn use() { f(2147483648) }", Code::NO_MATCHING_CALL);
+	expectError("fn f<T>(T v) {}\nfn use() { f([2147483648]) }", Code::NO_MATCHING_CALL);
+	expectError("fn f<T>(T a,T b) {}\nfn use(int<8> n) { f(128,n) }", Code::NO_MATCHING_CALL);
+}
+
+TEST (SemanticGenerics, UsesNominalViewsAndOnlyInfersWrittenPlaceholders) {
+	const CheckedProgram cp_program = checkSource(R"(typedef<interface> View<T> {}
+typedef<struct> Slot<T> { T value }
+typedef<class> Entry : View<Slot<string>> {}
+fn read<T>(View<Slot<T>> item) {}
+fn forward<U: View<Slot<string>>>(U item) { read(item) }
+fn byInterface(Entry item) = read(item)
+fn use(Entry item) { forward(item) }
+fn<U> select<T,U = T>(T a,U b) = b
+fn<int<8>> placeholder(int<8> n) = select<bool,_>(true,n)
+fn<bool> defaulted() = select<bool>(true,true)
+typedef<class> Pair<A,B=int>(def<A> left, def<B> right) {
+    pub mt<Pair<bool,int<8>>> narrow(int<8> n) = Pair<bool,_>::new(true,n)
+    pub mt<Pair<bool,int>> ordinary() = Pair<bool>::new(true,1)
+}
+fn<Pair<bool,int<8>>> construct(Pair<bool,int> pair, int<8> n) = pair.narrow(n)
+)");
+	ASSERT_NE(callIn(cp_program, "byInterface").instance, nullptr);
+	const DeclarationInfo &di_read = callIn(cp_program, "byInterface").instance->signature;
+	EXPECT_EQ(di_read.parameters.front().spelling(), "View<Slot<string>>");
+	EXPECT_EQ(callIn(cp_program, "placeholder").types.front().width, 8u);
+	EXPECT_EQ(callIn(cp_program, "defaulted").types.front(), ResolvedType(kBoolean));
+	EXPECT_EQ(callIn(cp_program, "construct").types.front().arguments().back().width, 8u);
+	expectError("fn pick<T,U=int>(T a,U b) {}\nfn use(int<8> n) { pick<bool>(true,n) }", cde::DiagnosticCode::NO_MATCHING_CALL);
+	expectError("fn pick<T,U>(T a,U b) {}\nfn use() { pick<bool>(true,1) }", cde::DiagnosticCode::GENERIC_ARITY);
+	expectError("typedef<class> Box<T> {}\nfn<Box<int>> use() = Box::new()", cde::DiagnosticCode::GENERIC_INFERENCE_FAILED);
+}
+
+TEST (SemanticGenerics, ChecksDeclaredAndSubstitutedBoundsBeforeUse) {
+	using Code = cde::DiagnosticCode;
+	expectError("typedef<interface> I {}\nfn f<T:I & I>() {}", Code::INVALID_GENERIC_BOUND);
+	expectError("fn f<T:new(int a) & new(int<32> b)>() {}", Code::INVALID_GENERIC_BOUND);
+	expectError("typedef<class> Box<T> { mt f<T>(T x) {} }", Code::INVALID_GENERIC_PARAMETER);
+	expectError("fn f<T=T>() {}", Code::INVALID_GENERIC_ARGUMENT);
+	expectError("typedef<struct> Box<T> { T value }\nfn f<T=Box<U>,U=int>() {}", Code::INVALID_GENERIC_ARGUMENT);
+	expectError("typedef<class> Box<T=Box<>> {}", Code::INVALID_GENERIC_ARGUMENT);
+	expectError("typedef<class> Box<T> {}\nfn f<T:Box<T>[]>() {}", Code::INVALID_GENERIC_BOUND);
+	expectError("typedef<interface> I<T> {}\ntypedef<interface> J : I<int> {}\nfn f<T:J & I<bool>>() {}", Code::CONFLICTING_INTERFACE_APPLICATION);
+	const std::string s_source = "typedef<interface> I<N> {}\ntypedef<class> P : I<int> {}\nfn f<A,B,T: I<A> & I<B>>(T item) {}\n";
+	EXPECT_NO_THROW(checkSource(s_source + "fn use(P item) { f<int,int,_>(item) }"));
+	expectError(s_source + "fn use(P item) { f<int,bool,_>(item) }", Code::CONFLICTING_INTERFACE_APPLICATION);
+	expectError("typedef<interface> I {}\nfn f<T:I>(T a) {}\nfn f<U:I>(U a,opt<int> b ?: 0) {}\nfn use() { f(1) }", Code::UNSATISFIED_GENERIC_BOUND);
+}
+
+TEST (SemanticGenerics, OnlyTheStandardLibraryNumberGrantsPrimitiveConformance) {
+	using Code                            = cde::DiagnosticCode;
+	const std::filesystem::path p_library = std::filesystem::path(__FILE__).parent_path() / "../../../../Stdlib";
+	const std::function         check     = [&] (const std::string &source, Code code) {
+		SCOPED_TRACE(source);
+		Lexer l_lexer{ SourceFile("numeric-client.co", "using cloth.lang.num.Number: Number\n" + source) };
+		try {
+			CheckedProgram cp_program(SymbolTable(Parser(l_lexer).parse()), {}, p_library);
+			FAIL() << "Expected a semantic diagnostic";
+		} catch (const cde::ClothDiagnostic &error) {
+			EXPECT_EQ(error.get_code(), code) << error.what();
+			ASSERT_FALSE(error.get_source_labels().empty());
+		}
+	};
+	for (const char *s_argument : { "bool", "char", "string", "float?", "int[]" })
+		check(std::format("fn f<T: Number>() {{}}\nfn use() {{ f<{}>() }}", s_argument), Code::UNSATISFIED_GENERIC_BOUND);
+	check("fn f<T: Number>() {}\nfn unused<U>() { f<U>() }", Code::UNSATISFIED_GENERIC_BOUND);
+	check("fn f<T: Number?>() {}\nfn use() { f<int>() }", Code::UNSATISFIED_GENERIC_BOUND);
+	check("typedef<class> Local { pub typedef<interface> Number {} }\nfn f<T: Local.Number>() {}\nfn use() { f<int>() }", Code::UNSATISFIED_GENERIC_BOUND);
+	check("fn f<T: Number[]>() {}\nfn use() { f<int[2]>() }", Code::UNSATISFIED_GENERIC_BOUND);
+	check("fn<bool> same<T: Number>(T a,T b) = a === b", Code::INCOMPARABLE_TYPES);
+	check("typedef<class> Empty : Number {}\nfn<T> sum<T:Number>(T v) = v+v\nfn<Empty> use(Empty v) = sum(v)", Code::BINARY_OPERANDS);
+	expectError("fn f<T:Number>() {}", Code::UNSUPPORTED_TYPE);
+	expectError("typedef<interface> Number {}\nfn f<T:Number>() {}\nfn use() { f<int>() }", Code::UNSATISFIED_GENERIC_BOUND);
+	expectError("typedef<interface> Number {}\nfn<T> f<T:Number>(T v) = v+v", Code::BINARY_OPERANDS);
 }
 
 TEST (SemanticGenerics, SpecializesFieldsMetadataAndCapturedLocalsOnEachReceiver) {
@@ -187,7 +321,7 @@ fn<Item> byName() = named<Item>()
 fn<T> outer<T: new(int value)>() = inner<T>()
 fn<T> inner<T: new(int count)>() = T::new(count=1))"));
 	expectError("typedef<class> Hidden(int n)\nfn<T> make<T: new(int count)>() = T::new(1)\nfn<Hidden> use() = make<Hidden>()",
-	            cde::DiagnosticCode::NO_MATCHING_CALL);
+	            cde::DiagnosticCode::UNSATISFIED_GENERIC_BOUND);
 }
 
 TEST (SemanticGenerics, ChecksUnusedDeclarationsAndReusesRecursiveInstances) {

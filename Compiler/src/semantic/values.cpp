@@ -61,7 +61,7 @@ std::optional<ProviderSelection> BodyChecker::textConversion (const ResolvedType
 		return ps_format;
 	}
 	ps_format.callsFormatter = analyzer.referenceType(rt_element);
-	if (ps_format.callsFormatter || enumeration(rt_element) || rt_element.integer() || rt_element.floating() || rt_element == ResolvedType(kBoolean) ||
+	if (ps_format.callsFormatter || enumeration(rt_element) || analyzer.numeric(rt_element) || rt_element == ResolvedType(kBoolean) ||
 	    rt_element == ResolvedType(kCharacter) || rt_element == ResolvedType(kString) || rt_element == ResolvedType(kTypeinfo) ||
 	    rt_element == ResolvedType(kNull))
 		return ps_format;

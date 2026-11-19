@@ -1,10 +1,9 @@
-typedef<struct> DequeSlot<T> { T value }
-typedef<struct> DequeSide<T> { DequeSlot<T>[] items }
+typedef<struct> DequeSlot<T> { pub T value }
+typedef<struct> DequeSide<T> { pub DequeSlot<T>[] items }
 
-pub typedef<class> Deque<T> {
-
+pub typedef<class> Deque<T>(def<DequeSide<T>[2]> sides) {
     // The front side is reversed. Both ends grow and shrink at an array tail.
-    def<DequeSide<T>[2]> sides = [{ [] }, { [] }]
+    pub Deque() : ([{ [] }, { [] }]) {}
 
     pub mt pushFront(T value) { sides[0].items.append({ value }) }
 

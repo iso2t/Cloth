@@ -24,8 +24,9 @@ bool isSelfReference (const Expression &node) {
 	return ne_name && ne_name->name.get_lexeme() == to_string(kSelf);
 }
 
-ResolvedType literalInteger (const IntegerLiteral &literal, const ResolvedType *expected, bool negative, TargetLayout layout) {
+ResolvedType literalInteger (const IntegerLiteral &literal, const ResolvedType *expected, bool negative, TargetLayout layout, bool inferenceDefault) {
 	const ResolvedType  rt         = expected && expected->integer() ? *expected : ResolvedType(kInteger);
+	if (inferenceDefault) return rt;
 	const bool          isUnsigned = rt.name == unsignedIntegerSpelling() || rt.name == to_string(kUsize);
 	const unsigned      width      = rt.width ? rt.width : layout.sizeBits;
 	const IntegerValue &words      = literal.value;
@@ -38,10 +39,6 @@ ResolvedType literalInteger (const IntegerLiteral &literal, const ResolvedType *
 	return rt;
 }
 
-bool numeric (const ResolvedType &t) {
-	return t.integer() || t.floating();
-}
-
 bool numericLiteral (const Expression &expr) {
 	if (dynamic_cast<const NumberLiteral *>(&expr)) {
 		return true;
@@ -50,7 +47,7 @@ bool numericLiteral (const Expression &expr) {
 	return u && (u->op.get_operator() == oPlus || u->op.get_operator() == oMinus) && numericLiteral(*u->operand);
 }
 
-enum class ElementEvidence { None, Literal, Typed };
+}
 
 ElementEvidence elementEvidence (const Expression &operand) {
 	if (const ArrayLiteral *al_literal = dynamic_cast<const ArrayLiteral *>(&operand)) {
@@ -59,14 +56,33 @@ ElementEvidence elementEvidence (const Expression &operand) {
 		return ee_best;
 	}
 	if (dynamic_cast<const NullLiteral *>(&operand) || dynamic_cast<const StructLiteral *>(&operand)) return ElementEvidence::None;
+	if (const UnaryExpression *ue_unary = dynamic_cast<const UnaryExpression *>(&operand)) {
+		if (ue_unary->op.get_operator() == oPlus || ue_unary->op.get_operator() == oMinus) return elementEvidence(*ue_unary->operand);
+	}
+	if (const BinaryExpression *be_binary = dynamic_cast<const BinaryExpression *>(&operand)) {
+		const Operator o_operation = be_binary->op.get_operator();
+		if (o_operation == oPlus || o_operation == oMinus || o_operation == oMul || o_operation == oDiv || o_operation == oMod ||
+		    o_operation == oMulMul || o_operation == oRange || o_operation == oRangeInclusive)
+			return std::max(elementEvidence(*be_binary->left), elementEvidence(*be_binary->right));
+	}
+	if (const IfExpression *ie_conditional = dynamic_cast<const IfExpression *>(&operand)) {
+		const std::function<ElementEvidence(const std::vector<StatementPtr> &)> tail = [] (const std::vector<StatementPtr> &body) {
+			const ExpressionStatement *es_last = body.empty() ? nullptr : dynamic_cast<const ExpressionStatement *>(body.back().get());
+			return es_last ? elementEvidence(*es_last->expression) : ElementEvidence::None;
+		};
+		ElementEvidence ee_result = ie_conditional->otherwise ? tail(*ie_conditional->otherwise) : ElementEvidence::None;
+		for (const ConditionalBranch &cb_branch : ie_conditional->branches) ee_result = std::max(ee_result, tail(cb_branch.statements));
+		return ee_result;
+	}
 	return numericLiteral(operand) ? ElementEvidence::Literal : ElementEvidence::Typed;
-}
 }
 
 ExpressionInfo BodyChecker::expression (const Expression &node, const ResultTypes *expected, bool discard) {
 	for (const CapturedOperand *operand = captured; operand; operand = operand->previous)
 		if (operand->node == &node) return operand->value;
 	ExpressionInfo info = infer(node, expected, discard);
+	for (ResolvedType &rt_type : info.types)
+		if (rt_type.parameter) rt_type = analyzer.boundShape(rt_type);
 	if (validateAfter == &node && info.fallsThrough) invalidateShared();
 	if (record) {
 		checkNumeric(node, info, bf_facts, analyzer.program.layout);
@@ -344,7 +360,7 @@ std::optional<ResolvedType> BodyChecker::rangeEndpoints (const Expression &start
 	const std::optional<ResolvedType> right = onPath(left.has_value(), unreachable).scalar(end, required ? &*required : nullptr);
 	if (!required) required = right;
 	const std::function checkEndpoint = [&] (const Expression &operand, const std::optional<ResolvedType> &type) {
-		if (type && (!numeric(*type) || *type != required)) fail(code, operand.get_span(), "Range endpoints require one exact numeric type");
+		if (type && (!analyzer.numeric(*type) || *type != required)) fail(code, operand.get_span(), "Range endpoints require one exact numeric type");
 		if (record && type && type->floating()) requireFinite(operand, bf_facts, code);
 	};
 	checkEndpoint(start, left);
@@ -446,7 +462,7 @@ ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const Resolved
 		if (isEquality(o_operation) && hasArrayShape(peer))
 			return comparisonShape(peer.nullable() ? peer.element() : peer, dynamic_cast<const ArrayLiteral *>(&operand));
 		if (equality && rangeType(peer) && numericLiteral(operand)) return peer.arguments().front();
-		if (equality && rangeSyntax(operand) && numeric(peer)) {
+		if (equality && rangeSyntax(operand) && analyzer.numeric(peer)) {
 			ResolvedType range(kRange);
 			analyzer.applyArguments(range, { peer });
 			return range;
@@ -474,7 +490,7 @@ ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const Resolved
 			} catch (const cde::ClothDiagnostic &error) {
 				if (error.get_code() != Code::INVALID_ARRAY && error.get_code() != Code::INVALID_STRUCT_LITERAL) throw;
 			}
-		} else if (!compare && expected && numeric(*expected))
+		} else if (!compare && expected && analyzer.numeric(*expected))
 			opt_hint = *expected;
 		opt_left = scalar(*node.left, opt_hint ? &*opt_hint : nullptr);
 		std::optional<BodyChecker> opt_unreachable;
@@ -508,7 +524,7 @@ ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const Resolved
 		return value(left);
 	}
 	if (left.nullable() || right.nullable()) fail(Code::NULLABLE_PAYLOAD_ACCESS, node.op.get_span(), "This operation requires a present value");
-	if (!numeric(left) || !numeric(right)) {
+	if (!analyzer.numeric(left) || !analyzer.numeric(right) || ((left.parameter || right.parameter) && left != right)) {
 		if (!analyzer.members(left, node.op.get_lexeme(), SymbolKind::Operator).empty() ||
 		    !analyzer.members(right, node.op.get_lexeme(), SymbolKind::Operator).empty())
 			fail(Code::OPERATOR_MATCH, node.op.get_span(), "No matching overload for operator '" + node.op.get_lexeme() + "'");
@@ -578,7 +594,7 @@ ExpressionInfo BodyChecker::call (const CallExpression &node) {
 	return ei_call;
 }
 
-ExpressionInfo BodyChecker::create (const ClassCreationExpression &node, const ResolvedType *hint) {
+ExpressionInfo BodyChecker::create (const ClassCreationExpression &node) {
 	std::optional<Receiver> opt_receiver = receiver(*node.receiver, true);
 	if (!opt_receiver || !opt_receiver->isType) {
 		fail(Code::INVALID_CLASS_LIFECYCLE, node.get_span(), std::format("{} requires a class type or a constructor bound", to_string(kNew)));
@@ -612,23 +628,14 @@ ExpressionInfo BodyChecker::create (const ClassCreationExpression &node, const R
 	}
 	const TypeParameterList      *params     = rt.declaration ? typeParameters(*rt.declaration) : nullptr;
 	const TypeReceiverExpression *annotation = dynamic_cast<const TypeReceiverExpression *>(node.receiver.get());
+	const TypeArgumentList       *written = annotation && annotation->annotation.get_application() ? &*annotation->annotation.get_application() : nullptr;
 	if (params && !sym_guarantee) {
 		for (Candidate &candidate : constructors) {
-			for (std::size_t i = 0; i < params->parameters.size(); ++i) {
-				const TypeParameterDeclaration &param = params->parameters[i];
-				if (!annotation || i >= annotation->annotation.get_type_arguments().size() ||
-				    annotation->annotation.get_type_arguments()[i].is_placeholder()) {
-					if (hint && hint->declaration == rt.declaration) {
-						candidate.arguments[&param] = hint->arguments()[i];
-					} else {
-						candidate.arguments.erase(&param);
-					}
-					candidate.inferOwner = params;
-				}
-			}
+			candidate.inferOwner = params;
+			for (const TypeParameterDeclaration &tp_parameter : params->parameters) candidate.arguments.erase(&tp_parameter);
 		}
 	}
-	ExpressionInfo result = invoke(node.name, node.get_span(), node.suppliedArguments, constructors);
+	ExpressionInfo result = invoke(node.name, node.get_span(), node.suppliedArguments, constructors, params && !sym_guarantee ? written : nullptr);
 	if (params && !sym_guarantee) rt = analyzer.substitute(analyzer.ownerType(*rt.declaration), result.typeArguments);
 	analyzer.checkBounds(rt, node.get_span(), context);
 	if (sym_guarantee) {
@@ -686,7 +693,7 @@ ExpressionInfo BodyChecker::cast (const CastExpression &node) {
 	const ResolvedType source = from.nullable() ? from.element() : from, target = to.nullable() ? to.element() : to;
 	const bool ordinal = source.declaration && dynamic_cast<const EnumDeclaration *>(std::get<const TypeDeclaration *>(source.declaration->declaration)) &&
 	                     target == ResolvedType(kInteger);
-	if (!(numeric(source) && numeric(target)) && !ordinal && !analyzer.accepts(to, from)) {
+	if (!(analyzer.numeric(source) && analyzer.numeric(target)) && !ordinal && !analyzer.accepts(to, from)) {
 		fail(Code::INVALID_CAST, node.get_span(), "Cannot cast " + from.spelling() + " to " + to.spelling());
 	}
 	return value(to);
@@ -703,11 +710,11 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		return name(n->name);
 	}
 	if (const auto *n = dynamic_cast<const IntegerLiteral *>(&node)) {
-		return value(literalInteger(*n, hint, false, analyzer.program.layout));
+		return value(literalInteger(*n, hint, false, analyzer.program.layout, b_inferenceDefaults));
 	}
 	if (const auto *n = dynamic_cast<const FloatingPointLiteral *>(&node)) {
 		ResolvedType rt = hint && hint->floating() ? *hint : ResolvedType(kFloat);
-		if (!std::isfinite(floatingLiteral(n->value, rt.width))) {
+		if (!b_inferenceDefaults && !std::isfinite(floatingLiteral(n->value, rt.width))) {
 			fail(Code::FLOAT_RANGE, node.get_span(), "Floating-point literal is outside " + rt.spelling());
 		}
 		return value(rt);
@@ -772,12 +779,12 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 			bc_probe.record      = false;
 			bc_probe.we_capture  = nullptr;
 			for (const ExpressionPtr &ep_part : n->elements) {
-				if (!numericLiteral(*ep_part) && !dynamic_cast<const NullLiteral *>(ep_part.get())) elem = bc_probe.scalar(*ep_part);
+				if (elementEvidence(*ep_part) == ElementEvidence::Typed) elem = bc_probe.scalar(*ep_part);
 				if (elem) break;
 			}
 			if (!elem) {
 				for (const ExpressionPtr &ep_part : n->elements) {
-					elem = bc_probe.scalar(*ep_part);
+					if (elementEvidence(*ep_part) == ElementEvidence::Literal) elem = bc_probe.scalar(*ep_part);
 					if (elem) break;
 				}
 			}
@@ -860,7 +867,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 	if (const auto *n = dynamic_cast<const UnaryExpression *>(&node)) {
 		const Operator o_operation = n->op.get_operator();
 		if (const IntegerLiteral *literal = dynamic_cast<const IntegerLiteral *>(n->operand.get()); literal && o_operation == oMinus) {
-			const ExpressionInfo result = value(literalInteger(*literal, hint, true, analyzer.program.layout));
+			const ExpressionInfo result = value(literalInteger(*literal, hint, true, analyzer.program.layout, b_inferenceDefaults));
 			if (record) {
 				bf_facts.expressions[literal]                 = result;
 				bf_facts.expressions[literal].numericConstant = IntegerConstant{ literal->value };
@@ -878,7 +885,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		if (!group.empty()) {
 			return callOperator(group.front(), *n->operand, operand, n->op, node.get_span());
 		}
-		if ((o_operation == oNot && operand != ResolvedType(kBoolean)) || (o_operation != oNot && !numeric(operand))) {
+		if ((o_operation == oNot && operand != ResolvedType(kBoolean)) || (o_operation != oNot && !analyzer.numeric(operand))) {
 			fail(Code::UNARY_OPERAND, node.get_span(), "Invalid unary operand");
 		}
 		if (o_operation == oNot) {
@@ -934,7 +941,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		return ei_call;
 	}
 	if (const auto *n = dynamic_cast<const ClassCreationExpression *>(&node)) {
-		return create(*n, hint);
+		return create(*n);
 	}
 	if (const auto *n = dynamic_cast<const ClassDeletionExpression *>(&node)) {
 		checkValidatorReceiver(n->receiver.get(), node.get_span());

@@ -27,7 +27,9 @@ ResolvedType::ResolvedType (std::string name) : name(std::move(name)) {
 std::strong_ordering ResolvedType::operator<=>(const ResolvedType &other) const {
 	if (const std::strong_ordering so_decl = std::compare_three_way{}(declaration, other.declaration); so_decl != 0) return so_decl;
 	if (const std::strong_ordering so_param = std::compare_three_way{}(parameter, other.parameter); so_param != 0) return so_param;
-	if (const std::strong_ordering so_head = std::tie(name, width, suffixes) <=> std::tie(other.name, other.width, other.suffixes); so_head != 0)
+	if (const std::strong_ordering so_head =
+	            std::tie(name, width, suffixes, projectedSuffixes) <=> std::tie(other.name, other.width, other.suffixes, other.projectedSuffixes);
+	    so_head != 0)
 		return so_head;
 	return application == other.application ? std::strong_ordering::equal : arguments() <=> other.arguments();
 }
@@ -210,6 +212,7 @@ Analyzer::Analyzer (CheckedProgram &program) : program(program), declarations(pr
 	declarations.emplace(&objectRoot(), DeclarationInfo{ 0, nullptr });
 	loadImports();
 	registerIntrinsics();
+	for (const Symbol *sym : v_order) checkParameterNames(*sym);
 	for (const Symbol *sym : v_order) {
 		resolveDeclaration(*sym);
 		if (const std::optional<LibraryIntrinsic> op = declarations.at(sym).intrinsic) checkIntrinsicSignature(*sym, *op);
@@ -223,6 +226,14 @@ void Analyzer::registerScope (const SymbolScope &scope, std::size_t file, const 
 			if (sym.kind == SymbolKind::Type && sym.name.get_lexeme() == objectRoot().name.get_lexeme())
 				fail(Code::INVALID_CLASS_MEMBER, sym.name.get_span(), std::format("{} is the built-in class root", sym.name.get_lexeme()));
 			declarations.emplace(&sym, DeclarationInfo{ file, owner });
+			if (!owner && entry.first == "Number" && sym.visibility == Visibility::Public && asInterface(&sym) && !typeParameters(sym) &&
+			    !program.standardLibraryRoot.empty()) {
+				const SourceFile *sf_source = program.units[file]->get_source_unit().get_source();
+				std::error_code   ec_file;
+				if (sf_source &&
+				    std::filesystem::equivalent(sf_source->get_path(), program.standardLibraryRoot / "cloth/lang/num/Number.co", ec_file))
+					sym_number = &sym;
+			}
 			if (sym.kind == SymbolKind::Constructor && dynamic_cast<const PrimaryConstructorDeclaration *>(callable(sym))) {
 				declarations.at(owner).primaryConstructor = &sym;
 			}
@@ -443,6 +454,14 @@ void Analyzer::checkBodies () {
 		}
 	}
 	checkInstances();
+	// Expand dependencies first so recursively growing bounds retain their template-limit diagnostic.
+	for (const Symbol *sym_declaration : v_order) {
+		if (const TypeParameterList *tpl_parameters = typeParameters(*sym_declaration))
+			for (const TypeParameterDeclaration &tp_parameter : tpl_parameters->parameters)
+				for (const TypeParameterBound &tp_bound : tp_parameter.bounds)
+					if (const TypeReference *tr_bound = std::get_if<TypeReference>(&tp_bound.value))
+						checkBounds(type(*tr_bound, *sym_declaration), tr_bound->get_span(), *sym_declaration);
+	}
 	publishDispatch();
 	checkLifetimes();
 }

@@ -1,8 +1,7 @@
-typedef<struct> StackSlot<T> { T value }
+typedef<struct> StackSlot<T> { pub T value }
 
-pub typedef<class> Stack<T> {
-
-    def<StackSlot<T>[]> items = []
+pub typedef<class> Stack<T>(def<StackSlot<T>[]> items) {
+    pub Stack() : ([]) {}
 
     pub mt push(T value) = items.append({ value })
 

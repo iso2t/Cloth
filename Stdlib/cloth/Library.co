@@ -5,3 +5,4 @@ using cloth.collections.OwningList : OwningList
 using cloth.collections.Deque : Deque
 using cloth.collections.Queue : Queue
 using cloth.collections.Stack : Stack
+using cloth.lang.num.Number : Number

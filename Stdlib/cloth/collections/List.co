@@ -1,11 +1,10 @@
 using cloth.collections.Snapshot : Snapshot, emptySnapshot
 
 // Each slot owns an independent value, including its array shape witnesses.
-typedef<struct> ListSlot<T> { T value }
+typedef<struct> ListSlot<T> { pub T value }
 
-pub typedef<class> List<T> {
-
-    def<ListSlot<T>[]> items = []
+pub typedef<class> List<T>(def<ListSlot<T>[]> items) {
+    pub List() : ([]) {}
 
     pub mt append(T value) { items.append({ value }) }
 
@@ -17,7 +16,7 @@ pub typedef<class> List<T> {
 
     pub operator []=(usize index, T value) { set(index, value) }
 
-    operator []?(usize index) -> bool = index < size()
+    operator []?(usize index) -> bool = index < items::size
 
     pub mt insert(usize index, T value) { items.insert(index, { value }) }
 
