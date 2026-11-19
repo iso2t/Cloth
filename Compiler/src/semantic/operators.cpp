@@ -68,7 +68,7 @@ void Analyzer::resolveOperator (const Symbol &operation, const MethodDeclaration
 	const bool            b_update     = isUpdate(o_op) || o_op == oIndexWrite;
 	const std::size_t     st_arity     = method.parameters.size();
 	const std::function   invalid      = [&] (std::string_view message) {
-		fail(Code::INVALID_OPERATOR_DECLARATION, method.span, std::format("Operator '{}' {}", method.name.get_lexeme(), message));
+                fail(Code::INVALID_OPERATOR_DECLARATION, method.span, std::format("Operator '{}' {}", method.name.get_lexeme(), message));
 	};
 	s_operatorNames.insert(method.name.get_lexeme());
 	if (std::ranges::any_of(method.parameters, &ParameterDeclaration::isOptional)) invalid("requires explicit operands");

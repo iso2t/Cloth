@@ -28,7 +28,7 @@ struct ForBinding {
 struct ForSource {
 	struct Range {
 		std::shared_ptr<const BinaryExpression> expression;
-		TokenSpan     span;
+		TokenSpan                               span;
 
 		[[nodiscard]] bool isInclusive () const {
 			return expression->op.get_operator() == oRangeInclusive;
