@@ -1,26 +1,22 @@
-Cloth Compiler
-==============
+Cloth
+=====
 
-The Cloth compiler is the core of the Cloth programming language. Cloth is defined
-as a modern, strongly-typed object-oriented language aimed at low level systems work
-with an upfront a high level type system. It feels somewhat familiar to C-style
-languages with inspirations taken from many languages, including C, C++, Java, Kotlin,
-and Go.
+Cloth is a strongly typed, object-oriented language for systems programming.
+Programmers control object lifetimes through ownership and can use named
+states to define how an object behaves.
 
-Cloth is not a garbage compiled language. Instead, it has an owner/operator model, where
-only the owner of the reference can destroy the reference. The main goal for Cloth is to
-hide boiler plate pointers and references.
+This repository contains the Cloth compiler and standard library.
 
-Cloth also incorporates a first class state system, in which an object can exist in multiple
-states or no states, allowing certain parameters to be valid or invalid, moving beyond just
-normal boolean expressions with explicit syntax.
+Getting started
+---------------
 
-Bug Reporting
--------------
+* `Build the compiler <Documentation/building/Building.rst>`_
+* `Use the compiler <Documentation/compiler/Flags.rst>`_
+* `Browse the standard library <Stdlib/cloth/>`_
 
-Cloth is still in its infancy, and it is going to be prone to issues, syntax changes, and bugs.
+Contributing
+------------
 
-Documentation
--------------
-
-The documentation for Cloth can be found in `Documentation/ <Documentation/>`_.
+* `Submit a change <Documentation/Welcome.rst#contributing>`_
+* `Run the test suite <Documentation/contributing/Testing.rst>`_
+* `Propose a language change <Documentation/contributing/RFC%20Process.rst>`_
