@@ -36,8 +36,18 @@ void CompilerOptions::add_flag (const CompilerFlag &flag) {
 }
 
 // TODO: Allow comma separated lists of source files to use all at the same time? ie "path1","path2"
-// TODO: "path1","path" "path3" fails as path3 is seen as another arg. 
+// TODO: "path1","path" "path3" fails as path3 is seen as another arg.
 void CompilerOptions::build_defaults () {
+	add_flag({ "--target-bits", CompilerFlag::Value{ "32 or 64", [this] (const std::string_view bits) {
+		                                                if (bits == "32")
+			                                                targetLayout.sizeBits = 32;
+		                                                else if (bits == "64")
+			                                                targetLayout.sizeBits = 64;
+		                                                else
+			                                                throw std::invalid_argument("--target-bits requires 32 or 64");
+	                                                } } });
+	add_flag({ "--stdlib",
+	           CompilerFlag::Value{ .s_description = "a directory", .f_func = [this] (const std::string_view path) { standardLibraryRoot = path; } } });
 	add_flag({ .s_flag = "-l", .v_action = [this] () { i_lexer = 1; } });
 	add_flag({ .s_flag = "-L", .v_action = [this] () { i_lexer = 2; } });
 	add_flag({ .s_flag = "--src", .v_action = CompilerFlag::Value{ .s_description = "a file path", .f_func = [this] (std::string_view path) {

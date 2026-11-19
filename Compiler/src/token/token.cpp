@@ -95,6 +95,8 @@ std::string_view to_string (const Keyword keyword) {
 		return "virtual";
 	case kOperator:
 		return "operator";
+	case kRange:
+		return "range";
 	case kAuto:
 		return "auto";
 	case kFn:
@@ -178,7 +180,7 @@ std::string to_stringmulti (const std::vector<Keyword> &keywords) {
 }
 
 bool isReserved (Keyword keyword) {
-	return keyword != kAuto && keyword != kIntrinsic && keyword != kError;
+	return keyword != kRange && keyword != kAuto && keyword != kIntrinsic && keyword != kError;
 }
 
 namespace {

@@ -266,6 +266,8 @@ Operator Lexer::matchOperator () {
 			continue;
 		}
 
+		// A nullable type followed by provider access begins with the same bytes as the fallback operator.
+		if (op == oElvis && s_remaining.substr(to_string(oQuestion).size()).starts_with(to_string(oColonColon))) continue;
 		if (op == oUnderscore && identifierPartLength(s_remaining, spelling.size()) != 0) {
 			continue;
 		}

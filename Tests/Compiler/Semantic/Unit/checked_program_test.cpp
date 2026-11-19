@@ -314,6 +314,7 @@ TEST (SemanticChecking, ChecksOperatorsConstructorsAndStatePayloads) {
 	EXPECT_NO_THROW(checkSource(R"(typedef<class> Counter(def<int> n) {
     pub Counter() : (0) {}
     pub operator +(int delta) = self.n + delta
+    operator []?(int i) = true
     pub operator []=(int i, int value) { self.n = value }
     pub state On
     pub state<void> ::clear()

@@ -1,0 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Slot<T> { T value }
+pub typedef<struct> Snapshot<T> { Slot<T>[] slots }

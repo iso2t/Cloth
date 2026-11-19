@@ -10,6 +10,8 @@
 #include <variant>
 #include <vector>
 
+#include <semantic/target_layout.hpp>
+
 namespace cloth::sys {
 
 struct CompilerFlag {
@@ -36,6 +38,8 @@ class CompilerOptions {
 	void build_defaults ();
 
 	std::optional<std::filesystem::path> p_sourcePath;
+	TargetLayout                         targetLayout;
+	std::filesystem::path                standardLibraryRoot;
 
 	[[nodiscard]] int get_lexer_flag () const {
 		return i_lexer;

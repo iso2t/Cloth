@@ -19,6 +19,8 @@ unit_sources := Compiler/Lexer/Unit/token_test.cpp \
                 Compiler/Semantic/Unit/checked_program_test.cpp \
                 Compiler/Semantic/Unit/generic_instances_test.cpp \
                 Compiler/Semantic/Unit/dispatch_test.cpp \
+                Compiler/Semantic/Unit/flow_test.cpp \
+                Compiler/Semantic/Unit/value_semantics_test.cpp \
                 Diagnostics/Unit/import_test.cpp
 unit_obj_dir := $(BUILD_DIR)/obj/Tests
 unit_objects := $(addprefix $(unit_obj_dir)/,$(unit_sources:.cpp=.o))

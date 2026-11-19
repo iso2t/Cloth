@@ -27,10 +27,16 @@ obj-y := cloth.o \
          parser/subs/type_parser.o \
          semantic/bodies.o \
          semantic/calls.o \
+         semantic/constants.o \
+         semantic/collections.o \
+         semantic/values.o \
          semantic/checked_program.o \
          semantic/dispatch.o \
          semantic/expressions.o \
+         semantic/flow.o \
          semantic/instances.o \
+         semantic/lifetime.o \
+         semantic/shapes.o \
          semantic/symbol_table.o \
          semantic/types.o \
          system/compiler_options.o \

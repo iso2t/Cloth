@@ -24,11 +24,6 @@ namespace {
 constexpr std::size_t MAX_GENERIC_DEPENDENCIES = 64;
 constexpr std::size_t MAX_GENERIC_INSTANCES    = 4096;
 
-const StructDeclaration *asStruct (const Symbol *symbol) {
-	if (!symbol || symbol->kind != SymbolKind::Type) return nullptr;
-	return dynamic_cast<const StructDeclaration *>(std::get<const TypeDeclaration *>(symbol->declaration));
-}
-
 }
 
 DeclarationInfo Analyzer::specialize (DeclarationInfo info, const Substitutions &arguments) const {
@@ -69,7 +64,8 @@ const GenericInstance *Analyzer::useCallable (const Symbol &symbol, const Substi
                                               const ResolvedType *stateHost) {
 	if (!isTemplate(symbol) || dynamic_cast<const ConstructorGuaranteeDeclaration *>(callable(symbol))) return nullptr;
 	InstanceKey ik_key{ &symbol, std::nullopt, {} };
-	if (const Symbol *sym_owner = instanceOwner(symbol)) ik_key.receiver = substitute(ownerType(*sym_owner), arguments);
+	if (const Symbol *sym_owner = instanceOwner(symbol))
+		ik_key.receiver = substitute(ownerType(*sym_owner), arguments);
 	else if (standaloneState(symbol)) {
 		const ResolvedType *rt_host = stateHost ? stateHost : rt_activeAttachment;
 		if (rt_host) ik_key.receiver = *rt_host;

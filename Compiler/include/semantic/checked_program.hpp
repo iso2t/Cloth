@@ -5,17 +5,22 @@
 #include <compare>
 #include <cstddef>
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 #include <ast/expr/expression.hpp>
 #include <ast/type/type_parameters.hpp>
 #include <semantic/symbol_table.hpp>
+#include <semantic/target_layout.hpp>
+#include <token/numeric_literals.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -23,6 +28,9 @@ namespace cloth {
 struct BinaryExpression;
 struct ClassParentClause;
 struct GenericInstance;
+struct ForStatement;
+struct LoopTarget;
+struct LoopJumpStatement;
 struct TypeArguments;
 struct TypeCheckExpression;
 
@@ -131,6 +139,50 @@ struct CallDispatch {
 	MethodRef    contract;
 };
 
+struct ReceiverChecks {
+	// A method captures its receiver before arguments. Their effects can require a second check at dispatch.
+	bool          beforeArguments = false;
+	bool          atAccess        = false;
+	bool          activeState     = false;
+	const Symbol *knownState      = nullptr;
+};
+
+struct ControlFlow {
+	bool                         fallsThrough = true;
+	bool                         canReturn    = false;
+	std::set<const LoopTarget *> breaks, continues;
+};
+
+struct IntegerConstant {
+	IntegerValue magnitude;
+	bool         negative                                  = false;
+	bool         operator==(const IntegerConstant &) const = default;
+};
+
+using NumericConstant = std::variant<std::monostate, IntegerConstant, double>;
+
+enum class ProviderKind { Type, Format, StorageSize, ArraySize, StringSize, Minimum, Maximum, EnumName, EnumValues, Metadata };
+enum class MetadataQuery { Element, Rank, Extent, Width, IsArray, HasExtent, IsUnsigned, IsNumeric };
+enum class ArrayMutation { Append, Insert, RemoveAt, Clear, Reserve };
+
+struct ProviderSelection {
+	ProviderKind                 kind;
+	ResolvedType                 receiver;
+	bool                         typeReceiver;
+	std::optional<MetadataQuery> metadata = {};
+	bool                         callsFormatter    = false;
+	std::optional<MethodRef>     formatter         = {};
+	const GenericInstance       *formatterInstance = nullptr;
+};
+
+struct IndexedAccess {
+	const Symbol          *operation;
+	const Symbol          *validator;
+	const GenericInstance *validatorInstance;
+	Substitutions          arguments;
+};
+
+enum class RangeOperation { Construct, Membership, Equal };
 struct ExpressionInfo {
 	ResultTypes   types;
 	const Symbol *symbol  = nullptr;
@@ -148,11 +200,48 @@ struct ExpressionInfo {
 	std::optional<ResolvedType> representedType      = std::nullopt;
 	std::optional<CallDispatch> dispatch             = std::nullopt;
 
+	ReceiverChecks receiverChecks = {};
+	// A generic intersection can require liveness validation even for an identity comparison.
+	bool checkedIdentity = false;
+	NumericConstant                  numericConstant    = {};
+	bool                             invalidNumericCast = false;
+	std::optional<ProviderSelection> provider           = {};
+	std::optional<IndexedAccess>     indexed            = {};
+	std::optional<RangeOperation>    range              = {};
+	std::optional<ArrayMutation>     arrayMutation      = {};
+	// Known extents for each result, independent of the declared or overload-selected type.
+	ResultTypes                               arrayShapes        = {};
+	std::vector<std::optional<ResolvedType>>  representedResults = {};
+	[[nodiscard]] std::optional<ResolvedType> representedAt (std::size_t slot) const;
+
 	[[nodiscard]] ResultKind resultKind () const;
 	static ExpressionInfo    never ();
 };
 
+struct DefaultEffects {
+	bool fallsThrough;
+	bool mayCallOrMutate;
+};
+
+enum class IterationKind { Array, Range, Snapshot };
+
+struct Iteration {
+	IterationKind                 kind;
+	ResolvedType                  element;
+	std::optional<ExpressionInfo> snapshot  = {};
+	const Symbol                 *slots     = nullptr;
+	const Symbol                 *slotValue = nullptr;
+};
+
 struct BodyFacts {
+	std::unordered_map<const Expression *, ProviderSelection>           textConversions;
+	std::unordered_map<const ForStatement *, Iteration>                 iterations;
+	std::unordered_map<const Token *, ResolvedType>                     arrayConstraints;
+	std::unordered_map<const Symbol *, std::vector<const Expression *>> enumPayloads;
+	std::unordered_map<const ParameterDeclaration *, DefaultEffects>  defaultEffects;
+	std::unordered_map<const Statement *, ControlFlow>                controlFlow;
+	std::unordered_map<const LoopJumpStatement *, const LoopTarget *> jumpTargets;
+	std::unordered_map<const Statement *, ReceiverChecks>             writeChecks;
 	std::unordered_map<const Expression *, ExpressionInfo>        expressions;
 	std::unordered_map<const ClassParentClause *, ExpressionInfo> parentConstructors;
 	std::unordered_map<const Token *, ResolvedType>               localTypes;
@@ -177,7 +266,9 @@ struct GenericInstance {
 };
 
 struct CheckedProgram : BodyFacts {
-	explicit CheckedProgram (SymbolTable entry);
+	explicit CheckedProgram (SymbolTable entry, TargetLayout layout = {}, std::filesystem::path standardLibraryRoot = {});
+	const TargetLayout          layout;
+	const std::filesystem::path standardLibraryRoot;
 
 	// Own the declarations and stable instances referenced by the body facts.
 	std::vector<std::unique_ptr<const SymbolTable>>     units;

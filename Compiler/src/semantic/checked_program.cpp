@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <format>
+#include <stdexcept>
 #include <tuple>
 #include <utility>
 
@@ -112,10 +113,23 @@ std::string ResolvedType::spelling () const {
 			}
 			append(to_string(oGreater));
 		}
-		for (const std::string &s_suffix : type.suffixes) append(s_suffix);
+		std::vector<std::string>::const_reverse_iterator extent = type.suffixes.rbegin();
+		for (const std::string &suffix : type.suffixes) {
+			if (suffix == to_string(oQuestion)) {
+				append(suffix);
+			} else {
+				while (*extent == to_string(oQuestion)) ++extent;
+				append(*extent++);
+			}
+		}
 	};
 	write(*this);
 	return s_result;
+}
+
+std::optional<ResolvedType> ExpressionInfo::representedAt (std::size_t slot) const {
+	if (slot < representedResults.size()) return representedResults[slot];
+	return slot == 0 ? representedType : std::nullopt;
 }
 
 ResultKind ExpressionInfo::resultKind () const {
@@ -128,12 +142,14 @@ ExpressionInfo ExpressionInfo::never () {
 	return { .types = {}, .fallsThrough = false };
 }
 
-CheckedProgram::CheckedProgram (SymbolTable entry) {
+CheckedProgram::CheckedProgram (SymbolTable entry, TargetLayout layout, std::filesystem::path standardLibraryRoot) :
+        layout(layout),
+        standardLibraryRoot(std::move(standardLibraryRoot)) {
+	if (layout.sizeBits != 32 && layout.sizeBits != 64) throw std::invalid_argument("A Cloth target requires a 32- or 64-bit size type");
 	units.emplace_back(std::make_unique<SymbolTable>(std::move(entry)));
 	semantic::Analyzer analyzer(*this);
 	analyzer.checkBodies();
 }
-
 }
 
 namespace cloth::semantic {
@@ -248,21 +264,20 @@ void Analyzer::loadImports () {
 			if (p_root.empty()) {
 				fail(Code::MISSING_IMPORT_CONTEXT, id_import.path.get_span(), "A source path is required to resolve imports");
 			}
-			fs::path p_base = p_root;
-			for (const Token &t_part : id_import.path.components) {
-				p_base /= t_part.get_lexeme();
-			}
+			fs::path p_relative;
+			for (const Token &part : id_import.path.components) p_relative /= part.get_lexeme();
 			fs::path p_target;
-			for (const char *s_extension : { ".co", ".clib" }) {
-				fs::path p_candidate = p_base;
-				p_candidate += s_extension;
-				if (!fs::is_regular_file(p_candidate)) {
-					continue;
+			for (const fs::path &root : { p_root, program.standardLibraryRoot }) {
+				if (root.empty()) continue;
+				for (const char *extension : { ".co", ".clib" }) {
+					fs::path candidate = root / p_relative;
+					candidate += extension;
+					if (!fs::is_regular_file(candidate)) continue;
+					if (!p_target.empty())
+						fail(Code::AMBIGUOUS_IMPORT_SOURCE, id_import.path.get_span(), "Both .co and .clib match this import");
+					p_target = fs::canonical(candidate);
 				}
-				if (!p_target.empty()) {
-					fail(Code::AMBIGUOUS_IMPORT_SOURCE, id_import.path.get_span(), "Both .co and .clib match this import");
-				}
-				p_target = fs::canonical(p_candidate);
+				if (!p_target.empty()) break;
 			}
 			if (p_target.empty()) {
 				fail(Code::IMPORTED_SOURCE_NOT_FOUND, id_import.path.get_span(),
@@ -383,6 +398,14 @@ void Analyzer::checkBodies () {
 		if (sym->classFieldIndex) {
 			continue;
 		}
+		if (const TypeDeclaration *const *type = std::get_if<const TypeDeclaration *>(&sym->declaration)) {
+			if (const EnumDeclaration *enumeration = dynamic_cast<const EnumDeclaration *>(*type)) {
+				for (const EnumFieldDeclaration &field : enumeration->fields)
+					checkBodyOf(*std::ranges::find(sym->members.at(field.name.get_lexeme()), SymbolKind::Field, &Symbol::kind));
+				for (const EnumCaseDeclaration &entry : enumeration->cases)
+					checkBodyOf(*std::ranges::find(sym->members.at(entry.name.get_lexeme()), SymbolKind::EnumCase, &Symbol::kind));
+			}
+		}
 		const Symbol *sym_primary = declarations.at(sym).primaryConstructor;
 		if (sym_primary) {
 			checkBodyOf(*sym_primary);
@@ -402,6 +425,7 @@ void Analyzer::checkBodies () {
 	}
 	checkInstances();
 	publishDispatch();
+	checkLifetimes();
 }
 
 const Symbol *Analyzer::standaloneState (const Symbol &member) const {

@@ -78,6 +78,7 @@ enum Keyword {
 	kVirtual,
 	kOperator,
 	kAuto,
+	kRange,
 	kFn,
 	kPublic,
 

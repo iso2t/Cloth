@@ -104,8 +104,8 @@ bool contextualFailure (const cde::ClothDiagnostic &error) {
 	if (dynamic_cast<const ReturnDiagnostic *>(&error)) return false;
 	const Code code = error.get_code();
 	return code == Code::TYPE_MISMATCH || code == Code::INTEGER_RANGE || code == Code::FLOAT_RANGE || code == Code::INVALID_ARRAY ||
-	       code == Code::INVALID_STRUCT_LITERAL || code == Code::BRANCH_TYPE_MISMATCH || code == Code::INVALID_NULLABLE_TYPE ||
-	       code == Code::MIXED_INTEGERS;
+	       code == Code::INVALID_STRUCT_LITERAL || code == Code::INVALID_STRUCT_FIELD || code == Code::INVALID_RANGE_VALUE ||
+	       code == Code::BRANCH_TYPE_MISMATCH || code == Code::INVALID_NULLABLE_TYPE || code == Code::MIXED_INTEGERS;
 }
 
 struct PlacedCandidate {
@@ -167,14 +167,20 @@ bool BodyChecker::checkArguments (const std::vector<CallArgument> &arguments, co
 		if (b_sameInput && !b_fits && dynamic_cast<const CallSite *>(&e_argument) && !dynamic_cast<const ClassCreationExpression *>(&e_argument)) {
 			require(ap_probe.result->types, { rt_parameter }, e_argument.get_span());
 		}
-		if (b_fits && !record) {
+		if (b_fits && !record && !we_capture) {
 			// Reuse an already typed operand only with the same incoming facts, then carry its effects to the next written argument.
 			bc_operand.fs_flow = ap_probe.after;
 			b_continues &= ap_probe.result->fallsThrough;
 			continue;
 		}
 		const std::optional<ResolvedType> opt_actual = bc_operand.scalar(e_argument, contextual && !b_fits ? &rt_parameter : nullptr);
-		if (opt_actual) require({ *opt_actual }, { rt_parameter }, e_argument.get_span());
+		if (opt_actual) {
+			require({ *opt_actual }, { rt_parameter }, e_argument.get_span());
+			if (record && hasArrayShape(rt_parameter)) {
+				const TokenSpan span = e_argument.get_span();
+				refineShape(rt_parameter, bc_operand.shapeOf(e_argument, *opt_actual), &span);
+			}
+		}
 		b_continues &= opt_actual.has_value();
 	}
 	return b_continues;
@@ -222,6 +228,7 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 	std::vector<ArgumentProbe> v_probes;
 	BodyChecker                natural            = *this;
 	natural.record                                = false;
+	natural.we_capture                            = nullptr;
 	bool                       b_naturalContinues = true;
 	std::optional<BodyChecker> opt_unreachable;
 	for (const CallArgument &arg : arguments) {
@@ -314,6 +321,7 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 		if (match.rank == MatchRank::Contextual) {
 			BodyChecker trial = *this;
 			trial.record      = false;
+			trial.we_capture  = nullptr;
 			try {
 				trial.checkArguments(arguments, match.parameters, v_probes, true);
 			} catch (const cde::ClothDiagnostic &error) {
@@ -370,13 +378,14 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 	bool   b_continues = true;
 	if (!knownArguments || best.rank == MatchRank::Contextual) {
 		// Only the selected contract commits facts. Replay written arguments in source order.
-		if (!record && best.rank != MatchRank::Contextual) {
+		if (!record && !we_capture && best.rank != MatchRank::Contextual) {
 			fs_flow     = std::move(natural.fs_flow);
 			b_continues = b_naturalContinues;
 		} else {
 			b_continues = checkArguments(arguments, best.parameters, v_probes, best.rank == MatchRank::Contextual);
 		}
 	}
+	if (b_continues) invalidateShared();
 	ResultTypes results;
 	for (const ResolvedType &rt : analyzer.resultsOf(*best.contract)) {
 		results.push_back(analyzer.substitute(rt, best.substitutions));

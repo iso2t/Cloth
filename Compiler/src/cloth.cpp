@@ -40,7 +40,7 @@ int main (const int argc, char *argv[]) try {
 
 	cloth::Parser      p_parser{ l_lexer };
 	cloth::SymbolTable st_symbols{ p_parser.parse() };
-	std::ignore = backend::BackendObject{ cloth::CheckedProgram{ std::move(st_symbols) } };
+	std::ignore = backend::BackendObject{ cloth::CheckedProgram{ std::move(st_symbols), co_options.targetLayout, co_options.standardLibraryRoot } };
 
 	return SUCCESS;
 } catch (const cde::ClothDiagnostic &error) {

@@ -11,9 +11,9 @@
 
 namespace cloth::test {
 
-inline CheckedProgram checkSource (const std::string &source) {
+inline CheckedProgram checkSource (const std::string &source, TargetLayout layout = {}) {
 	Lexer lexer(source);
-	return CheckedProgram(SymbolTable(Parser(lexer).parse()));
+	return CheckedProgram(SymbolTable(Parser(lexer).parse()), layout);
 }
 
 inline void expectError (const std::string &source, cde::DiagnosticCode code) {

@@ -25,6 +25,11 @@ const Symbol *namedType (const Candidates &candidates) {
 
 }
 
+const StructDeclaration *asStruct (const Symbol *symbol) {
+	if (!symbol || symbol->kind != SymbolKind::Type) return nullptr;
+	return dynamic_cast<const StructDeclaration *>(std::get<const TypeDeclaration *>(symbol->declaration));
+}
+
 const InterfaceDeclaration *asInterface (const Symbol *symbol) {
 	if (!symbol || symbol->kind != SymbolKind::Type) {
 		return nullptr;
@@ -145,7 +150,12 @@ ResolvedType Analyzer::type (const TypeReference &reference, const Symbol &conte
 	}
 	const std::string &s_name = t_name.get_lexeme();
 	ResolvedType       rt_type(s_name);
-	if (t_name.get_type() == TokenType::Identifier) {
+	if (s_name == to_string(kRange) && !genericParameter(context, s_name) && !namedType(lookup(context, s_name))) {
+		if (reference.get_type_arguments().size() != 1) fail(Code::INVALID_RANGE_VALUE, ts_span, "A range requires one numeric endpoint type");
+		ResolvedType element = type(reference.get_type_arguments().front(), context, depth + 1);
+		if (!element.integer() && !element.floating()) fail(Code::INVALID_RANGE_VALUE, ts_span, "Range endpoints must be numeric");
+		applyArguments(rt_type, { element });
+	} else if (t_name.get_type() == TokenType::Identifier) {
 		rt_type.parameter = genericParameter(context, s_name);
 		if (!rt_type.parameter) {
 			const std::string_view s_separator = to_string(oDot);
@@ -237,10 +247,12 @@ ResolvedType Analyzer::type (const TypeReference &reference, const Symbol &conte
 	}
 	for (std::size_t i = 0; i < reference.get_array_suffixes().size(); ++i) {
 		std::string s_extent;
-		if (i < reference.get_array_sizes().size() && reference.get_array_sizes()[i]) {
-			const IntegerValue v_size = integerLiteralValue(*reference.get_array_sizes()[i]);
-			if (v_size.size() > 2) {
-				fail(Code::INVALID_ARRAY, ts_span, "Array extent is too large");
+		const std::size_t index = reference.get_array_suffixes().size() - 1 - i;
+		if (index < reference.get_array_sizes().size() && reference.get_array_sizes()[index]) {
+			const IntegerValue v_size = integerLiteralValue(*reference.get_array_sizes()[index]);
+			if (v_size.size() > program.layout.sizeBits / 32) {
+				fail(Code::INVALID_ARRAY, reference.get_array_sizes()[index]->get_span(),
+				     std::format("Array extent exceeds {} on a {}-bit target", to_string(kUsize), program.layout.sizeBits));
 			}
 			std::uint64_t extent = v_size.front();
 			if (v_size.size() == 2) {
@@ -444,6 +456,18 @@ bool Analyzer::referenceType (const ResolvedType &type) const {
 	return false;
 }
 
+bool Analyzer::mayBeAbsent (const ResolvedType &type) const {
+	return type.nullable() || (type.suffixes.empty() && (type.name == to_string(kNull) ||
+	                                                     (type.parameter && !type.width && parameterContract(*type.parameter).parameter->bounds.empty())));
+}
+
+bool Analyzer::hasMultipleTypeBounds (const ResolvedType &type) const {
+	if (!type.parameter) return false;
+	const ParameterContract pc_contract = parameterContract(*type.parameter);
+	return std::ranges::count_if(pc_contract.parameter->bounds,
+	                             [] (const TypeParameterBound &bound) { return std::holds_alternative<TypeReference>(bound.value); }) > 1;
+}
+
 bool Analyzer::supportsEquality (const ResolvedType &type) const {
 	if (!type.parameter) return true;
 	ResolvedType rt_element = type;
@@ -470,7 +494,8 @@ bool Analyzer::accepts (const ResolvedType &expected, const ResolvedType &actual
 		if (left.nullable() != right.nullable()) {
 			return false;
 		}
-		return left.array() && right.array() ? accepts(left, right) : left == right;
+		const ResolvedType a = left.nullable() ? left.element() : left, b = right.nullable() ? right.element() : right;
+		return a.array() && b.array() ? accepts(a, b) : a == b;
 	}
 	if (actual.parameter && actual.suffixes.empty()) {
 		std::set<const TypeParameterDeclaration *>            visited;
@@ -831,6 +856,7 @@ void Analyzer::checkDeclarations () {
 			checkBounds(*info.value, sym->name.get_span(), *sym);
 		}
 		checkOverload(*sym, {}, nullptr);
+		if (sym->kind == SymbolKind::Operator) checkCollectionOperator(*sym);
 	}
 	for (const Symbol *symbol : v_order) {
 		checkPublicSurface(*symbol);

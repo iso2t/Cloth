@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub typedef<class> Item (pub def<int> value)
+fn<int> read(Item item) {
+    def alias = item
+    item::delete
+    return alias.value
+}
+
+// RUN: %expect_exit --empty-stdout 1 %cloth --src "%/s" 2> "%t.err"
+// RUN: %filecheck "%/s" --input-file "%t.err"
+// CHECK: [C3092] Error: Access to a deleted class instance
+// CHECK: deleted-alias.co:7:12
+// CHECK: 6 |     item::delete
+// CHECK: instance deleted here
