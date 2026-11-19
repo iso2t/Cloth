@@ -312,12 +312,12 @@ bool BodyChecker::loop (const LoopStatement &node) {
 			}
 		} else if (fs_for && fs_for->stepper) {
 			body.remember(fs_for->stepper->target, fs_for->binding.name);
-			if (fs_for->stepper->value) {
+			if (const Expression *e_update = fs_for->stepper->update()) {
 				const Binding                    &b_index = *body.local(fs_for->binding.name.get_lexeme());
-				const std::optional<ResolvedType> rt_step = body.scalar(*fs_for->stepper->value, b_index.type ? &*b_index.type : nullptr);
+				const std::optional<ResolvedType> rt_step = body.scalar(*e_update, b_index.type ? &*b_index.type : nullptr);
 				if (rt_step && b_index.type) body.require({ *rt_step }, { *b_index.type }, fs_for->stepper->span);
 				if (body.record && rt_step && rt_step->floating())
-					requireFinite(*fs_for->stepper->value, body.bf_facts, Code::INVALID_FOR_LOOP);
+					requireFinite(*fs_for->stepper->value, body.bf_facts.expressions, Code::INVALID_FOR_LOOP);
 				if (!rt_step) it_result.back.reset();
 			}
 			if (it_result.back) it_result.back = body.fs_flow.narrowed;

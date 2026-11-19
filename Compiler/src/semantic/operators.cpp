@@ -46,10 +46,6 @@ ResolvedType payload (const ResolvedType &type) {
 	return type.nullable() ? type.element() : type;
 }
 
-bool contextualOperand (Code code) {
-	return code == Code::INVALID_ARRAY || code == Code::INVALID_STRUCT_LITERAL || code == Code::INTEGER_RANGE || code == Code::FLOAT_RANGE ||
-	       code == Code::NULLABLE_PAYLOAD_ACCESS;
-}
 }
 
 bool Analyzer::hasOperator (std::string_view name) const {
@@ -111,7 +107,7 @@ void Analyzer::resolveOperator (const Symbol &operation, const MethodDeclaration
 }
 
 std::optional<Candidate> BodyChecker::selectOperator (const Token &op, const TokenSpan &span, const ResolvedType &left, const ResolvedType &right,
-                                                      bool &rightReceiver, const BinaryExpression *operands) const {
+                                                      bool &rightReceiver, const BinaryExpression *operands, const Symbol **unmatched) const {
 	std::vector<OperatorMatch> v_matches;
 	const Symbol              *sym_private = nullptr;
 	for (bool b_right : { false, true }) {
@@ -120,20 +116,25 @@ std::optional<Candidate> BodyChecker::selectOperator (const Token &op, const Tok
 			const OperatorMember  &om_form      = form(c_candidate);
 			const DeclarationInfo &di_signature = analyzer.declarations.at(c_candidate.symbol);
 			if (om_form.provider || om_form.selector || om_form.rightReceiver != b_right || di_signature.parameters.size() != 1) continue;
+			if (unmatched && rt_peer.name.empty()) *unmatched = c_candidate.symbol;
 			const ResolvedType rt_parameter = analyzer.substitute(di_signature.parameters.front(), c_candidate.arguments);
 			const ResolvedType rt_owner     = analyzer.substitute(analyzer.ownerType(*di_signature.owner), c_candidate.arguments);
 			unsigned           u_rank       = rt_owner == rt_receiver && rt_peer == rt_parameter ? 0 : 1;
 			if (!analyzer.accepts(rt_parameter, rt_peer)) {
 				if (!operands) continue;
+				ExpressionFacts ef_trial;
 				BodyChecker bc_trial = *this;
 				bc_trial.record      = false;
 				bc_trial.we_capture  = nullptr;
+				bc_trial.ef_probeConstants = &ef_trial;
 				try {
 					const std::optional<ResolvedType> opt_peer =
 					        bc_trial.scalar(b_right ? *operands->left : *operands->right, &rt_parameter);
 					if (opt_peer && !analyzer.accepts(rt_parameter, *opt_peer)) continue;
 				} catch (const cde::ClothDiagnostic &error) {
-					if (contextualOperand(error.get_code())) continue;
+					if (contextualFailure(error) ||
+					    (error.get_code() == Code::NULLABLE_PAYLOAD_ACCESS && !dynamic_cast<const IntrinsicDiagnostic *>(&error)))
+						continue;
 					throw;
 				}
 				u_rank = 2;
@@ -192,23 +193,18 @@ ExpressionInfo BodyChecker::callOperator (const Candidate &candidate, const Expr
 	return ei_call;
 }
 
-std::optional<ExpressionInfo> BodyChecker::binaryOperator (const BinaryExpression &node, const ResolvedType *expected, bool allowContexts) {
+std::optional<ExpressionInfo> BodyChecker::binaryOperator (const BinaryExpression &node, const ResolvedType *expected, bool allowContexts,
+                                                           FloatContext floats) {
 	const bool b_inequality = node.op.get_operator() == oNotEqual;
 	if (!analyzer.hasOperator(node.op.get_lexeme()) && !(b_inequality && analyzer.hasOperator(to_string(oEqual)))) return {};
-	if (!operatorProbes) {
-		// Overlapping subexpressions need only one natural-type probe for a given flow state.
-		OperatorProbes m_probes;
-		BodyChecker    bc_select                 = *this;
-		bc_select.operatorProbes                 = &m_probes;
-		std::optional<ExpressionInfo> opt_result = bc_select.binaryOperator(node, expected, allowContexts);
-		if (opt_result) fs_flow = std::move(bc_select.fs_flow);
-		return opt_result;
-	}
+	ExpressionFacts ef_natural;
 	BodyChecker bc_probe      = *this;
 	bc_probe.record           = false;
 	bc_probe.we_capture       = nullptr;
-	const std::function probe = [&] (const Expression &operand) {
-		const bool b_cache = !captured && (dynamic_cast<const BinaryExpression *>(&operand) || dynamic_cast<const ElvisExpression *>(&operand));
+	bc_probe.ef_probeConstants    = &ef_natural;
+	const std::function probe     = [&] (const Expression &operand) {
+		const bool b_cache = operatorProbes && !captured && !b_inferenceDefaults &&
+		                     (dynamic_cast<const BinaryExpression *>(&operand) || dynamic_cast<const ElvisExpression *>(&operand));
 		if (b_cache) {
 			const OperatorProbes::const_iterator it_probe = operatorProbes->find(&operand);
 			if (it_probe != operatorProbes->end() && it_probe->second.before == bc_probe.fs_flow) {
@@ -218,8 +214,12 @@ std::optional<ExpressionInfo> BodyChecker::binaryOperator (const BinaryExpressio
 		}
 		try {
 			const FlowState fs_before = bc_probe.fs_flow;
-			ResolvedType    rt_type   = bc_probe.scalar(operand).value_or(ResolvedType{});
-			if (b_cache) operatorProbes->insert_or_assign(&operand, OperandProbe{ fs_before, bc_probe.fs_flow, rt_type });
+			const ExpressionInfo ei_operand = bc_probe.scalarInfo(operand);
+			ResolvedType         rt_type    = ei_operand.fallsThrough ? ei_operand.types.front() : ResolvedType{};
+			if (b_cache)
+				operatorProbes->insert_or_assign(&operand, OperandProbe{ fs_before, bc_probe.fs_flow, rt_type,
+				                                                         ei_operand.argumentContract || ei_operand.leftContext ||
+				                                                                 ei_operand.rightContext });
 			return rt_type;
 		} catch (const cde::ClothDiagnostic &) {
 			// The committed path supplies context and the short-circuit presence proofs.
@@ -228,17 +228,24 @@ std::optional<ExpressionInfo> BodyChecker::binaryOperator (const BinaryExpressio
 	};
 	const ResolvedType rt_left = probe(*node.left), rt_right = probe(*node.right);
 	if ((!rt_left.declaration && !rt_left.parameter) && (!rt_right.declaration && !rt_right.parameter)) return {};
+	return applyBinaryOperator(node, rt_left, rt_right, expected, allowContexts, floats);
+}
+
+std::optional<ExpressionInfo> BodyChecker::applyBinaryOperator (const BinaryExpression &node, const ResolvedType &rt_left, const ResolvedType &rt_right,
+                                                                const ResolvedType *expected, bool allowContexts, FloatContext floats) {
+	const bool               b_inequality = node.op.get_operator() == oNotEqual;
 	const bool               b_lift = isEquality(node.op.get_operator()) && rt_left != ResolvedType(kNull) && rt_right != ResolvedType(kNull);
 	const ResolvedType       rt_a = b_lift ? payload(rt_left) : rt_left, rt_b = b_lift ? payload(rt_right) : rt_right;
 	const Token              t_equal(std::string(to_string(oEqual)), oEqual, node.op.get_span());
 	bool                     b_right = false, b_negate = false, b_lifted = false;
-	std::optional<Candidate> opt_full = selectOperator(node.op, node.op.get_span(), rt_left, rt_right, b_right, &node);
+	const Symbol            *sym_unmatched = nullptr;
+	std::optional<Candidate> opt_full      = selectOperator(node.op, node.op.get_span(), rt_left, rt_right, b_right, &node, &sym_unmatched);
 	if (!opt_full && b_lift && (rt_left.nullable() || rt_right.nullable())) {
 		opt_full = selectOperator(node.op, node.op.get_span(), rt_a, rt_b, b_right);
 		b_lifted = opt_full.has_value();
 	}
 	if (!opt_full && b_inequality) {
-		opt_full = selectOperator(t_equal, node.op.get_span(), rt_left, rt_right, b_right, &node);
+		opt_full = selectOperator(t_equal, node.op.get_span(), rt_left, rt_right, b_right, &node, &sym_unmatched);
 		if (!opt_full && b_lift && (rt_left.nullable() || rt_right.nullable())) {
 			opt_full = selectOperator(t_equal, node.op.get_span(), rt_a, rt_b, b_right);
 			b_lifted = opt_full.has_value();
@@ -260,6 +267,8 @@ std::optional<ExpressionInfo> BodyChecker::binaryOperator (const BinaryExpressio
 		ei_call.liftedEquality = b_lifted;
 		return ei_call;
 	}
+	if (sym_unmatched)
+		fail(Code::OPERATOR_MATCH, node.op.get_span(), "No matching overload for operator '" + node.op.get_lexeme() + "'", &sym_unmatched->name);
 	if (!allowContexts || node.op.get_lexeme() == to_string(kIs) || rt_left.name.empty() || rt_right.name.empty() || rt_left.nullable() ||
 	    rt_right.nullable() || rt_left == ResolvedType(kNull) || rt_right == ResolvedType(kNull) ||
 	    (isEquality(node.op.get_operator()) && (rt_left == rt_right || (analyzer.referenceType(rt_left) && analyzer.referenceType(rt_right)))))
@@ -282,7 +291,7 @@ std::optional<ExpressionInfo> BodyChecker::binaryOperator (const BinaryExpressio
 	const CapturedOperand co_left{ node.left.get(), ei_left, captured }, co_right{ node.right.get(), ei_right, &co_left };
 	BodyChecker           bc_application = *this;
 	bc_application.captured              = &co_right;
-	ExpressionInfo ei_result             = bc_application.binary(node, expected, false);
+	ExpressionInfo ei_result             = bc_application.binary(node, expected, floats, false);
 	fs_flow                              = std::move(bc_application.fs_flow);
 	if (opt_left && ei_left.fallsThrough) ei_result.leftContext = OperatorSelection{ ei_left.symbol, ei_left.instance };
 	if (opt_right && ei_right.fallsThrough) ei_result.rightContext = OperatorSelection{ ei_right.symbol, ei_right.instance };

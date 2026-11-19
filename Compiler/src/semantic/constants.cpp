@@ -219,6 +219,12 @@ template <typename T> T arithmetic (Operator op, T left, T right) {
 }
 }
 
+int compareIntegers (const IntegerConstant &left, const IntegerConstant &right) {
+	if (left.negative != right.negative) return left.negative ? -1 : 1;
+	const int i_magnitude = compare(left.magnitude, right.magnitude);
+	return left.negative ? -i_magnitude : i_magnitude;
+}
+
 double floatingLiteral (std::string_view text, unsigned width) {
 	if (width == 32) return parseFloat<float>(text);
 	const double value = parseFloat<double>(text);
@@ -250,14 +256,14 @@ NumericConstant numericLimit (const ResolvedType &type, TargetLayout layout, boo
 	return IntegerConstant{ std::move(magnitude), !maximum };
 }
 
-void requireFinite (const Expression &operand, const BodyFacts &facts, Code code) {
-	const decltype(facts.expressions)::const_iterator it = facts.expressions.find(&operand);
-	if (it == facts.expressions.end()) return;
+void requireFinite (const Expression &operand, const ExpressionFacts &facts, Code code) {
+	const ExpressionFacts::const_iterator it = facts.find(&operand);
+	if (it == facts.end()) return;
 	if (const double *f = std::get_if<double>(&it->second.numericConstant); f && !std::isfinite(*f))
 		fail(code, operand.get_span(), "A floating range requires finite values");
 }
 
-void checkNumeric (const Expression &node, ExpressionInfo &result, const BodyFacts &facts, TargetLayout layout) {
+void checkNumeric (const Expression &node, ExpressionInfo &result, const ExpressionFacts &facts, TargetLayout layout) {
 	if (result.symbol || result.leftContext || result.rightContext || result.types.size() != 1 || !result.fallsThrough) return;
 	const ResolvedType &rt_declared = result.types.front();
 	const ResolvedType  type        = rt_declared.nullable() ? rt_declared.element() : rt_declared;
@@ -270,14 +276,14 @@ void checkNumeric (const Expression &node, ExpressionInfo &result, const BodyFac
 	} else if (const FloatingPointLiteral *literal = dynamic_cast<const FloatingPointLiteral *>(&node)) {
 		result.numericConstant = floatingLiteral(literal->value, width);
 	} else if (const UnaryExpression *ue_unary = dynamic_cast<const UnaryExpression *>(&node)) {
-		const NumericConstant &operand  = facts.expressions.at(ue_unary->operand.get()).numericConstant;
+		const NumericConstant &operand  = facts.at(ue_unary->operand.get()).numericConstant;
 		const bool             b_negate = ue_unary->op.get_operator() == oMinus;
 		if (const IntegerConstant *i = std::get_if<IntegerConstant>(&operand))
 			result.numericConstant = wrap({ i->magnitude, i->negative != b_negate }, width, b_unsigned);
 		else if (const double *f = std::get_if<double>(&operand))
 			result.numericConstant = b_negate ? -*f : *f;
 	} else if (const CastExpression *ce_cast = dynamic_cast<const CastExpression *>(&node)) {
-		const NumericConstant &operand = facts.expressions.at(ce_cast->operand.get()).numericConstant;
+		const NumericConstant &operand = facts.at(ce_cast->operand.get()).numericConstant;
 		if (std::holds_alternative<std::monostate>(operand)) return;
 		if (type.floating())
 			result.numericConstant = roundedFloat(asFloat(operand, width), width);
@@ -297,8 +303,7 @@ void checkNumeric (const Expression &node, ExpressionInfo &result, const BodyFac
 	} else if (const BinaryExpression *be_binary = dynamic_cast<const BinaryExpression *>(&node)) {
 		const Operator op = be_binary->op.get_operator();
 		if (op != oPlus && op != oMinus && op != oMul && op != oDiv && op != oMod) return;
-		const NumericConstant &left  = facts.expressions.at(be_binary->left.get()).numericConstant,
-		                      &right = facts.expressions.at(be_binary->right.get()).numericConstant;
+		const NumericConstant &left = facts.at(be_binary->left.get()).numericConstant, &right = facts.at(be_binary->right.get()).numericConstant;
 		const IntegerConstant *a = std::get_if<IntegerConstant>(&left), *b = std::get_if<IntegerConstant>(&right);
 		if (type.integer() && b && (op == oDiv || op == oMod)) {
 			if (zero(b->magnitude)) {

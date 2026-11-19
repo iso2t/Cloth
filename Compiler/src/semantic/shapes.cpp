@@ -132,27 +132,28 @@ ExpressionInfo BodyChecker::mutateArray (const MemberCallExpression &call, const
 	const bool          b_remove = operation == ArrayMutation::RemoveAt, b_clear = operation == ArrayMutation::Clear,
 	           b_reserve = operation == ArrayMutation::Reserve;
 	const bool b_insert = operation == ArrayMutation::Insert, b_add = operation == ArrayMutation::Append || b_insert;
+	const std::size_t st_arity = b_clear ? 0u : b_insert ? 2u : 1u;
+	checkBuiltinArguments(call, call.typeArguments ? &*call.typeArguments : nullptr, st_arity, st_arity);
 	if (rt_array.suffixes.back() != arraySuffix())
 		fail(Code::INVALID_ARRAY_MUTATION, call.name.get_span(), "Changing array storage requires a growable array");
 	if (!b_reserve && dynamic_cast<const IndexExpression *>(call.receiver.get()))
 		fail(Code::INVALID_ARRAY_MUTATION, call.receiver->get_span(), "An embedded row must retain its rectangular shape");
 	checkFieldWrite(receiver, call.receiver->get_span());
 	if (locate(*call.receiver)) writable(*call.receiver);
-	if (call.suppliedArguments.size() != (b_clear ? 0u : b_insert ? 2u : 1u))
-		fail(Code::CALL_ARITY, call.name.get_span(), "Incorrect number of operands for array method '" + call.name.get_lexeme() + "'");
 	const ReceiverProofs       v_proofs    = receiverProofs(call.suppliedArguments.empty() ? nullptr : call.receiver.get());
 	ResolvedType               rt_shape    = shapeOf(*call.receiver, rt_array);
 	bool                       b_continues = receiver.fallsThrough;
 	std::optional<BodyChecker> opt_unreachable;
 	for (std::size_t st_index = 0; st_index < call.suppliedArguments.size(); ++st_index) {
 		const CallArgument &ca_arg = call.suppliedArguments[st_index];
-		if (ca_arg.label) fail(Code::INVALID_ARGUMENT_BINDING, ca_arg.label->get_span(), "Array methods take positional operands");
 		const bool                        b_element    = b_add && st_index + 1 == call.suppliedArguments.size();
 		const ResolvedType                rt_parameter = b_element ? rt_element : ResolvedType(kUsize);
 		BodyChecker                      &bc_operand   = onPath(b_continues, opt_unreachable);
 		const std::optional<ResolvedType> opt_actual   = bc_operand.scalar(*ca_arg.expression, &rt_parameter);
 		if (opt_actual) {
-			require({ *opt_actual }, { rt_parameter }, ca_arg.get_span());
+			if (!analyzer.accepts(rt_parameter, *opt_actual))
+				fail(Code::INVALID_BUILTIN_ARGUMENT, ca_arg.get_span(),
+				     std::format("'{}' requires {}, got {}", call.name.get_lexeme(), rt_parameter.spelling(), opt_actual->spelling()));
 			if (b_element && hasArrayShape(rt_element)) {
 				const TokenSpan   ts_argument = ca_arg.get_span();
 				const std::string s_outer     = rt_shape.suffixes.back();

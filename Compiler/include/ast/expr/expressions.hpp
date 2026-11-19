@@ -124,6 +124,8 @@ struct BinaryExpression : Expression {
 	}
 };
 
+std::shared_ptr<const BinaryExpression> compoundExpression (const ExpressionPtr &target, const Token &op, const ExpressionPtr &value);
+
 const BinaryExpression *rangeOrNull (const Expression &expression);
 
 struct ElvisExpression : Expression {

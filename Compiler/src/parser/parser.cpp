@@ -401,9 +401,7 @@ StatementPtr Parser::parseStatement (bool allowWhileTrailer, bool multilineResul
 			return std::make_shared<AssignmentStatement>(t_name, parseResults(nullptr, std::nullopt, allowWhileTrailer));
 		}
 		ExpressionPtr  ep_right = p_expressionParser.parseExpression(0, /*stopAtAssignment=*/false, /*stopAtRange=*/false, allowWhileTrailer);
-		const Operator o_base   = compound_assignment_base(t_operator.get_lexeme());
-		const Token    t_base(std::string(to_string(o_base)), o_base, t_operator.get_span());
-		ExpressionPtr  ep_value = std::make_shared<BinaryExpression>(std::make_shared<NameExpression>(t_name), t_base, std::move(ep_right));
+		ExpressionPtr  ep_value = compoundExpression(std::make_shared<NameExpression>(t_name), t_operator, ep_right);
 		return std::make_shared<AssignmentStatement>(t_name, std::move(ep_value), t_operator);
 	}
 

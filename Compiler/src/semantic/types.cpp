@@ -674,7 +674,10 @@ bool Analyzer::classEqualityMayCall (const ResolvedType &type, Operator operatio
 		return false;
 	};
 	if (operation == oNotEqual && classEqualityMayCall(type, oEqual)) return true;
-	if (hasEquality(type)) return true;
+	return hasEquality(type) || anyReceiverClass(type, hasEquality);
+}
+
+bool Analyzer::anyReceiverClass (const ResolvedType &type, const std::function<bool(const ResolvedType &)> &matches) const {
 	// Constrain dynamic dispatch by every nominal bound on the receiver.
 	ResultTypes                                v_views, v_bounds{ type };
 	std::set<const TypeParameterDeclaration *> s_parameters;
@@ -696,7 +699,7 @@ bool Analyzer::classEqualityMayCall (const ResolvedType &type, Operator operatio
 	for (const Symbol *sym_class : v_order) {
 		if (!asClass(sym_class)) continue;
 		const ResolvedType rt_class = ownerType(*sym_class);
-		if (hasEquality(rt_class) && std::ranges::all_of(v_views, [&] (const ResolvedType &view) {
+		if (matches(rt_class) && std::ranges::all_of(v_views, [&] (const ResolvedType &view) {
 			    return hasTypeView(*this, rt_class, [&] (const ResolvedType &parent) { return possibleView(view, parent); });
 		    }))
 			return true;

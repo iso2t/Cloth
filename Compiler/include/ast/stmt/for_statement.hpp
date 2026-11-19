@@ -56,6 +56,11 @@ struct ForStepper {
 	Token         op;
 	ExpressionPtr value;
 	TokenSpan     span;
+	std::shared_ptr<const BinaryExpression> compound = compoundExpression(std::make_shared<NameExpression>(target), op, value);
+
+	[[nodiscard]] const Expression *update () const {
+		return compound ? compound.get() : value.get();
+	}
 };
 
 using ForBody = LoopBody;

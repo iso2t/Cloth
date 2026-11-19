@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <algorithm>
 #include <cmath>
 
 #include <ast/decl/enum_declaration.hpp>
@@ -80,6 +81,127 @@ TEST (SemanticValues, EnumConstantsAreCheckedInSourceOrderAndDefaultsAreRetained
 	expectError("typedef<enum> E (def<int<8>> n) { A(127.99 -> float<16> -> int<8>) }", Code::INVALID_CAST);
 	expectError("typedef<enum> E (def<int<8>> n) { A(128) }", Code::INTEGER_RANGE);
 	expectError("typedef<enum> E (def<int[2]> n) { A([1]) }", Code::INVALID_ARRAY);
+}
+
+TEST (SemanticValues, OverloadTrialsCheckConstantArithmeticAtEachParameterWidth) {
+	for (unsigned u_bits : { 32u, 64u }) {
+		const CheckedProgram cp_program = checkSource(R"(fn<bool> pick(int<8> n) = false
+fn<string> pick(opt<bool> flag ?: false, int<16> n) = "wide"
+fn<string> quotient() = pick(n = -128 / -1)
+fn<string> remainder() = pick(n = -128 % -1)
+typedef<class> Offset {
+    pub operator +(int<8> n) -> bool = false
+    pub operator +(int<16> n) -> string = "wide"
+}
+fn<string> offset(Offset value) = value + (-128 / -1)
+fn<bool> limits(range<float<16>> r) = false
+fn<string> limits(range<float<64>> r) = "wide"
+fn<string> finite() = limits(0.0 .. (50000.0 * 2.0)))",
+		                                              { u_bits });
+		const SymbolScope   &ss_globals = cp_program.units.front()->get_globals();
+		for (const std::string s_name : { "quotient", "remainder" }) {
+			const CallExpression &ce_call = dynamic_cast<const CallExpression &>(bodyExpression(ss_globals.at(s_name).front()));
+			const ExpressionInfo &ei_call = cp_program.expressions.at(&ce_call);
+			EXPECT_EQ(ei_call.argumentContract, &ss_globals.at("pick")[1]);
+			EXPECT_EQ(ei_call.parameterForArgument, (std::vector<std::size_t>{ 1 }));
+			EXPECT_EQ(ei_call.omittedParameters, (std::vector<std::size_t>{ 0 }));
+			const ExpressionInfo &ei_argument = cp_program.expressions.at(ce_call.suppliedArguments.front().expression.get());
+			EXPECT_EQ(ei_argument.types.front().width, 16u);
+			EXPECT_EQ(std::get<IntegerConstant>(ei_argument.numericConstant).magnitude, IntegerValue{ s_name == "quotient" ? 128u : 0u });
+		}
+		EXPECT_EQ(returned(cp_program, "offset").argumentContract, &ss_globals.at("Offset").front().members.at(std::string(to_string(oPlus)))[1]);
+		EXPECT_EQ(returned(cp_program, "finite").argumentContract, &ss_globals.at("limits")[1]);
+	}
+	expectError("fn take(int<8> n) {}\nfn f() { take(-128 % -1) }", Code::NO_MATCHING_CALL);
+	expectError("fn take(int<8> n) {}\nfn take(int<16> n) {}\nfn f() { take(2 / 0) }", Code::INTEGER_ZERO_DIVISOR);
+	expectError("fn take(int<8> n) {}\nfn take(int<16> n) {}\nfn f() { take(12) }", Code::AMBIGUOUS_CALL);
+}
+
+TEST (SemanticValues, OrdinaryMatchesPrecedeContextualTrialsAndTrialsRetypeEveryArgument) {
+	const CheckedProgram cp_program = checkSource(R"(fn<bool> probe(float x, int<8> n) = false
+fn<string> probe(float<16> x, int<16> n) = "half"
+fn<string> replay(float<16> h) = probe(h + 0.5, 2)
+fn<string> accept(float x, int? n) = "natural"
+fn<bool> accept(float<16> x, int<16> n) = false
+fn<string> ordinary(float<16> h) = accept(h + 0.5, 2))");
+	const SymbolScope   &ss_globals = cp_program.units.front()->get_globals();
+	EXPECT_EQ(returned(cp_program, "replay").argumentContract, &ss_globals.at("probe")[1]);
+	EXPECT_EQ(returned(cp_program, "ordinary").argumentContract, &ss_globals.at("accept").front());
+	const std::string s_group = "fn take(int<8> n) {}\nfn take(int<16> n) {}\n";
+	expectError(s_group + "fn f() { take(if(1) { 2 } else { 3 }) }", Code::NO_MATCHING_CALL);
+	expectError(s_group + "fn f() { take((if(1) { 2 } else { 3 }).abs()) }", Code::NON_BOOLEAN_CONDITION);
+}
+
+TEST (SemanticValues, FloatingLiteralContextIsIndependentOfIntegerPeers) {
+	const CheckedProgram    cp_program = checkSource(R"(fn<bool> take(float<64> x) = true
+fn<bool> value(int<8> i) = take((1 + i) + 16777217.0)
+fn<float<64>> reversed(int<8> i) = 16777217.0 + (1 + i)
+fn<float> natural(float<16> h) { def v = h + 1.0; return v }
+fn<float<16>> narrow(float<16> h) = h + 1.0
+fn<bool> compare(int<64> n) = (2147483648 + 1) < n)");
+	const SymbolScope      &ss_globals = cp_program.units.front()->get_globals();
+	const CallExpression   &ce_call    = dynamic_cast<const CallExpression &>(bodyExpression(ss_globals.at("value").front()));
+	const BinaryExpression &be_sum     = dynamic_cast<const BinaryExpression &>(*ce_call.suppliedArguments.front().expression);
+	EXPECT_EQ(cp_program.expressions.at(be_sum.left.get()).types.front().width, 8u);
+	EXPECT_EQ(cp_program.expressions.at(&be_sum).types.front().width, 64u);
+	EXPECT_EQ(std::get<double>(cp_program.expressions.at(be_sum.right.get()).numericConstant), 16777217.);
+	EXPECT_EQ(returned(cp_program, "narrow").types.front().width, 16u);
+	expectError("fn<float<64>> f(float x) = x + 1.0", Code::RETURN_TYPE);
+	expectError("fn<float<64>> f(int<8> x) = (128 + x) + 1.0", Code::INTEGER_RANGE);
+}
+
+TEST (SemanticValues, NestedArithmeticUsesTheSelectedOperatorResultAsItsPeer) {
+	std::string s_source = "typedef<class> Offset { pub operator +(int<64> n) -> int<64> = n }\nfn<int<64>> value(Offset base) = base";
+	for (unsigned u_term = 0; u_term < 100; ++u_term) s_source += " + 1";
+	s_source += " + 2147483648";
+	const CheckedProgram cp_program = checkSource(s_source);
+	EXPECT_EQ(returned(cp_program).types.front().width, 64u);
+}
+
+TEST (SemanticValues, ArrayInferenceUsesTypedBranchTailsBeforeDefaultingLiterals) {
+	const CheckedProgram cp_program = checkSource(R"(fn<bool> use(int[] row) = false
+fn<string> use(int<64>[] row) = "wide"
+fn<string> wide(bool flag) = use([2147483648, if(flag) { def<int<64>> n = 2; n } else { 1 }])
+fn<bool> ordinary() = use([1, 2])
+fn matrix(int<64> n) { def rows = [[1, 2], [3, n]] }
+fn ranges(range<int<64>> r) { def intervals = [1 .. 2, r] }
+)");
+	const SymbolScope   &ss_globals = cp_program.units.front()->get_globals();
+	EXPECT_EQ(returned(cp_program, "wide").argumentContract, &ss_globals.at("use")[1]);
+	EXPECT_EQ(returned(cp_program, "ordinary").argumentContract, &ss_globals.at("use").front());
+	const decltype(cp_program.localTypes)::const_iterator it_rows = std::ranges::find_if(
+	        cp_program.localTypes, [] (const decltype(cp_program.localTypes)::value_type &entry) { return entry.first->get_lexeme() == "rows"; });
+	ASSERT_NE(it_rows, cp_program.localTypes.end());
+	EXPECT_EQ(it_rows->second.spelling(), "int<64>[2][2]");
+	expectError("fn f(int<64> n) { def rows = [[1], [2,n]] }", Code::INVALID_ARRAY);
+	expectError("fn f(float<64> wide) { def vals = [1.0,wide] }", Code::INVALID_ARRAY);
+}
+
+TEST (SemanticValues, NullableFallbacksCarryTheDestinationIntoEachBranch) {
+	const CheckedProgram cp_program = checkSource(R"(fn<int?> value(bool flag, int? x) = x ?: if(flag) { null } else { 2 }
+fn<int?[]> row(bool flag) = [if(flag) { null } else { 2 }]
+fn<int?> left(bool flag, int? x) = (if(flag) { x } else { null }) ?: 5
+fn broadcast(bool flag, int? x) { def<int?> a, b = 1; a, b = x ?: if(flag) { null } else { 2 } }
+)");
+	EXPECT_TRUE(returned(cp_program).types.front().nullable());
+	EXPECT_TRUE(returned(cp_program, "row").types.front().element().nullable());
+	EXPECT_EQ(returned(cp_program, "left").types.front(), ResolvedType(kInteger));
+	expectError("fn f(bool flag) { def x = [if(flag) { null } else { 3 }] }", Code::EXPLICIT_NULLABLE_TYPE);
+	expectError("fn f(int? x) { println(x ?: true) }", Code::INVALID_ELVIS);
+	expectError("fn f() { print(null ?: null) }", Code::EXPLICIT_NULLABLE_TYPE);
+}
+
+TEST (SemanticValues, RangeCompoundStepsRetainTheirTypedUpdate) {
+	const CheckedProgram cp_program = checkSource("fn f() { for (def<float> i <- 0.0 .. 4.0; i += 1) {} }");
+	ASSERT_EQ(cp_program.iterations.size(), 1u);
+	const ForStepper &fs_step = *cp_program.iterations.begin()->first->stepper;
+	ASSERT_TRUE(fs_step.compound);
+	EXPECT_EQ(fs_step.compound->op.get_operator(), oPlus);
+	EXPECT_EQ(cp_program.expressions.at(fs_step.update()).types.front(), ResolvedType(kFloat));
+	EXPECT_EQ(cp_program.expressions.at(fs_step.value.get()).types.front(), ResolvedType(kInteger));
+	expectError("fn f() { for (def<float> i <- 0.0 .. 4.0; i = 1) {} }", Code::TYPE_MISMATCH);
+	expectError("fn f() { for (def<float<16>> i <- 0.0 .. 4.0; i += 1) {} }", Code::TYPE_MISMATCH);
+	expectError("fn f() { for (def<int> i <- 0 .. 4; i /= 0) {} }", Code::INTEGER_ZERO_DIVISOR);
 }
 
 TEST (SemanticValues, ArrayBindingsKeepInnerExtentsAndSeparateCountsFromDeclaredTypes) {

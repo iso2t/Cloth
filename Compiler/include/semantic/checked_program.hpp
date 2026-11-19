@@ -182,6 +182,53 @@ enum class ProviderKind { Type, Format, StorageSize, ArraySize, StringSize, Mini
 enum class MetadataQuery { Element, Rank, Extent, Width, IsArray, HasExtent, IsUnsigned, IsNumeric };
 enum class ArrayMutation { Append, Insert, RemoveAt, Clear, Reserve };
 
+enum class BuiltinOperation {
+	Print,
+	Println,
+	Input,
+	Exit,
+	Abs,
+	Clamp,
+	Signum,
+	ToStringRadix,
+	LeadingZeros,
+	TrailingZeros,
+	ToInt,
+	ToUpperCase,
+	ToLowerCase,
+	IsWhitespace,
+	IsLetter,
+	IsDigit,
+	IsLetterOrDigit,
+	IsUpperCase,
+	IsLowerCase,
+	IsEmpty,
+	Contains,
+	StartsWith,
+	EndsWith,
+	CharAt,
+	Substring,
+	IndexOf,
+	LastIndexOf,
+	ToChars,
+	Split,
+	Replace,
+	ReplaceFirst,
+	RemovePrefix,
+	RemoveSuffix,
+	Trim,
+	TrimStart,
+	TrimEnd,
+	IsBlank
+};
+
+// Operand expressions retain their source types. These are the types after the selected call's adapters.
+struct BuiltinCall {
+	BuiltinOperation            operation;
+	std::optional<ResolvedType> receiver;
+	ResultTypes                 parameters;
+};
+
 struct ProviderSelection {
 	ProviderKind                 kind;
 	ResolvedType                 receiver;
@@ -240,6 +287,7 @@ struct ExpressionInfo {
 	std::optional<IndexedAccess>     indexed            = {};
 	std::optional<RangeOperation>    range              = {};
 	std::optional<ArrayMutation>     arrayMutation      = {};
+	std::optional<BuiltinCall>       builtin            = {};
 	// Known extents for each result, independent of the declared or overload-selected type.
 	ResultTypes                               arrayShapes        = {};
 	std::vector<std::optional<ResolvedType>>  representedResults = {};
@@ -264,6 +312,8 @@ struct Iteration {
 	const Symbol                 *slotValue = nullptr;
 };
 
+using ExpressionFacts = std::unordered_map<const Expression *, ExpressionInfo>;
+
 struct BodyFacts {
 	std::unordered_map<const Expression *, ProviderSelection>           textConversions;
 	std::unordered_map<const ForStatement *, Iteration>                 iterations;
@@ -273,7 +323,7 @@ struct BodyFacts {
 	std::unordered_map<const Statement *, ControlFlow>                  controlFlow;
 	std::unordered_map<const LoopJumpStatement *, const LoopTarget *>   jumpTargets;
 	std::unordered_map<const Statement *, ReceiverChecks>               writeChecks;
-	std::unordered_map<const Expression *, ExpressionInfo>              expressions;
+	ExpressionFacts                                                     expressions;
 	std::unordered_map<const ClassParentClause *, ExpressionInfo>       parentConstructors;
 	std::unordered_map<const Token *, ResolvedType>                     localTypes;
 	// An "is" target can resolve to a value after parsing. Keep that expression alive with its bindings.

@@ -151,7 +151,7 @@ bool BodyChecker::checkReturn (const Expression &node) {
 	try {
 		ei_result = expression(node, &returns);
 	} catch (const cde::ClothDiagnostic &error) {
-		throw ReturnDiagnostic(error);
+		throw IntrinsicDiagnostic(error);
 	}
 	if (!ei_result.fallsThrough) return false;
 	if (returns.empty() && !ei_result.types.empty()) {
@@ -350,7 +350,8 @@ void BodyChecker::leaveScope () {
 	scopes.pop_back();
 }
 
-ExpressionInfo BodyChecker::block (const std::vector<StatementPtr> &statements, const ResultTypes *expected, const bool value) {
+ExpressionInfo BodyChecker::block (const std::vector<StatementPtr> &statements, const ResultTypes *expected, const bool value,
+                                   std::optional<FloatContext> floats, const ResolvedType *broadcast) {
 	scopes.emplace_back();
 
 	struct ScopeExit {
@@ -371,7 +372,7 @@ ExpressionInfo BodyChecker::block (const std::vector<StatementPtr> &statements, 
 		if (value && &stmt == &statements.back()) {
 			if (const auto *last = dynamic_cast<const ExpressionStatement *>(stmt.get())) {
 				const Exits ex_incoming = std::exchange(fs_flow.exits, {});
-				result                  = expression(*last->expression, expected);
+				result                  = expression(*last->expression, expected, false, floats, broadcast);
 				finishStatement(*last, result.fallsThrough, ex_incoming);
 				continue;
 			}
@@ -382,7 +383,8 @@ ExpressionInfo BodyChecker::block (const std::vector<StatementPtr> &statements, 
 	return result;
 }
 
-ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTypes *expected, const bool discard) {
+ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTypes *expected, const bool discard, FloatContext floats,
+                                       const ResolvedType *broadcast) {
 	std::optional<ResultTypes>                              opt_common, shapes;
 	std::optional<std::vector<std::optional<ResolvedType>>> opt_metadata;
 	std::optional<Narrowing>                                opt_joined;
@@ -391,7 +393,7 @@ ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTyp
 		BodyChecker bc_branch   = *this;
 		bc_branch.fs_flow.exits = {};
 		if (!reachable) bc_branch.we_capture = nullptr;
-		const ExpressionInfo ei_result = bc_branch.block(statements, expected, !discard);
+		const ExpressionInfo ei_result = bc_branch.block(statements, expected, !discard, floats, broadcast);
 		if (reachable) {
 			mergeExits(exits, bc_branch.fs_flow.exits);
 			if (ei_result.fallsThrough) {
@@ -414,6 +416,11 @@ ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTyp
 		if (statements.empty() || !dynamic_cast<const ExpressionStatement *>(statements.back().get())) {
 			fail(Code::MISSING_BRANCH_VALUE, span, "Conditional branch needs a value");
 		}
+		for (std::size_t st_slot = 0; st_slot < ei_result.types.size(); ++st_slot) {
+			const ResolvedType *rt_slot = expected && st_slot < expected->size() && !(*expected)[st_slot].name.empty() ? &(*expected)[st_slot] :
+			                                                                                                             broadcast;
+			if (!rt_slot || !containsNullability(*rt_slot)) checkInferredBinding(ei_result.types[st_slot], statements.back()->get_span());
+		}
 		if (!opt_common) {
 			opt_common = ei_result.types;
 			return;
@@ -427,9 +434,12 @@ ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTyp
 		for (std::size_t st_slot = 0; st_slot < v_next.size(); ++st_slot) {
 			ResolvedType &rt_common = (*opt_common)[st_slot];
 			if (v_next[st_slot] == rt_common) continue;
-			if (expected && expected->size() == v_next.size() && analyzer.accepts((*expected)[st_slot], rt_common) &&
-			    analyzer.accepts((*expected)[st_slot], v_next[st_slot])) {
-				rt_common = (*expected)[st_slot];
+			const ResolvedType *rt_slot = broadcast && v_next.size() == 1        ? broadcast :
+			                              expected && st_slot < expected->size() ? &(*expected)[st_slot] :
+			                                                                       nullptr;
+			if (rt_slot && (rt_slot->nullable() || rt_slot->array() || asClass(rt_slot->declaration) || asInterface(rt_slot->declaration)) &&
+			    analyzer.accepts(*rt_slot, rt_common) && analyzer.accepts(*rt_slot, v_next[st_slot])) {
+				rt_common = *rt_slot;
 			} else {
 				fail(Code::BRANCH_TYPE_MISMATCH, ts_tail,
 				     std::format("Conditional result {} has types {} and {}", st_slot + 1, rt_common.spelling(), v_next[st_slot].spelling()));
@@ -471,7 +481,7 @@ ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTyp
 
 void BodyChecker::assign (const Token &target, const std::optional<ResolvedType> &value, const Expression *source, std::size_t slot,
                           const std::optional<ResolvedType> &represented) {
-	const ExpressionInfo ei_binding = name(target);
+	const ExpressionInfo ei_binding = name(target, true);
 	checkFieldWrite(ei_binding, target.get_span());
 	if (pd_default && readOnlyDefaultRoot(NameExpression(target))) {
 		fail(Code::INVALID_PARAMETER_DEFAULT, target.get_span(), "Parameter defaults can only read the receiver and earlier parameters",
@@ -505,11 +515,14 @@ void BodyChecker::assign (const Token &target, const std::optional<ResolvedType>
 	}
 }
 
-void BodyChecker::checkInferredBinding (const ResolvedType &type, const TokenSpan &span) const {
+bool BodyChecker::containsNullability (const ResolvedType &type) const {
 	ResolvedType rt_element = type;
 	rt_element.suffixes.clear();
-	if (analyzer.mayBeAbsent(rt_element) || std::ranges::find(type.suffixes, to_string(oQuestion)) != type.suffixes.end())
-		fail(Code::EXPLICIT_NULLABLE_TYPE, span, "A nullable initializer requires an explicit destination type");
+	return analyzer.mayBeAbsent(rt_element) || std::ranges::find(type.suffixes, to_string(oQuestion)) != type.suffixes.end();
+}
+
+void BodyChecker::checkInferredBinding (const ResolvedType &type, const TokenSpan &span) const {
+	if (containsNullability(type)) fail(Code::EXPLICIT_NULLABLE_TYPE, span, "A nullable value requires an explicit destination type");
 }
 
 bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Expression &producer, const std::vector<TypeReference> *annotations,
@@ -530,10 +543,13 @@ bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Ex
 			else if (const Binding *binding = assignmentBinding(target.get_token()))
 				expected.push_back(binding->type.value_or(ResolvedType{}));
 			else
-				expected.push_back(name(target.get_token()).types.front());
+				expected.push_back(name(target.get_token(), true).types.front());
 		}
 	}
-	ExpressionInfo result = expression(producer, expected.empty() ? nullptr : &expected);
+	const bool                        b_shared     = annotations && expected.size() == 1;
+	const ResultTypes::const_iterator it_first     = std::ranges::find_if(expected, [] (const ResolvedType &type) { return !type.name.empty(); });
+	const ResolvedType               *rt_broadcast = (!annotations || b_shared) && it_first != expected.end() ? &*it_first : nullptr;
+	const ExpressionInfo              result       = expression(producer, expected.empty() || b_shared ? nullptr : &expected, false, {}, rt_broadcast);
 	if (!result.fallsThrough) {
 		for (std::size_t st_slot = 0; st_slot < targets.size(); ++st_slot) {
 			if (std::holds_alternative<ReceivingTarget::Discard>(targets[st_slot].value)) continue;
@@ -551,12 +567,6 @@ bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Ex
 	if (!broadcast && result.types.size() != targets.size()) fail(Code::RECEPTION_ARITY, producer.get_span(), "Target count does not match result count");
 	if (annotations && !expected.empty() && ((broadcast && expected.size() > 1) || (!broadcast && expected.size() == 1)))
 		fail(Code::RECEPTION_ANNOTATIONS, producer.get_span(), "Use one shared annotation for a scalar or one annotation per result");
-	if (broadcast && !annotations) {
-		if (const auto shared = std::ranges::find_if(expected, [] (const ResolvedType &t) { return !t.name.empty(); });
-		    shared != expected.end() && !analyzer.accepts(*shared, result.types.front()) &&
-		    std::ranges::all_of(expected, [&] (const ResolvedType &t) { return t.name.empty() || t == *shared; }))
-			result = scalarInfo(producer, &*shared);
-	}
 	for (std::size_t i = 0; i < targets.size(); ++i) {
 		const ResolvedType &actual   = result.types[broadcast ? 0 : i];
 		const ResolvedType *required = expected.empty() ? nullptr : &expected[expected.size() == 1 ? 0 : i];
@@ -763,7 +773,7 @@ bool BodyChecker::checkStatement (const Statement &node) {
 	if (const auto *s = dynamic_cast<const AssignmentStatement *>(&node)) {
 		const Binding                    *binding  = assignmentBinding(s->name);
 		const std::optional<TypedPlace>   tp_field = binding ? std::nullopt : locate(NameExpression(s->name));
-		const std::optional<ResolvedType> opt_type = binding ? binding->type : tp_field ? tp_field->type : name(s->name).types.front();
+		const std::optional<ResolvedType> opt_type = binding ? binding->type : tp_field ? tp_field->type : name(s->name, true).types.front();
 		if (const BinaryExpression *compound = s->get_compound()) {
 			if (const std::optional<ResolvedType> opt_left = scalar(*compound->left)) {
 				if (const std::optional<ExpressionInfo> opt_update = updateOperator(node, *opt_left, *s->compoundOperator, compound->right)) {
@@ -780,7 +790,7 @@ bool BodyChecker::checkStatement (const Statement &node) {
 		return receive(s->targets, *s->value, nullptr);
 	}
 	if (const auto *s = dynamic_cast<const UpdateStatement *>(&node)) {
-		(void)assignmentBinding(s->name);
+		if (!assignmentBinding(s->name) && !locate(*s->target)) name(s->name, true);
 		const std::optional<ResolvedType> opt_target = scalar(*s->target);
 		if (opt_target && !updateOperator(node, *opt_target, s->op, nullptr) && !analyzer.numeric(*opt_target)) {
 			fail(Code::UNARY_OPERAND, s->op.get_span(), "Update needs a numeric binding or a matching operator");

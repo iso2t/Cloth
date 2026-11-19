@@ -8,6 +8,39 @@
 #include <token/token.hpp>
 
 namespace cloth::semantic {
+bool contextualFailure (const cde::ClothDiagnostic &error) {
+	if (dynamic_cast<const IntrinsicDiagnostic *>(&error)) return false;
+	switch (error.get_code()) {
+	case Code::TYPE_MISMATCH:
+	case Code::INTEGER_RANGE:
+	case Code::FLOAT_RANGE:
+	case Code::INTEGER_DIVISION_OVERFLOW:
+	case Code::NEGATIVE_EXPONENT:
+	case Code::INVALID_CAST:
+	case Code::UNARY_OPERAND:
+	case Code::BINARY_OPERANDS:
+	case Code::MIXED_INTEGERS:
+	case Code::INCOMPARABLE_TYPES:
+	case Code::INVALID_ARRAY:
+	case Code::INVALID_INDEX:
+	case Code::INVALID_STRUCT_LITERAL:
+	case Code::INVALID_STRUCT_FIELD:
+	case Code::INVALID_RANGE_VALUE:
+	case Code::INVALID_RANGE_MEMBERSHIP:
+	case Code::INVALID_NULLABLE_TYPE:
+	case Code::EXPLICIT_NULLABLE_TYPE:
+	case Code::MISSING_ELSE:
+	case Code::NON_BOOLEAN_CONDITION:
+	case Code::MISSING_BRANCH_VALUE:
+	case Code::BRANCH_TYPE_MISMATCH:
+	case Code::BRANCH_RESULT_ARITY:
+	case Code::VOID_VALUE:
+		return true;
+	default:
+		return false;
+	}
+}
+
 namespace {
 
 struct ArgumentPlacement {
@@ -118,14 +151,6 @@ struct Inference {
 		return actual.name != pattern.name || actual.arguments().size() != pattern.arguments().size() || match(actual);
 	}
 };
-
-bool contextualFailure (const cde::ClothDiagnostic &error) {
-	if (dynamic_cast<const ReturnDiagnostic *>(&error)) return false;
-	const Code code = error.get_code();
-	return code == Code::TYPE_MISMATCH || code == Code::INTEGER_RANGE || code == Code::FLOAT_RANGE || code == Code::INVALID_ARRAY ||
-	       code == Code::INVALID_STRUCT_LITERAL || code == Code::INVALID_STRUCT_FIELD || code == Code::INVALID_RANGE_VALUE ||
-	       code == Code::BRANCH_TYPE_MISMATCH || code == Code::INVALID_NULLABLE_TYPE || code == Code::MIXED_INTEGERS;
-}
 
 struct PlacedCandidate {
 	const Candidate         *candidate;
@@ -263,13 +288,13 @@ bool BodyChecker::checkArguments (const std::vector<CallArgument> &arguments, co
 		if (b_sameInput && !b_fits && dynamic_cast<const CallSite *>(&e_argument)) {
 			require(ap_probe.result->types, { rt_parameter }, e_argument.get_span());
 		}
-		if (b_fits && !record && !we_capture) {
+		if (b_fits && !record && !we_capture && (!contextual || dynamic_cast<const CallSite *>(&e_argument))) {
 			// Reuse an already typed operand only with the same incoming facts, then carry its effects to the next written argument.
 			bc_operand.fs_flow = ap_probe.after;
 			b_continues &= ap_probe.result->fallsThrough;
 			continue;
 		}
-		const std::optional<ResolvedType> opt_actual = bc_operand.scalar(e_argument, contextual && !b_fits ? &rt_parameter : nullptr);
+		const std::optional<ResolvedType> opt_actual = bc_operand.scalar(e_argument, contextual ? &rt_parameter : nullptr, FloatContext{ contextual });
 		if (opt_actual) {
 			require({ *opt_actual }, { rt_parameter }, e_argument.get_span());
 			if (record && hasArrayShape(rt_parameter)) {
@@ -336,9 +361,11 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 	}
 	std::vector<ArgumentProbe>    v_probes;
 	std::vector<ArgumentEvidence> v_evidence;
+	ExpressionFacts               ef_natural;
 	BodyChecker                   natural         = *this;
 	natural.record                                = false;
 	natural.we_capture                            = nullptr;
+	natural.ef_probeConstants                     = &ef_natural;
 	bool                       b_naturalContinues = true;
 	std::optional<BodyChecker> opt_unreachable;
 	for (const CallArgument &arg : arguments) {
@@ -387,8 +414,38 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 	const Symbol                       *inaccessible = nullptr;
 	std::optional<cde::ClothDiagnostic> opt_boundFailure;
 	bool                                b_inferred = false;
+	std::vector<std::pair<Match, const Symbol *>> v_contextual;
+	const std::function                           tryContextual = [&] {
+		// An exact or assignable ordinary match ends this overload group's search.
+		if (matches.empty()) {
+			for (std::pair<Match, const Symbol *> &entry : v_contextual) {
+				Match          &match = entry.first;
+				ExpressionFacts ef_trial;
+				BodyChecker     trial   = *this;
+				trial.record            = false;
+				trial.we_capture        = nullptr;
+				trial.ef_probeConstants = &ef_trial;
+				try {
+					trial.checkArguments(arguments, match.parameters, v_probes, true);
+				} catch (const cde::ClothDiagnostic &error) {
+					const bool b_private = error.get_code() == Code::PRIVATE_CLASS_MEMBER || error.get_code() == Code::PRIVATE_NESTED_TYPE;
+					if (b_private && group.size() > 1 && !dynamic_cast<const IntrinsicDiagnostic *>(&error)) continue;
+					if (contextualFailure(error)) continue;
+					throw;
+				}
+				if (entry.second)
+					inaccessible = entry.second;
+				else
+					matches.push_back(std::move(match));
+			}
+		}
+		v_contextual.clear();
+	};
 	for (std::vector<PlacedCandidate>::iterator it_placed = v_placed.begin(); it_placed != v_placed.end(); ++it_placed) {
-		if (it_placed == it_firstGeneric && !matches.empty()) break;
+		if (it_placed == it_firstGeneric) {
+			tryContextual();
+			if (!matches.empty()) break;
+		}
 		PlacedCandidate       &pc_placed     = *it_placed;
 		const Candidate       &candidate     = *pc_placed.candidate;
 		ArgumentPlacement     &ap_placement  = pc_placed.placement;
@@ -401,7 +458,6 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 				continue;
 			b_inferred = true;
 		}
-		bool  viable = true;
 		Match match{ .symbol              = candidate.overridingMethod ? candidate.overridingMethod : &symbol,
 			     .contract            = &symbol,
 			     .placement           = std::move(ap_placement),
@@ -423,37 +479,20 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 			}
 			match.rank = MatchRank::Contextual;
 		}
-		if (match.rank == MatchRank::Contextual) {
-			BodyChecker trial = *this;
-			trial.record      = false;
-			trial.we_capture  = nullptr;
-			try {
-				trial.checkArguments(arguments, match.parameters, v_probes, true);
-			} catch (const cde::ClothDiagnostic &error) {
-				if (error.get_code() == Code::PRIVATE_CLASS_MEMBER || error.get_code() == Code::PRIVATE_NESTED_TYPE) {
-					if (group.size() == 1 || dynamic_cast<const ReturnDiagnostic *>(&error)) {
-						throw;
-					}
-				} else if (!contextualFailure(error)) {
-					throw;
-				}
-				viable = false;
-			}
-		}
-		if (!viable) {
-			continue;
-		}
-		if (!analyzer.accessible(candidate, context)) {
-			inaccessible = &symbol;
-			continue;
-		}
-		if (!candidate.dispatch && candidate.overridingMethod && !analyzer.accessible(*candidate.overridingMethod, context)) {
-			inaccessible = candidate.overridingMethod;
-			continue;
-		}
+		const Symbol *sym_private = nullptr;
+		if (!analyzer.accessible(candidate, context))
+			sym_private = &symbol;
+		else if (!candidate.dispatch && candidate.overridingMethod && !analyzer.accessible(*candidate.overridingMethod, context))
+			sym_private = candidate.overridingMethod;
 		match.substitutions = std::move(substitutions);
-		matches.push_back(std::move(match));
+		if (match.rank == MatchRank::Contextual)
+			v_contextual.emplace_back(std::move(match), sym_private);
+		else if (sym_private)
+			inaccessible = sym_private;
+		else
+			matches.push_back(std::move(match));
 	}
+	tryContextual();
 	if (matches.empty()) {
 		if (inaccessible) {
 			analyzer.requireAccess(*inaccessible, context, span);

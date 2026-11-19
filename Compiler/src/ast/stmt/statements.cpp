@@ -2,7 +2,6 @@
 
 #include <memory>
 #include <stdexcept>
-#include <string>
 #include <utility>
 
 #include <ast/expr/expression.hpp>
@@ -12,19 +11,6 @@
 #include <token/token.hpp>
 
 namespace cloth {
-
-namespace {
-
-std::shared_ptr<const BinaryExpression> compoundExpression (const ExpressionPtr &target, const Token &op, const ExpressionPtr &value) {
-	if (!value || op.get_lexeme() == to_string(oAssign)) {
-		return nullptr;
-	}
-	const Operator o_base = compound_assignment_base(op.get_lexeme());
-	const Token    t_base(std::string(to_string(o_base)), op.get_type(), op.get_span());
-	return std::make_shared<BinaryExpression>(target, t_base, value);
-}
-
-}
 
 ElementAssignmentStatement::ElementAssignmentStatement (std::shared_ptr<const IndexExpression> target, const Token &op, ExpressionPtr value) :
         target(std::move(target)),

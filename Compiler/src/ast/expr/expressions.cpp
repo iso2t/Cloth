@@ -63,6 +63,13 @@ UnaryExpression::UnaryExpression (const Token &op, ExpressionPtr operand) : op(o
 BinaryExpression::BinaryExpression (ExpressionPtr left, const Token &op, ExpressionPtr right) : left(std::move(left)), op(op), right(std::move(right)) {
 }
 
+std::shared_ptr<const BinaryExpression> compoundExpression (const ExpressionPtr &target, const Token &op, const ExpressionPtr &value) {
+	if (!value || op.get_operator() == oAssign) return nullptr;
+	const Operator o_base = compound_assignment_base(op.get_lexeme());
+	const Token    t_base(std::string(to_string(o_base)), o_base, op.get_span());
+	return std::make_shared<BinaryExpression>(target, t_base, value);
+}
+
 const BinaryExpression *rangeOrNull (const Expression &expression) {
 	const auto be_binary = dynamic_cast<const BinaryExpression *>(&expression);
 	if (!be_binary) {

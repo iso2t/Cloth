@@ -17,6 +17,7 @@ unit_sources := Compiler/Lexer/Unit/token_test.cpp \
                 Compiler/Parser/Unit/precedence_test.cpp \
                 Compiler/Semantic/Unit/symbol_table_test.cpp \
                 Compiler/Semantic/Unit/checked_program_test.cpp \
+                Compiler/Semantic/Unit/builtin_calls_test.cpp \
                 Compiler/Semantic/Unit/generic_instances_test.cpp \
                 Compiler/Semantic/Unit/dispatch_test.cpp \
                 Compiler/Semantic/Unit/flow_test.cpp \

@@ -228,7 +228,8 @@ class LifetimeChecker {
 	void     statements (const std::vector<StatementPtr> &body, Path &path);
 	void     statement (const Statement &node, Path &path);
 	void     loop (const LoopStatement &node, Path &path);
-	void     arguments (const CallSite &call, Path &path);
+	void                              arguments (const CallSite &call, Path &path, bool *formatCheck = nullptr);
+	void                              formatText (const Expression &operand, Path &path, bool &runtime);
 	std::optional<std::uint64_t> constantIndex (const Expression &index) const;
 	void                         append (Identity list, Handle item, const CallSite &call, Path &path) const;
 	Handle                       readOwned (Identity list, std::optional<std::uint64_t> index, const ResolvedType &type, Path &path);
@@ -420,11 +421,22 @@ Handle LifetimeChecker::scalar (const Expression &node, Path &path) {
 	return h_value;
 }
 
-void LifetimeChecker::arguments (const CallSite &call, Path &path) {
+void LifetimeChecker::arguments (const CallSite &call, Path &path, bool *formatCheck) {
 	for (const CallArgument &ca_arg : call.suppliedArguments) {
 		if (!path.reachable) break;
-		expression(*ca_arg.expression, path);
+		if (formatCheck && bf_facts.textConversions.contains(ca_arg.expression.get()))
+			formatText(*ca_arg.expression, path, *formatCheck);
+		else
+			expression(*ca_arg.expression, path);
 	}
+}
+
+void LifetimeChecker::formatText (const Expression &operand, Path &path, bool &runtime) {
+	const Handle h_value = scalar(operand, path);
+	if (!path.reachable) return;
+	if (h_value.identity) access(h_value, path, operand.get_span(), directSelf(operand), runtime);
+	const decltype(bf_facts.textConversions)::const_iterator it_format = bf_facts.textConversions.find(&operand);
+	if (it_format != bf_facts.textConversions.end() && it_format->second.callsFormatter) unknownEffect(path);
 }
 
 std::optional<std::uint64_t> LifetimeChecker::constantIndex (const Expression &index) const {
@@ -562,7 +574,7 @@ Values LifetimeChecker::call (const CallSite &node, const ExpressionInfo &info, 
 	if (opt_operation == ListOperation::Append)
 		h_argument = scalar(*node.suppliedArguments.front().expression, path);
 	else
-		arguments(node, path);
+		arguments(node, path, info.builtin ? &checks.atAccess : nullptr);
 	defaults(info, path);
 	if (!path.reachable) return {};
 	if (sc_state || b_method) access(h_receiver, path, ts_receiver, b_self, checks.atAccess);
@@ -932,12 +944,7 @@ Values LifetimeChecker::expression (const Expression &node, Path &path) {
 	} else if (const StructLiteral *sl_value = dynamic_cast<const StructLiteral *>(&node)) {
 		for (const ExpressionPtr &ep_value : sl_value->fields) expression(*ep_value, path);
 	} else if (const InterpolatedString *is_text = dynamic_cast<const InterpolatedString *>(&node)) {
-		for (const ExpressionPtr &ep_value : is_text->parts) {
-			const Handle h_value = scalar(*ep_value, path);
-			if (h_value.identity) access(h_value, path, ep_value->get_span(), directSelf(*ep_value), rc_checks.atAccess);
-			const decltype(bf_facts.textConversions)::const_iterator it_format = bf_facts.textConversions.find(ep_value.get());
-			if (it_format != bf_facts.textConversions.end() && it_format->second.callsFormatter) unknownEffect(path);
-		}
+		for (const ExpressionPtr &ep_value : is_text->parts) formatText(*ep_value, path, rc_checks.atAccess);
 	}
 	if (b_emit) {
 		ReceiverChecks &rc_out = ei_info.receiverChecks;
@@ -1182,8 +1189,8 @@ void LifetimeChecker::loop (const LoopStatement &node, Path &path) {
 			Branches tested    = checker.condition(*ds_do->condition, *lp_edges.continues);
 			lp_edges.continues = std::move(tested.yes);
 			if (tested.no) checker.join(paths.no, *tested.no);
-		} else if (lp_edges.continues && fs_for && fs_for->stepper && fs_for->stepper->value) {
-			checker.expression(*fs_for->stepper->value, *lp_edges.continues);
+		} else if (lp_edges.continues && fs_for && fs_for->stepper && fs_for->stepper->update()) {
+			checker.expression(*fs_for->stepper->update(), *lp_edges.continues);
 			if (!lp_edges.continues->reachable) lp_edges.continues.reset();
 		}
 		if (lp_edges.breaks) checker.join(paths.no, *lp_edges.breaks);

@@ -60,12 +60,29 @@ std::optional<ProviderSelection> BodyChecker::textConversion (const ResolvedType
 		if (record) ps_format.formatterInstance = analyzer.useCallable(*c_formatter.symbol, c_formatter.arguments, context, use);
 		return ps_format;
 	}
-	ps_format.callsFormatter = analyzer.referenceType(rt_element);
-	if (ps_format.callsFormatter || enumeration(rt_element) || analyzer.numeric(rt_element) || rt_element == ResolvedType(kBoolean) ||
-	    rt_element == ResolvedType(kCharacter) || rt_element == ResolvedType(kString) || rt_element == ResolvedType(kTypeinfo) ||
-	    rt_element == ResolvedType(kNull))
+	if (analyzer.referenceType(rt_element)) {
+		ps_format.callsFormatter = analyzer.anyReceiverClass(rt_element, [&] (const ResolvedType &host) {
+			return !dataProviders(analyzer, host, provider::S_STRING).empty();
+		});
+		return ps_format;
+	}
+	if (enumeration(rt_element) || analyzer.numeric(rt_element) || rt_element == ResolvedType(kBoolean) || rt_element == ResolvedType(kCharacter) ||
+	    rt_element == ResolvedType(kString) || rt_element == ResolvedType(kTypeinfo) || rt_element == ResolvedType(kNull))
 		return ps_format;
 	return {};
+}
+
+bool BodyChecker::bindText (const Expression &operand, const ResolvedType &type) {
+	const std::optional<ProviderSelection> opt_format = textConversion(type, operand.get_span());
+	if (!opt_format) return false;
+	if (opt_format->callsFormatter) {
+		if (readOnlyDefaultRoot(operand))
+			fail(Code::INVALID_PARAMETER_DEFAULT, operand.get_span(), "A default cannot call a formatter through a read-only receiver",
+			     &pd_default->name);
+		invalidateShared();
+	}
+	if (record) bf_facts.textConversions.insert_or_assign(&operand, *opt_format);
+	return true;
 }
 
 void BodyChecker::enumValue (const EnumFieldDeclaration &field, const Expression &value, const Token *caseName) {
