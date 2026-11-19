@@ -400,8 +400,8 @@ StatementPtr Parser::parseStatement (bool allowWhileTrailer, bool multilineResul
 		if (t_operator.get_lexeme() == to_string(oAssign)) {
 			return std::make_shared<AssignmentStatement>(t_name, parseResults(nullptr, std::nullopt, allowWhileTrailer));
 		}
-		ExpressionPtr  ep_right = p_expressionParser.parseExpression(0, /*stopAtAssignment=*/false, /*stopAtRange=*/false, allowWhileTrailer);
-		ExpressionPtr  ep_value = compoundExpression(std::make_shared<NameExpression>(t_name), t_operator, ep_right);
+		ExpressionPtr ep_right = p_expressionParser.parseExpression(0, /*stopAtAssignment=*/false, /*stopAtRange=*/false, allowWhileTrailer);
+		ExpressionPtr ep_value = compoundExpression(std::make_shared<NameExpression>(t_name), t_operator, ep_right);
 		return std::make_shared<AssignmentStatement>(t_name, std::move(ep_value), t_operator);
 	}
 

@@ -52,10 +52,10 @@ struct ForSource {
 };
 
 struct ForStepper {
-	Token         target;
-	Token         op;
-	ExpressionPtr value;
-	TokenSpan     span;
+	Token                                   target;
+	Token                                   op;
+	ExpressionPtr                           value;
+	TokenSpan                               span;
 	std::shared_ptr<const BinaryExpression> compound = compoundExpression(std::make_shared<NameExpression>(target), op, value);
 
 	[[nodiscard]] const Expression *update () const {

@@ -228,8 +228,8 @@ class LifetimeChecker {
 	void     statements (const std::vector<StatementPtr> &body, Path &path);
 	void     statement (const Statement &node, Path &path);
 	void     loop (const LoopStatement &node, Path &path);
-	void                              arguments (const CallSite &call, Path &path, bool *formatCheck = nullptr);
-	void                              formatText (const Expression &operand, Path &path, bool &runtime);
+	void     arguments (const CallSite &call, Path &path, bool *formatCheck = nullptr);
+	void     formatText (const Expression &operand, Path &path, bool &runtime);
 	std::optional<std::uint64_t> constantIndex (const Expression &index) const;
 	void                         append (Identity list, Handle item, const CallSite &call, Path &path) const;
 	Handle                       readOwned (Identity list, std::optional<std::uint64_t> index, const ResolvedType &type, Path &path);

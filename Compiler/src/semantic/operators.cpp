@@ -123,9 +123,9 @@ std::optional<Candidate> BodyChecker::selectOperator (const Token &op, const Tok
 			if (!analyzer.accepts(rt_parameter, rt_peer)) {
 				if (!operands) continue;
 				ExpressionFacts ef_trial;
-				BodyChecker bc_trial = *this;
-				bc_trial.record      = false;
-				bc_trial.we_capture  = nullptr;
+				BodyChecker     bc_trial   = *this;
+				bc_trial.record            = false;
+				bc_trial.we_capture        = nullptr;
 				bc_trial.ef_probeConstants = &ef_trial;
 				try {
 					const std::optional<ResolvedType> opt_peer =
@@ -198,33 +198,33 @@ std::optional<ExpressionInfo> BodyChecker::binaryOperator (const BinaryExpressio
 	const bool b_inequality = node.op.get_operator() == oNotEqual;
 	if (!analyzer.hasOperator(node.op.get_lexeme()) && !(b_inequality && analyzer.hasOperator(to_string(oEqual)))) return {};
 	ExpressionFacts ef_natural;
-	BodyChecker bc_probe      = *this;
-	bc_probe.record           = false;
-	bc_probe.we_capture       = nullptr;
-	bc_probe.ef_probeConstants    = &ef_natural;
-	const std::function probe     = [&] (const Expression &operand) {
-		const bool b_cache = operatorProbes && !captured && !b_inferenceDefaults &&
-		                     (dynamic_cast<const BinaryExpression *>(&operand) || dynamic_cast<const ElvisExpression *>(&operand));
-		if (b_cache) {
-			const OperatorProbes::const_iterator it_probe = operatorProbes->find(&operand);
-			if (it_probe != operatorProbes->end() && it_probe->second.before == bc_probe.fs_flow) {
-				bc_probe.fs_flow = it_probe->second.after;
-				return it_probe->second.type;
-			}
-		}
-		try {
-			const FlowState fs_before = bc_probe.fs_flow;
-			const ExpressionInfo ei_operand = bc_probe.scalarInfo(operand);
-			ResolvedType         rt_type    = ei_operand.fallsThrough ? ei_operand.types.front() : ResolvedType{};
-			if (b_cache)
-				operatorProbes->insert_or_assign(&operand, OperandProbe{ fs_before, bc_probe.fs_flow, rt_type,
-				                                                         ei_operand.argumentContract || ei_operand.leftContext ||
-				                                                                 ei_operand.rightContext });
-			return rt_type;
-		} catch (const cde::ClothDiagnostic &) {
-			// The committed path supplies context and the short-circuit presence proofs.
-			return ResolvedType{};
-		}
+	BodyChecker     bc_probe   = *this;
+	bc_probe.record            = false;
+	bc_probe.we_capture        = nullptr;
+	bc_probe.ef_probeConstants = &ef_natural;
+	const std::function probe  = [&] (const Expression &operand) {
+                const bool b_cache = operatorProbes && !captured && !b_inferenceDefaults &&
+                                     (dynamic_cast<const BinaryExpression *>(&operand) || dynamic_cast<const ElvisExpression *>(&operand));
+                if (b_cache) {
+                        const OperatorProbes::const_iterator it_probe = operatorProbes->find(&operand);
+                        if (it_probe != operatorProbes->end() && it_probe->second.before == bc_probe.fs_flow) {
+                                bc_probe.fs_flow = it_probe->second.after;
+                                return it_probe->second.type;
+                        }
+                }
+                try {
+                        const FlowState      fs_before  = bc_probe.fs_flow;
+                        const ExpressionInfo ei_operand = bc_probe.scalarInfo(operand);
+                        ResolvedType         rt_type    = ei_operand.fallsThrough ? ei_operand.types.front() : ResolvedType{};
+                        if (b_cache)
+                                operatorProbes->insert_or_assign(&operand, OperandProbe{ fs_before, bc_probe.fs_flow, rt_type,
+                                                                                         ei_operand.argumentContract || ei_operand.leftContext ||
+                                                                                                 ei_operand.rightContext });
+                        return rt_type;
+                } catch (const cde::ClothDiagnostic &) {
+                        // The committed path supplies context and the short-circuit presence proofs.
+                        return ResolvedType{};
+                }
 	};
 	const ResolvedType rt_left = probe(*node.left), rt_right = probe(*node.right);
 	if ((!rt_left.declaration && !rt_left.parameter) && (!rt_right.declaration && !rt_right.parameter)) return {};
@@ -234,7 +234,7 @@ std::optional<ExpressionInfo> BodyChecker::binaryOperator (const BinaryExpressio
 std::optional<ExpressionInfo> BodyChecker::applyBinaryOperator (const BinaryExpression &node, const ResolvedType &rt_left, const ResolvedType &rt_right,
                                                                 const ResolvedType *expected, bool allowContexts, FloatContext floats) {
 	const bool               b_inequality = node.op.get_operator() == oNotEqual;
-	const bool               b_lift = isEquality(node.op.get_operator()) && rt_left != ResolvedType(kNull) && rt_right != ResolvedType(kNull);
+	const bool               b_lift       = isEquality(node.op.get_operator()) && rt_left != ResolvedType(kNull) && rt_right != ResolvedType(kNull);
 	const ResolvedType       rt_a = b_lift ? payload(rt_left) : rt_left, rt_b = b_lift ? payload(rt_right) : rt_right;
 	const Token              t_equal(std::string(to_string(oEqual)), oEqual, node.op.get_span());
 	bool                     b_right = false, b_negate = false, b_lifted = false;

@@ -130,8 +130,8 @@ ExpressionInfo BodyChecker::mutateArray (const MemberCallExpression &call, const
 	const ResolvedType &rt_array   = receiver.types.front();
 	const ResolvedType  rt_element = rt_array.element();
 	const bool          b_remove = operation == ArrayMutation::RemoveAt, b_clear = operation == ArrayMutation::Clear,
-	           b_reserve = operation == ArrayMutation::Reserve;
-	const bool b_insert = operation == ArrayMutation::Insert, b_add = operation == ArrayMutation::Append || b_insert;
+	           b_reserve       = operation == ArrayMutation::Reserve;
+	const bool        b_insert = operation == ArrayMutation::Insert, b_add = operation == ArrayMutation::Append || b_insert;
 	const std::size_t st_arity = b_clear ? 0u : b_insert ? 2u : 1u;
 	checkBuiltinArguments(call, call.typeArguments ? &*call.typeArguments : nullptr, st_arity, st_arity);
 	if (rt_array.suffixes.back() != arraySuffix())
@@ -145,7 +145,7 @@ ExpressionInfo BodyChecker::mutateArray (const MemberCallExpression &call, const
 	bool                       b_continues = receiver.fallsThrough;
 	std::optional<BodyChecker> opt_unreachable;
 	for (std::size_t st_index = 0; st_index < call.suppliedArguments.size(); ++st_index) {
-		const CallArgument &ca_arg = call.suppliedArguments[st_index];
+		const CallArgument               &ca_arg       = call.suppliedArguments[st_index];
 		const bool                        b_element    = b_add && st_index + 1 == call.suppliedArguments.size();
 		const ResolvedType                rt_parameter = b_element ? rt_element : ResolvedType(kUsize);
 		BodyChecker                      &bc_operand   = onPath(b_continues, opt_unreachable);

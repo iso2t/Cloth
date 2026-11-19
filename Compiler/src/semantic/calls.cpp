@@ -410,36 +410,36 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 		}
 		v_probes.push_back(std::move(ap_probe));
 	}
-	std::vector<Match>                  matches;
-	const Symbol                       *inaccessible = nullptr;
-	std::optional<cde::ClothDiagnostic> opt_boundFailure;
-	bool                                b_inferred = false;
+	std::vector<Match>                            matches;
+	const Symbol                                 *inaccessible = nullptr;
+	std::optional<cde::ClothDiagnostic>           opt_boundFailure;
+	bool                                          b_inferred = false;
 	std::vector<std::pair<Match, const Symbol *>> v_contextual;
 	const std::function                           tryContextual = [&] {
-		// An exact or assignable ordinary match ends this overload group's search.
-		if (matches.empty()) {
-			for (std::pair<Match, const Symbol *> &entry : v_contextual) {
-				Match          &match = entry.first;
-				ExpressionFacts ef_trial;
-				BodyChecker     trial   = *this;
-				trial.record            = false;
-				trial.we_capture        = nullptr;
-				trial.ef_probeConstants = &ef_trial;
-				try {
-					trial.checkArguments(arguments, match.parameters, v_probes, true);
-				} catch (const cde::ClothDiagnostic &error) {
-					const bool b_private = error.get_code() == Code::PRIVATE_CLASS_MEMBER || error.get_code() == Code::PRIVATE_NESTED_TYPE;
-					if (b_private && group.size() > 1 && !dynamic_cast<const IntrinsicDiagnostic *>(&error)) continue;
-					if (contextualFailure(error)) continue;
-					throw;
-				}
-				if (entry.second)
-					inaccessible = entry.second;
-				else
-					matches.push_back(std::move(match));
-			}
-		}
-		v_contextual.clear();
+                // An exact or assignable ordinary match ends this overload group's search.
+                if (matches.empty()) {
+                        for (std::pair<Match, const Symbol *> &entry : v_contextual) {
+                                Match          &match = entry.first;
+                                ExpressionFacts ef_trial;
+                                BodyChecker     trial   = *this;
+                                trial.record            = false;
+                                trial.we_capture        = nullptr;
+                                trial.ef_probeConstants = &ef_trial;
+                                try {
+                                        trial.checkArguments(arguments, match.parameters, v_probes, true);
+                                } catch (const cde::ClothDiagnostic &error) {
+                                        const bool b_private = error.get_code() == Code::PRIVATE_CLASS_MEMBER || error.get_code() == Code::PRIVATE_NESTED_TYPE;
+                                        if (b_private && group.size() > 1 && !dynamic_cast<const IntrinsicDiagnostic *>(&error)) continue;
+                                        if (contextualFailure(error)) continue;
+                                        throw;
+                                }
+                                if (entry.second)
+                                        inaccessible = entry.second;
+                                else
+                                        matches.push_back(std::move(match));
+                        }
+                }
+                v_contextual.clear();
 	};
 	for (std::vector<PlacedCandidate>::iterator it_placed = v_placed.begin(); it_placed != v_placed.end(); ++it_placed) {
 		if (it_placed == it_firstGeneric) {

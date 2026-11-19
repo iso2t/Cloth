@@ -424,17 +424,17 @@ std::optional<ResolvedType> BodyChecker::elementHint (const Expression &node, Fl
 	if (const IfExpression *ie_conditional = dynamic_cast<const IfExpression *>(&node)) {
 		std::optional<ResolvedType> opt_common;
 		const std::function         branch = [&] (const std::vector<StatementPtr> &statements, const Narrowing &facts) {
-			BodyChecker bc_branch      = *this;
-			bc_branch.fs_flow.narrowed = facts;
-			bc_branch.scopes.emplace_back();
-			for (const StatementPtr &sp_item : statements) {
-				const ExpressionStatement *es_tail = dynamic_cast<const ExpressionStatement *>(sp_item.get());
-				if (&sp_item == &statements.back() && es_tail)
-					mergeElementHint(opt_common, bc_branch.elementHint(*es_tail->expression, floats), es_tail->get_span(),
-					                 Code::BRANCH_TYPE_MISMATCH);
-				else if (!bc_branch.statement(*sp_item))
-					break;
-			}
+                        BodyChecker bc_branch      = *this;
+                        bc_branch.fs_flow.narrowed = facts;
+                        bc_branch.scopes.emplace_back();
+                        for (const StatementPtr &sp_item : statements) {
+                                const ExpressionStatement *es_tail = dynamic_cast<const ExpressionStatement *>(sp_item.get());
+                                if (&sp_item == &statements.back() && es_tail)
+                                        mergeElementHint(opt_common, bc_branch.elementHint(*es_tail->expression, floats), es_tail->get_span(),
+					                         Code::BRANCH_TYPE_MISMATCH);
+                                else if (!bc_branch.statement(*sp_item))
+                                        break;
+                        }
 		};
 		BodyChecker bc_test = *this;
 		for (const ConditionalBranch &cb_branch : ie_conditional->branches) {
@@ -535,8 +535,8 @@ ExpressionInfo BodyChecker::elvis (const ElvisExpression &node, const ResultType
 	}
 	const ResolvedType rt_element = rt.element();
 	if (rt_element.floating()) floats = { true, rt_element.width };
-	BodyChecker        bc_missing = *this;
-	bc_missing.fs_flow.exits      = {};
+	BodyChecker bc_missing   = *this;
+	bc_missing.fs_flow.exits = {};
 	if (!opt_left->nullable()) bc_missing.we_capture = nullptr;
 	const std::optional<ResolvedType> opt_fallback = bc_missing.scalar(*node.fallback, rt_expected && rt_expected->nullable() ? &rt : &rt_element, floats);
 	if (b_nullLiteral) {
@@ -669,8 +669,8 @@ ExpressionInfo BodyChecker::builtinBinary (const BinaryExpression &node, const R
                 const BinaryExpression *binary = dynamic_cast<const BinaryExpression *>(&operand);
                 return binary && (binary->op.get_operator() == oRange || binary->op.get_operator() == oRangeInclusive);
 	};
-	const bool          equality = o_operation == oEqual || o_operation == oNotEqual || node.op.get_lexeme() == to_string(kIs);
-	NumericPeers        np_peers;
+	const bool   equality = o_operation == oEqual || o_operation == oNotEqual || node.op.get_lexeme() == to_string(kIs);
+	NumericPeers np_peers;
 	if (takesNumericContext(*node.left) || takesNumericContext(*node.right)) {
 		BodyChecker bc_probe = *this;
 		bc_probe.record      = false;
@@ -708,9 +708,9 @@ ExpressionInfo BodyChecker::builtinBinary (const BinaryExpression &node, const R
 	};
 	{
 		std::optional<ResolvedType> opt_hint = opt_numeric;
-		const ArrayLiteral         *al_left = dynamic_cast<const ArrayLiteral *>(node.left.get()),
-		                   *al_right        = dynamic_cast<const ArrayLiteral *>(node.right.get());
-		const bool b_typedArrays            = equality && al_left && al_right && elementEvidence(*al_left) == ElementEvidence::Typed &&
+		const ArrayLiteral         *al_left  = dynamic_cast<const ArrayLiteral *>(node.left.get()),
+		                   *al_right         = dynamic_cast<const ArrayLiteral *>(node.right.get());
+		const bool b_typedArrays             = equality && al_left && al_right && elementEvidence(*al_left) == ElementEvidence::Typed &&
 		                           elementEvidence(*al_right) == ElementEvidence::Typed;
 		if (equality && (((rangeSyntax(*node.left) || numericLiteral(*node.left)) && !numericLiteral(*node.right)) ||
 		                 (al_left && (!al_right || elementEvidence(*al_left) < elementEvidence(*al_right))))) {
@@ -1034,7 +1034,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		std::vector<std::optional<ResolvedType>> v_metadata;
 		std::optional<BodyChecker>               opt_unreachable;
 		for (std::size_t st_slot = 0; st_slot < n->values.size(); ++st_slot) {
-			BodyChecker   &bc_operand = onPath(v_values.size() == st_slot, opt_unreachable);
+			BodyChecker        &bc_operand = onPath(v_values.size() == st_slot, opt_unreachable);
 			const ResolvedType *rt_slot    = expected && st_slot < expected->size() ? &(*expected)[st_slot] : nullptr;
 			const FloatContext  fc_slot    = !rt_slot || suppliesFloatingContext(*rt_slot) ? floats : FloatContext{};
 			ExpressionInfo      ei_value   = bc_operand.scalarInfo(*n->values[st_slot], rt_slot, fc_slot);
