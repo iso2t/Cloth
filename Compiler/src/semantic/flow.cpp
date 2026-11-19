@@ -221,37 +221,41 @@ bool BodyChecker::loop (const LoopStatement &node) {
 				fail(Code::INVALID_FOR_LOOP, fs_for->binding.get_span(), "An iteration binding requires a value type");
 		}
 		std::optional<ResolvedType> opt_element;
-		if (const ForSource::Range *range = std::get_if<ForSource::Range>(&fs_for->source.value)) {
-			opt_element = rangeEndpoints(*range->start, *range->end, annotation ? &*annotation : nullptr, Code::INVALID_FOR_LOOP, b_source);
-			if (record && opt_element) bf_facts.iterations[fs_for] = { IterationKind::Range, *opt_element };
+		const Expression           &source   = fs_for->source.get_expression();
+		std::optional<ResolvedType> opt_hint = annotation;
+		const bool                  b_range  = std::holds_alternative<ForSource::Range>(fs_for->source.value);
+		if (annotation && b_range) {
+			opt_hint = ResolvedType(kRange);
+			analyzer.applyArguments(*opt_hint, { *annotation });
+		} else if (opt_hint)
+			opt_hint->suffixes.push_back(arraySuffix());
+		std::optional<ResolvedType> opt_source;
+		try {
+			opt_source = scalar(source, opt_hint ? &*opt_hint : nullptr);
+		} catch (const cde::ClothDiagnostic &error) {
+			if (!b_range || error.get_code() != Code::INVALID_RANGE_VALUE) throw;
+			fail(Code::INVALID_FOR_LOOP, source.get_span(), "A range loop requires endpoints of one numeric type");
+		}
+		if (!opt_source) {
+			b_source = false;
+		} else if (opt_source->array()) {
+			opt_element = opt_source->element();
+			if (record) bf_facts.iterations[fs_for] = { IterationKind::Array, *opt_element };
+		} else if (opt_source->name == to_string(kRange) && !opt_source->declaration && !opt_source->arguments().empty()) {
+			opt_element = opt_source->arguments().front();
+			if (record) bf_facts.iterations[fs_for] = { IterationKind::Range, *opt_element };
 		} else {
-			const Expression           &source    = *std::get<ForSource::Elements>(fs_for->source.value).expression;
-			std::optional<ResolvedType> arrayHint = annotation;
-			if (arrayHint) arrayHint->suffixes.push_back(arraySuffix());
-			const std::optional<ResolvedType> opt_source = scalar(source, arrayHint ? &*arrayHint : nullptr);
-			if (!opt_source) {
-				b_source = false;
-			} else if (opt_source->array()) {
-				opt_element = opt_source->element();
-				if (record) bf_facts.iterations[fs_for] = { IterationKind::Array, *opt_element };
-			} else if (opt_source->name == to_string(kRange) && !opt_source->declaration && !opt_source->arguments().empty()) {
-				opt_element = opt_source->arguments().front();
-				if (record) bf_facts.iterations[fs_for] = { IterationKind::Range, *opt_element };
-			} else {
-				const std::vector<Candidate> group = analyzer.members(*opt_source, to_string(oForeach), SymbolKind::Operator);
-				if (group.empty())
-					fail(Code::INVALID_FOR_LOOP, source.get_span(), "Expected a range, array, or collection with an iteration operator");
-				if (readOnlyDefaultRoot(source))
-					fail(Code::INVALID_PARAMETER_DEFAULT, source.get_span(), "A default cannot iterate a read-only receiver",
-					     &pd_default->name);
-				ExpressionInfo                  call     = invoke(group.front().symbol->name, source.get_span(), {}, group);
-				std::optional<cloth::Iteration> snapshot = call.types.size() == 1 ? analyzer.snapshotLayout(call.types.front()) : std::nullopt;
-				if (!snapshot) fail(Code::INVALID_FOR_LOOP, source.get_span(), "Iteration requires the standard library snapshot");
-				mutatingReceiver(source, *opt_source);
-				opt_element        = snapshot->element;
-				snapshot->snapshot = std::move(call);
-				if (record) bf_facts.iterations[fs_for] = std::move(*snapshot);
-			}
+			const std::vector<Candidate> group = analyzer.members(*opt_source, to_string(oForeach), SymbolKind::Operator);
+			if (group.empty()) fail(Code::INVALID_FOR_LOOP, source.get_span(), "Expected a range, array, or collection with an iteration operator");
+			if (readOnlyDefaultRoot(source))
+				fail(Code::INVALID_PARAMETER_DEFAULT, source.get_span(), "A default cannot iterate a read-only receiver", &pd_default->name);
+			ExpressionInfo                  call     = invoke(group.front().symbol->name, source.get_span(), {}, group);
+			std::optional<cloth::Iteration> snapshot = call.types.size() == 1 ? analyzer.snapshotLayout(call.types.front()) : std::nullopt;
+			if (!snapshot) fail(Code::INVALID_FOR_LOOP, source.get_span(), "Iteration requires the standard library snapshot");
+			mutatingReceiver(source, *opt_source);
+			opt_element        = snapshot->element;
+			snapshot->snapshot = std::move(call);
+			if (record) bf_facts.iterations[fs_for] = std::move(*snapshot);
 		}
 		if (!opt_element && !annotation)
 			fail(Code::INVALID_FOR_LOOP, fs_for->source.get_span(), "A noncontinuing loop source requires an element annotation");

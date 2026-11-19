@@ -42,6 +42,7 @@ void                         requireFinite (const Expression &operand, const Bod
 std::string                  arraySuffix (std::string_view extent = {});
 std::optional<ArrayMutation> arrayMutationNamed (std::string_view name);
 bool                         hasArrayShape (const ResolvedType &type);
+ResolvedType                 comparisonShape (ResolvedType type, const ArrayLiteral *literal = nullptr);
 ResolvedType                 refineShape (ResolvedType target, const ResolvedType &source, const TokenSpan *use = nullptr);
 ResolvedType                 commonShape (ResolvedType left, const ResolvedType &right);
 
@@ -82,6 +83,8 @@ class Analyzer {
 	std::unordered_map<const Symbol *, DeclarationInfo> &declarations;
 
 	[[nodiscard]] const Symbol            *indexValidator (const Symbol &operation) const;
+	void                                   resolveOperator (const Symbol &operation, const MethodDeclaration &method);
+	[[nodiscard]] bool                     hasOperator (std::string_view name) const;
 	void                                   checkCollectionOperator (const Symbol &operation) const;
 	[[nodiscard]] std::optional<Iteration> snapshotLayout (const ResolvedType &type) const;
 
@@ -102,7 +105,7 @@ class Analyzer {
 	void                                          requireAccess (const Symbol &symbol, const Symbol &context, const TokenSpan &use) const;
 	[[nodiscard]] bool                            accepts (const ResolvedType &expected, const ResolvedType &actual) const;
 	[[nodiscard]] bool                            supportsEquality (const ResolvedType &type) const;
-	[[nodiscard]] bool                            arrayEqualityMayCall (const ResolvedType &type) const;
+	[[nodiscard]] bool                            classEqualityMayCall (const ResolvedType &type, Operator operation = oEqual) const;
 	[[nodiscard]] bool                            mayBeAbsent (const ResolvedType &type) const;
 	[[nodiscard]] bool                            hasMultipleTypeBounds (const ResolvedType &type) const;
 	[[nodiscard]] bool                            referenceType (const ResolvedType &type) const;
@@ -136,6 +139,7 @@ class Analyzer {
 
     private:
 	const Symbol                                    *sym_owningList = nullptr;
+	std::set<std::string, std::less<>>               s_operatorNames;
 	std::vector<LifetimeBody>                        v_lifetimeBodies;
 	std::map<ResolvedType, std::set<const Symbol *>> m_initializationEffects;
 	void                                             checkLifetimes ();
@@ -342,6 +346,14 @@ class BodyChecker {
 		bool      operator==(const FlowState &) const = default;
 	};
 
+	struct OperandProbe {
+		FlowState    before, after;
+		ResolvedType type;
+	};
+
+	using OperatorProbes           = std::unordered_map<const Expression *, OperandProbe>;
+	OperatorProbes *operatorProbes = nullptr;
+
 	struct TestPaths {
 		std::optional<Narrowing> yes, no;
 	};
@@ -423,7 +435,15 @@ class BodyChecker {
 	bool                     statePayload (const ExpressionPtr &payload, const ResolvedType &required, const TokenSpan &span, const Token &state);
 	ExpressionInfo           transition (const Candidate &state, const ExpressionPtr &payload, const TokenSpan &span);
 	ExpressionInfo           typeCheck (const TypeCheckExpression &node);
-	ExpressionInfo           binary (const BinaryExpression &node, const ResolvedType *expected);
+	ExpressionInfo               binary (const BinaryExpression &node, const ResolvedType *expected, bool allowContexts = true);
+	ExpressionInfo               elvis (const ElvisExpression &node, const ResultTypes *expected);
+	std::optional<ExpressionInfo> binaryOperator (const BinaryExpression &node, const ResolvedType *expected, bool allowContexts);
+	ExpressionInfo                equality (const BinaryExpression &node, const ResolvedType &left, const ResolvedType &right);
+	std::optional<Candidate>      selectOperator (const Token &op, const TokenSpan &span, const ResolvedType &left, const ResolvedType &right,
+	                                              bool &rightReceiver, const BinaryExpression *operands = nullptr) const;
+	std::optional<Candidate>      selectContext (const Token &op, const ResolvedType &receiver, const ResolvedType &peer, bool typeTarget = false) const;
+	ExpressionInfo callOperator (const Candidate &candidate, const Expression &receiver, const ResolvedType &type, const Token &op, const TokenSpan &span,
+	                             const ExpressionPtr &peer = {}, const ResolvedType *peerType = nullptr);
 	ExpressionInfo bindCall (const Token &name, const TokenSpan &span, const std::vector<CallArgument> &arguments, const std::vector<Candidate> &group,
 	                         const TypeArgumentList *typeArguments = nullptr, const ResultTypes *knownArguments = nullptr,
 	                         const ReceiverProofs &proofs = {});

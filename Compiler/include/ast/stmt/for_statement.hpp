@@ -7,7 +7,7 @@
 #include <utility>
 #include <variant>
 
-#include <ast/expr/expression.hpp>
+#include <ast/expr/expressions.hpp>
 #include <ast/stmt/loop_control.hpp>
 #include <ast/type/type_reference.hpp>
 #include <token/token.hpp>
@@ -27,13 +27,11 @@ struct ForBinding {
 
 struct ForSource {
 	struct Range {
-		ExpressionPtr start;
-		Token         delimiter;
-		ExpressionPtr end;
+		std::shared_ptr<const BinaryExpression> expression;
 		TokenSpan     span;
 
 		[[nodiscard]] bool isInclusive () const {
-			return delimiter.get_lexeme() == to_string(oRangeInclusive);
+			return expression->op.get_operator() == oRangeInclusive;
 		}
 	};
 
@@ -43,6 +41,10 @@ struct ForSource {
 	};
 
 	std::variant<Range, Elements> value;
+
+	[[nodiscard]] const Expression &get_expression () const {
+		return std::visit([]<typename Source>(const Source &source) -> const Expression & { return *source.expression; }, value);
+	}
 
 	[[nodiscard]] TokenSpan get_span () const {
 		return std::visit([]<typename Source>(const Source &source) -> TokenSpan { return source.span; }, value);

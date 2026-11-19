@@ -37,6 +37,7 @@ obj-y := cloth.o \
          semantic/flow.o \
          semantic/instances.o \
          semantic/lifetime.o \
+         semantic/operators.o \
          semantic/shapes.o \
          semantic/symbol_table.o \
          semantic/types.o \

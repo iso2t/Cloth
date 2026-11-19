@@ -25,7 +25,7 @@ typedef<class> DelegatedDefault(OwningList<Object> list, opt<int> tag ?: release
 }
 typedef<struct> Releaser {
     OwningList<Object> list;
-    operator ==(Releaser other) { list.removeAt(0); return true }
+    pub operator ==(Releaser other) { list.removeAt(0); return true }
 }
 typedef<class> Item {
 mt test(OwningList<Object> list, OwningList<Object> other, Object item, bool flag, usize index, Releaser[] probes, int[] numbers) {

@@ -509,23 +509,22 @@ bool Analyzer::supportsEquality (const ResolvedType &type) const {
 	return referenceType(rt_element);
 }
 
-bool Analyzer::arrayEqualityMayCall (const ResolvedType &type) const {
-	ResolvedType rt_leaf = type;
-	rt_leaf.suffixes.clear();
-	if (!rt_leaf.declaration && !rt_leaf.parameter) return false;
-	const bool          b_reference = referenceType(rt_leaf);
+bool Analyzer::classEqualityMayCall (const ResolvedType &type, Operator operation) const {
 	const std::function hasEquality = [&] (const ResolvedType &owner) {
-		for (const Candidate &c_op : members(owner, to_string(oEqual), SymbolKind::Operator)) {
+		for (const Candidate &c_op : members(owner, to_string(operation), SymbolKind::Operator)) {
 			const MethodDeclaration &md_equal = dynamic_cast<const MethodDeclaration &>(*callable(*c_op.symbol));
 			const OperatorMember    &om_form  = *md_equal.operatorMember;
-			if (!om_form.provider && !om_form.selector && (!b_reference || !om_form.rightReceiver) && md_equal.parameters.size() == 1) return true;
+			if (!om_form.provider && !om_form.selector && !om_form.rightReceiver && md_equal.parameters.size() == 1 &&
+			    c_op.symbol->visibility == Visibility::Public &&
+			    accepts(substitute(declarations.at(c_op.symbol).parameters.front(), c_op.arguments), owner))
+				return true;
 		}
 		return false;
 	};
-	if (hasEquality(rt_leaf)) return true;
-	if (!b_reference) return false;
-	// Constrain dynamic dispatch by every nominal bound on the array element.
-	ResultTypes                                v_views, v_bounds{ rt_leaf };
+	if (operation == oNotEqual && classEqualityMayCall(type, oEqual)) return true;
+	if (hasEquality(type)) return true;
+	// Constrain dynamic dispatch by every nominal bound on the receiver.
+	ResultTypes                                v_views, v_bounds{ type };
 	std::set<const TypeParameterDeclaration *> s_parameters;
 	while (!v_bounds.empty()) {
 		const ResolvedType rt_bound = std::move(v_bounds.back());
@@ -627,37 +626,8 @@ void Analyzer::resolveDeclaration (const Symbol &symbol) {
 				fail(Code::VOID_TYPE, ref.get_span(), std::format("{} must be the only result", to_string(kVoid)));
 			}
 		}
-		if (const auto *mt = dynamic_cast<const MethodDeclaration *>(cs); mt && mt->operatorMember && mt->operatorMember->selector) {
-			info.value = type(*mt->operatorMember->selector, symbol);
-		}
 		if (symbol.kind == SymbolKind::Operator) {
-			const Operator              o_operation = symbol.name.get_operator();
-			std::optional<ResolvedType> fixed;
-			if (o_operation == oIndexRead && info.returns.empty() && !std::holds_alternative<ExpressionBody>(cs->executableBody()->value)) {
-				fail(Code::INVALID_OPERATOR_DECLARATION, cs->span, "A block-bodied index getter needs a result type");
-			}
-			if (!info.value &&
-			    (o_operation == oNot || o_operation == oIndexValidate || symbol.name.get_lexeme() == to_string(kIs) || isComparison(o_operation))) {
-				fixed = ResolvedType(kBoolean);
-			}
-			if (symbol.name.get_lexeme() == provider::S_STRING && dynamic_cast<const MethodDeclaration &>(*cs).operatorMember->provider) {
-				fixed = ResolvedType(kString);
-			}
-			if (fixed) {
-				if (!cs->returnTypes.empty() && info.returns != ResultTypes{ *fixed }) {
-					fail(Code::INVALID_OPERATOR_DECLARATION, cs->span, "Expected operator result " + fixed->spelling());
-				}
-				info.returns = { *fixed };
-			} else if (o_operation == oIndexWrite || isUpdate(o_operation)) {
-				if (!info.returns.empty()) {
-					fail(Code::INVALID_OPERATOR_DECLARATION, cs->span, std::format("Update operators must return {}", to_string(kVoid)));
-				}
-			} else if (cs->returnTypes.empty()) {
-				if (!std::holds_alternative<ExpressionBody>(cs->executableBody()->value)) {
-					fail(Code::INVALID_OPERATOR_DECLARATION, cs->span, "A block-bodied operator requires an explicit result type");
-				}
-				info.inferResult = true;
-			}
+			resolveOperator(symbol, dynamic_cast<const MethodDeclaration &>(*cs));
 		}
 	} else if (symbol.kind == SymbolKind::Field) {
 		info.value = valueType(fieldType(symbol));

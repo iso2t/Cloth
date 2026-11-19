@@ -235,12 +235,12 @@ void BodyChecker::typeBody () {
 		rp_receiverPhase = ReceiverPhase::Ready;
 		if (const FunctionBody *body = signature->executableBody()) {
 			if (info.inferResult) {
-				const auto                       &inferred   = std::get<ExpressionBody>(body->value);
-				const std::optional<ResolvedType> opt_result = scalar(*inferred.expression);
-				if (!opt_result)
-					fail(Code::INVALID_OPERATOR_DECLARATION, inferred.expression->get_span(),
-					     "Cannot infer an operator result from a body that always exits", &context.name);
-				di_signature.returns     = { *opt_result };
+				const ExpressionBody &inferred  = std::get<ExpressionBody>(body->value);
+				const ExpressionInfo  ei_result = scalarInfo(*inferred.expression);
+				if (!ei_result.fallsThrough || ei_result.types.front() == ResolvedType(kNull))
+					fail(Code::INVALID_OPERATOR_DECLARATION, inferred.expression->get_span(), "An operator needs an inferable result type",
+					     &context.name);
+				di_signature.returns     = ei_result.types;
 				di_signature.inferResult = false;
 			} else {
 				checkBody(*body);
@@ -606,7 +606,14 @@ std::optional<ExpressionInfo> BodyChecker::updateOperator (const Statement &stat
 	if (rhs) {
 		arguments.push_back({ .expression = rhs });
 	}
-	const ExpressionInfo selected = invoke(op, statement.get_span(), arguments, candidates);
+	ExpressionInfo selected;
+	try {
+		selected = invoke(op, statement.get_span(), arguments, candidates);
+	} catch (const cde::ClothDiagnostic &error) {
+		if (error.get_code() == Code::NO_MATCHING_CALL || error.get_code() == Code::CALL_ARITY) return {};
+		if (error.get_code() == Code::AMBIGUOUS_CALL) fail(Code::OPERATOR_MATCH, op.get_span(), "Ambiguous update operator '" + op.get_lexeme() + "'");
+		throw;
+	}
 	if (record) {
 		bf_facts.writes[&statement] = selected;
 	}

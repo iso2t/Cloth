@@ -258,7 +258,7 @@ void requireFinite (const Expression &operand, const BodyFacts &facts, Code code
 }
 
 void checkNumeric (const Expression &node, ExpressionInfo &result, const BodyFacts &facts, TargetLayout layout) {
-	if (result.symbol || result.types.size() != 1 || !result.fallsThrough) return;
+	if (result.symbol || result.leftContext || result.rightContext || result.types.size() != 1 || !result.fallsThrough) return;
 	const ResolvedType &rt_declared = result.types.front();
 	const ResolvedType  type        = rt_declared.nullable() ? rt_declared.element() : rt_declared;
 	if (!type.integer() && !type.floating()) return;

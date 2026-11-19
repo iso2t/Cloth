@@ -19,6 +19,34 @@ bool hasArrayShape (const ResolvedType &type) {
 	return type.array() || (type.nullable() && type.element().array());
 }
 
+ResolvedType comparisonShape (ResolvedType type, const ArrayLiteral *literal) {
+	// A literal supplies its own extents. An empty level keeps the peer's declared inner shape.
+	std::vector<const Expression *> v_rows;
+	if (literal) v_rows.push_back(literal);
+	bool b_forget = !literal;
+	for (std::size_t st_suffix = type.suffixes.size(); st_suffix-- > 0;) {
+		std::string &s_suffix = type.suffixes[st_suffix];
+		if (s_suffix == to_string(oQuestion)) {
+			std::erase_if(v_rows, [] (const Expression *row) { return dynamic_cast<const NullLiteral *>(row); });
+			continue;
+		}
+		if (!b_forget && v_rows.empty()) break;
+		s_suffix = arraySuffix();
+		if (b_forget) continue;
+		std::vector<const Expression *> v_elements;
+		for (const Expression *e_row : v_rows) {
+			const ArrayLiteral *al_row = dynamic_cast<const ArrayLiteral *>(e_row);
+			if (!al_row) {
+				b_forget = true;
+				break;
+			}
+			for (const ExpressionPtr &ep_element : al_row->elements) v_elements.push_back(ep_element.get());
+		}
+		v_rows = std::move(v_elements);
+	}
+	return type;
+}
+
 ResolvedType refineShape (ResolvedType target, const ResolvedType &source, const TokenSpan *use) {
 	if (!hasArrayShape(target) || !hasArrayShape(source)) return target;
 	const std::vector<std::size_t> v_destination = dimensions(target), v_source = dimensions(source);

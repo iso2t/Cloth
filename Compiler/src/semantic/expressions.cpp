@@ -50,6 +50,17 @@ bool numericLiteral (const Expression &expr) {
 	return u && (u->op.get_operator() == oPlus || u->op.get_operator() == oMinus) && numericLiteral(*u->operand);
 }
 
+enum class ElementEvidence { None, Literal, Typed };
+
+ElementEvidence elementEvidence (const Expression &operand) {
+	if (const ArrayLiteral *al_literal = dynamic_cast<const ArrayLiteral *>(&operand)) {
+		ElementEvidence ee_best = ElementEvidence::None;
+		for (const ExpressionPtr &ep_element : al_literal->elements) ee_best = std::max(ee_best, elementEvidence(*ep_element));
+		return ee_best;
+	}
+	if (dynamic_cast<const NullLiteral *>(&operand) || dynamic_cast<const StructLiteral *>(&operand)) return ElementEvidence::None;
+	return numericLiteral(operand) ? ElementEvidence::Literal : ElementEvidence::Typed;
+}
 }
 
 ExpressionInfo BodyChecker::expression (const Expression &node, const ResultTypes *expected, bool discard) {
@@ -311,6 +322,10 @@ ExpressionInfo BodyChecker::typeCheck (const TypeCheckExpression &node) {
 		fail(Code::EXPLICIT_NULLABLE_TYPE, node.operand->get_span(), "A type test needs a typed operand");
 	}
 	const ResolvedType target = bodyType(node.target);
+	if (opt_source) {
+		if (const std::optional<Candidate> opt_operator = selectContext(node.op, *opt_source, target, true))
+			return callOperator(*opt_operator, *node.operand, *opt_source, node.op, node.get_span());
+	}
 	return opt_source ? value(ResolvedType(kBoolean), target.declaration) : ExpressionInfo::never();
 }
 
@@ -338,8 +353,50 @@ std::optional<ResolvedType> BodyChecker::rangeEndpoints (const Expression &start
 	return required;
 }
 
-ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const ResolvedType *expected) {
+ExpressionInfo BodyChecker::elvis (const ElvisExpression &node, const ResultTypes *expected) {
+	const std::optional<ResolvedType> opt_left = scalar(*node.left);
+	if (!opt_left) {
+		std::optional<BodyChecker> opt_unreachable;
+		onPath(false, opt_unreachable).scalar(*node.fallback, expected && expected->size() == 1 ? &expected->front() : nullptr);
+		return ExpressionInfo::never();
+	}
+	ResolvedType rt = *opt_left;
+	if (!rt.nullable()) {
+		const std::optional<TypedPlace> tp_left = locate(*node.left);
+		if (tp_left && tp_left->type.nullable()) rt = tp_left->type;
+	}
+	if (rt.name == to_string(kNull)) {
+		return expression(*node.fallback, expected);
+	}
+	if (!rt.nullable()) {
+		fail(Code::INVALID_ELVIS, node.op.get_span(), std::format("Left operand of {} must be nullable", to_string(oElvis)));
+	}
+	const ResolvedType rt_element = rt.element();
+	BodyChecker        bc_missing = *this;
+	bc_missing.fs_flow.exits      = {};
+	if (!opt_left->nullable()) bc_missing.we_capture = nullptr;
+	const std::optional<ResolvedType> opt_fallback = bc_missing.scalar(*node.fallback, &rt_element);
+	assumePresent(*node.left);
+	if (opt_left->nullable()) {
+		mergeExits(fs_flow.exits, bc_missing.fs_flow.exits);
+		if (opt_fallback) intersect(fs_flow.narrowed, bc_missing.fs_flow.narrowed);
+	}
+	if (!opt_fallback || analyzer.accepts(rt_element, *opt_fallback)) {
+		return value(rt_element);
+	}
+	if (analyzer.accepts(rt, *opt_fallback)) {
+		return value(rt);
+	}
+	fail(Code::TYPE_MISMATCH, node.fallback->get_span(), "Incompatible fallback type");
+}
+
+ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const ResolvedType *expected, bool allowContexts) {
 	const Operator o_operation = node.op.get_operator();
+	if (const std::optional<ExpressionInfo> opt_call = binaryOperator(node, expected, allowContexts)) return *opt_call;
+	if (o_operation == oElvis) {
+		const ResultTypes v_hint = expected ? ResultTypes{ *expected } : ResultTypes{};
+		return elvis({ node.left, node.op, node.right }, expected ? &v_hint : nullptr);
+	}
 	if (o_operation == oAnd || o_operation == oOr) {
 		TestPaths                 tp_left      = test(*node.left);
 		const bool                b_and        = o_operation == oAnd;
@@ -386,6 +443,8 @@ ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const Resolved
 	};
 	const bool          equality = o_operation == oEqual || o_operation == oNotEqual || node.op.get_lexeme() == to_string(kIs);
 	const std::function peerHint = [&] (const Expression &operand, const ResolvedType &peer) {
+		if (isEquality(o_operation) && hasArrayShape(peer))
+			return comparisonShape(peer.nullable() ? peer.element() : peer, dynamic_cast<const ArrayLiteral *>(&operand));
 		if (equality && rangeType(peer) && numericLiteral(operand)) return peer.arguments().front();
 		if (equality && rangeSyntax(operand) && numeric(peer)) {
 			ResolvedType range(kRange);
@@ -401,108 +460,29 @@ ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const Resolved
 		opt_left                                   = scalar(*node.left, opt_hint ? &*opt_hint : nullptr);
 	} else {
 		std::optional<ResolvedType> opt_hint;
-		if (equality && rangeSyntax(*node.left) && !numericLiteral(*node.right)) {
+		const ArrayLiteral         *al_left = dynamic_cast<const ArrayLiteral *>(node.left.get()),
+		                   *al_right        = dynamic_cast<const ArrayLiteral *>(node.right.get());
+		const bool b_typedArrays            = equality && al_left && al_right && elementEvidence(*al_left) == ElementEvidence::Typed &&
+		                           elementEvidence(*al_right) == ElementEvidence::Typed;
+		if (equality && ((rangeSyntax(*node.left) && !numericLiteral(*node.right)) ||
+		                 (al_left && (!al_right || elementEvidence(*al_left) < elementEvidence(*al_right))))) {
 			BodyChecker bc_probe = *this;
 			bc_probe.record      = false;
 			bc_probe.we_capture  = nullptr;
-			if (const std::optional<ResolvedType> opt_peer = bc_probe.scalar(*node.right)) opt_hint = peerHint(*node.left, *opt_peer);
+			try {
+				if (const std::optional<ResolvedType> opt_peer = bc_probe.scalar(*node.right)) opt_hint = peerHint(*node.left, *opt_peer);
+			} catch (const cde::ClothDiagnostic &error) {
+				if (error.get_code() != Code::INVALID_ARRAY && error.get_code() != Code::INVALID_STRUCT_LITERAL) throw;
+			}
 		} else if (!compare && expected && numeric(*expected))
 			opt_hint = *expected;
 		opt_left = scalar(*node.left, opt_hint ? &*opt_hint : nullptr);
 		std::optional<BodyChecker> opt_unreachable;
-		opt_hint  = opt_left ? std::optional{ peerHint(*node.right, *opt_left) } : std::nullopt;
+		opt_hint  = opt_left && !b_typedArrays ? std::optional{ peerHint(*node.right, *opt_left) } : std::nullopt;
 		opt_right = onPath(opt_left.has_value(), opt_unreachable).scalar(*node.right, opt_hint ? &*opt_hint : nullptr);
 	}
 	if (!opt_left || !opt_right) return ExpressionInfo::never();
 	const ResolvedType    &left = *opt_left, &right = *opt_right;
-	std::vector<Candidate> sides[2];
-	for (unsigned side = 0; side < 2; ++side) {
-		const ResolvedType &peer = side ? left : right;
-		for (const Candidate &c : analyzer.members(side ? right : left, node.op.get_lexeme(), SymbolKind::Operator)) {
-			const OperatorMember &m = *dynamic_cast<const MethodDeclaration &>(*callable(*c.symbol)).operatorMember;
-			if (m.provider || (!m.selector && m.rightReceiver != static_cast<bool>(side))) {
-				continue;
-			}
-			if (m.selector) {
-				ResolvedType selector = analyzer.substitute(*analyzer.declarations.at(c.symbol).value, c.arguments);
-				if (m.selector->capturesWidth()) {
-					selector.width = peer.width;
-				}
-				if (selector != peer) {
-					continue;
-				}
-			} else if (callable(*c.symbol)->parameters.size() != 1) {
-				continue;
-			}
-			sides[side].push_back(c);
-		}
-	}
-	if (!sides[0].empty() || !sides[1].empty()) {
-		// Probe each receiver direction independently so a nonmatching left overload cannot hide a right overload.
-		struct OperatorMatch {
-			std::vector<Candidate>    candidates;
-			std::vector<CallArgument> args;
-			ResultTypes               supplied;
-			bool                      projection;
-			unsigned                  side;
-		};
-
-		std::vector<OperatorMatch> matches;
-		const Symbol              *privateMatch = nullptr;
-		for (unsigned side = 0; side < 2; ++side) {
-			for (bool projection : { false, true }) {
-				std::vector<Candidate> group = sides[side];
-				std::erase_if(group, [&] (const Candidate &c) { return analyzer.declarations.at(c.symbol).value.has_value() != projection; });
-				if (group.empty()) {
-					continue;
-				}
-				std::vector<CallArgument> args;
-				ResultTypes               supplied;
-				if (!projection) {
-					args.push_back({ side ? node.left : node.right });
-					supplied.push_back(side ? left : right);
-				}
-				BodyChecker trial = *this;
-				trial.record      = false;
-				trial.we_capture  = nullptr;
-				try {
-					trial.invoke(node.op, node.get_span(), args, group, nullptr, &supplied);
-				} catch (const cde::ClothDiagnostic &error) {
-					if (error.get_code() == Code::PRIVATE_CLASS_MEMBER) {
-						privateMatch = group.front().symbol;
-						continue;
-					}
-					if (error.get_code() == Code::NO_MATCHING_CALL || error.get_code() == Code::CALL_ARITY) {
-						continue;
-					}
-					throw;
-				}
-				matches.push_back({ std::move(group), std::move(args), std::move(supplied), projection, side });
-			}
-		}
-		if (matches.empty() && privateMatch) {
-			fail(Code::PRIVATE_CLASS_MEMBER, node.op.get_span(), "Operator is private", &privateMatch->name);
-		}
-		if (matches.size() != 1) {
-			fail(Code::OPERATOR_MATCH, node.op.get_span(), matches.empty() ? "No matching operator" : "Ambiguous operator");
-		}
-		const OperatorMatch &m        = matches.front();
-		ExpressionInfo       selected = invoke(node.op, node.get_span(), m.args, m.candidates, nullptr, &m.supplied);
-		if (selected.fallsThrough) mutatingReceiver(m.side ? *node.right : *node.left, m.side ? right : left);
-		if (m.projection && selected.types.size() == 1) {
-			const ResolvedType &peer = m.side ? left : right;
-			if (!selected.types[0].width && numeric(selected.types[0])) {
-				selected.types[0].width = peer.width;
-			}
-			if (!numeric(selected.types[0]) || !numeric(peer)) {
-				fail(Code::BINARY_OPERANDS, node.op.get_span(), "Operator projection requires numeric operands");
-			}
-			if (compare) {
-				selected.types = { ResolvedType(kBoolean) };
-			}
-		}
-		return selected;
-	}
 	if (equality && (rangeType(left) || rangeType(right)) && left.name != to_string(kNull) && right.name != to_string(kNull)) {
 		if (rangeType(left) && rangeType(right)) {
 			if (left.arguments() != right.arguments())
@@ -523,36 +503,15 @@ ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const Resolved
 		}
 		return value(ResolvedType(kBoolean));
 	}
-	if (isEquality(o_operation)) {
-		const Expression *e_nullable = left.name == to_string(kNull) ? node.right.get() : right.name == to_string(kNull) ? node.left.get() : nullptr;
-		const std::optional<TypedPlace> tp_nullable = e_nullable ? locate(*e_nullable) : std::nullopt;
-		if (tp_nullable && tp_nullable->type.nullable()) return value(ResolvedType(kBoolean));
-		const bool b_unproven = left.name != to_string(kNull) && right.name != to_string(kNull) &&
-		                        (!analyzer.supportsEquality(left) || !analyzer.supportsEquality(right));
-		if (b_unproven || (!analyzer.accepts(left, right) && !analyzer.accepts(right, left) &&
-		                   !(numeric(left) && numeric(right) && (left.floating() || right.floating())))) {
-			fail(Code::INCOMPARABLE_TYPES, node.op.get_span(), "Cannot compare " + left.spelling() + " with " + right.spelling());
-		}
-		ExpressionInfo ei_result = value(ResolvedType(kBoolean));
-		if (o_operation != oIdentity && hasArrayShape(left) && hasArrayShape(right) && analyzer.arrayEqualityMayCall(left)) {
-			invalidateShared();
-			ei_result.callsElementEquality = true;
-		}
-		if (o_operation == oIdentity) {
-			ei_result.checkedIdentity = analyzer.hasMultipleTypeBounds(left) || analyzer.hasMultipleTypeBounds(right);
-			if (!m_arguments.empty()) {
-				const BodyFacts                                    &bf_open = analyzer.openBody(rt_attachment);
-				const decltype(bf_open.expressions)::const_iterator it_open = bf_open.expressions.find(&node);
-				if (it_open != bf_open.expressions.end()) ei_result.checkedIdentity |= it_open->second.checkedIdentity;
-			}
-		}
-		return ei_result;
-	}
+	if (isEquality(o_operation)) return this->equality(node, left, right);
 	if (o_operation == oPlus && left == ResolvedType(kString) && right == left) {
 		return value(left);
 	}
 	if (left.nullable() || right.nullable()) fail(Code::NULLABLE_PAYLOAD_ACCESS, node.op.get_span(), "This operation requires a present value");
 	if (!numeric(left) || !numeric(right)) {
+		if (!analyzer.members(left, node.op.get_lexeme(), SymbolKind::Operator).empty() ||
+		    !analyzer.members(right, node.op.get_lexeme(), SymbolKind::Operator).empty())
+			fail(Code::OPERATOR_MATCH, node.op.get_span(), "No matching overload for operator '" + node.op.get_lexeme() + "'");
 		fail(Code::BINARY_OPERANDS, node.op.get_span(), std::format("Operator '{}' requires numeric operands", node.op.get_lexeme()));
 	}
 	if (o_operation == oMulMul && left.integer() && right.integer()) {
@@ -712,6 +671,15 @@ ExpressionInfo BodyChecker::cast (const CastExpression &node) {
 	const ResolvedType to = bodyType(node.target);
 	if (!opt_from) return ExpressionInfo::never();
 	const ResolvedType &from = *opt_from;
+	if (const std::optional<Candidate> opt_cast = selectContext(node.op, from, to, true)) {
+		ExpressionInfo ei_cast = callOperator(*opt_cast, *node.operand, from, node.op, node.get_span());
+		if (ei_cast.types.front() != to && !ei_cast.types.front().width &&
+		    dynamic_cast<const MethodDeclaration &>(*callable(*opt_cast->symbol)).operatorMember->selector->capturesWidth())
+			ei_cast.types.front().width = to.width;
+		require(ei_cast.types, { to }, node.get_span(), Code::INVALID_CAST);
+		ei_cast.types = { to };
+		return ei_cast;
+	}
 	if ((from.nullable() || from.name == to_string(kNull)) && !to.nullable()) {
 		fail(Code::NULLABLE_PAYLOAD_ACCESS, node.get_span(), "A nullable value needs a null check before casting");
 	}
@@ -902,11 +870,13 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		const ExpressionInfo ei_operand = scalarInfo(*n->operand, hint);
 		if (!ei_operand.fallsThrough) return ExpressionInfo::never();
 		const ResolvedType &operand = ei_operand.types.front();
-		const auto          group   = analyzer.members(operand, n->op.get_lexeme(), SymbolKind::Operator);
+		std::vector<Candidate> group   = analyzer.members(operand, n->op.get_lexeme(), SymbolKind::Operator);
+		std::erase_if(group, [&] (const Candidate &candidate) {
+			const MethodDeclaration &md_method = dynamic_cast<const MethodDeclaration &>(*callable(*candidate.symbol));
+			return md_method.operatorMember->selector || md_method.operatorMember->provider || !md_method.parameters.empty();
+		});
 		if (!group.empty()) {
-			ExpressionInfo ei_call = invoke(n->op, node.get_span(), {}, group);
-			mutatingReceiver(*n->operand, operand);
-			return ei_call;
+			return callOperator(group.front(), *n->operand, operand, n->op, node.get_span());
 		}
 		if ((o_operation == oNot && operand != ResolvedType(kBoolean)) || (o_operation != oNot && !numeric(operand))) {
 			fail(Code::UNARY_OPERAND, node.get_span(), "Invalid unary operand");
@@ -986,41 +956,10 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 	if (const auto *n = dynamic_cast<const TypeCheckExpression *>(&node)) {
 		return typeCheck(*n);
 	}
-	if (const auto *n = dynamic_cast<const ElvisExpression *>(&node)) {
-		const std::optional<ResolvedType> opt_left = scalar(*n->left);
-		if (!opt_left) {
-			std::optional<BodyChecker> opt_unreachable;
-			onPath(false, opt_unreachable).scalar(*n->fallback, hint);
-			return ExpressionInfo::never();
-		}
-		ResolvedType rt = *opt_left;
-		if (!rt.nullable()) {
-			const std::optional<TypedPlace> tp_left = locate(*n->left);
-			if (tp_left && tp_left->type.nullable()) rt = tp_left->type;
-		}
-		if (rt.name == to_string(kNull)) {
-			return expression(*n->fallback, expected);
-		}
-		if (!rt.nullable()) {
-			fail(Code::INVALID_ELVIS, n->op.get_span(), std::format("Left operand of {} must be nullable", to_string(oElvis)));
-		}
-		const ResolvedType rt_element = rt.element();
-		BodyChecker        bc_missing = *this;
-		bc_missing.fs_flow.exits      = {};
-		if (!opt_left->nullable()) bc_missing.we_capture = nullptr;
-		const std::optional<ResolvedType> opt_fallback = bc_missing.scalar(*n->fallback, &rt_element);
-		assumePresent(*n->left);
-		if (opt_left->nullable()) {
-			mergeExits(fs_flow.exits, bc_missing.fs_flow.exits);
-			if (opt_fallback) intersect(fs_flow.narrowed, bc_missing.fs_flow.narrowed);
-		}
-		if (!opt_fallback || analyzer.accepts(rt_element, *opt_fallback)) {
-			return value(rt_element);
-		}
-		if (analyzer.accepts(rt, *opt_fallback)) {
-			return value(rt);
-		}
-		fail(Code::TYPE_MISMATCH, n->fallback->get_span(), "Incompatible fallback type");
+	if (const ElvisExpression *ee_fallback = dynamic_cast<const ElvisExpression *>(&node)) {
+		if (const std::optional<ExpressionInfo> opt_call = binaryOperator({ ee_fallback->left, ee_fallback->op, ee_fallback->fallback }, hint, true))
+			return *opt_call;
+		return elvis(*ee_fallback, expected);
 	}
 	if (const auto *n = dynamic_cast<const GuardedReceiver *>(&node)) {
 		if (!gp_payload || &gp_payload->node != n) fail(Code::INTERNAL, node.get_span(), "Guarded payload outside its access expression");

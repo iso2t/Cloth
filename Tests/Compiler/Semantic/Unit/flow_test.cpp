@@ -229,11 +229,11 @@ TEST (SemanticFlow, RequiresStoredArraysToStayPresentThroughMutationArguments) {
 
 TEST (SemanticFlow, InvalidatesSharedPresenceWhenArrayElementEqualityCanCallUserCode) {
 	const std::string s_box = R"(typedef<class> Box { pub def<string?> name = "live" }
-typedef<struct> Probe { Box box; operator ==(Probe other) { self.box.name = null; return true } }
+typedef<struct> Probe { Box box; pub operator ==(Probe other) { self.box.name = null; return true } }
 typedef<class> Base {}
-typedef<class> Child : Base { operator ==(Object other) = true }
+typedef<class> Child : Base { pub operator ==(Object other) = true }
 typedef<interface> View {}
-typedef<class> Viewed : View { operator ==(Object other) = true }
+typedef<class> Viewed : View { pub operator ==(Object other) = true }
 typedef<class> Plain {}
 )";
 	for (const char *s_array : { "Probe[]", "Probe?[][]", "Base[]", "View[]" }) {

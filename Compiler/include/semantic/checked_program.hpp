@@ -199,6 +199,11 @@ struct IndexedAccess {
 
 enum class RangeOperation { Construct, Membership, Equal };
 
+struct OperatorSelection {
+	const Symbol          *symbol;
+	const GenericInstance *instance;
+};
+
 struct ExpressionInfo {
 	ResultTypes   types;
 	const Symbol *symbol  = nullptr;
@@ -221,6 +226,12 @@ struct ExpressionInfo {
 	bool                             checkedIdentity    = false;
 	// Structural array comparison may dispatch to an element's equality operator.
 	bool                             callsElementEquality = false;
+	// Array leaves use logical equality even when the outer comparison is inequality.
+	std::optional<OperatorSelection> elementEquality    = {};
+	bool                             callsClassEquality = false;
+	bool                             negateEquality     = false;
+	bool                             liftedEquality     = false;
+	std::optional<OperatorSelection> leftContext = {}, rightContext = {};
 	NumericConstant                  numericConstant    = {};
 	bool                             invalidNumericCast = false;
 	std::optional<ProviderSelection> provider           = {};

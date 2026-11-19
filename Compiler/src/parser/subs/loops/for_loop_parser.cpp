@@ -62,10 +62,8 @@ ForStatement ForLoopParser::parseFor (bool allowWhileTrailer) {
 		const Token t_delimiter = p_parser.advance();
 		p_parser.skipNewLines();
 		ExpressionPtr ep_end = p_parser.p_expressionParser.parseExpression(0, /*stopAtAssignment=*/false, /*stopAtRange=*/true);
-		fs_source.value      = ForSource::Range{ .start     = std::move(ep_first),
-			                                 .delimiter = t_delimiter,
-			                                 .end       = std::move(ep_end),
-			                                 .span      = TokenSpan::span_through(ts_sourceStart, p_parser.previous().get_span()) };
+		fs_source.value      = ForSource::Range{ .expression = std::make_shared<BinaryExpression>(std::move(ep_first), t_delimiter, std::move(ep_end)),
+			                                 .span       = TokenSpan::span_through(ts_sourceStart, p_parser.previous().get_span()) };
 	}
 
 	p_parser.skipNewLines();
