@@ -435,6 +435,7 @@ void Analyzer::requireAccess (const Symbol &symbol, const Symbol &context, const
 }
 
 void Analyzer::checkBodies () {
+	collectFormatterClasses();
 	for (const Symbol *sym_declaration : v_order) collectSignature(*sym_declaration);
 	for (const Symbol *sym : v_order) {
 		if (sym->classFieldIndex) {
@@ -466,7 +467,9 @@ void Analyzer::checkBodies () {
 		}
 	}
 	checkWidthAnnotations();
+	checkFormatterDefaults();
 	checkInstances();
+	checkFormatterDefaults();
 	// Expand dependencies first so recursively growing bounds retain their template-limit diagnostic.
 	for (const Symbol *sym_declaration : v_order) {
 		if (const TypeParameterList *tpl_parameters = typeParameters(*sym_declaration))
@@ -519,6 +522,10 @@ void Analyzer::checkBodyOf (const Symbol &symbol) {
 			BodyChecker(*this, symbol, program, {}, declarations.at(&symbol)).check();
 		}
 		if (symbol.kind == SymbolKind::Operator) checkPublicSurface(symbol);
+	} catch (const cde::ClothDiagnostic &) {
+		s_checking.erase(&symbol);
+		checkFormatterDefaults();
+		throw;
 	} catch (...) {
 		s_checking.erase(&symbol);
 		throw;

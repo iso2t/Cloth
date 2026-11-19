@@ -378,6 +378,68 @@ fn<string> value(S s) = #"{s}")",
 	            Code::UNSUPPORTED_INTERPOLATION_TYPE);
 }
 
+TEST (SemanticValues, ReadOnlyDefaultsRejectUserFormattersAtTheReceiver) {
+	const std::string s_types = R"(typedef<class> Item { pub operator ::str() = "item" }
+typedef<class> Holder(pub def<Item> item) {}
+)";
+	try {
+		checkSource(s_types + "fn format(Holder h,\n    opt<string> label ?: h.item::str) {}");
+		FAIL() << "Expected a read-only formatter diagnostic";
+	} catch (const cde::ClothDiagnostic &error) {
+		EXPECT_EQ(error.get_code(), Code::INVALID_PARAMETER_DEFAULT) << error.what();
+		const std::vector<cde::SourceLabel> &v_labels = error.get_source_labels();
+		ASSERT_EQ(v_labels.size(), 2u);
+		EXPECT_EQ(v_labels[0].span.to_string(), "4:26-4:32");
+		EXPECT_EQ(v_labels[1].span.to_string(), "4:17-4:22");
+	}
+	expectError(s_types + "fn format(Item?[] items, opt<string> s ?: items::str) {}", Code::INVALID_PARAMETER_DEFAULT);
+	expectError(s_types + "fn format(Holder? h, opt<string?> s ?: h?.item::str) {}", Code::INVALID_PARAMETER_DEFAULT);
+	expectError(s_types + "fn format(Item? item, opt<string> s ?: item::str) {}", Code::NULLABLE_PAYLOAD_ACCESS);
+	expectError(R"(typedef<struct> Item { pub operator ::str() = "item" }
+fn format(Item item, opt<string> s ?: item::str) {})",
+	            Code::INVALID_PARAMETER_DEFAULT);
+	EXPECT_NO_THROW(checkSource(s_types + R"(fn format(Item item, opt<string> s ?: item::type::str) {}
+fn<Item> copy(Item item) = item
+fn temporary(Item item, opt<string> s ?: copy(item)::str) {})"));
+}
+
+TEST (SemanticValues, ReadOnlyFormattingUsesKnownClassApplications) {
+	const std::string        s_program  = R"(typedef<interface> View<T> {}
+typedef<class> Text<T> : View<T> { pub operator ::str() = "text" }
+fn format(View<int> item, opt<string> direct ?: item::str, opt<string> interpolated ?: #"{item}") {}
+)";
+	const CheckedProgram     cp_program = checkSource(s_program + "fn other(Text<bool> text) {}");
+	const CallableSignature &cs_format  = *std::get<const CallableSignature *>(cp_program.units.front()->get_globals().at("format").front().declaration);
+	const ExpressionInfo    &ei_direct  = cp_program.expressions.at(cs_format.parameters[1].defaultValue.get());
+	ASSERT_TRUE(ei_direct.provider);
+	EXPECT_EQ(ei_direct.provider->kind, ProviderKind::Format);
+	EXPECT_FALSE(ei_direct.provider->callsFormatter);
+	ASSERT_EQ(cp_program.textConversions.size(), 1u);
+	EXPECT_FALSE(cp_program.textConversions.begin()->second.callsFormatter);
+	EXPECT_FALSE(cp_program.defaultEffects.at(&cs_format.parameters[1]).mayCallOrMutate);
+	EXPECT_FALSE(cp_program.defaultEffects.at(&cs_format.parameters[2]).mayCallOrMutate);
+	expectError(s_program + "fn materialize<T>(T value) { def<Text<T>?> text = null }\nfn start() { materialize(1) }", Code::INVALID_PARAMETER_DEFAULT);
+}
+
+TEST (SemanticValues, ReadOnlyFormattersRequireAClassSatisfyingEveryBound) {
+	const std::string s_program = R"(typedef<interface> Tagged {}
+typedef<class> Base(int id) { pub Base() : (0) {}
+    pub operator ::str() = "base" }
+fn format<T: Base & Tagged>(T item, opt<string> s ?: item::str) {}
+)";
+	EXPECT_NO_THROW(checkSource(s_program + "typedef<class> Other : Tagged {}"));
+	expectError(s_program + "typedef<class> Both : Base, Tagged {}", Code::INVALID_PARAMETER_DEFAULT);
+}
+
+TEST (SemanticValues, ReportsAnEarlierFormatterBeforeAnotherErrorInTheSameDefault) {
+	const std::string s_program = R"(typedef<interface> View<T> {}
+typedef<class> Text<T> : View<T> { pub operator ::str() = "text" }
+fn format(View<int> item, opt<int> n ?: if (true) { item::str; false + 1 } else { 0 }) {}
+)";
+	expectError(s_program, Code::BINARY_OPERANDS);
+	expectError(s_program + "fn later<T>() { def<Text<int>?> text = null }", Code::INVALID_PARAMETER_DEFAULT);
+}
+
 TEST (SemanticValues, IterationRetainsTheLibrarySnapshotAndSlotDeclarations) {
 	const std::filesystem::path p_root = std::filesystem::path(__FILE__).parent_path().parent_path() / "Inputs/collection";
 	Lexer                       l_lexer{ SourceFile(p_root / "main.co") };

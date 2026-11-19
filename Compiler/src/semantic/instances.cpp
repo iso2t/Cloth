@@ -130,6 +130,7 @@ const GenericInstance *Analyzer::guaranteeOwner (const Symbol &guarantee, const 
 
 void Analyzer::useType (const ResolvedType &type, const Symbol &context, const TokenSpan &where) {
 	type.visitApplications([&] (const ResolvedType &rt_type) {
+		useFormatterClass(rt_type);
 		if (rt_type.declaration) useInstance({ rt_type.declaration, std::nullopt, rt_type.arguments() }, context, where);
 	});
 }
@@ -291,6 +292,7 @@ void Analyzer::completeInstance (const InstanceWork &work) {
 	};
 	if (sym_declaration.kind == SymbolKind::Type) {
 		const ResolvedType rt_type = substitute(ownerType(sym_declaration), m_arguments);
+		useFormatterClass(rt_type);
 		visitTypeMembers(rt_type, m_arguments, work.instance);
 		if (asClass(&sym_declaration) || asInterface(&sym_declaration)) dispatchFor(rt_type);
 		if (work.instance && asClass(&sym_declaration)) {

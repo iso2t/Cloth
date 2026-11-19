@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <exception>
 #include <map>
 #include <optional>
 #include <set>
@@ -137,6 +138,8 @@ class Analyzer {
 	[[nodiscard]] bool                            supportsEquality (const ResolvedType &type) const;
 	[[nodiscard]] bool                            classEqualityMayCall (const ResolvedType &type, Operator operation = oEqual) const;
 	[[nodiscard]] bool anyReceiverClass (const ResolvedType &type, const std::function<bool(const ResolvedType &)> &matches) const;
+	void               checkFormatterDefault (const ResolvedType &element, const TokenSpan &receiver, const Token &parameter, bool record);
+	bool               checkDefaultExpression (const std::function<bool()> &check);
 	[[nodiscard]] bool mayBeAbsent (const ResolvedType &type) const;
 	[[nodiscard]] bool hasMultipleTypeBounds (const ResolvedType &type) const;
 	[[nodiscard]] bool referenceType (const ResolvedType &type) const;
@@ -178,6 +181,20 @@ class Analyzer {
 	std::vector<LifetimeBody>                        v_lifetimeBodies;
 	std::map<ResolvedType, std::set<const Symbol *>> m_initializationEffects;
 	void                                             checkLifetimes ();
+
+	struct FormatterDefault {
+		ResultTypes        bounds;
+		TokenSpan          receiver;
+		const Token       *parameter;
+		std::exception_ptr followingError;
+	};
+
+	std::vector<FormatterDefault> v_formatterDefaults;
+	std::set<ResolvedType>        s_formatterClasses;
+	void                          collectFormatterClasses ();
+	void                          useFormatterClass (const ResolvedType &type);
+	[[nodiscard]] bool            hasFormatterClass (const ResultTypes &bounds) const;
+	void                          checkFormatterDefaults () const;
 
 	struct ByArguments {
 		bool operator()(const std::shared_ptr<const TypeArguments> &left, const std::shared_ptr<const TypeArguments> &right) const {
@@ -372,7 +389,9 @@ class BodyChecker {
 	void              rowShape (const Expression &target, const Expression &value, const ResolvedType &incoming);
 	void              checkValidatorReceiver (const Expression *receiver, const TokenSpan &use) const;
 	void              enumValue (const EnumFieldDeclaration &field, const Expression &value, const Token *caseName);
-	std::optional<ProviderSelection>            textConversion (const ResolvedType &type, const TokenSpan &use);
+	std::optional<ProviderSelection> textConversion (const ResolvedType &type) const;
+	bool                             formatterMayRun (const Expression &receiver, const ResolvedType &type, bool declared);
+	void                             applyTextConversion (const Expression &receiver, ProviderSelection &format);
 	bool                                        bindText (const Expression &operand, const ResolvedType &type);
 	ExpressionInfo                              providerAccess (const ProviderAccessExpression &node);
 	const GuardedPayload                       *gp_payload        = nullptr;

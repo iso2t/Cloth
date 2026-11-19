@@ -39,11 +39,66 @@ std::vector<Candidate> dataProviders (const Analyzer &analyzer, const ResolvedTy
 	});
 	return v_candidates;
 }
+
+ResolvedType formatElement (ResolvedType type) {
+	while (type.nullable() || type.array()) type = type.element();
+	return type;
 }
 
-std::optional<ProviderSelection> BodyChecker::textConversion (const ResolvedType &type, const TokenSpan &use) {
-	ResolvedType rt_element = type;
-	while (rt_element.nullable() || rt_element.array()) rt_element = rt_element.element();
+[[noreturn]] void invalidDefaultFormatter (const TokenSpan &receiver, const Token &parameter) {
+	fail(Code::INVALID_PARAMETER_DEFAULT, receiver, "A default cannot call a formatter through a read-only receiver", &parameter);
+}
+}
+
+void Analyzer::collectFormatterClasses () {
+	if (!hasOperator(provider::S_STRING)) return;
+	for (const Symbol *sym_class : v_order) {
+		if (!asClass(sym_class)) continue;
+		ResolvedType rt_class = ownerType(*sym_class);
+		if (!dataProviders(*this, rt_class, provider::S_STRING).empty()) s_formatterClasses.insert(std::move(rt_class));
+	}
+}
+
+void Analyzer::useFormatterClass (const ResolvedType &type) {
+	if (s_formatterClasses.empty() || !type.declaration || !s_formatterClasses.contains(ownerType(*type.declaration))) return;
+	s_formatterClasses.insert(formatElement(type));
+}
+
+bool Analyzer::hasFormatterClass (const ResultTypes &bounds) const {
+	return std::ranges::any_of(s_formatterClasses, [&] (const ResolvedType &host) {
+		return std::ranges::all_of(bounds, [&] (const ResolvedType &bound) { return accepts(bound, host); });
+	});
+}
+
+void Analyzer::checkFormatterDefault (const ResolvedType &element, const TokenSpan &receiver, const Token &parameter, bool record) {
+	ResultTypes v_bounds = element.parameter ? typeBounds(element) : ResultTypes{ element };
+	if (v_bounds.empty()) return;
+	if (hasFormatterClass(v_bounds)) invalidDefaultFormatter(receiver, parameter);
+	// Later bodies and generic instances can introduce another formatter for these bounds.
+	if (record) v_formatterDefaults.push_back({ std::move(v_bounds), receiver, &parameter, {} });
+}
+
+bool Analyzer::checkDefaultExpression (const std::function<bool()> &check) {
+	const std::size_t st_before = v_formatterDefaults.size();
+	try {
+		return check();
+	} catch (const cde::ClothDiagnostic &) {
+		if (v_formatterDefaults.size() == st_before) throw;
+		// Resolve the earlier formatter access before reporting a subsequent error in this default.
+		v_formatterDefaults.back().followingError = std::current_exception();
+		return false;
+	}
+}
+
+void Analyzer::checkFormatterDefaults () const {
+	for (const FormatterDefault &fd_use : v_formatterDefaults) {
+		if (hasFormatterClass(fd_use.bounds)) invalidDefaultFormatter(fd_use.receiver, *fd_use.parameter);
+		if (fd_use.followingError) std::rethrow_exception(fd_use.followingError);
+	}
+}
+
+std::optional<ProviderSelection> BodyChecker::textConversion (const ResolvedType &type) const {
+	const ResolvedType           rt_element = formatElement(type);
 	ProviderSelection            ps_format{ ProviderKind::Format, type, false };
 	const std::vector<Candidate> v_providers = dataProviders(analyzer, rt_element, provider::S_STRING);
 	for (const Candidate &c_formatter : v_providers) {
@@ -51,7 +106,6 @@ std::optional<ProviderSelection> BodyChecker::textConversion (const ResolvedType
 		const Symbol *sym_owner  = analyzer.declarations.at(c_formatter.symbol).owner;
 		ps_format.callsFormatter = true;
 		ps_format.formatter      = MethodRef{ c_formatter.symbol, analyzer.substitute(analyzer.ownerType(*sym_owner), c_formatter.arguments) };
-		if (record) ps_format.formatterInstance = analyzer.useCallable(*c_formatter.symbol, c_formatter.arguments, context, use);
 		return ps_format;
 	}
 	if (analyzer.referenceType(rt_element)) {
@@ -66,15 +120,31 @@ std::optional<ProviderSelection> BodyChecker::textConversion (const ResolvedType
 	return {};
 }
 
-bool BodyChecker::bindText (const Expression &operand, const ResolvedType &type) {
-	const std::optional<ProviderSelection> opt_format = textConversion(type, operand.get_span());
-	if (!opt_format) return false;
-	if (opt_format->callsFormatter) {
-		if (readOnlyDefaultRoot(operand))
-			fail(Code::INVALID_PARAMETER_DEFAULT, operand.get_span(), "A default cannot call a formatter through a read-only receiver",
-			     &pd_default->name);
-		invalidateShared();
+bool BodyChecker::formatterMayRun (const Expression &receiver, const ResolvedType &type, bool declared) {
+	if (!readOnlyDefaultRoot(receiver)) return true;
+	const ResolvedType rt_element = formatElement(type);
+	if (declared && !rt_element.parameter) invalidDefaultFormatter(receiver.get_span(), pd_default->name);
+	analyzer.checkFormatterDefault(rt_element, receiver.get_span(), pd_default->name, record);
+	return false;
+}
+
+void BodyChecker::applyTextConversion (const Expression &receiver, ProviderSelection &format) {
+	if (!format.callsFormatter) return;
+	if (!formatterMayRun(receiver, format.receiver, format.formatter.has_value())) {
+		format = ProviderSelection{ ProviderKind::Format, format.receiver, false };
+		return;
 	}
+	if (record && format.formatter) {
+		format.formatterInstance =
+		        analyzer.useCallable(*format.formatter->symbol, analyzer.argumentsOf(format.formatter->owner), context, receiver.get_span());
+	}
+	invalidateShared();
+}
+
+bool BodyChecker::bindText (const Expression &operand, const ResolvedType &type) {
+	std::optional<ProviderSelection> opt_format = textConversion(type);
+	if (!opt_format) return false;
+	applyTextConversion(operand, *opt_format);
 	if (record) bf_facts.textConversions.insert_or_assign(&operand, *opt_format);
 	return true;
 }
@@ -123,6 +193,11 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 	const std::vector<Candidate> v_candidates = dataProviders(analyzer, type, s_name);
 	if (!v_candidates.empty()) {
 		if (opt_receiver->isType) rejectForm();
+		if (s_name == provider::S_STRING && !formatterMayRun(*node.receiver, type, true)) {
+			// A bound can declare the provider even when no class satisfies the whole intersection.
+			bindCall(node.name, node.get_span(), {}, v_candidates);
+			return selection(ProviderKind::Format, ResolvedType(kString));
+		}
 		ExpressionInfo result = invoke(node.name, node.get_span(), {}, v_candidates);
 		mutatingReceiver(*node.receiver, type);
 		return result;
@@ -167,10 +242,10 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 		}
 	}
 	if (s_name == provider::S_STRING) {
-		if (const std::optional<ProviderSelection> opt_format = textConversion(type, node.get_span())) {
+		if (std::optional<ProviderSelection> opt_format = textConversion(type)) {
 			if (opt_receiver->isType) rejectForm();
 			requirePresent();
-			if (opt_format->callsFormatter) invalidateShared();
+			applyTextConversion(*node.receiver, *opt_format);
 			return { .types = { ResolvedType(kString) }, .provider = opt_format };
 		}
 	}

@@ -254,7 +254,8 @@ void BodyChecker::typeBody () {
 				bc_default.pd_default  = &param;
 				WriteEffects we_effects;
 				bc_default.we_capture = &we_effects;
-				const bool b_normal   = bc_default.expect(*param.defaultValue, info.parameters[i]);
+				const bool b_normal =
+				        analyzer.checkDefaultExpression([&] { return bc_default.expect(*param.defaultValue, info.parameters[i]); });
 				if (record)
 					bf_facts.defaultEffects.insert_or_assign(&param, DefaultEffects{ .fallsThrough    = b_normal,
 					                                                                 .mayCallOrMutate = we_effects.sharedFields });
