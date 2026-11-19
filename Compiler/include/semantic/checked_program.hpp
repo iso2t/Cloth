@@ -268,6 +268,8 @@ struct ExpressionInfo {
 	const GenericInstance      *instance             = nullptr;
 	const GenericInstance      *contractInstance     = nullptr;
 	std::optional<ResolvedType> representedType      = std::nullopt;
+	// The resolved right-hand type of a built-in type test, including symbolic generic parameters.
+	std::optional<ResolvedType> testedType           = std::nullopt;
 	std::optional<CallDispatch> dispatch             = std::nullopt;
 
 	ReceiverChecks receiverChecks = {};

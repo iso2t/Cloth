@@ -39,7 +39,7 @@ bool ResolvedType::operator==(const ResolvedType &other) const {
 }
 
 const ResultTypes &ResolvedType::arguments () const {
-	static const ResultTypes V_EMPTY;
+	static constexpr ResultTypes V_EMPTY;
 	return application ? application->values : V_EMPTY;
 }
 
@@ -85,11 +85,11 @@ ResolvedType ResolvedType::element () const {
 }
 
 std::string ResolvedType::spelling () const {
-	constexpr std::size_t                       ST_MAX_BYTES = 4096;
-	constexpr std::string_view                  S_ELLIPSIS   = "…";
-	std::string                                 s_result;
-	bool                                        b_truncated = false;
-	const std::function<void(std::string_view)> append      = [&] (std::string_view part) {
+	constexpr std::size_t      ST_MAX_BYTES = 4096;
+	constexpr std::string_view S_ELLIPSIS   = "…";
+	std::string                s_result;
+	bool                       b_truncated = false;
+	const std::function        append      = [&] (const std::string_view part) {
                 if (b_truncated) return;
                 const std::size_t st_left = ST_MAX_BYTES - s_result.size();
                 s_result.append(part.substr(0, st_left));
@@ -115,7 +115,7 @@ std::string ResolvedType::spelling () const {
 			}
 			append(to_string(oGreater));
 		}
-		std::vector<std::string>::const_reverse_iterator extent = type.suffixes.rbegin();
+		auto extent = type.suffixes.rbegin();
 		for (const std::string &suffix : type.suffixes) {
 			if (suffix == to_string(oQuestion)) {
 				append(suffix);
@@ -358,22 +358,33 @@ void Analyzer::loadImports () {
 	}
 }
 
-Candidates Analyzer::lookup (const Symbol &context, const std::string &name) const {
+Candidates Analyzer::lookup (const Symbol &context, const std::string &name, std::optional<SymbolKind> kind) const {
 	for (const Symbol *sym = &context; sym; sym = declarations.at(sym).owner) {
 		Candidates v_found;
-		if (sym->kind == SymbolKind::Type && sym->name.get_lexeme() == name) {
+		if (sym->kind == SymbolKind::Type && (!kind || *kind == SymbolKind::Type) && sym->name.get_lexeme() == name) {
 			v_found.push_back(sym);
 		}
-		if (const auto it = sym->members.find(name); it != sym->members.end()) {
-			for (const Symbol &member : it->second) {
-				v_found.push_back(&member);
+		if (const SymbolScope::const_iterator it_members = sym->members.find(name); it_members != sym->members.end()) {
+			for (const Symbol &member : it_members->second) {
+				if (!kind || member.kind == *kind) v_found.push_back(&member);
 			}
 		}
 		if (!v_found.empty()) {
 			return v_found;
 		}
 	}
-	return lookupFile(context, name);
+	Candidates v_found = lookupFile(context, name);
+	if (kind) std::erase_if(v_found, [&] (const Symbol *symbol) { return symbol->kind != *kind; });
+	return v_found;
+}
+
+const Symbol *Analyzer::lookupType (const Symbol &context, const std::string &name) const {
+	const Candidates v_types = lookup(context, name, SymbolKind::Type);
+	return v_types.empty() ? nullptr : v_types.front();
+}
+
+bool Analyzer::hasTypeName (const Symbol &context, const Token &name) const {
+	return genericParameter(context, name.get_lexeme()) || lookupType(context, name.get_lexeme());
 }
 
 Candidates Analyzer::lookupFile (const Symbol &context, const std::string &name) const {

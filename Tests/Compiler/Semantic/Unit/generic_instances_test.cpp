@@ -289,6 +289,58 @@ fn<bool> use() = read(1))",
 	            cde::DiagnosticCode::RETURN_TYPE);
 }
 
+TEST (SemanticGenerics, ConstructorsAndTypeTestsResolveShadowedTypeNames) {
+	using Code                        = cde::DiagnosticCode;
+	const CheckedProgram  cp_program  = checkSource(R"(typedef<class> Item(int ignored) { pub Item() : (0) {} }
+fn<Item> concrete(int Item) = Item::new()
+fn<T> create<T: new()>(int T) = T::new()
+fn<Item> closed() = create<Item>(4)
+fn<bool> matches<T>(T value, int T) = value is T
+fn<bool> check(Item value) = matches<Item>(value, 3)
+fn<bool> stopped() = exit(0) is Item
+typedef<class> Holder(def<int> Item) { pub mt<Item> copy(Item item) = item }
+)");
+	const SymbolScope    &ss_globals  = cp_program.units.front()->get_globals();
+	const Symbol         &sym_item    = ss_globals.at("Item").front();
+	const ExpressionInfo &ei_concrete = callIn(cp_program, "concrete");
+	ASSERT_NE(ei_concrete.symbol, nullptr);
+	EXPECT_EQ(ei_concrete.symbol->kind, SymbolKind::Constructor);
+	EXPECT_EQ(ei_concrete.symbol->visibility, Visibility::Public);
+	EXPECT_EQ(ei_concrete.types.front().declaration, &sym_item);
+	const ExpressionInfo &ei_stopped = callIn(cp_program, "stopped");
+	EXPECT_FALSE(ei_stopped.fallsThrough);
+	EXPECT_EQ(ei_stopped.testedType, ei_concrete.types.front());
+	const GenericInstance *gi_closed = callIn(cp_program, "closed").instance;
+	ASSERT_NE(gi_closed, nullptr);
+	const ExpressionInfo &ei_construction = gi_closed->body.expressions.at(&bodyExpression(ss_globals.at("create").front()));
+	EXPECT_EQ(ei_construction.symbol, ei_concrete.symbol);
+	EXPECT_EQ(ei_construction.argumentContract, callIn(cp_program, "create").argumentContract);
+	const Expression     &e_test  = bodyExpression(ss_globals.at("matches").front());
+	const ExpressionInfo &ei_open = cp_program.expressions.at(&e_test);
+	ASSERT_TRUE(ei_open.testedType);
+	EXPECT_EQ(ei_open.testedType->parameter, cp_program.declarations.at(&ss_globals.at("matches").front()).parameters.front().parameter);
+	EXPECT_TRUE(cp_program.valueTests.empty());
+	const GenericInstance *gi_check = callIn(cp_program, "check").instance;
+	ASSERT_NE(gi_check, nullptr);
+	EXPECT_EQ(gi_check->body.expressions.at(&e_test).testedType, ei_concrete.types.front());
+	expectError("fn f(int n) { n::new() }", Code::INVALID_CLASS_LIFECYCLE);
+	expectError("typedef<class> Item(int seed) {}\nfn<Item> f(int Item) = Item::new(1)", Code::PRIVATE_CLASS_MEMBER);
+}
+
+TEST (SemanticGenerics, ConstructorOnlyBoundsSupplyTheObjectView) {
+	using Code = cde::DiagnosticCode;
+	EXPECT_NO_THROW(checkSource(R"(fn<Object> forward<U: Object>(U obj) = obj
+fn<Object> erase<T: new()>(T item) = item
+fn<Object> next<T: new(int n)>(T item) = forward(item)
+fn<Object?> nullable<T: new()>(T? item) = item
+fn<Object> constructed<T: new()>() = T::new()
+)"));
+	expectError("fn<Object> erase<T>(T item) = item", Code::RETURN_TYPE);
+	expectError("fn<Object> erase<T: new()>(T? item) = item", Code::RETURN_TYPE);
+	expectError("fn make<T: new()>() {}\nfn run() { make<int>() }", Code::UNSATISFIED_GENERIC_BOUND);
+	expectError("typedef<struct> S { int x }\nfn make<T: new()>() {}\nfn run() { make<S>() }", Code::UNSATISFIED_GENERIC_BOUND);
+}
+
 TEST (SemanticGenerics, BindsGuaranteedConstructionToItsDeclaredLabelsAndDefaults) {
 	const CheckedProgram   cp_program = checkSource(R"(typedef<class> Item {
     pub Item(int renamed) : () {}

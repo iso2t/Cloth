@@ -470,7 +470,7 @@ ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTyp
 	fs_flow.narrowed = std::move(*opt_joined);
 	if (shapes && !std::ranges::any_of(*shapes, hasArrayShape)) shapes.reset();
 	ExpressionInfo ei_joined{ .types = opt_common.value_or(ResultTypes{}), .arrayShapes = shapes.value_or(ResultTypes{}) };
-	if (opt_metadata && std::ranges::any_of(*opt_metadata, &std::optional<ResolvedType>::has_value)) {
+	if (record && opt_metadata && std::ranges::any_of(*opt_metadata, &std::optional<ResolvedType>::has_value)) {
 		if (opt_metadata->size() == 1)
 			ei_joined.representedType = opt_metadata->front();
 		else
@@ -506,8 +506,7 @@ void BodyChecker::assign (const Token &target, const std::optional<ResolvedType>
 			if (value && source) receiveShape(*b_local->name, *b_local->type, shapeOf(*source, *value, slot), source->get_span());
 		}
 	} else if (value) {
-		const std::optional<TypedPlace> tp_target = locate(NameExpression(target));
-		if (tp_target) {
+		if (const std::optional<TypedPlace> tp_target = locate(NameExpression(target))) {
 			require({ *value }, { tp_target->type }, target.get_span());
 			invalidate(tp_target->place);
 			setPresence(tp_target->place, tp_target->type, value);
@@ -546,10 +545,10 @@ bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Ex
 				expected.push_back(name(target.get_token(), true).types.front());
 		}
 	}
-	const bool                        b_shared     = annotations && expected.size() == 1;
-	const ResultTypes::const_iterator it_first     = std::ranges::find_if(expected, [] (const ResolvedType &type) { return !type.name.empty(); });
-	const ResolvedType               *rt_broadcast = (!annotations || b_shared) && it_first != expected.end() ? &*it_first : nullptr;
-	const ExpressionInfo              result       = expression(producer, expected.empty() || b_shared ? nullptr : &expected, false, {}, rt_broadcast);
+	const bool           b_shared     = annotations && expected.size() == 1;
+	const auto           it_first     = std::ranges::find_if(expected, [] (const ResolvedType &type) { return !type.name.empty(); });
+	const ResolvedType  *rt_broadcast = (!annotations || b_shared) && it_first != expected.end() ? &*it_first : nullptr;
+	const ExpressionInfo result       = expression(producer, expected.empty() || b_shared ? nullptr : &expected, false, {}, rt_broadcast);
 	if (!result.fallsThrough) {
 		for (std::size_t st_slot = 0; st_slot < targets.size(); ++st_slot) {
 			if (std::holds_alternative<ReceivingTarget::Discard>(targets[st_slot].value)) continue;
@@ -575,7 +574,7 @@ bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Ex
 		const Token &target = targets[i].get_token();
 		if (annotations) {
 			if (!required) {
-				const ResultListExpression *rl_values = dynamic_cast<const ResultListExpression *>(&producer);
+				const auto *rl_values = dynamic_cast<const ResultListExpression *>(&producer);
 				checkInferredBinding(actual, rl_values && !broadcast ? rl_values->values[i]->get_span() : producer.get_span());
 			}
 			bind(target, required ? *required : actual, mutableBinding);
@@ -607,8 +606,7 @@ void BodyChecker::writable (const Expression &target) {
 		}
 		writable(*field->receiver);
 	} else if (const auto *index = dynamic_cast<const IndexExpression *>(&target)) {
-		const decltype(bf_facts.expressions)::const_iterator it = bf_facts.expressions.find(&target);
-		if (record && it != bf_facts.expressions.end() && it->second.indexed)
+		if (const auto it = bf_facts.expressions.find(&target); record && it != bf_facts.expressions.end() && it->second.indexed)
 			fail(Code::INVALID_INDEX, target.get_span(), "An index getter returns a copy");
 		writable(*index->array);
 	} else if (const auto *name = dynamic_cast<const NameExpression *>(&target)) {
@@ -652,7 +650,7 @@ bool BodyChecker::writeMember (const Statement &statement, const ExpressionPtr &
 	}
 	BodyChecker                    bc_store = *this;
 	std::optional<CapturedOperand> opt_array;
-	if (const IndexExpression *index = dynamic_cast<const IndexExpression *>(target.get())) {
+	if (const auto *index = dynamic_cast<const IndexExpression *>(target.get())) {
 		const ExpressionInfo ei_array = scalarInfo(*index->array);
 		if (ei_array.fallsThrough && !ei_array.types.front().array() && ei_array.types.front().declaration)
 			return writeIndex(statement, target, ei_array, op, rhs, compound);

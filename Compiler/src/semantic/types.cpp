@@ -14,15 +14,6 @@
 namespace cloth::semantic {
 namespace {
 
-const Symbol *namedType (const Candidates &candidates) {
-	for (const Symbol *sym : candidates) {
-		if (sym->kind == SymbolKind::Type) {
-			return sym;
-		}
-	}
-	return nullptr;
-}
-
 template <typename Matches> bool hasTypeView (const Analyzer &analyzer, const ResolvedType &actual, Matches matches) {
 	std::set<ResolvedType> s_seen;
 	ResultTypes            v_pending{ actual };
@@ -93,6 +84,12 @@ const Symbol &objectRoot () {
 const StructDeclaration *asStruct (const Symbol *symbol) {
 	if (!symbol || symbol->kind != SymbolKind::Type) return nullptr;
 	return dynamic_cast<const StructDeclaration *>(std::get<const TypeDeclaration *>(symbol->declaration));
+}
+
+const EnumDeclaration *enumeration (const ResolvedType &type) {
+	return type.declaration && type.suffixes.empty() ?
+	               dynamic_cast<const EnumDeclaration *>(std::get<const TypeDeclaration *>(type.declaration->declaration)) :
+	               nullptr;
 }
 
 const InterfaceDeclaration *asInterface (const Symbol *symbol) {
@@ -260,7 +257,7 @@ ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol
 	}
 	const std::string &s_name = t_name.get_lexeme();
 	ResolvedType       rt_type(s_name);
-	if (s_name == to_string(kRange) && !genericParameter(context, s_name) && !namedType(lookup(context, s_name))) {
+	if (s_name == to_string(kRange) && !hasTypeName(context, t_name)) {
 		if (reference.get_type_arguments().size() != 1) fail(Code::INVALID_RANGE_VALUE, ts_span, "A range requires one numeric endpoint type");
 		ResolvedType element = resolveType(reference.get_type_arguments().front(), context, depth + 1, false, activeDefaults);
 		if (!element.parameter && !numeric(element)) fail(Code::INVALID_RANGE_VALUE, ts_span, "Range endpoints must be numeric");
@@ -270,7 +267,7 @@ ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol
 		if (!rt_type.parameter) {
 			const std::string_view s_separator = to_string(oDot);
 			std::size_t            st_end      = s_name.find(s_separator);
-			const Symbol          *sym         = namedType(lookup(context, s_name.substr(0, st_end)));
+			const Symbol          *sym         = lookupType(context, s_name.substr(0, st_end));
 			if (!sym) {
 				fail(Code::UNSUPPORTED_TYPE, ts_span, "Unknown type '" + s_name + "'");
 			}
@@ -382,7 +379,9 @@ ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol
 		}
 	}
 	if (rt_type.name == to_string(kVoid) && !rt_type.suffixes.empty()) {
-		fail(Code::VOID_TYPE, ts_span, std::format("{} cannot be nullable or an array element", to_string(kVoid)));
+		if (reference.hasNullability())
+			fail(Code::INVALID_NULLABLE_TYPE, ts_span, std::format("{} has no value and cannot be nullable", to_string(kVoid)));
+		fail(Code::VOID_TYPE, ts_span, std::format("{} cannot be an array element", to_string(kVoid)));
 	}
 	return rt_type;
 }
@@ -562,14 +561,18 @@ ResultTypes Analyzer::typeBounds (const ResolvedType &parameter) const {
 	const ParameterContract pc_contract = parameterContract(*parameter.parameter);
 	const Symbol           &sym_owner   = *m_genericOwners.at(pc_contract.parameter);
 	ResultTypes             v_bounds;
+	bool                    b_constructor = false;
 	for (const TypeParameterBound &tp_bound : pc_contract.parameter->bounds) {
 		if (const TypeReference *tr_bound = std::get_if<TypeReference>(&tp_bound.value)) {
 			ResolvedType rt_required = substitute(type(*tr_bound, sym_owner), pc_contract.arguments);
 			if (parameter.projectedSuffixes > rt_required.suffixes.size()) continue;
 			rt_required.suffixes.resize(rt_required.suffixes.size() - parameter.projectedSuffixes);
 			v_bounds.push_back(std::move(rt_required));
-		}
+		} else
+			b_constructor = true;
 	}
+	// A constructor guarantee supplies the class root when the parameter has no named bound.
+	if (b_constructor && v_bounds.empty() && !parameter.projectedSuffixes) v_bounds.push_back(ownerType(objectRoot()));
 	return v_bounds;
 }
 

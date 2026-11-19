@@ -67,8 +67,9 @@ using Code       = cde::DiagnosticCode;
 using Candidates = std::vector<const Symbol *>;
 using Names      = std::map<std::string, Candidates, std::less<>>;
 
-// The surrounding candidate cannot change the contract of a nested call or return.
+// The enclosing overload cannot change an intrinsic expression or explicit type.
 struct IntrinsicDiagnostic : cde::ClothDiagnostic {
+	using ClothDiagnostic::ClothDiagnostic;
 	explicit IntrinsicDiagnostic (const ClothDiagnostic &error) : ClothDiagnostic(error) {
 	}
 };
@@ -79,6 +80,7 @@ bool contextualFailure (const cde::ClothDiagnostic &error);
 const CallableSignature    *callable (const Symbol &symbol);
 const TypeParameterList    *typeParameters (const Symbol &symbol);
 const StructDeclaration    *asStruct (const Symbol *symbol);
+const EnumDeclaration      *enumeration (const ResolvedType &type);
 const ClassDeclaration     *asClass (const Symbol *symbol);
 const Symbol               &objectRoot ();
 const InterfaceDeclaration *asInterface (const Symbol *symbol);
@@ -116,7 +118,8 @@ class Analyzer {
 	[[nodiscard]] bool                            hasTypeName (const Symbol &context, const Token &name) const;
 	[[nodiscard]] ResolvedType                    ownerType (const Symbol &symbol) const;
 	[[nodiscard]] Substitutions                   argumentsOf (const ResolvedType &type) const;
-	[[nodiscard]] Candidates                      lookup (const Symbol &context, const std::string &name) const;
+	[[nodiscard]] Candidates                      lookup (const Symbol &context, const std::string &name, std::optional<SymbolKind> kind = {}) const;
+	[[nodiscard]] const Symbol                   *lookupType (const Symbol &context, const std::string &name) const;
 	[[nodiscard]] Candidates                      lookupFile (const Symbol &context, const std::string &name) const;
 	[[nodiscard]] std::vector<Candidate>          members (const ResolvedType &type, std::string_view name, SymbolKind kind,
 	                                                       MemberLookup lookup = MemberLookup::Declaration) const;
@@ -341,7 +344,7 @@ class BodyChecker {
 	bool writeIndex (const Statement &statement, const ExpressionPtr &target, const ExpressionInfo &array, const Token &op, const ExpressionPtr &rhs,
 	                 const ExpressionPtr &compound);
 	std::optional<ResolvedType>   rangeEndpoints (const Expression &start, const Expression &end, const ResolvedType *hint, Code code, bool &continues);
-	ResolvedType                  shapeOf (const Expression &value, const ResolvedType &fallback, std::size_t slot = 0) const;
+	[[nodiscard]] ResolvedType                  shapeOf (const Expression &value, const ResolvedType &fallback, std::size_t slot = 0) const;
 	void                          receiveShape (const Token &binding, const ResolvedType &declared, const ResolvedType &shape, const TokenSpan &use);
 	ExpressionInfo                mutateArray (const MemberCallExpression &call, const ExpressionInfo &receiver, ArrayMutation operation);
 	std::optional<ExpressionInfo> builtinCall (const CallSite &call, const TypeArgumentList *typeArguments, const ExpressionInfo *receiver = nullptr);
@@ -415,6 +418,7 @@ class BodyChecker {
 	void                                    invalidate (const StoragePlace &place, bool descendantsOnly = false);
 	void                                    mutatingReceiver (const Expression &receiver, const ResolvedType &type);
 	void                                    invalidateShared ();
+	void                                    forgetMutableMetadata (Narrowing &facts) const;
 	void                                    applyWrites (const Binding &binding);
 	bool                                    containsNullability (const ResolvedType &type) const;
 	void                                    checkInferredBinding (const ResolvedType &type, const TokenSpan &span) const;
@@ -477,7 +481,9 @@ class BodyChecker {
 	bool                     expect (const Expression &node, const ResolvedType &type);
 	bool                     checkReturn (const Expression &node);
 	ExpressionInfo           name (const Token &token, bool assignment = false);
-	std::optional<Receiver>  receiver (const Expression &node, bool allowOpen = false);
+	bool                         hasValueName (const Token &name) const;
+	std::optional<ResolvedType>  receiverType (const Expression &node, bool forConstruction = false);
+	std::optional<Receiver>      receiver (const Expression &node);
 	ExpressionInfo           field (const FieldAccessExpression &node);
 	std::optional<Candidate> stateTarget (const ResolvedType &receiver, const Token &name, const Expression &operand);
 	bool                     statePayload (const ExpressionPtr &payload, const ResolvedType &required, const TokenSpan &span, const Token &state);

@@ -32,12 +32,6 @@ IntegerConstant countConstant (std::uint64_t value) {
 	return result;
 }
 
-const EnumDeclaration *enumeration (const ResolvedType &type) {
-	return type.declaration && type.suffixes.empty() ?
-	               dynamic_cast<const EnumDeclaration *>(std::get<const TypeDeclaration *>(type.declaration->declaration)) :
-	               nullptr;
-}
-
 std::vector<Candidate> dataProviders (const Analyzer &analyzer, const ResolvedType &receiver, std::string_view name) {
 	std::vector<Candidate> v_candidates = analyzer.members(receiver, name, SymbolKind::Operator);
 	std::erase_if(v_candidates, [] (const Candidate &candidate) {
@@ -111,6 +105,9 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 	const std::optional<Receiver> opt_receiver = receiver(*node.receiver);
 	if (!opt_receiver || !opt_receiver->fallsThrough) return ExpressionInfo::never();
 	const ResolvedType &type       = opt_receiver->type;
+	if (type == ResolvedType(kNull))
+		throw IntrinsicDiagnostic(Code::EXPLICIT_NULLABLE_TYPE, "A provider needs a typed receiver",
+		                          { { node.receiver->get_span(), "no payload type" } });
 	const ResolvedType  payload    = type.nullable() ? type.element() : type;
 	const std::string  &s_name     = node.name.get_lexeme();
 	const std::function rejectForm = [&] {
@@ -130,7 +127,7 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 		mutatingReceiver(*node.receiver, type);
 		return result;
 	}
-	if (s_name == provider::S_TYPE && type != ResolvedType(kVoid) && type != ResolvedType(kNull)) {
+	if (s_name == provider::S_TYPE) {
 		ExpressionInfo result  = selection(ProviderKind::Type, ResolvedType(kTypeinfo));
 		result.representedType = type;
 		return result;
@@ -169,7 +166,7 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 			return result;
 		}
 	}
-	if (s_name == provider::S_STRING && type != ResolvedType(kNull)) {
+	if (s_name == provider::S_STRING) {
 		if (const std::optional<ProviderSelection> opt_format = textConversion(type, node.get_span())) {
 			if (opt_receiver->isType) rejectForm();
 			requirePresent();
@@ -196,25 +193,32 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 			{ S_ISARRAY, MetadataQuery::IsArray },       { S_HASEXTENT, MetadataQuery::HasExtent },
 			{ S_ISUNSIGNED, MetadataQuery::IsUnsigned }, { S_ISNUMERIC, MetadataQuery::IsNumeric }
 		};
-		const bool element = s_name == S_ELEMENT, extent = s_name == S_EXTENT, width = s_name == S_WIDTH;
-		for (const std::pair<std::string_view, MetadataQuery> &entry : V_QUERIES) {
-			if (entry.first != s_name) continue;
+		for (const std::pair<std::string_view, MetadataQuery> &mq_entry : V_QUERIES) {
+			if (mq_entry.first != s_name) continue;
 			requirePresent();
 			if (opt_receiver->isType) rejectForm();
-			ExpressionInfo result     = selection(ProviderKind::Metadata, ResolvedType(element                               ? kTypeinfo :
-			                                                                           (extent || width || s_name == S_RANK) ? kUsize :
-			                                                                                                                   kBoolean));
-			result.provider->metadata = entry.second;
-			if (opt_receiver->represented && !opt_receiver->represented->dependent()) {
-				const ResolvedType subject = opt_receiver->represented->nullable() ? opt_receiver->represented->element() :
-				                                                                     *opt_receiver->represented;
-				if (record && ((element && !subject.array()) || (extent && (!subject.array() || subject.suffixes.back() == arraySuffix())) ||
-				               (width && !subject.integer() && !subject.floating())))
+			const MetadataQuery mq_query  = mq_entry.second;
+			const bool          b_element = mq_query == MetadataQuery::Element;
+			const bool          b_count = mq_query == MetadataQuery::Extent || mq_query == MetadataQuery::Width || mq_query == MetadataQuery::Rank;
+			ExpressionInfo      ei_result = selection(ProviderKind::Metadata, ResolvedType(b_element ? kTypeinfo : b_count ? kUsize : kBoolean));
+			ei_result.provider->metadata  = mq_query;
+			if (opt_receiver->represented) {
+				const ResolvedType rt_subject = opt_receiver->represented->nullable() ? opt_receiver->represented->element() :
+				                                                                        *opt_receiver->represented;
+				std::string_view   s_requirement;
+				if (b_element && !rt_subject.array())
+					s_requirement = "an array type";
+				else if (mq_query == MetadataQuery::Extent && (!rt_subject.array() || rt_subject.suffixes.back() == arraySuffix()))
+					s_requirement = "an array type with a statically known outer extent";
+				else if (mq_query == MetadataQuery::Width && !rt_subject.integer() && !rt_subject.floating())
+					s_requirement = "an integer or floating-point type";
+				if (!s_requirement.empty())
 					fail(Code::INVALID_METADATA_ACCESS, node.name.get_span(),
-					     "Cannot query '" + s_name + "' on metadata for " + subject.spelling());
-				if (element && subject.array()) result.representedType = subject.element();
+					     std::format("Type metadata {}{} requires {}, got '{}'", to_string(oColonColon), s_name, s_requirement,
+					                 rt_subject.spelling()));
+				if (b_element) ei_result.representedType = rt_subject.element();
 			}
-			return result;
+			return ei_result;
 		}
 	}
 	fail(Code::UNKNOWN_PROVIDER, node.name.get_span(), "Unknown provider '" + s_name + "' on " + type.spelling());

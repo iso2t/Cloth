@@ -162,6 +162,13 @@ void BodyChecker::invalidateShared () {
 	});
 }
 
+void BodyChecker::forgetMutableMetadata (Narrowing &facts) const {
+	if (facts.empty()) return;
+	for (const std::map<std::string, Binding> &m_locals : scopes)
+		for (const std::map<std::string, Binding>::value_type &entry : m_locals)
+			if (entry.second.mutableBinding) facts.erase({ entry.second.name, {}, PlaceFact::RepresentedType });
+}
+
 void BodyChecker::applyWrites (const Binding &binding) {
 	if (!binding.effects) return;
 	for (const StoragePlace &sp_place : binding.effects->places) invalidate(sp_place);
@@ -184,10 +191,9 @@ BodyChecker::TestPaths BodyChecker::splitTest (const Expression &node, const Exp
 		const std::optional<TypedPlace> tp_place  = e_operand ? locate(*e_operand) : std::nullopt;
 		if (tp_place && tp_place->type.nullable())
 			(o_op == oNotEqual ? *tp_paths.yes : *tp_paths.no).try_emplace(tp_place->place, tp_place->type.element());
-	} else if (const auto *tc_test = dynamic_cast<const TypeCheckExpression *>(&node);
-	           tc_test && result.symbol && result.symbol->kind == SymbolKind::Type) {
+	} else if (const auto *tc_test = dynamic_cast<const TypeCheckExpression *>(&node); tc_test && result.testedType && result.testedType->declaration) {
 		const std::optional<TypedPlace> tp_place  = locate(*tc_test->operand);
-		const ResolvedType              rt_target = bodyType(tc_test->target);
+		const ResolvedType             &rt_target = *result.testedType;
 		if (tp_place && analyzer.referenceType(rt_target) &&
 		    analyzer.referenceType(tp_place->type.nullable() ? tp_place->type.element() : tp_place->type)) {
 			const auto          it_known   = fs_flow.narrowed.find(tp_place->place);
@@ -266,6 +272,7 @@ bool BodyChecker::loop (const LoopStatement &node) {
 		scopes.emplace_back();
 		bind(fs_for->binding.name, annotation ? annotation : opt_element, true);
 	}
+	if (!ds_do) forgetMutableMetadata(fs_flow.narrowed);
 	const Narrowing n_entry = fs_flow.narrowed;
 
 	struct Iteration {
@@ -303,7 +310,10 @@ bool BodyChecker::loop (const LoopStatement &node) {
 		mergeExits(it_result.outward, ex_test);
 		const bool b_trailer = it_result.back.has_value();
 		body.we_capture      = b_trailer ? we_entry : nullptr;
-		if (b_trailer) body.fs_flow.narrowed = *it_result.back;
+		if (b_trailer)
+			body.fs_flow.narrowed = *it_result.back;
+		else
+			body.forgetMutableMetadata(body.fs_flow.narrowed);
 		if (ds_do) {
 			const TestPaths tp_paths = body.test(*ds_do->condition);
 			if (b_trailer) {
@@ -336,7 +346,10 @@ bool BodyChecker::loop (const LoopStatement &node) {
 		bc_trial.fs_flow         = { n_header, {} };
 		const Iteration it_trial = iteration(bc_trial);
 		Narrowing       n_next   = n_header;
-		if (it_trial.back) intersect(n_next, *it_trial.back);
+		if (it_trial.back) {
+			if (ds_do) forgetMutableMetadata(n_next);
+			intersect(n_next, *it_trial.back);
+		}
 		if (n_next == n_header) {
 			if (!record && !we_capture) opt_stable = it_trial;
 			break;
@@ -349,6 +362,7 @@ bool BodyChecker::loop (const LoopStatement &node) {
 	fs_flow.exits             = std::move(ex_incoming);
 	mergeExits(fs_flow.exits, it_result.outward);
 	if (it_result.exit) fs_flow.narrowed = *it_result.exit;
+	if (!ds_do || !it_result.exit) forgetMutableMetadata(fs_flow.narrowed);
 	if (fs_for) leaveScope();
 	return it_result.exit.has_value();
 }

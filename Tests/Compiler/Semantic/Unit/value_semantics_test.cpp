@@ -268,6 +268,86 @@ fn run() { for (def<float> n <- 0.0 .. 1.0) {} }
 	expectError("fn bad(int[] values) { for (def<void> n <- values) {} }", Code::INVALID_FOR_LOOP);
 }
 
+TEST (SemanticValues, ProviderDefaultsUseOnlyValuesAlreadyInScope) {
+	const CheckedProgram cp_program = checkSource(R"(typedef<struct> Point { int x }
+fn<typeinfo> current(opt<typeinfo> Point ?: Point::type) = Point
+fn<typeinfo> later(opt<typeinfo> d ?: Point::type, int Point) = d
+fn<typeinfo> earlier(int Point, opt<typeinfo> d ?: Point::type) = d
+)");
+	const SymbolScope   &ss_globals = cp_program.units.front()->get_globals();
+	for (const std::string s_name : { "current", "later", "earlier" }) {
+		SCOPED_TRACE(s_name);
+		const CallableSignature &cs_function = *std::get<const CallableSignature *>(ss_globals.at(s_name).front().declaration);
+		const ExpressionInfo    &ei_info     = cp_program.expressions.at(cs_function.parameters.at(s_name == "earlier" ? 1 : 0).defaultValue.get());
+		ASSERT_TRUE(ei_info.provider);
+		EXPECT_EQ(ei_info.provider->typeReceiver, s_name != "earlier");
+		ASSERT_TRUE(ei_info.representedType);
+		if (s_name == "earlier")
+			EXPECT_EQ(ei_info.representedType, ResolvedType(kInteger));
+		else
+			EXPECT_EQ(ei_info.representedType->declaration, &ss_globals.at("Point").front());
+	}
+	expectError("typedef<class> Point {}\nfn f(opt<int> Point ?: Point) {}", Code::INVALID_PARAMETER_DEFAULT);
+	expectError("typedef<class> Point {}\nfn f(opt<int> d ?: Point, int Point) {}", Code::INVALID_PARAMETER_DEFAULT);
+}
+
+TEST (SemanticValues, QualifiedMetadataUsesAnAvailableValueBeforeANestedType) {
+	const CheckedProgram  cp_program = checkSource(R"(typedef<class> Outer { pub typedef<class> Leaf {} }
+typedef<struct> Fields { pub int Leaf }
+fn<typeinfo> nested() = Outer.Leaf::type
+fn<typeinfo> shadow(Fields Outer) = Outer.Leaf::type
+)");
+	const ExpressionInfo &ei_nested  = returned(cp_program, "nested");
+	const ExpressionInfo &ei_shadow  = returned(cp_program, "shadow");
+	ASSERT_TRUE(ei_nested.representedType);
+	ASSERT_TRUE(ei_nested.provider);
+	ASSERT_TRUE(ei_shadow.provider);
+	const Symbol &sym_outer = cp_program.units.front()->get_globals().at("Outer").front();
+	EXPECT_EQ(ei_nested.representedType->declaration, &sym_outer.members.at("Leaf").front());
+	EXPECT_EQ(ei_shadow.representedType, ResolvedType(kInteger));
+	EXPECT_TRUE(ei_nested.provider->typeReceiver);
+	EXPECT_FALSE(ei_shadow.provider->typeReceiver);
+	expectError("typedef<class> Outer { pub typedef<class> Leaf {} }\nfn f(int Outer) { Outer.Leaf::type }", Code::INVALID_STRUCT_FIELD);
+	expectError("typedef<class> Outer {}\nfn f(Outer value) { value.missing::type }", Code::INVALID_CLASS_MEMBER);
+	expectError("typedef<enum> E { A }\nfn f() { E.missing::type }", Code::INVALID_ENUM_MEMBER);
+}
+
+TEST (SemanticValues, MetadataValidatesKnownTypesAndPreservesSymbolicArrayElements) {
+	for (unsigned u_bits : { 32u, 64u }) {
+		const CheckedProgram cp_program = checkSource(R"(fn<typeinfo> value() = void::type
+fn<usize> rank() = void::type::rank
+fn<string> name() = void::type::str
+fn<typeinfo> element<T>(T sample) = T[]::type::element
+fn<usize> inspect(typeinfo descriptor) = descriptor::width
+)",
+		                                              { u_bits });
+		EXPECT_EQ(returned(cp_program).representedType, ResolvedType(kVoid));
+		EXPECT_EQ(returned(cp_program, "rank").types, ResultTypes{ ResolvedType(kUsize) });
+		const Symbol                      &sym_element     = cp_program.units.front()->get_globals().at("element").front();
+		const std::optional<ResolvedType> &opt_represented = returned(cp_program, "element").representedType;
+		ASSERT_TRUE(opt_represented);
+		EXPECT_EQ(*opt_represented, cp_program.declarations.at(&sym_element).parameters.front());
+	}
+	expectError("fn f() { void?::type }", Code::INVALID_NULLABLE_TYPE);
+	expectError("fn f() { null::type }", Code::EXPLICIT_NULLABLE_TYPE);
+	expectError("fn f<T>() { T::type::width }", Code::INVALID_METADATA_ACCESS);
+	const std::string s_overloads = "fn pick(string s) {}\nfn pick(bool b) {}\n";
+	expectError(s_overloads + "fn f() { pick((bool::type -> typeinfo)::width) }", Code::INVALID_METADATA_ACCESS);
+	expectError(s_overloads + "fn f() { def d = bool::type; pick(d::width) }", Code::NO_MATCHING_CALL);
+}
+
+TEST (SemanticValues, MetadataTracksContinuingPathsAndDeferredReads) {
+	expectError("fn f() { (null ?: bool::type)::width }", Code::INVALID_METADATA_ACCESS);
+	expectError("fn f() { def d := bool::type; def<usize> read = { return d::width } }", Code::INVALID_METADATA_ACCESS);
+	expectError("fn f() { def d = bool::type; do { d::width } while (false) }", Code::INVALID_METADATA_ACCESS);
+	EXPECT_NO_THROW(checkSource(R"(typedef<class> Holder { pub def<typeinfo> d = bool::type }
+fn guarded(Holder? h) { (h?.d::type ?: typeinfo::type)::width }
+fn deferred() { def d = bool::type; def<usize> read = { return d::width }; read; d::width }
+fn repeat(bool flag) { def d = bool::type; do { d::width } while (flag) }
+fn iterate() { def d = bool::type; for (def i <- [1, 2]) { d::width }; d::width }
+)"));
+}
+
 TEST (SemanticValues, MetadataFlowsThroughBindingsAndContinuingBranches) {
 	expectError("fn<typeinfo> bad() { def d = int::type; return d::element }", Code::INVALID_METADATA_ACCESS);
 	expectError("fn<typeinfo> bad(bool flag) { def d = int[1]::type; d = if (flag) { int::type } else { int::type }; return d::element }",
