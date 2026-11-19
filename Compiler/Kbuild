@@ -29,6 +29,7 @@ obj-y := cloth.o \
          semantic/calls.o \
          semantic/checked_program.o \
          semantic/expressions.o \
+         semantic/instances.o \
          semantic/symbol_table.o \
          semantic/types.o \
          system/compiler_options.o \

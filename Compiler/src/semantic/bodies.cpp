@@ -15,11 +15,14 @@
 
 namespace cloth::semantic {
 
-BodyChecker::BodyChecker (Analyzer &analyzer, const Symbol &context) :
+BodyChecker::BodyChecker (Analyzer &analyzer, const Symbol &context, BodyFacts &facts, const Substitutions &arguments, DeclarationInfo &signature) :
         analyzer(analyzer),
         context(context),
+        bf_facts(facts),
+        m_arguments(arguments),
+        di_signature(signature),
         owner(analyzer.declarations.at(&context).owner),
-        returns(analyzer.declarations.at(&context).returns) {
+        returns(signature.returns) {
 	while (owner && owner->kind != SymbolKind::Type && owner->kind != SymbolKind::State) {
 		owner = analyzer.declarations.at(owner).owner;
 	}
@@ -37,7 +40,7 @@ const Binding *BodyChecker::local (const std::string &name) const {
 
 void BodyChecker::remember (const Token &use, const Token &declaration) const {
 	if (record) {
-		analyzer.program.references[&use] = &declaration;
+		bf_facts.references[&use] = &declaration;
 	}
 }
 
@@ -47,7 +50,7 @@ void BodyChecker::bind (const Token &name, std::optional<ResolvedType> type, con
 	if (!snd) {
 		fail(Code::DUPLICATE_BINDING, name.get_span(), "Duplicate binding '" + name.get_lexeme() + "'", fst->second.name);
 	}
-	if (record && fst->second.type) analyzer.program.localTypes[&name] = *fst->second.type;
+	if (record && fst->second.type) bf_facts.localTypes[&name] = *fst->second.type;
 }
 
 void BodyChecker::checkDefaultName (const Token &name) const {
@@ -83,9 +86,15 @@ ResolvedType BodyChecker::selfType () const {
 	}
 	if (owner->kind == SymbolKind::State) {
 		const DeclarationInfo &state = analyzer.declarations.at(owner);
-		return state.owner ? analyzer.ownerType(*state.owner) : state.parents.front();
+		return analyzer.substitute(state.owner ? analyzer.ownerType(*state.owner) : state.parents.front(), m_arguments);
 	}
-	return analyzer.ownerType(*owner);
+	return analyzer.substitute(analyzer.ownerType(*owner), m_arguments);
+}
+
+ResolvedType BodyChecker::bodyType (const TypeReference &reference, bool allowOpen) {
+	ResolvedType rt_type = analyzer.checkedType(reference, context, m_arguments, allowOpen);
+	if (record && !allowOpen) analyzer.useType(rt_type, context, reference.get_span());
+	return rt_type;
 }
 
 bool BodyChecker::hasInstance () const {
@@ -168,7 +177,7 @@ void BodyChecker::checkBody (const FunctionBody &body) {
 }
 
 void BodyChecker::check () {
-	const DeclarationInfo &info = analyzer.declarations.at(&context);
+	const DeclarationInfo &info = di_signature;
 	if (const CallableSignature *signature = callable(context)) {
 		if (context.kind == SymbolKind::Constructor) {
 			rp_receiverPhase = ReceiverPhase::ConstructorDefault;
@@ -188,7 +197,7 @@ void BodyChecker::check () {
 			const ConstructorDelegation &cd_delegation = cd_constructor->delegation;
 			const ExpressionInfo         ei_call = invoke(cd_delegation.name, cd_delegation.span, cd_delegation.suppliedArguments, { c_primary });
 			if (record) {
-				analyzer.program.expressions[&cd_delegation] = ei_call;
+				bf_facts.expressions[&cd_delegation] = ei_call;
 			}
 		}
 		rp_receiverPhase = ReceiverPhase::Ready;
@@ -199,8 +208,8 @@ void BodyChecker::check () {
 				if (!opt_result)
 					fail(Code::INVALID_OPERATOR_DECLARATION, inferred.expression->get_span(),
 					     "Cannot infer an operator result from a body that always exits", &context.name);
-				analyzer.declarations.at(&context).returns     = { *opt_result };
-				analyzer.declarations.at(&context).inferResult = false;
+				di_signature.returns     = { *opt_result };
+				di_signature.inferResult = false;
 			} else {
 				checkBody(*body);
 			}
@@ -222,7 +231,7 @@ void BodyChecker::check () {
 	if (cd && (context.kind == SymbolKind::Field || context.kind == SymbolKind::Type)) {
 		owner = container;
 		for (const ClassParameterDeclaration &p : cd->parameters) {
-			bind(p.parameter.name, analyzer.type(p.parameter.type, *owner), p.parameter.isMutable());
+			bind(p.parameter.name, bodyType(p.parameter.type), p.parameter.isMutable());
 		}
 	}
 	if (context.kind == SymbolKind::Type && cd) {
@@ -232,7 +241,7 @@ void BodyChecker::check () {
 				const ResolvedType &parent  = info.parents[i];
 				ExpressionInfo      ei_call = invoke(cd->parents[i].type.get_name(), cd->parents[i].span, *cd->parents[i].constructorArguments,
 				                                     analyzer.members(parent, parent.name, SymbolKind::Constructor));
-				if (record) analyzer.program.parentConstructors.emplace(&cd->parents[i], std::move(ei_call));
+				if (record) bf_facts.parentConstructors.emplace(&cd->parents[i], std::move(ei_call));
 			}
 		}
 	} else if (context.kind == SymbolKind::Field) {
@@ -249,7 +258,7 @@ void BodyChecker::check () {
 		}
 		for (std::size_t i = 0; i < ed->fields.size(); ++i) {
 			if (i < ec.values.size()) {
-				expect(*ec.values[i], analyzer.type(ed->fields[i].type, *owner));
+				expect(*ec.values[i], bodyType(ed->fields[i].type));
 			} else if (!ed->fields[i].defaultValue) {
 				fail(Code::INVALID_ENUM_MEMBER, ec.name.get_span(), "Missing enum payload value", &ed->fields[i].name);
 			}
@@ -450,7 +459,7 @@ bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Ex
 		if (annotations->size() > 1 && annotations->size() != targets.size())
 			fail(Code::RECEPTION_ANNOTATIONS, producer.get_span(), "Specify one type per result or one shared type for a scalar");
 		for (const TypeReference &annotation : *annotations) {
-			ResolvedType type = analyzer.checkedType(annotation, context);
+			ResolvedType type = bodyType(annotation);
 			if (type.name == to_string(kVoid)) fail(Code::VOID_TYPE, annotation.get_span(), "A binding requires a value type");
 			expected.push_back(std::move(type));
 		}
@@ -538,7 +547,7 @@ std::optional<ExpressionInfo> BodyChecker::updateOperator (const Statement &stat
 	}
 	const ExpressionInfo selected = invoke(op, statement.get_span(), arguments, candidates);
 	if (record) {
-		analyzer.program.writes[&statement] = selected;
+		bf_facts.writes[&statement] = selected;
 	}
 	return selected;
 }
@@ -563,7 +572,7 @@ bool BodyChecker::writeMember (const Statement &statement, const ExpressionPtr &
 				const ExpressionInfo selected = invoke(
 				        op, statement.get_span(), { { .expression = index->index }, { .expression = compound ? compound : rhs } }, setters);
 				if (record) {
-					analyzer.program.writes[&statement] = selected;
+					bf_facts.writes[&statement] = selected;
 				}
 				return selected.fallsThrough;
 			}
@@ -573,7 +582,7 @@ bool BodyChecker::writeMember (const Statement &statement, const ExpressionPtr &
 			}
 			const ExpressionInfo selected = invoke(op, statement.get_span(), { { .expression = index->index }, { .expression = target } }, setters);
 			if (record) {
-				analyzer.program.writes[&statement] = selected;
+				bf_facts.writes[&statement] = selected;
 			}
 			return selected.fallsThrough;
 		}
@@ -620,7 +629,7 @@ bool BodyChecker::statement (const Statement &node) {
 	if (const auto *s = dynamic_cast<const BindingDeclaration *>(&node)) {
 		std::optional<ResolvedType> annotation;
 		if (s->type) {
-			annotation = analyzer.checkedType(*s->type, context);
+			annotation = bodyType(*s->type);
 		}
 		const std::optional<ResolvedType> opt_actual = scalar(*s->initializer, annotation ? &*annotation : nullptr);
 		if (annotation && opt_actual) {
@@ -687,7 +696,7 @@ bool BodyChecker::statement (const Statement &node) {
 		if (const auto *f = dynamic_cast<const ForStatement *>(s)) {
 			std::optional<ResolvedType> annotation;
 			if (f->binding.type) {
-				annotation = analyzer.checkedType(*f->binding.type, context);
+				annotation = bodyType(*f->binding.type);
 			}
 			std::optional<ResolvedType> opt_element;
 			if (const ForSource::Range *range = std::get_if<ForSource::Range>(&f->source.value)) {
@@ -707,8 +716,8 @@ bool BodyChecker::statement (const Statement &node) {
 					fallsThrough = false;
 				} else if (opt_source->array()) {
 					opt_element = opt_source->element();
-				} else if (opt_source->name == "range" && !opt_source->arguments.empty()) {
-					opt_element = opt_source->arguments.front();
+				} else if (opt_source->name == "range" && !opt_source->arguments().empty()) {
+					opt_element = opt_source->arguments().front();
 				} else {
 					fail(Code::INVALID_FOR_LOOP, f->source.get_span(), "Expected an array or range");
 				}

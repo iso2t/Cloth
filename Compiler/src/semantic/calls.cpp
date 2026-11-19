@@ -75,7 +75,7 @@ PlacementResult placeArguments (const std::vector<CallArgument> &arguments, cons
 }
 
 void inferArguments (const ResolvedType &pattern, ResolvedType actual, const TypeParameterList &generic, Substitutions &args) {
-	if (actual.name == to_string(kNull)) {
+	if (!pattern.dependent() || actual.name == to_string(kNull)) {
 		return;
 	}
 	for (const auto &suffix : std::views::reverse(pattern.suffixes)) {
@@ -93,9 +93,9 @@ void inferArguments (const ResolvedType &pattern, ResolvedType actual, const Typ
 				args.try_emplace(&p, std::move(actual));
 			}
 		}
-	} else if (pattern.declaration == actual.declaration && pattern.arguments.size() == actual.arguments.size()) {
-		for (std::size_t i = 0; i < pattern.arguments.size(); ++i) {
-			inferArguments(pattern.arguments[i], actual.arguments[i], generic, args);
+	} else if (pattern.declaration == actual.declaration && pattern.arguments().size() == actual.arguments().size()) {
+		for (std::size_t i = 0; i < pattern.arguments().size(); ++i) {
+			inferArguments(pattern.arguments()[i], actual.arguments()[i], generic, args);
 		}
 	}
 }
@@ -142,6 +142,7 @@ struct Match {
 	ArgumentPlacement placement;
 	ResultTypes       parameters;
 	Substitutions     substitutions;
+	const Substitutions *overridingArguments;
 	MatchRank         rank;
 
 	[[nodiscard]] std::size_t omittedCount () const {
@@ -178,6 +179,20 @@ bool BodyChecker::checkArguments (const std::vector<CallArgument> &arguments, co
 	return b_continues;
 }
 
+std::vector<Candidate> BodyChecker::methodCandidates (const MemberCallExpression &site, const ResolvedType &receiver) const {
+	std::vector<Candidate> v_candidates = analyzer.members(receiver, site.name.get_lexeme(), SymbolKind::Method, MemberLookup::CallContract);
+	if (!m_arguments.empty()) {
+		using Facts                             = std::unordered_map<const Expression *, ExpressionInfo>;
+		const Facts                &m_open      = analyzer.program.expressions;
+		const Facts::const_iterator it_receiver = m_open.find(site.receiver.get()), it_call = m_open.find(&site);
+		if (it_receiver != m_open.end() && it_call != m_open.end() && it_call->second.argumentContract && it_receiver->second.types.size() == 1 &&
+		    it_receiver->second.types.front().parameter) {
+			return { analyzer.boundMethod(it_call->second, v_candidates, m_arguments) };
+		}
+	}
+	return v_candidates;
+}
+
 ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, const std::vector<CallArgument> &arguments, const std::vector<Candidate> &group,
                                     const TypeArgumentList *typeArguments, const ResultTypes *knownArguments) {
 	const std::string &spelling = name.get_lexeme();
@@ -200,7 +215,7 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 	std::vector<std::optional<ResolvedType>> explicitTypes;
 	if (typeArguments) {
 		for (const TypeReference &ref : typeArguments->arguments) {
-			explicitTypes.push_back(ref.is_placeholder() ? std::nullopt : std::optional{ analyzer.checkedType(ref, context) });
+			explicitTypes.push_back(ref.is_placeholder() ? std::nullopt : std::optional{ bodyType(ref) });
 		}
 	}
 	std::vector<ArgumentProbe> v_probes;
@@ -227,6 +242,7 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 	}
 	std::vector<Match> matches;
 	const Symbol      *inaccessible = nullptr;
+	const TypeParameterDeclaration *tp_unproven  = nullptr;
 	for (PlacedCandidate &pc_placed : v_placed) {
 		const Candidate         &candidate     = pc_placed.candidate;
 		ArgumentPlacement       &ap_placement  = pc_placed.placement;
@@ -255,7 +271,7 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 		for (std::size_t i = 0; i < count; ++i) {
 			const TypeParameterDeclaration &param = generic->parameters[i];
 			if (!substitutions.contains(&param) && param.defaultType) {
-				substitutions[&param] = substitute(analyzer.type(*param.defaultType, symbol), substitutions);
+				substitutions[&param] = analyzer.substitute(analyzer.type(*param.defaultType, symbol), substitutions);
 			}
 			if (!substitutions.contains(&param)) {
 				viable = false;
@@ -264,20 +280,24 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 		}
 		if (viable && generic) {
 			for (const TypeParameterDeclaration &param : generic->parameters) {
-				viable &= analyzer.satisfies(param, substitutions, symbol, context);
+				if (!analyzer.satisfies(param, substitutions, symbol, context)) {
+					if (substitutions.at(&param).dependent() && !tp_unproven) tp_unproven = &param;
+					viable = false;
+				}
 			}
 		}
 		if (!viable) {
 			continue;
 		}
-		Match match{ .symbol        = candidate.overridingMethod ? candidate.overridingMethod : &symbol,
-			     .contract      = &symbol,
-			     .placement     = std::move(ap_placement),
-			     .parameters    = {},
-			     .substitutions = {},
-			     .rank          = MatchRank::Exact };
+		Match match{ .symbol              = candidate.overridingMethod ? candidate.overridingMethod : &symbol,
+			     .contract            = &symbol,
+			     .placement           = std::move(ap_placement),
+			     .parameters          = {},
+			     .substitutions       = {},
+			     .overridingArguments = &candidate.overridingArguments,
+			     .rank                = MatchRank::Exact };
 		for (std::size_t i = 0; i < arguments.size(); ++i) {
-			const ResolvedType parameter = substitute(info.parameters[match.placement.destinations[i]], substitutions);
+			const ResolvedType parameter = analyzer.substitute(info.parameters[match.placement.destinations[i]], substitutions);
 			match.parameters.push_back(parameter);
 			const std::optional<ExpressionInfo> &opt_result = v_probes[i].result;
 			if (opt_result && opt_result->fallsThrough && opt_result->types.front() == parameter) {
@@ -323,6 +343,9 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 		if (inaccessible) {
 			analyzer.requireAccess(*inaccessible, context, span);
 		}
+		if (tp_unproven && group.size() == 1) {
+			fail(Code::UNSATISFIED_GENERIC_BOUND, span, "Cannot prove the bounds of '" + tp_unproven->name.get_lexeme() + "'", &tp_unproven->name);
+		}
 		fail(Code::NO_MATCHING_CALL, span, "No overload of '" + spelling + "' accepts these arguments", &group.front().symbol->name);
 	}
 	const MatchRank mr_best = std::ranges::min_element(matches, {}, &Match::rank)->rank;
@@ -350,9 +373,23 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 	}
 	ResultTypes results;
 	for (const ResolvedType &rt : analyzer.resultsOf(*best.contract)) {
-		results.push_back(substitute(rt, best.substitutions));
+		results.push_back(analyzer.substitute(rt, best.substitutions));
 	}
 	remember(name, best.symbol->name);
+	const GenericInstance *gi_contract = nullptr, *gi_target = nullptr;
+	if (record) {
+		gi_target = gi_contract = analyzer.useCallable(*best.contract, best.substitutions, context, span);
+		if (best.symbol != best.contract) {
+			Substitutions m_target = *best.overridingArguments;
+			if (const TypeParameterList *tpl_method = typeParameters(*best.symbol)) {
+				const TypeParameterList &tpl_contract = *typeParameters(*best.contract);
+				for (std::size_t st_index = 0; st_index < tpl_method->parameters.size(); ++st_index) {
+					m_target.emplace(&tpl_method->parameters[st_index], best.substitutions.at(&tpl_contract.parameters[st_index]));
+				}
+			}
+			gi_target = analyzer.useCallable(*best.symbol, m_target, context, span);
+		}
+	}
 	return { .types                = std::move(results),
 		 .symbol               = best.symbol,
 		 .binding              = nullptr,
@@ -360,7 +397,9 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 		 .parameterForArgument = std::move(best.placement.destinations),
 		 .omittedParameters    = std::move(best.placement.omitted),
 		 .fallsThrough         = b_continues,
-		 .typeArguments        = std::move(best.substitutions) };
+		 .typeArguments        = std::move(best.substitutions),
+		 .instance             = gi_target,
+		 .contractInstance     = gi_contract };
 }
 
 }

@@ -2,8 +2,10 @@
 
 #pragma once
 
+#include <compare>
 #include <cstddef>
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -20,30 +22,44 @@ namespace cloth {
 
 struct BinaryExpression;
 struct ClassParentClause;
+struct GenericInstance;
+struct TypeArguments;
 struct TypeCheckExpression;
 
 struct ResolvedType {
-	std::string                     name;
-	const Symbol                   *declaration = nullptr;
-	const TypeParameterDeclaration *parameter   = nullptr;
-	std::vector<ResolvedType>       arguments;
+	std::string                          name;
+	const Symbol                        *declaration = nullptr;
+	const TypeParameterDeclaration      *parameter   = nullptr;
+	std::shared_ptr<const TypeArguments> application;
 	// Suffixes are ordered from the element outward, so int?[] differs from int[]?.
 	std::vector<std::string> suffixes;
 	unsigned                 width = 0;
 
 	explicit ResolvedType (std::string name = {});
 	explicit ResolvedType (Keyword keyword);
-	bool                       operator==(const ResolvedType &) const = default;
-	[[nodiscard]] bool         nullable () const;
-	[[nodiscard]] bool         array () const;
-	[[nodiscard]] bool         integer () const;
-	[[nodiscard]] bool         floating () const;
-	[[nodiscard]] ResolvedType element () const;
-	[[nodiscard]] std::string  spelling () const;
+	bool                                           operator==(const ResolvedType &other) const;
+	std::strong_ordering                           operator<=>(const ResolvedType &other) const;
+	[[nodiscard]] const std::vector<ResolvedType> &arguments () const;
+	[[nodiscard]] bool                             dependent () const;
+	[[nodiscard]] unsigned                         argumentDepth () const;
+	void                                           visitApplications (const std::function<void(const ResolvedType &)> &visit) const;
+	[[nodiscard]] bool                             nullable () const;
+	[[nodiscard]] bool                             array () const;
+	[[nodiscard]] bool                             integer () const;
+	[[nodiscard]] bool                             floating () const;
+	[[nodiscard]] ResolvedType                     element () const;
+	[[nodiscard]] std::string                      spelling () const;
 };
 
 using ResultTypes   = std::vector<ResolvedType>;
 using Substitutions = std::map<const TypeParameterDeclaration *, ResolvedType>;
+
+// Canonical argument lists share nested types, including repeated uses of the same parameter.
+struct TypeArguments {
+	ResultTypes values;
+	unsigned    depth;
+	bool        dependent;
+};
 
 struct DeclarationInfo {
 	std::size_t                 file;
@@ -70,23 +86,20 @@ struct ExpressionInfo {
 	// Owns the labels, default expressions and generic parameters used to bind this call.
 	const Symbol *argumentContract = nullptr;
 	// Supplied expressions stay in source order. Omitted parameters follow in declaration order.
-	std::vector<std::size_t> parameterForArgument = {};
-	std::vector<std::size_t> omittedParameters    = {};
-	bool                     fallsThrough         = true;
-	Substitutions            typeArguments        = {};
-	ReceiverFieldPath        receiverFieldPath    = ReceiverFieldPath::None;
+	std::vector<std::size_t>    parameterForArgument = {};
+	std::vector<std::size_t>    omittedParameters    = {};
+	bool                        fallsThrough         = true;
+	Substitutions               typeArguments        = {};
+	ReceiverFieldPath           receiverFieldPath    = ReceiverFieldPath::None;
+	const GenericInstance      *instance             = nullptr;
+	const GenericInstance      *contractInstance     = nullptr;
+	std::optional<ResolvedType> representedType      = std::nullopt;
 
 	[[nodiscard]] ResultKind resultKind () const;
 	static ExpressionInfo    never ();
 };
 
-struct CheckedProgram {
-	explicit CheckedProgram (SymbolTable entry);
-
-	// Keep the parsed units and generated declarations alive for the semantic results.
-	std::vector<std::unique_ptr<const SymbolTable>>               units;
-	std::deque<Symbol>                                            constructorRequirements;
-	std::unordered_map<const Symbol *, DeclarationInfo>           declarations;
+struct BodyFacts {
 	std::unordered_map<const Expression *, ExpressionInfo>        expressions;
 	std::unordered_map<const ClassParentClause *, ExpressionInfo> parentConstructors;
 	std::unordered_map<const Token *, ResolvedType>               localTypes;
@@ -96,4 +109,27 @@ struct CheckedProgram {
 	std::unordered_map<const Token *, const Token *>                                         references;
 };
 
+struct InstanceKey {
+	const Symbol               *declaration;
+	std::optional<ResolvedType> receiver;
+	ResultTypes                 arguments;
+
+	std::strong_ordering operator<=>(const InstanceKey &other) const;
+};
+
+struct GenericInstance {
+	DeclarationInfo                        signature;
+	BodyFacts                              body;
+	std::map<const Symbol *, ResolvedType> fields;
+};
+
+struct CheckedProgram : BodyFacts {
+	explicit CheckedProgram (SymbolTable entry);
+
+	// Own the declarations and stable instances referenced by the body facts.
+	std::vector<std::unique_ptr<const SymbolTable>>     units;
+	std::deque<Symbol>                                  constructorRequirements;
+	std::unordered_map<const Symbol *, DeclarationInfo> declarations;
+	std::map<InstanceKey, GenericInstance>              instances;
+};
 }

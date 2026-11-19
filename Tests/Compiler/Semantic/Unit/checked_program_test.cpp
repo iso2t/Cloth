@@ -1,38 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <gtest/gtest.h>
+#include "checked_program_test.hpp"
 
 #include <ast/decl/class_declaration.hpp>
 #include <ast/stmt/statements.hpp>
-#include <cde/cloth_diagnostic.hpp>
-#include <lexer/lexer.hpp>
-#include <parser/parser.hpp>
-#include <semantic/checked_program.hpp>
 
-namespace cloth {
+namespace cloth::test {
 namespace {
-
-CheckedProgram checkSource (const std::string &source) {
-	Lexer lexer(source);
-	return CheckedProgram(SymbolTable(Parser(lexer).parse()));
-}
-
-void expectError (const std::string &source, cde::DiagnosticCode code) {
-	SCOPED_TRACE(source);
-	try {
-		checkSource(source);
-		FAIL() << "Expected a semantic diagnostic";
-	} catch (const cde::ClothDiagnostic &error) {
-		EXPECT_EQ(error.get_code(), code) << error.what();
-		ASSERT_FALSE(error.get_source_labels().empty());
-		EXPECT_NE(error.get_source_labels().front().span.source, nullptr);
-	}
-}
-
-const Expression &bodyExpression (const Symbol &symbol) {
-	const CallableSignature &cs_function = *std::get<const CallableSignature *>(symbol.declaration);
-	return *std::get<ExpressionBody>(cs_function.executableBody()->value).expression;
-}
 
 TEST (SemanticChecking, RetainsWrittenArgumentsAndDeclarationSiteDefaults) {
 	const CheckedProgram     cp_program = checkSource(R"(fn<int, bool> use(int helper) = pick(ok = true, n = helper)

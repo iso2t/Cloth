@@ -55,7 +55,7 @@ bool numericLiteral (const Expression &expr) {
 ExpressionInfo BodyChecker::expression (const Expression &node, const ResultTypes *expected, bool discard) {
 	ExpressionInfo info = infer(node, expected, discard);
 	if (record) {
-		ExpressionInfo &ei_fact = analyzer.program.expressions.insert_or_assign(&node, info).first->second;
+		ExpressionInfo &ei_fact = bf_facts.expressions.insert_or_assign(&node, info).first->second;
 		// A guarded chain can still need the declared type on its absent path. The exiting expression itself produces no values.
 		if (!ei_fact.fallsThrough) ei_fact.types.clear();
 	}
@@ -83,7 +83,7 @@ ExpressionInfo BodyChecker::scalarInfo (const Expression &node, const ResolvedTy
 ResolvedType BodyChecker::recordSelf (const Expression &node) {
 	const ResolvedType rt_self = selfType();
 	if (record) {
-		analyzer.program.expressions.insert_or_assign(&node, value(rt_self));
+		bf_facts.expressions.insert_or_assign(&node, value(rt_self));
 	}
 	return rt_self;
 }
@@ -112,7 +112,7 @@ ExpressionInfo BodyChecker::name (const Token &token) {
 		return value(selfType());
 	}
 	if (spelling == to_string(kState) && owner && owner->kind == SymbolKind::State) {
-		return value(*analyzer.declarations.at(owner).value);
+		return value(analyzer.substitute(*analyzer.declarations.at(owner).value, m_arguments));
 	}
 	if (hasInstance()) {
 		const std::vector<Candidate> fields = analyzer.members(selfType(), spelling, SymbolKind::Field);
@@ -121,7 +121,8 @@ ExpressionInfo BodyChecker::name (const Token &token) {
 			analyzer.requireAccess(*field.symbol, context, token.get_span());
 			checkFieldRead(*field.symbol, token);
 			remember(token, field.symbol->name);
-			return value(substitute(*analyzer.declarations.at(field.symbol).value, field.arguments), field.symbol, ReceiverFieldPath::Stored);
+			return value(analyzer.substitute(*analyzer.declarations.at(field.symbol).value, field.arguments), field.symbol,
+			             ReceiverFieldPath::Stored);
 		}
 	}
 	for (const Symbol *sym : analyzer.lookup(context, spelling)) {
@@ -138,7 +139,7 @@ ExpressionInfo BodyChecker::name (const Token &token) {
 std::optional<BodyChecker::Receiver> BodyChecker::receiver (const Expression &node, bool allowOpen) {
 	std::optional<ResolvedType> type;
 	if (const TypeReceiverExpression *r = dynamic_cast<const TypeReceiverExpression *>(&node)) {
-		type = analyzer.type(r->annotation, context, 0, allowOpen);
+		type = bodyType(r->annotation, allowOpen);
 	} else if (const std::optional<Token> path = typeNameCandidate(node, [&] (const Token &t) {
 		           checkDefaultName(t);
 		           if (local(t.get_lexeme()) || (hasInstance() && !analyzer.members(selfType(), t.get_lexeme(), SymbolKind::Field).empty())) {
@@ -148,7 +149,7 @@ std::optional<BodyChecker::Receiver> BodyChecker::receiver (const Expression &no
 		                  std::ranges::any_of(analyzer.lookup(context, t.get_lexeme()), [] (const Symbol *s) { return s->kind == SymbolKind::Type; });
 	           })) {
 		try {
-			type = analyzer.type(TypeReference(*path), context, 0, allowOpen);
+			type = bodyType(TypeReference(*path), allowOpen);
 		} catch (const cde::ClothDiagnostic &error) {
 			if (error.get_code() != Code::UNSUPPORTED_TYPE) {
 				throw;
@@ -160,11 +161,10 @@ std::optional<BodyChecker::Receiver> BodyChecker::receiver (const Expression &no
 		if (ei_value.types.size() != 1) return std::nullopt;
 		return Receiver{ .type = std::move(ei_value.types.front()), .fieldPath = ei_value.receiverFieldPath, .fallsThrough = ei_value.fallsThrough };
 	}
-	if (!allowOpen) {
-		analyzer.checkBounds(*type, node.get_span(), context);
-	}
 	if (record) {
-		analyzer.program.expressions[&node] = value(ResolvedType(kTypeinfo), type->declaration);
+		ExpressionInfo ei_type  = value(ResolvedType(kTypeinfo), type->declaration);
+		ei_type.representedType = *type;
+		bf_facts.expressions.insert_or_assign(&node, std::move(ei_type));
 	}
 	return Receiver{ .type = std::move(*type), .isType = true };
 }
@@ -193,7 +193,7 @@ ExpressionInfo BodyChecker::field (const FieldAccessExpression &node) {
 		rfp_path = ReceiverFieldPath::Indirect;
 	}
 	remember(node.name, member.symbol->name);
-	ExpressionInfo ei_field = value(substitute(*analyzer.declarations.at(member.symbol).value, member.arguments), member.symbol, rfp_path);
+	ExpressionInfo ei_field = value(analyzer.substitute(*analyzer.declarations.at(member.symbol).value, member.arguments), member.symbol, rfp_path);
 	ei_field.fallsThrough   = r_receiver.fallsThrough;
 	return ei_field;
 }
@@ -216,7 +216,7 @@ std::optional<Candidate> BodyChecker::stateTarget (const ResolvedType &receiver,
 }
 
 ExpressionInfo BodyChecker::transition (const Candidate &state, const ExpressionPtr &payload, const TokenSpan &span) {
-	const ResolvedType required = substitute(*analyzer.declarations.at(state.symbol).value, state.arguments);
+	const ResolvedType required = analyzer.substitute(*analyzer.declarations.at(state.symbol).value, state.arguments);
 	if (payload && required.name == to_string(kVoid)) {
 		fail(Code::INVALID_STATE_PAYLOAD, payload->get_span(), "This state takes no payload");
 	}
@@ -243,7 +243,7 @@ ExpressionInfo BodyChecker::typeCheck (const TypeCheckExpression &node) {
 	if (valueTarget) {
 		std::shared_ptr<const BinaryExpression> test = std::make_shared<BinaryExpression>(node.operand, node.op, valueTarget);
 		if (record) {
-			test = analyzer.program.valueTests.try_emplace(&node, test).first->second;
+			test = bf_facts.valueTests.try_emplace(&node, test).first->second;
 		}
 		return expression(*test);
 	}
@@ -265,7 +265,7 @@ ExpressionInfo BodyChecker::typeCheck (const TypeCheckExpression &node) {
 	if (opt_source && opt_source->name == to_string(kNull)) {
 		fail(Code::EXPLICIT_NULLABLE_TYPE, node.operand->get_span(), "A type test needs a typed operand");
 	}
-	const ResolvedType target = analyzer.checkedType(node.target, context);
+	const ResolvedType target = bodyType(node.target);
 	return opt_source ? value(ResolvedType(kBoolean), target.declaration) : ExpressionInfo::never();
 }
 
@@ -305,7 +305,7 @@ ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const Resolved
 				continue;
 			}
 			if (m.selector) {
-				ResolvedType selector = substitute(*analyzer.declarations.at(c.symbol).value, c.arguments);
+				ResolvedType selector = analyzer.substitute(*analyzer.declarations.at(c.symbol).value, c.arguments);
 				if (m.selector->capturesWidth()) {
 					selector.width = peer.width;
 				}
@@ -383,14 +383,16 @@ ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const Resolved
 		return selected;
 	}
 	if (node.op.get_lexeme() == to_string(kIs)) {
-		if (right.name != "range" || right.declaration || right.arguments.size() != 1 || !analyzer.accepts(right.arguments.front(), left)) {
+		if (right.name != "range" || right.declaration || right.arguments().size() != 1 || !analyzer.accepts(right.arguments().front(), left)) {
 			fail(Code::INVALID_RANGE_MEMBERSHIP, node.get_span(), "Membership requires a range with compatible endpoints");
 		}
 		return value(ResolvedType(kBoolean));
 	}
 	if (isEquality(o_operation)) {
-		if (!analyzer.accepts(left, right) && !analyzer.accepts(right, left) &&
-		    !(numeric(left) && numeric(right) && (left.floating() || right.floating()))) {
+		const bool b_unproven = left.name != to_string(kNull) && right.name != to_string(kNull) &&
+		                        (!analyzer.supportsEquality(left) || !analyzer.supportsEquality(right));
+		if (b_unproven || (!analyzer.accepts(left, right) && !analyzer.accepts(right, left) &&
+		                   !(numeric(left) && numeric(right) && (left.floating() || right.floating())))) {
 			fail(Code::INCOMPARABLE_TYPES, node.op.get_span(), "Cannot compare " + left.spelling() + " with " + right.spelling());
 		}
 		return value(ResolvedType(kBoolean));
@@ -412,7 +414,7 @@ ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const Resolved
 			fail(Code::INVALID_RANGE_VALUE, node.get_span(), "Range endpoints must have matching integer types");
 		}
 		ResolvedType range("range");
-		range.arguments.push_back(left);
+		analyzer.applyArguments(range, { left });
 		return value(range);
 	}
 	if (left.floating() || right.floating()) {
@@ -433,7 +435,9 @@ ExpressionInfo BodyChecker::call (const CallExpression &node) {
 	}
 	std::vector<Candidate> group;
 	if (owner && owner->kind == SymbolKind::State) {
-		group = analyzer.members(analyzer.ownerType(*owner), node.name.get_lexeme(), SymbolKind::Method, MemberLookup::CallContract);
+		group = analyzer.members(analyzer.substitute(analyzer.ownerType(*owner), m_arguments), node.name.get_lexeme(), SymbolKind::Method,
+		                         MemberLookup::CallContract);
+		for (Candidate &c_method : group) c_method.arguments.insert(m_arguments.begin(), m_arguments.end());
 	}
 	if (hasInstance() && group.empty()) {
 		group = analyzer.members(selfType(), node.name.get_lexeme(), SymbolKind::Method, MemberLookup::CallContract);
@@ -468,20 +472,34 @@ ExpressionInfo BodyChecker::create (const ClassCreationExpression &node, const R
 	if ((!rt.declaration && !rt.parameter) || !rt.suffixes.empty()) {
 		fail(Code::INVALID_CLASS_LIFECYCLE, node.get_span(), std::format("{} requires a class type or a constructor bound", to_string(kNew)));
 	}
-	auto constructors = analyzer.members(rt, rt.name, SymbolKind::Constructor);
+	// The guarantee owns its call syntax, even if the concrete constructor uses different labels or defaults.
+	const Symbol *sym_guarantee = nullptr;
+	if (!m_arguments.empty()) {
+		const std::unordered_map<const Expression *, ExpressionInfo>::const_iterator it_open = analyzer.program.expressions.find(&node);
+		if (it_open != analyzer.program.expressions.end() && it_open->second.argumentContract &&
+		    dynamic_cast<const ConstructorGuaranteeDeclaration *>(callable(*it_open->second.argumentContract))) {
+			sym_guarantee = it_open->second.argumentContract;
+		}
+	}
+	std::vector<Candidate> constructors;
+	if (sym_guarantee) {
+		constructors.push_back({ sym_guarantee, m_arguments });
+	} else {
+		constructors = analyzer.members(rt, rt.name, SymbolKind::Constructor);
+	}
 	if (constructors.empty()) {
 		fail(Code::INVALID_CLASS_LIFECYCLE, node.get_span(), "No constructor declared for " + rt.spelling());
 	}
-	const TypeParameterList *params     = rt.declaration ? typeParameters(*rt.declaration) : nullptr;
-	const auto              *annotation = dynamic_cast<const TypeReceiverExpression *>(node.receiver.get());
-	if (params) {
+	const TypeParameterList      *params     = rt.declaration ? typeParameters(*rt.declaration) : nullptr;
+	const TypeReceiverExpression *annotation = dynamic_cast<const TypeReceiverExpression *>(node.receiver.get());
+	if (params && !sym_guarantee) {
 		for (Candidate &candidate : constructors) {
 			for (std::size_t i = 0; i < params->parameters.size(); ++i) {
 				const TypeParameterDeclaration &param = params->parameters[i];
 				if (!annotation || i >= annotation->annotation.get_type_arguments().size() ||
 				    annotation->annotation.get_type_arguments()[i].is_placeholder()) {
 					if (hint && hint->declaration == rt.declaration) {
-						candidate.arguments[&param] = hint->arguments[i];
+						candidate.arguments[&param] = hint->arguments()[i];
 					} else {
 						candidate.arguments.erase(&param);
 					}
@@ -491,8 +509,25 @@ ExpressionInfo BodyChecker::create (const ClassCreationExpression &node, const R
 		}
 	}
 	ExpressionInfo result = invoke(node.name, node.get_span(), node.suppliedArguments, constructors);
-	rt                    = substitute(rt, result.typeArguments);
+	if (params && !sym_guarantee) rt = analyzer.substitute(analyzer.ownerType(*rt.declaration), result.typeArguments);
 	analyzer.checkBounds(rt, node.get_span(), context);
+	if (sym_guarantee) {
+		ResultTypes v_parameters;
+		for (const ResolvedType &rt_parameter : analyzer.declarations.at(sym_guarantee).parameters) {
+			v_parameters.push_back(analyzer.substitute(rt_parameter, m_arguments));
+		}
+		result.symbol = analyzer.constructorFor(rt, v_parameters, nullptr);
+		if (!result.symbol) fail(Code::UNSATISFIED_GENERIC_BOUND, node.get_span(), "Missing guaranteed constructor", &sym_guarantee->name);
+		remember(node.name, result.symbol->name);
+		if (record) {
+			result.instance         = analyzer.useCallable(*result.symbol, analyzer.argumentsOf(rt), context, node.get_span());
+			result.contractInstance = analyzer.guaranteeOwner(*sym_guarantee, m_arguments, context, node.get_span());
+		}
+	}
+	if (record) {
+		analyzer.useType(rt, context, node.get_span());
+		bf_facts.expressions.at(node.receiver.get()).representedType = rt;
+	}
 	result.types = { rt };
 	return result;
 }
@@ -513,7 +548,7 @@ ExpressionInfo BodyChecker::cast (const CastExpression &node) {
 			return transition(*state, nullptr, node.get_span());
 		}
 	}
-	const ResolvedType to = analyzer.checkedType(node.target, context);
+	const ResolvedType to = bodyType(node.target);
 	if (!opt_from) return ExpressionInfo::never();
 	const ResolvedType &from = *opt_from;
 	if ((from.nullable() || from.name == to_string(kNull)) && !to.nullable()) {
@@ -625,7 +660,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		for (std::size_t i = 0; i < n->fields.size(); ++i) {
 			const Candidate member = analyzer.members(*hint, td->fields[i].name.get_lexeme(), SymbolKind::Field).front();
 			analyzer.requireAccess(*member.symbol, context, n->fields[i]->get_span());
-			b_continues &= expect(*n->fields[i], substitute(*analyzer.declarations.at(member.symbol).value, member.arguments));
+			b_continues &= expect(*n->fields[i], analyzer.substitute(*analyzer.declarations.at(member.symbol).value, member.arguments));
 		}
 		return b_continues ? value(*hint) : ExpressionInfo::never();
 	}
@@ -659,7 +694,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		if (const IntegerLiteral *literal = dynamic_cast<const IntegerLiteral *>(n->operand.get()); literal && o_operation == oMinus) {
 			const ExpressionInfo result = value(literalInteger(*literal, hint, true));
 			if (record) {
-				analyzer.program.expressions[literal] = result;
+				bf_facts.expressions[literal] = result;
 			}
 			return result;
 		}
@@ -698,7 +733,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 			fail(Code::NULLABLE_PAYLOAD_ACCESS, node.get_span(),
 			     std::format("Use {} to call a member of a nullable receiver", to_string(oSafeDot)));
 		}
-		const std::vector<Candidate> v_methods = analyzer.members(rt, n->name.get_lexeme(), SymbolKind::Method, MemberLookup::CallContract);
+		const std::vector<Candidate> v_methods = methodCandidates(*n, rt);
 		if (v_methods.empty()) {
 			fail(Code::UNKNOWN_MEMBER, n->name.get_span(), "Unknown method '" + n->name.get_lexeme() + "' on " + rt.spelling());
 		}
@@ -719,8 +754,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		if (readOnlyDefaultRoot(*n->receiver))
 			fail(Code::INVALID_PARAMETER_DEFAULT, n->get_span(), "A default cannot delete a read-only receiver", &pd_default->name);
 		const ResolvedType &rt = *opt_receiver;
-		if (!rt.declaration || !rt.suffixes.empty() ||
-		    !dynamic_cast<const ClassDeclaration *>(std::get<const TypeDeclaration *>(rt.declaration->declaration))) {
+		if (!analyzer.referenceType(rt)) {
 			fail(Code::INVALID_CLASS_LIFECYCLE, node.get_span(), std::format("{} requires a class instance", to_string(kDelete)));
 		}
 		const auto group = analyzer.members(rt, std::format("{}{}", to_string(oTilde), rt.name), SymbolKind::Destructor);
@@ -797,7 +831,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		inner.b_nestedFunction = true;
 		inner.returns.clear();
 		for (const TypeReference &ref : n->declaration.returnTypes) {
-			inner.returns.push_back(analyzer.type(ref, context));
+			inner.returns.push_back(bodyType(ref));
 		}
 		if (inner.returns.empty()) {
 			fail(Code::BLOCK_RETURN_TYPE_REQUIRED, node.get_span(), "A deferred binding requires a result type");
@@ -820,12 +854,17 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 			return invoke(n->name, node.get_span(), {}, v_providers);
 		}
 		if (id == provider::S_SIZE) {
-			return value(ResolvedType(kUsize));
+			if (rt.nullable() && rt.element().array()) {
+				fail(Code::NULLABLE_PAYLOAD_ACCESS, node.get_span(), "Array size requires a present array");
+			}
+			if (!rt.parameter || rt.array()) return value(ResolvedType(kUsize));
 		}
 		if (id == provider::S_TYPE) {
-			return value(ResolvedType(kTypeinfo));
+			ExpressionInfo ei_type  = value(ResolvedType(kTypeinfo));
+			ei_type.representedType = rt;
+			return ei_type;
 		}
-		if (id == provider::S_STRING && !r_receiver.isType) {
+		if (id == provider::S_STRING && !r_receiver.isType && (!rt.parameter || analyzer.referenceType(rt))) {
 			return value(ResolvedType(kString));
 		}
 		if ((id == provider::S_MIN || id == provider::S_MAX) && numeric(rt)) {

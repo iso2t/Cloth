@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <format>
+#include <tuple>
 
 #include <ast/decl/class_declaration.hpp>
 #include <lexer/lexer.hpp>
@@ -19,6 +20,41 @@ ResolvedType::ResolvedType (std::string name) : name(std::move(name)) {
 	if (this->name == to_string(kInteger) || this->name == semantic::unsignedIntegerSpelling() || this->name == to_string(kFloat)) {
 		width = 32;
 	}
+}
+
+std::strong_ordering ResolvedType::operator<=>(const ResolvedType &other) const {
+	if (const std::strong_ordering so_decl = std::compare_three_way{}(declaration, other.declaration); so_decl != 0) return so_decl;
+	if (const std::strong_ordering so_param = std::compare_three_way{}(parameter, other.parameter); so_param != 0) return so_param;
+	if (const std::strong_ordering so_head = std::tie(name, width, suffixes) <=> std::tie(other.name, other.width, other.suffixes); so_head != 0)
+		return so_head;
+	return application == other.application ? std::strong_ordering::equal : arguments() <=> other.arguments();
+}
+
+bool ResolvedType::operator==(const ResolvedType &other) const {
+	return (*this <=> other) == 0;
+}
+
+const ResultTypes &ResolvedType::arguments () const {
+	static const ResultTypes V_EMPTY;
+	return application ? application->values : V_EMPTY;
+}
+
+bool ResolvedType::dependent () const {
+	return parameter || (application && application->dependent);
+}
+
+unsigned ResolvedType::argumentDepth () const {
+	return application ? application->depth : 0;
+}
+
+void ResolvedType::visitApplications (const std::function<void(const ResolvedType &)> &visit) const {
+	std::set<ResolvedType>                          s_seen;
+	const std::function<void(const ResolvedType &)> walk = [&] (const ResolvedType &type) {
+		if (!type.application || !s_seen.insert(type).second) return;
+		for (const ResolvedType &rt_argument : type.arguments()) walk(rt_argument);
+		visit(type);
+	};
+	walk(*this);
 }
 
 bool ResolvedType::nullable () const {
@@ -45,24 +81,39 @@ ResolvedType ResolvedType::element () const {
 }
 
 std::string ResolvedType::spelling () const {
-	std::string s_result = name;
-	if (width && width != 32) {
-		s_result += std::format("{}{}{}", to_string(oLess), width, to_string(oGreater));
-	}
-	if (!arguments.empty()) {
-		s_result += to_string(oLess);
-		for (const ResolvedType &rt_arg : arguments) {
-			if (&rt_arg != &arguments.front()) {
-				s_result += to_string(oComma);
-				s_result += ' ';
+	constexpr std::size_t                       ST_MAX_BYTES = 4096;
+	constexpr std::string_view                  S_ELLIPSIS   = "…";
+	std::string                                 s_result;
+	bool                                        b_truncated = false;
+	const std::function<void(std::string_view)> append      = [&] (std::string_view part) {
+		if (b_truncated) return;
+		const std::size_t st_left = ST_MAX_BYTES - s_result.size();
+		s_result.append(part.substr(0, st_left));
+		if (part.size() <= st_left) return;
+		std::size_t st_end = ST_MAX_BYTES - S_ELLIPSIS.size();
+		while (st_end && (static_cast<unsigned char>(s_result[st_end]) & 0xc0) == 0x80) --st_end;
+		s_result.resize(st_end);
+		s_result += S_ELLIPSIS;
+		b_truncated = true;
+	};
+	const std::function<void(const ResolvedType &)> write = [&] (const ResolvedType &type) {
+		append(type.name);
+		if (type.width && type.width != 32) append(std::format("{}{}{}", to_string(oLess), type.width, to_string(oGreater)));
+		if (!type.arguments().empty()) {
+			append(to_string(oLess));
+			for (const ResolvedType &rt_argument : type.arguments()) {
+				if (b_truncated) return;
+				if (&rt_argument != &type.arguments().front()) {
+					append(to_string(oComma));
+					append(" ");
+				}
+				write(rt_argument);
 			}
-			s_result += rt_arg.spelling();
+			append(to_string(oGreater));
 		}
-		s_result += to_string(oGreater);
-	}
-	for (const std::string &s_suffix : suffixes) {
-		s_result += s_suffix;
-	}
+		for (const std::string &s_suffix : type.suffixes) append(s_suffix);
+	};
+	write(*this);
 	return s_result;
 }
 
@@ -134,18 +185,6 @@ const TypeParameterList *typeParameters (const Symbol &symbol) {
 		}
 	}
 	return opt_parameters && *opt_parameters ? &**opt_parameters : nullptr;
-}
-
-ResolvedType substitute (ResolvedType type, const Substitutions &arguments) {
-	if (const auto it = arguments.find(type.parameter); it != arguments.end()) {
-		ResolvedType rt_result = it->second;
-		rt_result.suffixes.insert(rt_result.suffixes.end(), type.suffixes.begin(), type.suffixes.end());
-		return rt_result;
-	}
-	for (ResolvedType &rt_arg : type.arguments) {
-		rt_arg = substitute(std::move(rt_arg), arguments);
-	}
-	return type;
 }
 
 Analyzer::Analyzer (CheckedProgram &program) : program(program), declarations(program.declarations) {
@@ -332,6 +371,7 @@ void Analyzer::requireAccess (const Symbol &symbol, const Symbol &context, const
 }
 
 void Analyzer::checkBodies () {
+	for (const Symbol *sym_declaration : v_order) collectSignature(*sym_declaration);
 	for (const Symbol *sym : v_order) {
 		if (sym->classFieldIndex) {
 			continue;
@@ -353,6 +393,7 @@ void Analyzer::checkBodies () {
 			}
 		}
 	}
+	checkInstances();
 }
 
 void Analyzer::checkBodyOf (const Symbol &symbol) {
@@ -363,7 +404,7 @@ void Analyzer::checkBodyOf (const Symbol &symbol) {
 		fail(Code::INVALID_OPERATOR_DECLARATION, symbol.name.get_span(), "Recursive operator needs an explicit result type");
 	}
 	try {
-		BodyChecker(*this, symbol).check();
+		BodyChecker(*this, symbol, program, {}, declarations.at(&symbol)).check();
 	} catch (...) {
 		s_checking.erase(&symbol);
 		throw;

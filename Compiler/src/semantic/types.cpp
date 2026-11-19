@@ -52,15 +52,56 @@ const TypeReference &fieldType (const Symbol &symbol) {
 
 }
 
+void Analyzer::applyArguments (ResolvedType &type, ResultTypes arguments) const {
+	if (arguments.empty()) {
+		type.application.reset();
+		return;
+	}
+	unsigned u_depth = 0;
+	for (const ResolvedType &rt_argument : arguments) u_depth = std::max(u_depth, 1 + rt_argument.argumentDepth());
+	const bool b_dependent = std::ranges::any_of(arguments, &ResolvedType::dependent);
+	type.application       = *s_arguments.emplace(std::make_shared<TypeArguments>(std::move(arguments), u_depth, b_dependent)).first;
+}
+
+ResolvedType Analyzer::substitute (ResolvedType type, const Substitutions &arguments) const {
+	if (arguments.empty() || !type.dependent()) return type;
+	using Replacements = std::map<const TypeArguments *, std::shared_ptr<const TypeArguments>>;
+	Replacements                                    m_replaced;
+	const std::function<ResolvedType(ResolvedType)> replace = [&] (ResolvedType rt_type) {
+		if (const Substitutions::const_iterator it_argument = arguments.find(rt_type.parameter); it_argument != arguments.end()) {
+			ResolvedType rt_result = it_argument->second;
+			for (const std::string &s_suffix : rt_type.suffixes) {
+				if (s_suffix != to_string(oQuestion) || !rt_result.nullable()) rt_result.suffixes.push_back(s_suffix);
+			}
+			return rt_result;
+		}
+		if (rt_type.application && rt_type.application->dependent) {
+			const std::pair<Replacements::iterator, bool> it_result = m_replaced.try_emplace(rt_type.application.get());
+			if (it_result.second) {
+				ResultTypes v_arguments;
+				for (const ResolvedType &rt_argument : rt_type.arguments()) v_arguments.push_back(replace(rt_argument));
+				applyArguments(rt_type, std::move(v_arguments));
+				it_result.first->second = rt_type.application;
+			} else {
+				rt_type.application = it_result.first->second;
+			}
+		}
+		return rt_type;
+	};
+	return replace(std::move(type));
+}
+
 ResolvedType Analyzer::ownerType (const Symbol &symbol) const {
 	ResolvedType rt_type(symbol.name.get_lexeme());
 	rt_type.declaration = &symbol;
 	if (const TypeParameterList *tp = typeParameters(symbol)) {
+		ResultTypes v_arguments;
 		for (const TypeParameterDeclaration &param : tp->parameters) {
 			ResolvedType rt_arg(param.name.get_lexeme());
 			rt_arg.parameter = &param;
-			rt_type.arguments.push_back(std::move(rt_arg));
+			v_arguments.push_back(std::move(rt_arg));
 		}
+		applyArguments(rt_type, std::move(v_arguments));
 	}
 	return rt_type;
 }
@@ -69,8 +110,8 @@ Substitutions Analyzer::argumentsOf (const ResolvedType &type) const {
 	Substitutions            m_args;
 	const TypeParameterList *tp = type.declaration ? typeParameters(*type.declaration) : nullptr;
 	if (tp) {
-		for (std::size_t i = 0; i < type.arguments.size(); ++i) {
-			m_args.emplace(&tp->parameters.at(i), type.arguments[i]);
+		for (std::size_t i = 0; i < type.arguments().size(); ++i) {
+			m_args.emplace(&tp->parameters.at(i), type.arguments()[i]);
 		}
 	}
 	return m_args;
@@ -85,14 +126,15 @@ const TypeParameterDeclaration *Analyzer::genericParameter (const Symbol &contex
 				}
 			}
 		}
+		if (sym->kind == SymbolKind::Type) break;
 	}
 	return nullptr;
 }
 
-ResolvedType Analyzer::checkedType (const TypeReference &reference, const Symbol &context) const {
-	ResolvedType resolved = type(reference, context);
-	checkBounds(resolved, reference.get_span(), context);
-	return resolved;
+ResolvedType Analyzer::checkedType (const TypeReference &reference, const Symbol &context, const Substitutions &arguments, bool allowOpen) const {
+	ResolvedType rt_type = substitute(type(reference, context, 0, allowOpen), arguments);
+	if (!allowOpen) checkBounds(rt_type, reference.get_span(), context);
+	return rt_type;
 }
 
 ResolvedType Analyzer::type (const TypeReference &reference, const Symbol &context, unsigned depth, bool allowOpen) const {
@@ -108,7 +150,7 @@ ResolvedType Analyzer::type (const TypeReference &reference, const Symbol &conte
 		if (!rt_type.parameter) {
 			const std::string_view s_separator = to_string(oDot);
 			std::size_t            st_end      = s_name.find(s_separator);
-			const Symbol *sym    = namedType(lookup(context, s_name.substr(0, st_end)));
+			const Symbol          *sym         = namedType(lookup(context, s_name.substr(0, st_end)));
 			if (!sym) {
 				fail(Code::UNSUPPORTED_TYPE, ts_span, "Unknown type '" + s_name + "'");
 			}
@@ -141,6 +183,7 @@ ResolvedType Analyzer::type (const TypeReference &reference, const Symbol &conte
 				fail(Code::GENERIC_ARITY, ts_span, "Unexpected type arguments for '" + s_name + "'");
 			}
 			Substitutions m_args;
+			ResultTypes   v_arguments;
 			for (std::size_t i = 0; i < st_count; ++i) {
 				const TypeParameterDeclaration &param = tp->parameters[i];
 				ResolvedType                    rt_arg;
@@ -158,8 +201,9 @@ ResolvedType Analyzer::type (const TypeReference &reference, const Symbol &conte
 					fail(Code::INVALID_GENERIC_ARGUMENT, ts_span, "A type argument must be a value type");
 				}
 				m_args.emplace(&param, rt_arg);
-				rt_type.arguments.emplace_back(std::move(rt_arg));
+				v_arguments.emplace_back(std::move(rt_arg));
 			}
+			applyArguments(rt_type, std::move(v_arguments));
 		} else if (reference.get_application()) {
 			fail(Code::GENERIC_ARITY, ts_span, "A type parameter cannot take type arguments");
 		}
@@ -322,12 +366,56 @@ std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_
 			// An override supplies a body. Calls retain the original labels, defaults and generic parameter identities.
 			if (md_base && md_base->virtualPrefix && md_override && md_override->overridePrefix) {
 				const Symbol *sym_override = it_prior->symbol;
+				Substitutions m_override      = std::move(it_prior->arguments);
 				*it_prior                  = candidate;
 				it_prior->overridingMethod = sym_override;
+				it_prior->overridingArguments = std::move(m_override);
 			}
 		}
 	}
 	return unique;
+}
+
+Candidate Analyzer::boundMethod (const ExpressionInfo &call, const std::vector<Candidate> &candidates, const Substitutions &arguments) const {
+	// The template selects the overload. A concrete receiver can supply an implementation of the same method.
+	Candidate c_contract{ call.argumentContract };
+	for (const Substitutions::value_type &entry : call.typeArguments) {
+		c_contract.arguments.emplace(entry.first, substitute(entry.second, arguments));
+	}
+	for (const Candidate &c_target : candidates) {
+		if (c_target.symbol == call.argumentContract) {
+			c_contract.arguments.insert(c_target.arguments.begin(), c_target.arguments.end());
+			c_contract.overridingMethod    = c_target.overridingMethod;
+			c_contract.overridingArguments = c_target.overridingArguments;
+			break;
+		}
+		if (asInterface(declarations.at(call.argumentContract).owner) && sameSignature(c_contract, c_target)) {
+			c_contract.overridingMethod    = c_target.overridingMethod ? c_target.overridingMethod : c_target.symbol;
+			c_contract.overridingArguments = c_target.overridingMethod ? c_target.overridingArguments : c_target.arguments;
+			break;
+		}
+	}
+	return c_contract;
+}
+
+bool Analyzer::referenceType (const ResolvedType &type) const {
+	if (!type.suffixes.empty()) return false;
+	if (!type.parameter) return asClass(type.declaration) || asInterface(type.declaration);
+	for (const TypeParameterBound &tp_bound : type.parameter->bounds) {
+		const TypeReference *tr_bound = std::get_if<TypeReference>(&tp_bound.value);
+		if (!tr_bound) return true;
+		const ResolvedType rt_bound   = this->type(*tr_bound, *m_genericOwners.at(type.parameter));
+		const ResolvedType rt_payload = rt_bound.nullable() ? rt_bound.element() : rt_bound;
+		if (rt_payload.suffixes.empty() && (asClass(rt_payload.declaration) || asInterface(rt_payload.declaration))) return true;
+	}
+	return false;
+}
+
+bool Analyzer::supportsEquality (const ResolvedType &type) const {
+	if (!type.parameter) return true;
+	ResolvedType rt_element = type;
+	rt_element.suffixes.clear();
+	return referenceType(rt_element);
 }
 
 bool Analyzer::accepts (const ResolvedType &expected, const ResolvedType &actual) const {
@@ -384,10 +472,10 @@ void Analyzer::resolveDeclaration (const Symbol &symbol) {
 	DeclarationInfo &info      = declarations.at(&symbol);
 	const auto       valueType = [&] (const TypeReference &reference) {
                 ResolvedType rt = type(reference, symbol);
-		if (rt.name == to_string(kVoid)) {
-			fail(Code::VOID_TYPE, reference.get_span(), std::format("A value needs a non-{} type", to_string(kVoid)));
-		}
-		return rt;
+                if (rt.name == to_string(kVoid)) {
+                        fail(Code::VOID_TYPE, reference.get_span(), std::format("A value needs a non-{} type", to_string(kVoid)));
+                }
+                return rt;
 	};
 	if (const CallableSignature *cs = callable(symbol)) {
 		std::set<std::string> s_names;
@@ -405,7 +493,7 @@ void Analyzer::resolveDeclaration (const Symbol &symbol) {
 				fail(Code::VOID_TYPE, ref.get_span(), std::format("{} must be the only result", to_string(kVoid)));
 			}
 		}
-		if (const MethodDeclaration *mt = dynamic_cast<const MethodDeclaration *>(cs); mt && mt->operatorMember && mt->operatorMember->selector) {
+		if (const auto *mt = dynamic_cast<const MethodDeclaration *>(cs); mt && mt->operatorMember && mt->operatorMember->selector) {
 			info.value = type(*mt->operatorMember->selector, symbol);
 		}
 		if (symbol.kind == SymbolKind::Operator) {
@@ -442,18 +530,18 @@ void Analyzer::resolveDeclaration (const Symbol &symbol) {
 	} else if (symbol.kind == SymbolKind::EnumCase) {
 		info.value = ownerType(*info.owner);
 	} else if (symbol.kind == SymbolKind::State) {
-		const StateBodyDeclaration *state = std::get<const StateBodyDeclaration *>(symbol.declaration);
+		const auto state = std::get<const StateBodyDeclaration *>(symbol.declaration);
 		info.value                        = type(state->payloadType, symbol);
-		if (const TopLevelStateDeclaration *top = dynamic_cast<const TopLevelStateDeclaration *>(state)) {
+		if (const auto *top = dynamic_cast<const TopLevelStateDeclaration *>(state)) {
 			info.parents.push_back(valueType(top->host));
 		}
 	} else if (symbol.kind == SymbolKind::Type) {
-		const TypeDeclaration *td = std::get<const TypeDeclaration *>(symbol.declaration);
-		if (const ClassDeclaration *cd = dynamic_cast<const ClassDeclaration *>(td)) {
+		const auto td = std::get<const TypeDeclaration *>(symbol.declaration);
+		if (const auto *cd = dynamic_cast<const ClassDeclaration *>(td)) {
 			for (const ClassParentClause &parent : cd->parents) {
 				info.parents.push_back(valueType(parent.type));
 			}
-		} else if (const InterfaceDeclaration *id = dynamic_cast<const InterfaceDeclaration *>(td)) {
+		} else if (const auto *id = dynamic_cast<const InterfaceDeclaration *>(td)) {
 			for (const TypeReference &parent : id->parents) {
 				info.parents.push_back(valueType(parent));
 			}
@@ -462,18 +550,15 @@ void Analyzer::resolveDeclaration (const Symbol &symbol) {
 }
 
 void Analyzer::checkBounds (const ResolvedType &type, const TokenSpan &where, const Symbol &use) const {
-	for (const ResolvedType &arg : type.arguments) {
-		checkBounds(arg, where, use);
-	}
-	if (!type.declaration) {
-		return;
-	}
-	const Substitutions args = argumentsOf(type);
-	for (const auto &[param, argument] : args) {
-		if (!satisfies(*param, args, *type.declaration, use)) {
-			fail(Code::UNSATISFIED_GENERIC_BOUND, where, argument.spelling() + " does not satisfy the bounds of " + param->name.get_lexeme());
+	type.visitApplications([&] (const ResolvedType &rt_type) {
+		const Substitutions m_arguments = argumentsOf(rt_type);
+		for (const Substitutions::value_type &entry : m_arguments) {
+			if (!satisfies(*entry.first, m_arguments, *rt_type.declaration, use)) {
+				fail(Code::UNSATISFIED_GENERIC_BOUND, where,
+				     entry.second.spelling() + " does not satisfy the bounds of " + entry.first->name.get_lexeme(), &entry.first->name);
+			}
 		}
-	}
+	});
 }
 
 bool Analyzer::satisfies (const TypeParameterDeclaration &parameter, const Substitutions &arguments, const Symbol &declaration, const Symbol &use) const {
@@ -489,7 +574,7 @@ bool Analyzer::satisfies (const TypeParameterDeclaration &parameter, const Subst
 				required.push_back(substitute(type(p.type, declaration), arguments));
 			}
 			bool found = false;
-			if (actual.parameter) {
+			if (actual.parameter && actual.suffixes.empty()) {
 				for (const TypeParameterBound &available : actual.parameter->bounds) {
 					if (const ConstructorBound *ctor = std::get_if<ConstructorBound>(&available.value)) {
 						ResultTypes signature;
@@ -500,13 +585,7 @@ bool Analyzer::satisfies (const TypeParameterDeclaration &parameter, const Subst
 					}
 				}
 			} else {
-				for (const Candidate &ctor : members(actual, actual.name, SymbolKind::Constructor)) {
-					ResultTypes signature;
-					for (const ResolvedType &p : declarations.at(ctor.symbol).parameters) {
-						signature.push_back(substitute(p, ctor.arguments));
-					}
-					found |= accessible(*ctor.symbol, use) && signature == required;
-				}
+				found = constructorFor(actual, required, &use) || hasConstructorProof(actual, required);
 			}
 			if (!found) {
 				return false;
@@ -514,6 +593,32 @@ bool Analyzer::satisfies (const TypeParameterDeclaration &parameter, const Subst
 		}
 	}
 	return true;
+}
+
+void Analyzer::checkOverload (const Symbol &symbol, const Substitutions &arguments, const TokenSpan *application) const {
+	if (!callable(symbol) || dynamic_cast<const ConstructorGuaranteeDeclaration *>(callable(symbol))) return;
+	const DeclarationInfo &di_info  = declarations.at(&symbol);
+	const SymbolScope     &ss_scope = di_info.owner ? di_info.owner->members : program.units[di_info.file]->get_globals();
+	for (const Symbol &sym_prior : ss_scope.at(symbol.name.get_lexeme())) {
+		if (&sym_prior == &symbol) break;
+		if (sym_prior.kind != symbol.kind || !sameSignature({ &sym_prior, arguments }, { &symbol, arguments })) continue;
+		if (symbol.kind == SymbolKind::Operator) {
+			const OperatorMember &om_prior   = *dynamic_cast<const MethodDeclaration &>(*callable(sym_prior)).operatorMember;
+			const OperatorMember &om_current = *dynamic_cast<const MethodDeclaration &>(*callable(symbol)).operatorMember;
+			if (om_prior.rightReceiver != om_current.rightReceiver || om_prior.provider != om_current.provider ||
+			    specialize(declarations.at(&sym_prior), arguments).value != specialize(di_info, arguments).value)
+				continue;
+		}
+		const std::string s_message = "Duplicate signature for '" + symbol.name.get_lexeme() + "'";
+		const Code        dc_code   = di_info.owner ? Code::DUPLICATE_METHOD : Code::DUPLICATE_FUNCTION;
+		if (application) {
+			throw cde::ClothDiagnostic(symbol.kind == SymbolKind::Constructor ? Code::INVALID_CLASS_MEMBER : dc_code, s_message,
+			                           { { *application, "instantiated here" },
+			                             { symbol.name.get_span(), s_message },
+			                             { sym_prior.name.get_span(), "previous declaration" } });
+		}
+		fail(dc_code, symbol.name.get_span(), s_message, &sym_prior.name);
+	}
 }
 
 void Analyzer::checkDeclarations () {
@@ -578,20 +683,32 @@ void Analyzer::checkDeclarations () {
 		}
 		if (const TypeParameterList *tp = typeParameters(*sym)) {
 			std::set<std::string> names;
+			Substitutions         m_defaults = argumentsOf(ownerType(*sym));
 			for (const TypeParameterDeclaration &param : tp->parameters) {
 				if (!names.insert(param.name.get_lexeme()).second) {
 					fail(Code::INVALID_GENERIC_PARAMETER, param.name.get_span(), "Duplicate type parameter");
 				}
-				if (param.defaultType) {
-					(void)type(*param.defaultType, *sym);
-				}
 				for (const TypeParameterBound &bound : param.bounds) {
 					if (const TypeReference *ref = std::get_if<TypeReference>(&bound.value)) {
-						(void)type(*ref, *sym);
+						const ResolvedType rt_bound   = type(*ref, *sym);
+						const ResolvedType rt_payload = rt_bound.nullable() ? rt_bound.element() : rt_bound;
+						if (!rt_payload.array() && !asClass(rt_payload.declaration) && !asInterface(rt_payload.declaration)) {
+							fail(Code::INVALID_GENERIC_BOUND, ref->get_span(), "Expected a class, interface, or array bound",
+							     &param.name);
+						}
 					} else {
 						for (const ParameterDeclaration &p : std::get<ConstructorBound>(bound.value).declaration.parameters) {
 							(void)type(p.type, *sym);
 						}
+					}
+				}
+				if (param.defaultType) {
+					ResolvedType &rt_default = m_defaults.at(&param);
+					rt_default               = substitute(type(*param.defaultType, *sym), m_defaults);
+					checkBounds(rt_default, param.defaultType->get_span(), *sym);
+					if (!satisfies(param, m_defaults, *sym, *sym)) {
+						fail(Code::UNSATISFIED_GENERIC_BOUND, param.defaultType->get_span(),
+						     "Default type does not satisfy its declared bounds", &param.name);
 					}
 				}
 			}
@@ -608,30 +725,7 @@ void Analyzer::checkDeclarations () {
 		if (info.value) {
 			checkBounds(*info.value, sym->name.get_span(), *sym);
 		}
-		if (!callable(*sym) || dynamic_cast<const ConstructorGuaranteeDeclaration *>(callable(*sym))) {
-			continue;
-		}
-		const SymbolScope &scope = info.owner ? info.owner->members : program.units[info.file]->get_globals();
-		for (const Symbol &other : scope.at(sym->name.get_lexeme())) {
-			if (&other == sym) {
-				break;
-			}
-			if (other.kind != sym->kind) {
-				continue;
-			}
-			if (!sameSignature({ &other }, { sym })) {
-				continue;
-			}
-			if (sym->kind == SymbolKind::Operator) {
-				const OperatorMember &a = *dynamic_cast<const MethodDeclaration &>(*callable(other)).operatorMember;
-				const OperatorMember &b = *dynamic_cast<const MethodDeclaration &>(*callable(*sym)).operatorMember;
-				if (a.rightReceiver != b.rightReceiver || a.provider != b.provider || declarations.at(&other).value != info.value) {
-					continue;
-				}
-			}
-			fail(info.owner ? Code::DUPLICATE_METHOD : Code::DUPLICATE_FUNCTION, sym->name.get_span(),
-			     "Duplicate signature for '" + sym->name.get_lexeme() + "'", &other.name);
-		}
+		checkOverload(*sym, {}, nullptr);
 	}
 	for (const Symbol *symbol : v_order) {
 		if (asClass(symbol) || asInterface(symbol)) {
