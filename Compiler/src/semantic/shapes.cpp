@@ -112,6 +112,7 @@ ExpressionInfo BodyChecker::mutateArray (const MemberCallExpression &call, const
 	if (locate(*call.receiver)) writable(*call.receiver);
 	if (call.suppliedArguments.size() != (b_clear ? 0u : b_insert ? 2u : 1u))
 		fail(Code::CALL_ARITY, call.name.get_span(), "Incorrect number of operands for array method '" + call.name.get_lexeme() + "'");
+	const ReceiverProofs       v_proofs    = receiverProofs(call.suppliedArguments.empty() ? nullptr : call.receiver.get());
 	ResolvedType               rt_shape    = shapeOf(*call.receiver, rt_array);
 	bool                       b_continues = receiver.fallsThrough;
 	std::optional<BodyChecker> opt_unreachable;
@@ -135,6 +136,7 @@ ExpressionInfo BodyChecker::mutateArray (const MemberCallExpression &call, const
 	}
 	ExpressionInfo ei_result{ .types = b_remove ? ResultTypes{ rt_element } : ResultTypes{}, .fallsThrough = b_continues, .arrayMutation = operation };
 	if (!b_continues) return ei_result;
+	requireReceiverProofs(v_proofs);
 	if (b_remove && hasArrayShape(rt_element)) ei_result.arrayShapes = { rt_shape.element() };
 	if (!b_reserve) {
 		rt_shape.suffixes.back()                  = b_clear ? arraySuffix("0") : arraySuffix();

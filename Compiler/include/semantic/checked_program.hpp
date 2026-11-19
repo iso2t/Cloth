@@ -217,6 +217,8 @@ struct ExpressionInfo {
 	ReceiverChecks receiverChecks = {};
 	// A generic intersection can require liveness validation even for an identity comparison.
 	bool                             checkedIdentity    = false;
+	// Structural array comparison may dispatch to an element's equality operator.
+	bool                             callsElementEquality = false;
 	NumericConstant                  numericConstant    = {};
 	bool                             invalidNumericCast = false;
 	std::optional<ProviderSelection> provider           = {};

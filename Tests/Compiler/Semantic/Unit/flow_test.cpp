@@ -206,6 +206,53 @@ typedef<class> Box (pub def<Cell> cell)
 	expectError(s_counter + "fn f(Counter a) { a::delete; a += 1 }", Code::DELETED_CLASS_ACCESS);
 }
 
+TEST (SemanticFlow, RequiresStoredArraysToStayPresentThroughMutationArguments) {
+	const std::string s_setup = "fn f() { def<int[]?> items = [1]; def<int> clear = { items = null; return 0 }; if (items != null) ";
+	for (const char *s_call : { "items.append(clear)", "items.insert(0, clear)", "items.removeAt(clear -> usize)", "items.reserve(clear -> usize)" })
+		expectError(s_setup + s_call + " }", Code::NULLABLE_PAYLOAD_ACCESS);
+	expectError("typedef<class> Box { pub def<int[]?> items = [1] }\nfn f(Box box, Box alias) { def<int> arg = { alias.items = null; return 1 }; "
+	            "if (box.items != null) box.items.append(arg) }",
+	            Code::NULLABLE_PAYLOAD_ACCESS);
+	expectError("typedef<struct> Row { pub int[] items }\nfn f(Row? row) { def<int> arg = { row = null; return 1 }; "
+	            "if (row != null) row.items.append(arg) }",
+	            Code::NULLABLE_PAYLOAD_ACCESS);
+	EXPECT_NO_THROW(checkSource(s_setup + "items.append(2) }"));
+	EXPECT_NO_THROW(checkSource("fn f() { def<int[]?> a = [1]; def<int[]?> b = [2]; def<int> arg = { b = null; return 1 }; "
+	                            "if (a != null) a.append(arg) }"));
+	EXPECT_NO_THROW(checkSource("fn f(int[]? a) { if (a != null) a.append(if (true) { return } else { 1 }) }"));
+	expectError("typedef<struct> Cell { pub mt set(int n) {} }\nfn f(Cell? cell) { def<int> arg = { cell = null; return 1 }; "
+	            "if (cell != null) cell.set(arg) }",
+	            Code::NULLABLE_PAYLOAD_ACCESS);
+	EXPECT_NO_THROW(checkSource("typedef<class> Cell { pub mt set(int n) {} }\nfn f(Cell? cell) { def<int> arg = { cell = null; return 1 }; "
+	                            "if (cell != null) cell.set(arg) }"));
+}
+
+TEST (SemanticFlow, InvalidatesSharedPresenceWhenArrayElementEqualityCanCallUserCode) {
+	const std::string s_box = R"(typedef<class> Box { pub def<string?> name = "live" }
+typedef<struct> Probe { Box box; operator ==(Probe other) { self.box.name = null; return true } }
+typedef<class> Base {}
+typedef<class> Child : Base { operator ==(Object other) = true }
+typedef<interface> View {}
+typedef<class> Viewed : View { operator ==(Object other) = true }
+typedef<class> Plain {}
+)";
+	for (const char *s_array : { "Probe[]", "Probe?[][]", "Base[]", "View[]" }) {
+		for (const char *s_op : { " == ", " != " })
+			expectError(s_box + "fn<usize> f(Box box, " + s_array + " a) { if (box.name != null && a" + s_op +
+			                    "a) return box.name::size; return 0 }",
+			            Code::NULLABLE_PAYLOAD_ACCESS);
+	}
+	const CheckedProgram cp_program = checkSource(s_box + R"(fn<bool> compared(Probe[] values) = values == values
+fn<bool> primitive(int[][] values) = values != values
+fn<usize> use(Box box, int[][] values) { if (box.name != null && values == values) return box.name::size; return 0 }
+fn<usize> local(string? name, Probe[] values) { if (name != null && values == values) return name::size; return 0 }
+fn<usize> bounded<T: Plain>(Box box, T[] values) { if (box.name != null && values == values) return box.name::size; return 0 }
+)");
+	const SymbolScope   &ss_globals = cp_program.units.front()->get_globals();
+	EXPECT_TRUE(cp_program.expressions.at(&bodyExpression(ss_globals.at("compared").front())).callsElementEquality);
+	EXPECT_FALSE(cp_program.expressions.at(&bodyExpression(ss_globals.at("primitive").front())).callsElementEquality);
+}
+
 TEST (SemanticFlow, CarriesFactsIntoSpecializationsAndSkipsExitedOperands) {
 	const std::string s_interface = R"(typedef<interface> Reader { pub mt<int> read() }
 typedef<class> Box : Reader { pub mt<int> read() = 1 }

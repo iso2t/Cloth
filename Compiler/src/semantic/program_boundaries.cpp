@@ -152,6 +152,7 @@ void Analyzer::registerIntrinsics () {
 			                             { ib_first->operation.get_span(), "first declared here" } });
 		ib_first               = &ib_body;
 		di_signature.intrinsic = is_spec->operation;
+		if (is_spec->operation == LibraryIntrinsic::OwnershipSetCleanup) sym_owningList = di_signature.owner;
 	}
 }
 

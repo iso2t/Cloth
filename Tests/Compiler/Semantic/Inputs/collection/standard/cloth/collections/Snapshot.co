@@ -1,4 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<struct> Slot<T> { T value }
-pub typedef<struct> Snapshot<T> { Slot<T>[] slots }
+typedef<struct> Slot<T> { pub T value }
+pub typedef<struct> Snapshot<T> {
+    Slot<T>[] slots;
+    pub mt<Snapshot<T>> copyOf(T[] values) {
+        def<Snapshot<T>> result = { [] }
+        def<usize> index = 0
+        while (index < values::size) {
+            result.slots.append({ values[index] })
+            index += 1
+        }
+        return result
+    }
+}

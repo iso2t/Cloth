@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using cloth.collections.Snapshot: Snapshot
+
+pub final typedef<class> OwningList<T: Object>(def<Snapshot<T>> snapshot, def<T[]> items) {
+    mt acquire(Object value) = intrinsic "collections.ownership.acquire"
+    mt release(Object value) = intrinsic "collections.ownership.release"
+    mt destroy(Object value) = intrinsic "collections.ownership.delete"
+    mt setCleanup(bool enabled) = intrinsic "collections.ownership.set_cleanup"
+
+    pub OwningList(Snapshot<T> snapshot) : (snapshot, []) {}
+    pub mt append(T value) { acquire(value); items.append(value) }
+    // This unrelated overload can release an entry and must use ordinary call effects.
+    pub mt append(usize index) { removeAt(index) }
+    pub mt<T> get(usize index) = items[index]
+    pub operator [](usize index) -> T = get(index)
+    operator []?(usize index) -> bool = index < items::size
+    pub mt<T> removeAt(usize index) { def value = items.removeAt(index); release(value); return value }
+    pub mt<usize> size() = items::size
+    pub mt clear() {
+        setCleanup(true)
+        def detached = items
+        items.clear()
+        for (def item <- detached) destroy(item)
+        setCleanup(false)
+    }
+    pub operator foreach() -> Snapshot<T> = snapshot.copyOf(items)
+    pub ~OwningList { clear() }
+}

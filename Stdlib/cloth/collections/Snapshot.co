@@ -2,7 +2,7 @@
 typedef<struct> SnapshotSlot<T> { T value }
 
 pub typedef<struct> Snapshot<T> {
-    priv SnapshotSlot<T>[] slots;
+    SnapshotSlot<T>[] slots;
 
     mt append(T value) { slots.append({ value }) }
 }

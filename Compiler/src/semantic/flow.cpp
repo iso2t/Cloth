@@ -89,6 +89,29 @@ std::optional<BodyChecker::TypedPlace> BodyChecker::locate (const Expression &ex
 	return tp_receiver;
 }
 
+BodyChecker::ReceiverProofs BodyChecker::receiverProofs (const Expression *receiver) const {
+	ReceiverProofs v_proofs;
+	// Value receivers borrow storage. Remember each nullable projection needed to find it again after the arguments run.
+	while (receiver) {
+		const std::optional<TypedPlace> tp_part = locate(*receiver);
+		if (tp_part && tp_part->type.nullable() && fs_flow.narrowed.contains(tp_part->place))
+			v_proofs.push_back({ tp_part->place, receiver->get_span() });
+		if (const FieldAccessExpression *fa_field = dynamic_cast<const FieldAccessExpression *>(receiver))
+			receiver = fa_field->receiver.get();
+		else if (const IndexExpression *ie_index = dynamic_cast<const IndexExpression *>(receiver))
+			receiver = ie_index->array.get();
+		else
+			break;
+	}
+	return v_proofs;
+}
+
+void BodyChecker::requireReceiverProofs (const ReceiverProofs &proofs) const {
+	for (const ReceiverProof &rp_proof : std::views::reverse(proofs))
+		if (!fs_flow.narrowed.contains(rp_proof.place))
+			fail(Code::NULLABLE_PAYLOAD_ACCESS, rp_proof.span, "Receiver storage must remain present after evaluating the arguments");
+}
+
 void BodyChecker::setPresence (const StoragePlace &place, const ResolvedType &declared, const std::optional<ResolvedType> &value) {
 	if (declared.nullable() && value && !analyzer.mayBeAbsent(*value)) fs_flow.narrowed.insert_or_assign(place, declared.element());
 }

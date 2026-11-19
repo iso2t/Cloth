@@ -201,7 +201,7 @@ std::vector<Candidate> BodyChecker::methodCandidates (const MemberCallExpression
 }
 
 ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, const std::vector<CallArgument> &arguments, const std::vector<Candidate> &group,
-                                    const TypeArgumentList *typeArguments, const ResultTypes *knownArguments) {
+                                    const TypeArgumentList *typeArguments, const ResultTypes *knownArguments, const Expression *storedReceiver) {
 	const std::string &spelling = name.get_lexeme();
 	if (group.empty()) {
 		fail(Code::UNKNOWN_NAME, name.get_span(), "Unknown callable '" + spelling + "'");
@@ -375,6 +375,7 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 	    !callable(*best.contract)->executableBody()) {
 		fail(Code::MISSING_INTERFACE_IMPLEMENTATION, span, "Private interface method '" + spelling + "' has no body", &best.contract->name);
 	}
+	const ReceiverProofs v_proofs    = receiverProofs(arguments.empty() ? nullptr : storedReceiver);
 	bool b_continues = true;
 	if (!knownArguments || best.rank == MatchRank::Contextual) {
 		// Only the selected contract commits facts. Replay written arguments in source order.
@@ -385,7 +386,10 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 			b_continues = checkArguments(arguments, best.parameters, v_probes, best.rank == MatchRank::Contextual);
 		}
 	}
-	if (b_continues) invalidateShared();
+	if (b_continues) {
+		requireReceiverProofs(v_proofs);
+		invalidateShared();
+	}
 	ResultTypes results;
 	for (const ResolvedType &rt : analyzer.resultsOf(*best.contract)) {
 		results.push_back(analyzer.substitute(rt, best.substitutions));
@@ -419,5 +423,4 @@ ExpressionInfo BodyChecker::invoke (const Token &name, const TokenSpan &span, co
 		 .contractInstance     = gi_contract,
 		 .dispatch             = best.dispatch };
 }
-
 }

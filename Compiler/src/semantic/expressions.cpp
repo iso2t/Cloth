@@ -534,6 +534,10 @@ ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const Resolved
 			fail(Code::INCOMPARABLE_TYPES, node.op.get_span(), "Cannot compare " + left.spelling() + " with " + right.spelling());
 		}
 		ExpressionInfo ei_result = value(ResolvedType(kBoolean));
+		if (o_operation != oIdentity && hasArrayShape(left) && hasArrayShape(right) && analyzer.arrayEqualityMayCall(left)) {
+			invalidateShared();
+			ei_result.callsElementEquality = true;
+		}
 		if (o_operation == oIdentity) {
 			ei_result.checkedIdentity = analyzer.hasMultipleTypeBounds(left) || analyzer.hasMultipleTypeBounds(right);
 			if (!m_arguments.empty()) {
@@ -951,9 +955,10 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 			fail(Code::PARTIAL_CLASS_INSTANCE, n->receiver->get_span(), "A method on a stored field requires a fully initialized instance");
 		}
 		std::optional<BodyChecker> opt_unreachable;
-		ExpressionInfo             ei_call =
-		        onPath(ei_receiver.fallsThrough, opt_unreachable)
-		                .invoke(n->name, node.get_span(), n->suppliedArguments, v_methods, n->typeArguments ? &*n->typeArguments : nullptr);
+		ExpressionInfo             ei_call = onPath(ei_receiver.fallsThrough, opt_unreachable)
+		                                 .invoke(n->name, node.get_span(), n->suppliedArguments, v_methods,
+		                                         n->typeArguments ? &*n->typeArguments : nullptr, nullptr,
+		                                         rt.declaration && !analyzer.referenceType(rt) ? n->receiver.get() : nullptr);
 		ei_call.fallsThrough &= ei_receiver.fallsThrough;
 		if (ei_call.fallsThrough) mutatingReceiver(*n->receiver, rt);
 		return ei_call;

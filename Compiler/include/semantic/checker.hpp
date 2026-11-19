@@ -102,6 +102,7 @@ class Analyzer {
 	void                                          requireAccess (const Symbol &symbol, const Symbol &context, const TokenSpan &use) const;
 	[[nodiscard]] bool                            accepts (const ResolvedType &expected, const ResolvedType &actual) const;
 	[[nodiscard]] bool                            supportsEquality (const ResolvedType &type) const;
+	[[nodiscard]] bool                            arrayEqualityMayCall (const ResolvedType &type) const;
 	[[nodiscard]] bool                            mayBeAbsent (const ResolvedType &type) const;
 	[[nodiscard]] bool                            hasMultipleTypeBounds (const ResolvedType &type) const;
 	[[nodiscard]] bool                            referenceType (const ResolvedType &type) const;
@@ -134,6 +135,7 @@ class Analyzer {
 	const GenericInstance *guaranteeOwner (const Symbol &guarantee, const Substitutions &arguments, const Symbol &context, const TokenSpan &where);
 
     private:
+	const Symbol                                    *sym_owningList = nullptr;
 	std::vector<LifetimeBody>                        v_lifetimeBodies;
 	std::map<ResolvedType, std::set<const Symbol *>> m_initializationEffects;
 	void                                             checkLifetimes ();
@@ -365,6 +367,15 @@ class BodyChecker {
 	void                                    setPresence (const StoragePlace &place, const ResolvedType &declared, const std::optional<ResolvedType> &value);
 	void                                    assumePresent (const Expression &source);
 	[[nodiscard]] std::optional<TypedPlace> locate (const Expression &expression) const;
+
+	struct ReceiverProof {
+		StoragePlace place;
+		TokenSpan    span;
+	};
+
+	using ReceiverProofs = std::vector<ReceiverProof>;
+	[[nodiscard]] ReceiverProofs            receiverProofs (const Expression *receiver) const;
+	void                                    requireReceiverProofs (const ReceiverProofs &proofs) const;
 	void                                    narrowRead (ExpressionInfo &value, const StoragePlace &place) const;
 	TestPaths                               test (const Expression &node);
 	TestPaths                               splitTest (const Expression &node, const ExpressionInfo &result);
@@ -414,7 +425,8 @@ class BodyChecker {
 	ExpressionInfo           typeCheck (const TypeCheckExpression &node);
 	ExpressionInfo           binary (const BinaryExpression &node, const ResolvedType *expected);
 	ExpressionInfo invoke (const Token &name, const TokenSpan &span, const std::vector<CallArgument> &arguments, const std::vector<Candidate> &group,
-	                       const TypeArgumentList *typeArguments = nullptr, const ResultTypes *knownArguments = nullptr);
+	                       const TypeArgumentList *typeArguments = nullptr, const ResultTypes *knownArguments = nullptr,
+	                       const Expression *storedReceiver = nullptr);
 	[[nodiscard]] std::vector<Candidate> methodCandidates (const MemberCallExpression &site, const ResolvedType &receiver) const;
 	ExpressionInfo                       condition (const IfExpression &node, const ResultTypes *expected, bool discard);
 	ExpressionInfo                       block (const std::vector<StatementPtr> &statements, const ResultTypes *expected = nullptr, bool value = false);

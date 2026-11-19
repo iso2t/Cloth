@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <optional>
@@ -42,16 +43,26 @@ struct Activation {
 	bool          operator==(const Activation &) const = default;
 };
 
+struct Ownership {
+	Identity          list;
+	const Expression *acquiredAt;
+	bool              operator==(const Ownership &) const = default;
+};
+
 struct ObjectFacts {
 	Lifetime                  lifetime = Lifetime::Unknown;
 	std::set<const Token *>   deletions;
 	std::optional<Activation> active;
+	std::optional<Ownership>  ownership;
+	const Symbol             *allocation                            = nullptr;
 	bool                      operator==(const ObjectFacts &) const = default;
 };
 
 struct Path {
 	std::map<const Token *, Handle> bindings;
 	std::map<Identity, ObjectFacts> objects;
+	// An absent order means the entries are unknown. An empty order proves the list is empty.
+	std::map<Identity, std::vector<Identity>> entries;
 	Values                          values;
 	bool                            reachable = true;
 };
@@ -76,9 +87,10 @@ bool directSelf (const Expression &node) {
 	return ne_name && ne_name->name.get_lexeme() == to_string(kSelf);
 }
 
-ObjectFacts object (const Identity identity, const Path &path) {
-	const auto it_entry = path.objects.find(identity);
-	return it_entry == path.objects.end() ? ObjectFacts{} : it_entry->second;
+const ObjectFacts &object (const Identity identity, const Path &path) {
+	static const ObjectFacts                     OF_UNKNOWN;
+	const decltype(path.objects)::const_iterator it_entry = path.objects.find(identity);
+	return it_entry == path.objects.end() ? OF_UNKNOWN : it_entry->second;
 }
 
 ObjectFacts common (const ObjectFacts &left, const ObjectFacts &right) {
@@ -92,19 +104,94 @@ ObjectFacts common (const ObjectFacts &left, const ObjectFacts &right) {
 		of_result.active = left.active;
 		of_result.active->directOnly |= right.active->directOnly;
 	}
+	if (left.ownership && right.ownership) {
+		of_result.ownership = Ownership{ left.ownership->list == right.ownership->list ? left.ownership->list : 0,
+			                         left.ownership->acquiredAt == right.ownership->acquiredAt ? left.ownership->acquiredAt : nullptr };
+	}
+	if (left.allocation == right.allocation) of_result.allocation = left.allocation;
 	return of_result;
 }
 
-void unknownEffect (Path &path) {
-	for (auto &val : path.objects | std::views::values) {
-		val.active.reset();
-		if (val.lifetime == Lifetime::Live) val.lifetime = Lifetime::Unknown;
+void unknownEffect (Path &path, bool mayChangeOwnership = true) {
+	if (mayChangeOwnership) path.entries.clear();
+	for (ObjectFacts &of_object : path.objects | std::views::values) {
+		if (mayChangeOwnership) of_object.ownership.reset();
+		of_object.active.reset();
+		if (of_object.lifetime == Lifetime::Live) of_object.lifetime = Lifetime::Unknown;
 	}
+}
+
+enum class ListOperation { Append, Get, Remove, Clear, Size, Foreach };
+
+struct OwningListMethods {
+	const Symbol                           *owner;
+	std::map<const Symbol *, ListOperation> operations;
+
+	std::optional<ListOperation> lookup (const Symbol *method) const {
+		const decltype(operations)::const_iterator it_method = operations.find(method);
+		return it_method == operations.end() ? std::nullopt : std::optional{ it_method->second };
+	}
+};
+
+OwningListMethods owningListMethods (const Analyzer &analyzer, const Symbol *owner) {
+	OwningListMethods olm_list{ owner, {} };
+	if (!owner) return olm_list;
+	const ResultTypes v_element = analyzer.ownerType(*owner).arguments();
+	const ResultTypes v_index{ ResolvedType(kUsize) };
+	if (v_element.size() != 1) return olm_list;
+	for (const std::vector<Symbol> &v_group : owner->members | std::views::values) {
+		for (const Symbol &sym_member : v_group) {
+			if ((sym_member.kind != SymbolKind::Method && sym_member.kind != SymbolKind::Operator) || typeParameters(sym_member) ||
+			    std::ranges::any_of(callable(sym_member)->parameters, &ParameterDeclaration::isOptional))
+				continue;
+			const DeclarationInfo &di_member = analyzer.declarations.at(&sym_member);
+			const bool             b_read    = di_member.parameters == v_index && di_member.returns == v_element;
+			if (sym_member.kind == SymbolKind::Operator) {
+				if (sym_member.name.get_operator() == oIndexRead && b_read) olm_list.operations.emplace(&sym_member, ListOperation::Get);
+				if (sym_member.name.get_operator() == oForeach && di_member.parameters.empty() && di_member.returns.size() == 1 &&
+				    di_member.returns.front().arguments() == v_element)
+					olm_list.operations.emplace(&sym_member, ListOperation::Foreach);
+				continue;
+			}
+			const std::string                 &s_name       = sym_member.name.get_lexeme();
+			const std::optional<ArrayMutation> opt_mutation = arrayMutationNamed(s_name);
+			if (s_name == "get" && b_read)
+				olm_list.operations.emplace(&sym_member, ListOperation::Get);
+			else if (s_name == provider::S_SIZE && di_member.parameters.empty() && di_member.returns == v_index)
+				olm_list.operations.emplace(&sym_member, ListOperation::Size);
+			else if (opt_mutation == ArrayMutation::Append && di_member.parameters == v_element && di_member.returns.empty())
+				olm_list.operations.emplace(&sym_member, ListOperation::Append);
+			else if (opt_mutation == ArrayMutation::RemoveAt && b_read)
+				olm_list.operations.emplace(&sym_member, ListOperation::Remove);
+			else if (opt_mutation == ArrayMutation::Clear && di_member.parameters.empty() && di_member.returns.empty())
+				olm_list.operations.emplace(&sym_member, ListOperation::Clear);
+		}
+	}
+	return olm_list;
+}
+
+bool distinctAllocations (Identity left, Identity right, const Path &path) {
+	return left != right && object(left, path).allocation && object(right, path).allocation;
+}
+
+void forgetOtherOrders (Identity list, Path &path) {
+	std::erase_if(path.entries,
+	              [&] (const decltype(path.entries)::value_type &entry) { return entry.first != list && !distinctAllocations(entry.first, list, path); });
+}
+
+void ownershipError (const std::string &message, const Expression &operation, const Expression *acquiredAt) {
+	std::vector<cde::SourceLabel> v_labels{ { operation.get_span(), "invalid ownership operation" } };
+	if (acquiredAt) v_labels.push_back({ acquiredAt->get_span(), "ownership acquired here" });
+	throw cde::ClothDiagnostic(Code::INVALID_COLLECTION_OWNERSHIP, message, std::move(v_labels));
 }
 
 class LifetimeChecker {
     public:
-	LifetimeChecker (Analyzer &analyzer, const Analyzer::LifetimeBody &body) : a_analyzer(analyzer), lb_job(body), bf_facts(*body.facts) {
+	LifetimeChecker (Analyzer &analyzer, const Analyzer::LifetimeBody &body, const OwningListMethods &owningList) :
+	        a_analyzer(analyzer),
+	        lb_job(body),
+	        bf_facts(*body.facts),
+	        olm_list(owningList) {
 	}
 
 	void check ();
@@ -113,6 +200,7 @@ class LifetimeChecker {
 	Analyzer                                                &a_analyzer;
 	const Analyzer::LifetimeBody                            &lb_job;
 	BodyFacts                                               &bf_facts;
+	const OwningListMethods                                 &olm_list;
 	std::map<const LoopTarget *, LoopPaths>                  m_jumps;
 	std::map<const Token *, const FunctionBlockExpression *> m_deferred;
 	std::map<const GuardedReceiver *, Handle>                m_guarded;
@@ -141,6 +229,12 @@ class LifetimeChecker {
 	void                       statement (const Statement &node, Path &path);
 	void                       loop (const LoopStatement &node, Path &path);
 	void                       arguments (const CallSite &call, Path &path);
+	std::optional<std::uint64_t>      constantIndex (const Expression &index) const;
+	void                              append (Identity list, Handle item, const CallSite &call, Path &path) const;
+	Handle                            readOwned (Identity list, std::optional<std::uint64_t> index, const ResolvedType &type, Path &path);
+	Handle                            remove (Identity list, std::optional<std::uint64_t> index, Path &path) const;
+	bool                              mayRunDestructor (const Symbol *allocation) const;
+	void                              destroyOwned (Identity list, const Token &site, Path &path) const;
 	void                       store (const Token &name, Handle handle, Path &path);
 	Values                     runDeferred (const FunctionBlockExpression &block, Path &path);
 	[[nodiscard]] const Token *binding (const Token &name) const;
@@ -173,6 +267,10 @@ void LifetimeChecker::join (OptionalPath &paths, const Path &other) {
 	for (const std::map<Identity, ObjectFacts>::value_type &entry : left.objects) {
 		if (other.objects.contains(entry.first)) p_joined.objects.emplace(entry.first, common(entry.second, object(entry.first, other)));
 	}
+	for (const decltype(left.entries)::value_type &entry : left.entries) {
+		const decltype(other.entries)::const_iterator it_order = other.entries.find(entry.first);
+		if (it_order != other.entries.end() && it_order->second == entry.second) p_joined.entries.insert(entry);
+	}
 	// Bindings that select the same pair on both edges still alias one another after the join.
 	std::map<std::pair<Identity, Identity>, Identity> m_pairs;
 	const std::function                               merge = [&] (const Handle a, Handle b) {
@@ -183,7 +281,9 @@ void LifetimeChecker::join (OptionalPath &paths, const Path &other) {
                         if (it_entry.second) ++id_next;
                         id_object                   = it_entry.first->second;
                         p_joined.objects[id_object] = common(object(a.identity, left), object(b.identity, other));
-                }
+			// This identity selects between objects. It cannot prove distinct allocations.
+			p_joined.objects[id_object].allocation = nullptr;
+		}
                 return Handle{ id_object, a.presence == b.presence ? a.presence : Presence::Unknown };
 	};
 	for (const std::map<const Token *, Handle>::value_type &entry : left.bindings) {
@@ -198,6 +298,7 @@ void LifetimeChecker::join (OptionalPath &paths, const Path &other) {
 }
 
 bool LifetimeChecker::equivalent (const Path &left, const Path &right, const Path &entry) {
+	if (left.entries != right.entries) return false;
 	// Compare alias partitions independently of the fresh numbers allocated for joins.
 	std::map<Identity, Identity> forward, reverse;
 	for (const auto &[identity, presence] : entry.bindings | std::views::values) {
@@ -222,7 +323,7 @@ bool LifetimeChecker::equivalent (const Path &left, const Path &right, const Pat
 
 void LifetimeChecker::access (const Handle &handle, const Path &path, const TokenSpan &span, bool permit, bool &runtime) const {
 	if (!handle.identity || !path.reachable) return;
-	const ObjectFacts of_object = object(handle.identity, path);
+	const ObjectFacts &of_object = object(handle.identity, path);
 	if (b_emit && (of_object.lifetime == Lifetime::Dead || (of_object.lifetime == Lifetime::Destroying && !permit))) {
 		const std::string             s_message = of_object.lifetime == Lifetime::Dead ? "Access to a deleted class instance" :
 		                                                                                 "This access is invalid while the instance is being destroyed";
@@ -326,6 +427,120 @@ void LifetimeChecker::arguments (const CallSite &call, Path &path) {
 	}
 }
 
+std::optional<std::uint64_t> LifetimeChecker::constantIndex (const Expression &index) const {
+	const IntegerConstant *ic_value = std::get_if<IntegerConstant>(&bf_facts.expressions.at(&index).numericConstant);
+	if (!ic_value || ic_value->negative || ic_value->magnitude.empty() || ic_value->magnitude.size() > 2) return {};
+	std::uint64_t u64_index = ic_value->magnitude.front();
+	if (ic_value->magnitude.size() == 2) u64_index |= static_cast<std::uint64_t>(ic_value->magnitude[1]) << 32;
+	return u64_index;
+}
+
+void LifetimeChecker::append (Identity list, Handle item, const CallSite &call, Path &path) const {
+	// The acquire intrinsic checks the argument at runtime when its liveness is unknown.
+	bool b_runtime = false;
+	access(item, path, call.suppliedArguments.front().get_span(), false, b_runtime);
+	if (item.identity) {
+		const std::optional<Ownership> &owner = object(item.identity, path).ownership;
+		if (owner) {
+			if (b_emit) ownershipError("This object already belongs to an owning list", call, owner->acquiredAt);
+			return;
+		}
+		for (Identity ancestor = list; ancestor;) {
+			if (ancestor == item.identity) {
+				const std::optional<Ownership> &parent = object(list, path).ownership;
+				if (b_emit) ownershipError("This insertion would create an ownership cycle", call, parent ? parent->acquiredAt : nullptr);
+				return;
+			}
+			const std::optional<Ownership> &parent = object(ancestor, path).ownership;
+			ancestor                               = parent ? parent->list : 0;
+		}
+		path.objects[item.identity].ownership = Ownership{ list, &call };
+	}
+	forgetOtherOrders(list, path);
+	const decltype(path.entries)::iterator it_order = path.entries.find(list);
+	if (it_order == path.entries.end()) return;
+	if (item.identity)
+		it_order->second.push_back(item.identity);
+	else
+		path.entries.erase(it_order);
+}
+
+Handle LifetimeChecker::readOwned (Identity list, std::optional<std::uint64_t> index, const ResolvedType &type, Path &path) {
+	const decltype(path.entries)::const_iterator it_order = path.entries.find(list);
+	if (it_order != path.entries.end()) {
+		const std::vector<Identity> &order = it_order->second;
+		if (order.empty() || (index && *index >= order.size())) return {};
+		if (index) return { order[*index], Presence::Present };
+	}
+	const Handle h_read = fresh(type);
+	if (h_read.identity) path.objects[h_read.identity].ownership = Ownership{ list, nullptr };
+	return h_read;
+}
+
+Handle LifetimeChecker::remove (Identity list, std::optional<std::uint64_t> index, Path &path) const {
+	forgetOtherOrders(list, path);
+	const decltype(path.entries)::iterator it_order   = path.entries.find(list);
+	Identity                               id_removed = 0;
+	std::set<Identity>                     s_remaining;
+	if (it_order != path.entries.end() && index && *index < it_order->second.size()) {
+		id_removed = it_order->second[*index];
+		it_order->second.erase(it_order->second.begin() + *index);
+		s_remaining.insert(it_order->second.begin(), it_order->second.end());
+	}
+	// A read through a dynamic index or a joined alias may name the released entry.
+	for (std::map<Identity, ObjectFacts>::value_type &entry : path.objects) {
+		std::optional<Ownership> &owner = entry.second.ownership;
+		if (!owner || distinctAllocations(owner->list, list, path)) continue;
+		if (id_removed && (distinctAllocations(entry.first, id_removed, path) || s_remaining.contains(entry.first))) continue;
+		owner.reset();
+	}
+	if (!id_removed) path.entries.erase(list);
+	return id_removed ? Handle{ id_removed, Presence::Present } : Handle{};
+}
+
+bool LifetimeChecker::mayRunDestructor (const Symbol *allocation) const {
+	if (!allocation) return true;
+	while (allocation && allocation != &objectRoot()) {
+		for (const std::vector<Symbol> &group : allocation->members | std::views::values)
+			if (std::ranges::any_of(group, [] (const Symbol &symbol) { return symbol.kind == SymbolKind::Destructor; })) return true;
+		const ResultTypes                &parents = a_analyzer.declarations.at(allocation).parents;
+		const ResultTypes::const_iterator it_base =
+		        std::ranges::find_if(parents, [] (const ResolvedType &parent) { return asClass(parent.declaration); });
+		allocation = it_base == parents.end() ? nullptr : it_base->declaration;
+	}
+	return false;
+}
+
+void LifetimeChecker::destroyOwned (Identity list, const Token &site, Path &path) const {
+	if (!list || !olm_list.owner) return;
+	std::map<Identity, std::vector<Identity>> m_children;
+	for (const std::map<Identity, ObjectFacts>::value_type &entry : path.objects)
+		if (entry.second.ownership) m_children[entry.second.ownership->list].push_back(entry.first);
+	if (!m_children.contains(list)) return;
+	std::vector<Identity> v_pending{ list };
+	while (!v_pending.empty()) {
+		const Identity id_nextChild = v_pending.back();
+		v_pending.pop_back();
+		const decltype(m_children)::const_iterator   it_children   = m_children.find(id_nextChild);
+		const decltype(path.entries)::const_iterator it_order      = path.entries.find(id_nextChild);
+		const Symbol                                *sym_allocated = object(id_nextChild, path).allocation;
+		if (it_children == m_children.end() && it_order == path.entries.end() && sym_allocated != olm_list.owner) {
+			if (mayRunDestructor(sym_allocated)) break;
+			continue;
+		}
+		// Cleanup detaches all direct children before the first user destructor can run.
+		if (it_children != m_children.end()) {
+			for (Identity child : it_children->second) {
+				ObjectFacts &of_child = path.objects[child];
+				of_child.lifetime     = Lifetime::Dead;
+				of_child.deletions.insert(&site);
+			}
+		}
+		if (it_order == path.entries.end()) break;
+		v_pending.insert(v_pending.end(), it_order->second.rbegin(), it_order->second.rend());
+	}
+}
+
 Values LifetimeChecker::call (const CallSite &node, const ExpressionInfo &info, Path &path, ReceiverChecks &checks) {
 	const MemberCallExpression    *mc_method  = dynamic_cast<const MemberCallExpression *>(&node);
 	const StateCallExpression     *sc_state   = dynamic_cast<const StateCallExpression *>(&node);
@@ -342,21 +557,56 @@ Values LifetimeChecker::call (const CallSite &node, const ExpressionInfo &info, 
 	const bool      b_self      = !e_receiver || directSelf(*e_receiver);
 	const TokenSpan ts_receiver = e_receiver ? e_receiver->get_span() : node.name.get_span();
 	if (path.reachable && !sc_state && b_method) access(h_receiver, path, ts_receiver, b_self, checks.beforeArguments);
-	arguments(node, path);
+	const std::optional<ListOperation> opt_operation = olm_list.lookup(info.symbol);
+	Handle                             h_argument;
+	if (opt_operation == ListOperation::Append)
+		h_argument = scalar(*node.suppliedArguments.front().expression, path);
+	else
+		arguments(node, path);
 	defaults(info, path);
 	if (!path.reachable) return {};
 	if (sc_state || b_method) access(h_receiver, path, ts_receiver, b_self, checks.atAccess);
 	if (info.arrayMutation)
 		access(storedOwner, path, ts_receiver, arrayOwner.implicit || (arrayOwner.receiver && directSelf(*arrayOwner.receiver)), checks.atAccess);
 	if (sc_state) selectState(info, h_receiver, b_self, node.name, path, checks);
-	if (info.binding && m_deferred.contains(info.binding))
-		return runDeferred(*m_deferred.at(info.binding), path);
-	else if (info.argumentContract)
-		unknownEffect(path);
+	if (info.binding && m_deferred.contains(info.binding)) return runDeferred(*m_deferred.at(info.binding), path);
+	const bool b_preservesNew = cc_new && info.symbol && !info.types.empty() && a_analyzer.preservesNewReceiver(info.types.front(), *info.symbol);
+	if (opt_operation) {
+		const Identity list = h_receiver.identity;
+		switch (*opt_operation) {
+		case ListOperation::Append:
+			append(list, h_argument, node, path);
+			break;
+		case ListOperation::Get:
+			return { readOwned(list, constantIndex(*node.suppliedArguments.front().expression), info.types.front(), path) };
+		case ListOperation::Remove: {
+			const Handle h_removed = remove(list, constantIndex(*node.suppliedArguments.front().expression), path);
+			if (h_removed.identity) return { h_removed };
+			break;
+		}
+		case ListOperation::Clear:
+			if (!path.entries.contains(list) || !path.entries.at(list).empty()) {
+				destroyOwned(list, node.name, path);
+				unknownEffect(path);
+			}
+			if (list) path.entries[list].clear();
+			break;
+		case ListOperation::Size:
+		case ListOperation::Foreach:
+			break;
+		}
+	} else if (info.argumentContract) {
+		const bool b_simpleNew = b_preservesNew && info.omittedParameters.empty() &&
+		                         a_analyzer.declarations.at(info.types.front().declaration).primaryConstructor == info.symbol;
+		unknownEffect(path, !b_simpleNew);
+	}
 	Values v_result = typedValues(info);
 	if (cc_new && !v_result.empty() && v_result.front().identity) {
 		const ResolvedType &rt_host = info.types.front();
-		if (info.symbol && a_analyzer.preservesNewReceiver(rt_host, *info.symbol)) {
+		if (olm_list.owner) path.objects[v_result.front().identity].allocation = rt_host.declaration;
+		if (b_preservesNew) {
+			if (olm_list.owner == rt_host.declaration && node.suppliedArguments.empty() && info.omittedParameters.empty())
+				path.entries.try_emplace(v_result.front().identity);
 			const TypeDispatch *td_host = table(rt_host);
 			if (td_host && td_host->initialState) enter(path, v_result.front(), *td_host->initialState, rt_host);
 			ObjectFacts &of_new = path.objects[v_result.front().identity];
@@ -509,6 +759,7 @@ void LifetimeChecker::binary (const BinaryExpression &node, const ExpressionInfo
 		                     dynamic_cast<const MethodDeclaration &>(*callable(*info.argumentContract)).operatorMember->rightReceiver;
 		if (info.argumentContract && !b_right) access(h_left, path, node.left->get_span(), directSelf(*node.left), checks.beforeArguments);
 		const Handle h_right = scalar(*node.right, path);
+		if (info.callsElementEquality) unknownEffect(path);
 		if (info.argumentContract) {
 			const Expression &e_operand = b_right ? *node.right : *node.left;
 			access(b_right ? h_right : h_left, path, e_operand.get_span(), directSelf(e_operand), checks.atAccess);
@@ -555,12 +806,21 @@ Values LifetimeChecker::expression (const Expression &node, Path &path) {
 		const Handle h_value = scalar(*cd_delete->receiver, path);
 		access(h_value, path, node.get_span(), false, rc_checks.atAccess);
 		if (path.reachable && h_value.presence != Presence::Absent) {
-			unknownEffect(path);
+			const ObjectFacts &of_value     = object(h_value.identity, path);
+			const bool         b_list       = olm_list.owner && of_value.allocation == olm_list.owner;
+			const bool b_mayChangeOwnership = olm_list.owner &&
+			                                  (b_list ? !path.entries.contains(h_value.identity) || !path.entries.at(h_value.identity).empty() :
+			                                            mayRunDestructor(of_value.allocation));
 			if (h_value.identity && h_value.presence == Presence::Present) {
+				if (b_emit && of_value.ownership)
+					ownershipError("Only the owning list can delete this object", node, of_value.ownership->acquiredAt);
+				destroyOwned(h_value.identity, cd_delete->keyword, path);
 				ObjectFacts &of_deleted = path.objects[h_value.identity];
 				of_deleted.lifetime     = Lifetime::Dead;
 				of_deleted.deletions.insert(&cd_delete->keyword);
 			}
+			unknownEffect(path, b_mayChangeOwnership);
+			path.entries.erase(h_value.identity);
 		}
 	} else if (const CallSite *cs_call = dynamic_cast<const CallSite *>(&node)) {
 		v_result = call(*cs_call, ei_info, path, rc_checks);
@@ -624,11 +884,15 @@ Values LifetimeChecker::expression (const Expression &node, Path &path) {
 		expression(*ie_index->index, path);
 		if (ei_info.argumentContract) {
 			access(h_value, path, ie_index->array->get_span(), directSelf(*ie_index->array), rc_checks.atAccess);
-			if (ei_info.indexed && ei_info.indexed->validator) {
+			if (path.reachable && olm_list.lookup(ei_info.symbol) == ListOperation::Get && ei_info.types.size() == 1) {
+				v_result = { readOwned(h_value.identity, constantIndex(*ie_index->index), ei_info.types.front(), path) };
+			} else {
+				if (ei_info.indexed && ei_info.indexed->validator) {
+					unknownEffect(path);
+					access(h_value, path, ie_index->array->get_span(), directSelf(*ie_index->array), rc_checks.atAccess);
+				}
 				unknownEffect(path);
-				access(h_value, path, ie_index->array->get_span(), directSelf(*ie_index->array), rc_checks.atAccess);
 			}
-			unknownEffect(path);
 		}
 	} else if (const ProviderAccessExpression *pa_provider = dynamic_cast<const ProviderAccessExpression *>(&node)) {
 		const Handle h_value = scalar(*pa_provider->receiver, path);
@@ -841,6 +1105,8 @@ void LifetimeChecker::loop (const LoopStatement &node, Path &path) {
 	const DoWhileStatement *ds_do    = dynamic_cast<const DoWhileStatement *>(&node);
 	const LoopBody         &body     = fs_for ? fs_for->body : ws_while ? ws_while->body : ds_do->body;
 	const LoopTarget       *target   = node.get_loop_target().get();
+	std::optional<Handle>      opt_first;
+	std::optional<std::size_t> opt_count;
 	if (fs_for) {
 		if (const ForSource::Range *range = std::get_if<ForSource::Range>(&fs_for->source.value)) {
 			expression(*range->start, path);
@@ -853,18 +1119,25 @@ void LifetimeChecker::loop (const LoopStatement &node, Path &path) {
 				bool runtime = false;
 				access(handle, path, source.get_span(), directSelf(source), runtime);
 				if (b_emit) plan->second.snapshot->receiverChecks.atAccess |= runtime;
-				unknownEffect(path);
+				if (path.reachable && olm_list.lookup(plan->second.snapshot->symbol) == ListOperation::Foreach) {
+					const decltype(path.entries)::const_iterator it_order = path.entries.find(handle.identity);
+					if (it_order != path.entries.end()) {
+						opt_count = it_order->second.size();
+						if (!*opt_count) return;
+					}
+					opt_first = readOwned(handle.identity, 0, plan->second.element, path);
+				} else
+					unknownEffect(path);
 			}
 		}
 	}
 	if (!path.reachable) return;
-	const Path                                             entry   = path;
-	const std::function<Branches(LifetimeChecker &, Path)> iterate = [&] (LifetimeChecker &checker, Path header) {
+	const std::function iterate = [&] (LifetimeChecker &checker, Path header, const Handle *first) {
 		Branches paths = ws_while ? checker.condition(*ws_while->condition, header) :
-		                            Branches{ header, fs_for ? OptionalPath{ header } : std::nullopt };
+		                            Branches{ header, fs_for && !(first && opt_count) ? OptionalPath{ header } : std::nullopt };
 		if (!paths.yes) return paths;
 		Path p_body = std::move(*paths.yes);
-		if (fs_for) checker.store(fs_for->binding.name, {}, p_body);
+		if (fs_for) checker.store(fs_for->binding.name, first ? *first : Handle{}, p_body);
 		checker.statements(body.statements, p_body);
 		LoopPaths lp_edges = std::move(checker.m_jumps[target]);
 		checker.m_jumps.erase(target);
@@ -880,6 +1153,23 @@ void LifetimeChecker::loop (const LoopStatement &node, Path &path) {
 		if (lp_edges.breaks) checker.join(paths.no, *lp_edges.breaks);
 		return Branches{ std::move(lp_edges.continues), std::move(paths.no) };
 	};
+	OptionalPath firstExit;
+	if (opt_first) {
+		// At snapshot creation its first element still belongs to the list. Earlier iterations
+		// can release later elements, so their bindings must start without an owner proof.
+		Branches first = iterate(*this, path, &*opt_first);
+		firstExit      = std::move(first.no);
+		if (!first.yes || opt_count == 1) {
+			if (first.yes) join(firstExit, *first.yes);
+			if (firstExit)
+				path = std::move(*firstExit);
+			else
+				path.reachable = false;
+			return;
+		}
+		path = std::move(*first.yes);
+	}
+	const Path              entry  = path;
 	Path                    header = entry;
 	std::optional<Branches> stable;
 	while (!header.bindings.empty() || !header.objects.empty()) {
@@ -887,7 +1177,7 @@ void LifetimeChecker::loop (const LoopStatement &node, Path &path) {
 		trial.b_emit          = false;
 		OptionalPath returned;
 		trial.p_returns      = p_returns ? &returned : nullptr;
-		Branches edges       = iterate(trial, header);
+		Branches edges       = iterate(trial, header, nullptr);
 		id_next              = trial.id_next;
 		OptionalPath widened = header;
 		if (edges.yes) join(widened, *edges.yes);
@@ -901,7 +1191,8 @@ void LifetimeChecker::loop (const LoopStatement &node, Path &path) {
 		}
 		header = std::move(*widened);
 	}
-	Branches result = stable ? std::move(*stable) : iterate(*this, std::move(header));
+	Branches result = stable ? std::move(*stable) : iterate(*this, std::move(header), nullptr);
+	if (firstExit) join(result.no, *firstExit);
 	if (result.no)
 		path = std::move(*result.no);
 	else
@@ -995,9 +1286,10 @@ bool Analyzer::preservesNewReceiver (const ResolvedType &host, const Symbol &con
 
 void Analyzer::checkLifetimes () {
 	// Overloads, generic bodies, state tables, and declaration-site defaults are all available here.
+	const OwningListMethods olm_list = owningListMethods(*this, sym_owningList);
 	for (const LifetimeBody &lb_body : v_lifetimeBodies) {
 		rt_activeAttachment = lb_body.state && !declarations.at(lb_body.state).owner && lb_body.host ? &*lb_body.host : nullptr;
-		LifetimeChecker(*this, lb_body).check();
+		LifetimeChecker(*this, lb_body, olm_list).check();
 	}
 	rt_activeAttachment = nullptr;
 }

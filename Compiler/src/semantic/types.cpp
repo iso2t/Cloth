@@ -23,6 +23,30 @@ const Symbol *namedType (const Candidates &candidates) {
 	return nullptr;
 }
 
+template <typename Matches> bool hasTypeView (const Analyzer &analyzer, const ResolvedType &actual, Matches matches) {
+	std::set<ResolvedType> s_seen;
+	ResultTypes            v_pending{ actual };
+	while (!v_pending.empty()) {
+		const ResolvedType rt_type = std::move(v_pending.back());
+		v_pending.pop_back();
+		if (!s_seen.insert(rt_type).second) continue;
+		if (matches(rt_type)) return true;
+		const Substitutions m_arguments = analyzer.argumentsOf(rt_type);
+		for (const ResolvedType &rt_pattern : analyzer.declarations.at(rt_type.declaration).parents) {
+			ResolvedType rt_parent = analyzer.substitute(rt_pattern, m_arguments);
+			if (rt_parent.declaration) v_pending.push_back(std::move(rt_parent));
+		}
+	}
+	return false;
+}
+
+// A symbolic type argument can take on a concrete type when the class is instantiated.
+bool possibleView (const ResolvedType &expected, const ResolvedType &view) {
+	if (!expected.dependent() && !view.dependent()) return expected == view;
+	if (expected.parameter || view.parameter) return true;
+	return expected.declaration == view.declaration && expected.name == view.name && expected.width == view.width && expected.suffixes == view.suffixes &&
+	       std::ranges::equal(expected.arguments(), view.arguments(), possibleView);
+}
 }
 
 const Symbol &objectRoot () {
@@ -485,6 +509,50 @@ bool Analyzer::supportsEquality (const ResolvedType &type) const {
 	return referenceType(rt_element);
 }
 
+bool Analyzer::arrayEqualityMayCall (const ResolvedType &type) const {
+	ResolvedType rt_leaf = type;
+	rt_leaf.suffixes.clear();
+	if (!rt_leaf.declaration && !rt_leaf.parameter) return false;
+	const bool          b_reference = referenceType(rt_leaf);
+	const std::function hasEquality = [&] (const ResolvedType &owner) {
+		for (const Candidate &c_op : members(owner, to_string(oEqual), SymbolKind::Operator)) {
+			const MethodDeclaration &md_equal = dynamic_cast<const MethodDeclaration &>(*callable(*c_op.symbol));
+			const OperatorMember    &om_form  = *md_equal.operatorMember;
+			if (!om_form.provider && !om_form.selector && (!b_reference || !om_form.rightReceiver) && md_equal.parameters.size() == 1) return true;
+		}
+		return false;
+	};
+	if (hasEquality(rt_leaf)) return true;
+	if (!b_reference) return false;
+	// Constrain dynamic dispatch by every nominal bound on the array element.
+	ResultTypes                                v_views, v_bounds{ rt_leaf };
+	std::set<const TypeParameterDeclaration *> s_parameters;
+	while (!v_bounds.empty()) {
+		const ResolvedType rt_bound = std::move(v_bounds.back());
+		v_bounds.pop_back();
+		if (!rt_bound.parameter) {
+			v_views.push_back(rt_bound);
+			continue;
+		}
+		if (!s_parameters.insert(rt_bound.parameter).second) continue;
+		const ParameterContract pc_contract = parameterContract(*rt_bound.parameter);
+		for (const TypeParameterBound &tp_bound : pc_contract.parameter->bounds)
+			if (const TypeReference *tr_bound = std::get_if<TypeReference>(&tp_bound.value)) {
+				ResolvedType rt_view = substitute(this->type(*tr_bound, *m_genericOwners.at(pc_contract.parameter)), pc_contract.arguments);
+				v_bounds.push_back(rt_view.nullable() ? rt_view.element() : std::move(rt_view));
+			}
+	}
+	for (const Symbol *sym_class : v_order) {
+		if (!asClass(sym_class)) continue;
+		const ResolvedType rt_class = ownerType(*sym_class);
+		if (hasEquality(rt_class) && std::ranges::all_of(v_views, [&] (const ResolvedType &view) {
+			    return hasTypeView(*this, rt_class, [&] (const ResolvedType &parent) { return possibleView(view, parent); });
+		    }))
+			return true;
+	}
+	return false;
+}
+
 bool Analyzer::accepts (const ResolvedType &expected, const ResolvedType &actual) const {
 	if (expected == actual) {
 		return true;
@@ -531,20 +599,7 @@ bool Analyzer::accepts (const ResolvedType &expected, const ResolvedType &actual
 		return false;
 	}
 	if (expected.declaration == &objectRoot() && asInterface(actual.declaration)) return true;
-	std::set<ResolvedType> s_seen;
-	ResultTypes            v_pending{ actual };
-	while (!v_pending.empty()) {
-		const ResolvedType rt_child = std::move(v_pending.back());
-		v_pending.pop_back();
-		if (!s_seen.insert(rt_child).second) continue;
-		const Substitutions m_arguments = argumentsOf(rt_child);
-		for (const ResolvedType &rt_pattern : declarations.at(rt_child.declaration).parents) {
-			ResolvedType rt_parent = substitute(rt_pattern, m_arguments);
-			if (rt_parent == expected) return true;
-			if (rt_parent.declaration) v_pending.push_back(std::move(rt_parent));
-		}
-	}
-	return false;
+	return hasTypeView(*this, actual, [&] (const ResolvedType &view) { return view == expected; });
 }
 
 void Analyzer::resolveDeclaration (const Symbol &symbol) {
