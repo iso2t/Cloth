@@ -1,7 +1,7 @@
 using cloth.collections.Snapshot : Snapshot, emptySnapshot
 
-pub final typedef<class> OwningList<T: Object> {
-    def<T[]> items = []
+pub final typedef<class> OwningList<T: Object>(def<T[]> items) {
+    pub OwningList() : ([]) {}
 
     mt acquire(Object item) = intrinsic "collections.ownership.acquire"
     mt release(Object item) = intrinsic "collections.ownership.release"
@@ -18,7 +18,7 @@ pub final typedef<class> OwningList<T: Object> {
 
     pub operator [](usize index) -> T = get(index)
 
-    operator []?(usize index) -> bool = index < size()
+    operator []?(usize index) -> bool = index < items::size
 
     pub mt<T> removeAt(usize index) {
         checkMutation()
@@ -45,5 +45,5 @@ pub final typedef<class> OwningList<T: Object> {
         setCleanup(false)
     }
 
-    ~OwningList { clear() }
+    pub ~OwningList { clear() }
 }

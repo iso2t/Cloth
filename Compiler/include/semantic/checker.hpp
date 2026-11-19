@@ -424,6 +424,9 @@ class BodyChecker {
 	ExpressionInfo           transition (const Candidate &state, const ExpressionPtr &payload, const TokenSpan &span);
 	ExpressionInfo           typeCheck (const TypeCheckExpression &node);
 	ExpressionInfo           binary (const BinaryExpression &node, const ResolvedType *expected);
+	ExpressionInfo bindCall (const Token &name, const TokenSpan &span, const std::vector<CallArgument> &arguments, const std::vector<Candidate> &group,
+	                         const TypeArgumentList *typeArguments = nullptr, const ResultTypes *knownArguments = nullptr,
+	                         const ReceiverProofs &proofs = {});
 	ExpressionInfo invoke (const Token &name, const TokenSpan &span, const std::vector<CallArgument> &arguments, const std::vector<Candidate> &group,
 	                       const TypeArgumentList *typeArguments = nullptr, const ResultTypes *knownArguments = nullptr,
 	                       const Expression *storedReceiver = nullptr);

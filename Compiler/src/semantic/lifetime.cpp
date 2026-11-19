@@ -571,6 +571,9 @@ Values LifetimeChecker::call (const CallSite &node, const ExpressionInfo &info, 
 	if (sc_state) selectState(info, h_receiver, b_self, node.name, path, checks);
 	if (info.binding && m_deferred.contains(info.binding)) return runDeferred(*m_deferred.at(info.binding), path);
 	const bool b_preservesNew = cc_new && info.symbol && !info.types.empty() && a_analyzer.preservesNewReceiver(info.types.front(), *info.symbol);
+	const bool b_simpleNew    = b_preservesNew && info.omittedParameters.empty() &&
+	                         (a_analyzer.declarations.at(info.types.front().declaration).primaryConstructor == info.symbol ||
+	                          (info.instance ? info.instance->signature : a_analyzer.declarations.at(info.symbol)).delegationPreservesOwnership);
 	if (opt_operation) {
 		const Identity list = h_receiver.identity;
 		switch (*opt_operation) {
@@ -596,8 +599,6 @@ Values LifetimeChecker::call (const CallSite &node, const ExpressionInfo &info, 
 			break;
 		}
 	} else if (info.argumentContract) {
-		const bool b_simpleNew = b_preservesNew && info.omittedParameters.empty() &&
-		                         a_analyzer.declarations.at(info.types.front().declaration).primaryConstructor == info.symbol;
 		unknownEffect(path, !b_simpleNew);
 	}
 	Values v_result = typedValues(info);
@@ -605,7 +606,7 @@ Values LifetimeChecker::call (const CallSite &node, const ExpressionInfo &info, 
 		const ResolvedType &rt_host = info.types.front();
 		if (olm_list.owner) path.objects[v_result.front().identity].allocation = rt_host.declaration;
 		if (b_preservesNew) {
-			if (olm_list.owner == rt_host.declaration && node.suppliedArguments.empty() && info.omittedParameters.empty())
+			if (olm_list.owner == rt_host.declaration && b_simpleNew && node.suppliedArguments.empty())
 				path.entries.try_emplace(v_result.front().identity);
 			const TypeDispatch *td_host = table(rt_host);
 			if (td_host && td_host->initialState) enter(path, v_result.front(), *td_host->initialState, rt_host);

@@ -92,6 +92,8 @@ struct DeclarationInfo {
 	bool                            inferResult        = false;
 	const Symbol                   *primaryConstructor = nullptr;
 	std::optional<LibraryIntrinsic> intrinsic          = {};
+	// A secondary constructor can bind its primary call without changing an existing object's ownership.
+	bool delegationPreservesOwnership = false;
 };
 
 // Stored paths select storage in the enclosing instance. Indirect paths continue

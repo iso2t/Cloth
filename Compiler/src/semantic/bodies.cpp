@@ -222,11 +222,14 @@ void BodyChecker::typeBody () {
 			const Candidate              c_primary{ .symbol    = analyzer.declarations.at(owner).primaryConstructor,
 				                                .arguments = analyzer.argumentsOf(selfType()) };
 			const ConstructorDelegation &cd_delegation = cd_constructor->delegation;
-			const ExpressionInfo         ei_call = invoke(cd_delegation.name, cd_delegation.span, cd_delegation.suppliedArguments, { c_primary });
+			const ExpressionInfo         ei_call = bindCall(cd_delegation.name, cd_delegation.span, cd_delegation.suppliedArguments, { c_primary });
 			if (record) {
 				bf_facts.expressions[&cd_delegation] = ei_call;
+				di_signature.delegationPreservesOwnership = we_capture && !we_capture->sharedFields && ei_call.fallsThrough &&
+				                                            ei_call.omittedParameters.empty();
 			}
 			// Arguments to primary delegation are evaluated before the new receiver is available.
+			if (ei_call.fallsThrough) invalidateShared();
 			if (we_capture) we_capture->sharedFields = false;
 		}
 		rp_receiverPhase = ReceiverPhase::Ready;
