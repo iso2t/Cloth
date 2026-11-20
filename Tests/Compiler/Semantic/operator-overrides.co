@@ -9,11 +9,11 @@ typedef<struct> Cursor {
 }
 
 fn main() {
-    def<Cursor> cursor = { 0 }
+    Cursor cursor = { 0 }
     cursor++
-    for (def value <- cursor .. 4) { def<int> element = value }
-    def<bool> same = [cursor] != [cursor, cursor]
-    def<bool> flag = false || cursor
+    for (def value <- cursor .. 4) { int element = value }
+    bool same = [cursor] != [cursor, cursor]
+    bool flag = false || cursor
 }
 
 // RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%/s"

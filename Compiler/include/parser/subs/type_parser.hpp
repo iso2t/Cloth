@@ -27,6 +27,7 @@ class TypeParser {
 	bool                             startsCallTypeArguments (int nameOffset = 0) const;
 	bool                             startsNamedTypeReceiver () const;
 	bool                             startsQualifiedTypeCheck () const;
+	std::optional<int>               typedTargetEnd (int start = 0) const;
 	static bool                      startsTypeReceiver (const Token &token);
 
 	template <typename ParseClause>
@@ -57,7 +58,7 @@ class TypeParser {
 	std::optional<int>              angleListEnd (int start) const;
 	std::optional<int>              applicationEnd (int start) const;
 	std::optional<int>              suffixEnd (int start) const;
-	int                             nameEnd () const;
+	int                             nameEnd (int start = 0) const;
 	bool                            typeCanEndAt (int offset) const;
 	Token                           parseName () const;
 	std::optional<TokenSpan>        nullableMarker () const;

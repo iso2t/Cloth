@@ -23,16 +23,16 @@ typedef<class> Amount : Number {
 }
 
 fn use(int<8> small, unsigned int<16> word, isize offset, usize count, float<64> real, int<8>? maybe, float[] items, Amount amount) {
-    def<int<8>> a = forward(small)
-    def<unsigned int<16>> b = forward(word)
-    def<isize> c = twice(offset)
-    def<usize> d = twice(count)
-    def<range<float<64>>> span = interval(real, real)
-    def<bool> ordered = less(real, real)
-    def<string> text = describe(real)
-    def<int<8>?> possible = maybeTwice(maybe)
-    def<float[]> doubled = doubleFirst(items)
-    def<Amount> total = twice(amount)
+    int<8> a = forward(small)
+    unsigned int<16> b = forward(word)
+    isize c = twice(offset)
+    usize d = twice(count)
+    range<float<64>> span = interval(real, real)
+    bool ordered = less(real, real)
+    string text = describe(real)
+    int<8>? possible = maybeTwice(maybe)
+    float[] doubled = doubleFirst(items)
+    Amount total = twice(amount)
 }
 
 // RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 32 --stdlib "%/S/../../../Stdlib" --src "%/s"

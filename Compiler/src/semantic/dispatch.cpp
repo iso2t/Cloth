@@ -252,8 +252,7 @@ void Analyzer::addClassMethod (const MethodRef &method, const MethodGroups &requ
 			fail(Code::INVALID_VIRTUAL_METHOD, sym_method.name.get_span(), "Override matches multiple generic virtual methods", &sym_root.name);
 		if (!md_method.overridePrefix)
 			fail(Code::INVALID_VIRTUAL_METHOD, sym_method.name.get_span(),
-			     std::format("Overriding '{}' requires {}{}", sym_method.name.get_lexeme(), to_string(kOverride), to_string(oColon)),
-			     &sym_root.name);
+			     std::format("Overriding '{}' requires {}", sym_method.name.get_lexeme(), to_string(kOverride)), &sym_root.name);
 		if (sym_method.visibility != Visibility::Public)
 			fail(Code::INVALID_VIRTUAL_METHOD, sym_method.name.get_span(),
 			     std::format("Override of '{}' requires {}", sym_method.name.get_lexeme(), to_string(kPublic)), &sym_root.name);
@@ -365,8 +364,7 @@ void Analyzer::implementRequirements (const ResolvedType &receiver, const Method
 				     &contract.symbol->name);
 			if (mr_body.owner == receiver && !defaults.empty() && !classMethod(mr_body).overridePrefix)
 				fail(Code::INVALID_INTERFACE_OVERRIDE, mr_body.symbol->name.get_span(),
-				     std::format("Replacing an interface default requires {}{}", to_string(kOverride), to_string(oColon)),
-				     &defaults.front().symbol->name);
+				     std::format("Replacing an interface default requires {}", to_string(kOverride)), &defaults.front().symbol->name);
 		}
 	}
 	if (!opt_target) {

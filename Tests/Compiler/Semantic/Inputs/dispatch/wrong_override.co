@@ -1,4 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<class> Base { virtual: pub mt<int, bool> pair() = 1, true }
-typedef<class> Child : Base { override: pub mt<bool, int> pair() = true, 1 }
+typedef<class> Base { pub virtual mt<int, bool> pair() = 1, true }
+typedef<class> Child : Base { pub override mt<bool, int> pair() = true, 1 }

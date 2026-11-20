@@ -7,8 +7,8 @@
 ~~~cloth
 fn<string> describe(int? count) {
     def value := count ?: 0
-    def<int[3]> sizes = [0b10, 0o10, 0x10]
-    def<char> mark := 'λ'
+    int[3] sizes = [0b10, 0o10, 0x10]
+    char mark := 'λ'
     def raw := """{literal}"""
     return #"{{{value}}} {sizes[0]} {mark} {raw}"
 }

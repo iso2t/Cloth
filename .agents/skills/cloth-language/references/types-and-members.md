@@ -47,8 +47,7 @@ pub final typedef<class> Counter(pub def<int> value) : Sized {
   arguments. [Interface parser](../../../../Compiler/src/parser/subs/interface_parser.cpp) · [Method bodies](../../../../Compiler/src/parser/subs/function_parser.cpp) · [Parent clauses](../../../../Compiler/include/parser/subs/type_parser.hpp)
 - A class header can hold ordinary parameters and `def<Type>` field parameters. A class-body field uses
   `def<Type> name = expression`. A secondary constructor repeats the class name and delegates with `: (arguments)`. The
-  destructor is `~Name` followed directly by a block. Class methods accept `virtual:` or `override:`
-  prefixes. [Class parser](../../../../Compiler/src/parser/subs/class_parser.cpp)
+  destructor is `~Name` followed directly by a block. A virtual class method uses `pub virtual mt`. An override uses `pub override mt`. [Class parser](../../../../Compiler/src/parser/subs/class_parser.cpp)
 - `operator` takes the operator spelling, parameters, an optional `->` result type, and a body. Nested type declarations
   use the same `typedef<kind>` header. Consult the enclosing member parser for valid positions and
   separators. [Operator declarations](../../../../Compiler/src/parser/subs/function_parser.cpp) · [Nested type parsing](../../../../Compiler/src/parser/parser.cpp)

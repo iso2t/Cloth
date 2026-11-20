@@ -14,8 +14,8 @@
 # OWNER-DAG: invalid ownership operation
 
 # RUN: echo 'fn mutate() {' > "%t.co"
-# RUN: echo '    def<int[]?> items = [1]' >> "%t.co"
-# RUN: echo '    def<int> arg = { items = null; return 1 }' >> "%t.co"
+# RUN: echo '    int[]? items = [1]' >> "%t.co"
+# RUN: echo '    int arg = { items = null; return 1 }' >> "%t.co"
 # RUN: echo '    if (items != null) items.append(arg)' >> "%t.co"
 # RUN: echo '}' >> "%t.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --src "%t.co" 2> "%t.err"

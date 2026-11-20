@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<interface> Readable { pub mt<int<12>> read() = default (0) }
+typedef<class> Reader(int input, pub def<int<12>> saved) : Readable {
+    pub override mt<int<12>> read() = saved
+}
+typedef<struct> Outer {
+    pub typedef<struct> Box<T> { pub T item }
+}
+
+fn<T> identity<T>(T value) = value
+fn<int<12>, bool> split(int<12> value) = value, true
+
+fn<int<12>> run(Readable reader) {
+    int<12> x = 1
+    def inferred := identity<int<12>>(x)
+    Outer.Box<int<12>> box = { inferred }
+    int<12> a, b = box.item
+    int<12> count, bool ok = split(reader.read())
+    int<12> later := { return count }
+    if (ok) int<12> copy = later
+    for (int<12> item <- [a, b]) x = item
+    for (def item <- [x]) x = item
+    return x
+}
+
+// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 32 --src "%/s"
+// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 64 --src "%/s"

@@ -26,11 +26,11 @@ fn<int> throughCollections() {
 }
 
 fn<bool> fileAccess(string spelling) {
-    def<Path> path = pathOf(spelling)
+    Path path = pathOf(spelling)
     def file = File::new(path)
     def other = File::new(path.spelling)
-    def<FileError?> opened = file.open()
-    def<unsigned int<8>[]?, FileError?> _, error = other.read(0)
+    FileError? opened = file.open()
+    unsigned int<8>[]? _, FileError? error = other.read(0)
     other::delete
     file::delete
     return opened == null && error == FileError.NotOpen

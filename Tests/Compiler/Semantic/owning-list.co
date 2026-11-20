@@ -15,7 +15,7 @@ fn main() {
     list.append(Item::new)
     list.append(Item::new)
     def first = readAt(list, 0)
-    def<Snapshot<int>> values = emptySnapshot<int>()
+    Snapshot<int> values = emptySnapshot<int>()
     for (def held <- list) values.append(held.read())
     list.removeAt(0)
     first::delete

@@ -11,10 +11,9 @@
 #include <ast/type/type_reference.hpp>
 #include <cde/syntax_errors.hpp>
 #include <parser/parser.hpp>
-#include <parser/subs/delimited_parser.hpp>
+#include <parser/subs/bindings_parser.hpp>
 #include <parser/subs/expression_parser.hpp>
 #include <parser/subs/loops/for_loop_parser.hpp>
-#include <parser/subs/type_parser.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
@@ -24,27 +23,11 @@ ForStatement ForLoopParser::parseFor (bool allowWhileTrailer) {
 	p_parser.skipNewLines();
 	const Token t_opening = p_parser.expect(oParenOpen);
 	p_parser.skipNewLines();
-	if (!p_parser.atKeyword(kDef)) {
-		throw cde::SyntaxErrors::expected(std::format("'{}' before a loop binding", to_string(kDef)), p_parser.peek());
-	}
-	const Token t_definition = p_parser.advance();
-	p_parser.skipNewLines();
-
-	std::optional<TypeReference> opt_type;
-	std::optional<TokenSpan>     opt_annotationSpan;
-	if (const Token t_annotationOpening = p_parser.peek(); t_annotationOpening.get_lexeme() == to_string(oLess)) {
-		opt_type           = get_delimited().angles([this] () -> TypeReference {
-                        p_parser.skipNewLines();
-                        TypeReference tr_type = p_parser.p_typeParser.parse(/*inCast=*/false, /*allowArrays=*/true);
-                        p_parser.skipNewLines();
-                        return tr_type;
-                });
-		opt_annotationSpan = TokenSpan::span_through(t_annotationOpening.get_span(), p_parser.previous().get_span());
-	}
-
+	const Token                  t_start  = p_parser.peek();
+	std::optional<TypeReference> opt_type = p_parser.p_bindingParser.parseBindingType();
 	p_parser.skipNewLines();
 	const Token t_name = p_parser.expect(TokenType::Identifier, "a loop binding name");
-	ForBinding  fb_binding{ .keyword = t_definition, .type = std::move(opt_type), .name = t_name, .annotationSpan = opt_annotationSpan };
+	ForBinding  fb_binding{ .start = t_start, .type = std::move(opt_type), .name = t_name };
 	p_parser.skipNewLines();
 	const Token t_arrow = p_parser.expect(oPointerLeft);
 	p_parser.skipNewLines();

@@ -9,13 +9,9 @@ namespace cloth {
 
 class DoWhileLoopParser : public LoopParser {
     public:
-	DoWhileLoopParser (Parser &parser, DelimitedParser &delimited) : LoopParser(parser, delimited), p_parser(parser) {
-	}
+	using LoopParser::LoopParser;
 
 	DoWhileStatement parseDoWhile ();
-
-    private:
-	Parser &p_parser;
 };
 
 }

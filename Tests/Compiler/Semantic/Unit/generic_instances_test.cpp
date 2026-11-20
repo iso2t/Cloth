@@ -77,12 +77,12 @@ TEST (SemanticGenerics, ResolvesClosedMethodTemplatesAtTheCall) {
 	expectError("typedef<class> Box<T> { mt read(T v) {}\n mt read(int v) {} }\nfn use(Box<int> b) {}", cde::DiagnosticCode::DUPLICATE_METHOD);
 	const std::string s_virtual = R"(typedef<class> Entity<A>(bool tag) {
     pub Entity() : (false) {}
-    virtual: pub mt<T> echo<T>(A key, T value) = value
-    virtual: pub mt<T> echo<T>(int key, T value) = value
+    pub virtual mt<T> echo<T>(A key, T value) = value
+    pub virtual mt<T> echo<T>(int key, T value) = value
 }
 )";
 	EXPECT_NO_THROW(checkSource(s_virtual + "fn use(Entity<int> e) {}"));
-	expectError(s_virtual + "typedef<class> Player : Entity<int> { override: pub mt<U> echo<U>(int key, U value) = value }",
+	expectError(s_virtual + "typedef<class> Player : Entity<int> { pub override mt<U> echo<U>(int key, U value) = value }",
 	            cde::DiagnosticCode::INVALID_VIRTUAL_METHOD);
 }
 
@@ -262,7 +262,7 @@ TEST (SemanticGenerics, SpecializesFieldsMetadataAndCapturedLocalsOnEachReceiver
 	const CheckedProgram cp_program = checkSource(R"(typedef<struct> Box<T> {
     T? saved;
     pub mt<typeinfo> metadata() = T::type
-    pub mt<T?> copy(T item) { def<T> held = { return item }; return held }
+    pub mt<T?> copy(T item) { T held = { return item }; return held }
 }
 fn<typeinfo> first(Box<int> box) = box.metadata()
 fn<typeinfo> second(Box<int?> box) = box.metadata()
@@ -296,10 +296,10 @@ fn<int?> optional(Box<int?> box) = box.copy(null)
 TEST (SemanticGenerics, RetainsBothTheVirtualContractAndTheOverridingInstance) {
 	const CheckedProgram  cp_program = checkSource(R"(typedef<class> Base<T>(int seed) {
     pub Base() : (0) {}
-    virtual: pub mt<U> read<U>(U value) = value
+    pub virtual mt<U> read<U>(U value) = value
 }
 typedef<class> Child<T> : Base<T> {
-    override: pub mt<V> read<V>(V renamed) = renamed
+    pub override mt<V> read<V>(V renamed) = renamed
 }
 fn<bool> use(Child<int> child) = child.read<bool>(value=true)
 )");

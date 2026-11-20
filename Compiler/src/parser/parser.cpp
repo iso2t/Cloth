@@ -319,7 +319,7 @@ std::vector<StatementPtr> Parser::parseStatements (BindingBraceSyntax *braceSynt
 		if (braceSyntax && !v_statements.empty() && !braceSyntax->secondStatement) {
 			braceSyntax->secondStatement = t_next;
 		}
-		if (atKeyword(kDef)) {
+		if (p_bindingParser.startsBinding()) {
 			std::vector<StatementPtr> v_bindings = p_bindingParser.parseBindings();
 			v_statements.insert(v_statements.end(), std::make_move_iterator(v_bindings.begin()), std::make_move_iterator(v_bindings.end()));
 		} else {
@@ -438,7 +438,7 @@ StatementPtr Parser::parseStatement (bool allowWhileTrailer, bool multilineResul
 BlockBody Parser::parseUnbracedBody (const bool allowWhileTrailer) {
 	const Token               t_start = peek();
 	std::vector<StatementPtr> v_statements;
-	if (atKeyword(kDef)) {
+	if (p_bindingParser.startsBinding()) {
 		v_statements = p_bindingParser.parseBindings(allowWhileTrailer);
 	} else {
 		v_statements.push_back(parseStatement(allowWhileTrailer));

@@ -7,23 +7,17 @@
 
 namespace cloth {
 
-class DelimitedParser;
 class Parser;
 
 class LoopParser {
     public:
-	LoopParser (Parser &parser, DelimitedParser &delimited) : p_parser(parser), dp_delimited(delimited) {
-	}
-
-	[[nodiscard]] DelimitedParser &get_delimited () const {
-		return dp_delimited;
+	explicit LoopParser (Parser &parser) : p_parser(parser) {
 	}
 
 	LoopBody parseLoopBody (const Token &keyword, bool allowWhileTrailer = false) const;
 
-    private:
-	Parser          &p_parser;
-	DelimitedParser &dp_delimited;
+    protected:
+	Parser &p_parser;
 };
 
 }

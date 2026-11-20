@@ -83,9 +83,9 @@ class Parser {
 	ExpressionParser  p_expressionParser{ *this };
 	TypeParser        p_typeParser{ *this };
 	DelimitedParser   p_delimitedParser{ *this };
-	ForLoopParser     p_forLoopParser{ *this, p_delimitedParser };
-	WhileLoopParser   p_whileLoopParser{ *this, p_delimitedParser };
-	DoWhileLoopParser p_doWhileLoopParser{ *this, p_delimitedParser };
+	ForLoopParser     p_forLoopParser{ *this };
+	WhileLoopParser   p_whileLoopParser{ *this };
+	DoWhileLoopParser p_doWhileLoopParser{ *this };
 	FunctionParser    p_functionParser{ *this };
 	IfParser          p_ifParser{ *this };
 	BindingsParser    p_bindingParser{ *this };

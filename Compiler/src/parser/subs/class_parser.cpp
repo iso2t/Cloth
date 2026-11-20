@@ -145,28 +145,22 @@ std::vector<ClassMember> ClassParser::parseMembers (const Token &owner, std::vec
 
 ClassMember ClassParser::parseMember (const Token &owner) const {
 	std::optional<InitialStatePrefix> opt_initial;
-	std::optional<Keyword>            opt_methodPrefix;
 	if (p_parser.atKeyword(kDefault)) {
 		opt_initial = parseInitialState();
-	} else if (p_parser.atKeyword(kOverride)) {
-		opt_methodPrefix = kOverride;
-	} else if (p_parser.atKeyword(kVirtual)) {
-		opt_methodPrefix = kVirtual;
-	}
-	std::optional<TokenSpan> opt_prefixSpan;
-	if (opt_methodPrefix) {
-		const Token t_prefix = p_parser.advance();
-		opt_prefixSpan       = TokenSpan::span_through(t_prefix.get_span(), p_parser.expect(oColon).get_span());
-		p_parser.skipNewLines();
 	}
 	std::optional<Token> opt_visibility = p_parser.parseVisibility();
 	if (opt_initial && !p_parser.atKeyword(kState)) {
 		throw cde::SyntaxErrors::expected(std::format("a state declaration or attachment after '{}{}'", to_string(kDefault), to_string(oColon)),
 		                                  p_parser.peek());
 	}
-	if (opt_methodPrefix && !p_parser.atKeyword(kMt)) {
-		throw cde::SyntaxErrors::expected(
-		        std::format("a '{}' declaration after '{}{}'", to_string(kMt), to_string(*opt_methodPrefix), to_string(oColon)), p_parser.peek());
+	std::optional<TokenSpan> opt_virtual, opt_override;
+	if (p_parser.atKeyword(kVirtual)) {
+		opt_virtual = p_parser.advance().get_span();
+	} else if (p_parser.atKeyword(kOverride)) {
+		opt_override = p_parser.advance().get_span();
+	}
+	if ((opt_override || opt_virtual) && !p_parser.atKeyword(kMt)) {
+		throw cde::SyntaxErrors::expected(std::format("a '{}' declaration after the method modifier", to_string(kMt)), p_parser.peek());
 	}
 	if (p_parser.atKeyword(kFn)) {
 		throw cde::SyntaxErrors::functionInType(p_parser.peek());
@@ -175,8 +169,7 @@ ClassMember ClassParser::parseMember (const Token &owner) const {
 		return { parseField(std::move(opt_visibility)) };
 	}
 	if (p_parser.atKeyword(kMt)) {
-		return { p_parser.p_functionParser.parseMethod(std::move(opt_visibility), opt_methodPrefix == kOverride ? opt_prefixSpan : std::nullopt,
-			                                       opt_methodPrefix == kVirtual ? opt_prefixSpan : std::nullopt,
+		return { p_parser.p_functionParser.parseMethod(std::move(opt_visibility), opt_override, opt_virtual,
 			                                       /*allowIntrinsic=*/true, /*allowTypeParameters=*/true) };
 	}
 	if (p_parser.atKeyword(kOperator)) {

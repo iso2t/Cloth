@@ -88,7 +88,7 @@
 # RUN: echo 'pub typedef<class> OwningList { mt check() = intrinsic "collections.ownership.check_mutation" }' > "%t/library/cloth/collections/OwningList.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=CONCRETE --input-file "%t.err"
-# RUN: echo 'pub final typedef<class> OwningList { virtual: mt check() = intrinsic "collections.ownership.check_mutation" }' > "%t/library/cloth/collections/OwningList.co"
+# RUN: echo 'pub final typedef<class> OwningList { virtual mt check() = intrinsic "collections.ownership.check_mutation" }' > "%t/library/cloth/collections/OwningList.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=CONCRETE --input-file "%t.err"
 

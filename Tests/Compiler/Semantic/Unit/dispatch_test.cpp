@@ -84,6 +84,31 @@ fn<int> reader(Reader item) = item.read()
 	}
 }
 
+TEST (SemanticDispatch, RequiresOverrideToReplaceAnInterfaceDefault) {
+	const std::string s_abstract = "typedef<interface> Readable { pub mt<int> read() }\n";
+	const std::string s_default  = "typedef<interface> Readable { pub mt<int> read() = default (1) }\n";
+	const std::string s_plain    = "typedef<class> Reader : Readable { pub mt<int> read() = 2 }\n";
+	const std::string s_override = "typedef<class> Reader : Readable { pub override mt<int> read() = 2 }\n";
+
+	for (const std::string &s_declarations : { s_abstract + s_plain, s_abstract + s_override, s_default + s_override }) {
+		SCOPED_TRACE(s_declarations);
+		const CheckedProgram  cp_program = checkSource(s_declarations + R"(fn<int> through(Readable item) = item.read()
+fn<int> use(Reader item) = through(item)
+)");
+		const ExpressionInfo &ei_call    = callIn(cp_program, "through");
+		ASSERT_TRUE(ei_call.dispatch);
+		EXPECT_EQ(ei_call.dispatch->kind, DispatchKind::Interface);
+
+		const TypeDispatch &td_reader = tableFor(cp_program, "use");
+		ASSERT_EQ(td_reader.interfaceTargets.size(), 1u);
+		const InterfaceTarget &it_read = td_reader.interfaceTargets.front();
+		EXPECT_EQ(it_read.contract, ei_call.dispatch->contract);
+		EXPECT_EQ(it_read.contract.symbol, &global(cp_program, "Readable").members.at("read").front());
+		EXPECT_EQ(it_read.implementation.symbol, &global(cp_program, "Reader").members.at("read").front());
+	}
+	expectError(s_default + s_plain, Code::INVALID_INTERFACE_OVERRIDE);
+}
+
 TEST (SemanticDispatch, ResolvesIndependentDefaultsWithAnExplicitClassImplementation) {
 	const std::string s_interfaces = R"(typedef<interface> A { pub mt<int> pick() = default (1) }
 typedef<interface> B { pub mt<int> pick() = default (2) }
@@ -92,7 +117,7 @@ typedef<interface> B { pub mt<int> pick() = default (2) }
 		const std::string s_class = s_interfaces + "typedef<class> C : " + s_parents;
 		expectError(s_class + " {}", Code::CONFLICTING_INTERFACE_DEFAULTS);
 		expectError(s_class + " { pub mt<int> pick() = 3 }", Code::INVALID_INTERFACE_OVERRIDE);
-		const CheckedProgram cp_program = checkSource(s_class + " { override: pub mt<int> pick() = 3 }\nfn<int> read(C item) = item.pick()");
+		const CheckedProgram cp_program = checkSource(s_class + " { pub override mt<int> pick() = 3 }\nfn<int> read(C item) = item.pick()");
 		const TypeDispatch  &td_class   = tableFor(cp_program, "read");
 		ASSERT_EQ(td_class.interfaceTargets.size(), 2u);
 		for (const InterfaceTarget &it_target : td_class.interfaceTargets)
@@ -109,7 +134,7 @@ typedef<interface> B { pub mt<int> pick() = default (2) }
 
 TEST (SemanticDispatch, SelectsPublicInterfaceImplementationsDeclaredOrInheritedByTheClass) {
 	const CheckedProgram cp_program   = checkSource(R"(typedef<interface> Readable { pub mt<int> read() }
-typedef<class> Direct : Readable { override: pub mt<int> read() = 1 }
+typedef<class> Direct : Readable { pub override mt<int> read() = 1 }
 typedef<class> Base(int n) {
     pub Base() : (0) {}
     pub mt<int> read() = 2
@@ -158,7 +183,7 @@ fn<int> run(I i) = i.visible()
 	            Code::INCOMPATIBLE_INTERFACE_REQUIREMENT);
 	expectError(R"(typedef<interface> A { pub mt<T> make<T: new(int x)>() }
 typedef<interface> B { pub mt<U> make<U: new(int y)>() }
-typedef<class> C : A, B { override: pub mt<V> make<V>() = V::new(1) }
+typedef<class> C : A, B { pub override mt<V> make<V>() = V::new(1) }
 )",
 	            Code::INCOMPATIBLE_INTERFACE_REQUIREMENT);
 }
@@ -167,11 +192,11 @@ TEST (SemanticDispatch, PreservesTheRootVirtualContractAcrossThreeClassLevels) {
 	const CheckedProgram cp_program = checkSource(R"(typedef<class> Leaf : Mid {}
 typedef<class> Mid(int seed) : Base {
     pub Mid() : (0) {}
-    override: pub mt<int, bool> read(int renamed) = renamed, true
+    pub override mt<int, bool> read(int renamed) = renamed, true
 }
 typedef<class> Base(int seed) {
     pub Base() : (0) {}
-    virtual: pub mt<int, bool> read(opt<int> count ?: 2) = count, false
+    pub virtual mt<int, bool> read(opt<int> count ?: 2) = count, false
 }
 fn<int, bool> base(Base item) = item.read()
 fn<int, bool> leaf(Leaf item) = item.read(count=3)
@@ -189,12 +214,13 @@ fn<int, bool> leaf(Leaf item) = item.read(count=3)
 	ASSERT_TRUE(td_leaf.methods.front().implementation);
 	EXPECT_EQ(td_leaf.methods.front().implementation->owner.declaration, &global(cp_program, "Mid"));
 	EXPECT_EQ(td_leaf.methods.front().contract.owner.declaration, &global(cp_program, "Base"));
-	const std::string s_base = "typedef<class> A { virtual: pub mt<int, bool> go(int n) = n, true }\ntypedef<class> B : A { ";
-	for (const char *s_bad : { "pub mt<int, bool> go(int n) = n, true", "override: mt<int, bool> go(int n) = n, true",
-	                           "override: pub mt<bool, int> go(int n) = true, n", "override: pub mt<int, bool> go(opt<int> n ?: 7) = n, true" }) {
+	const std::string s_base = "typedef<class> A { pub virtual mt<int, bool> go(int n) = n, true }\ntypedef<class> B : A { ";
+	for (const char *s_bad : { "pub mt<int, bool> go(int n) = n, true", "override mt<int, bool> go(int n) = n, true",
+	                           "pub override mt<bool, int> go(int n) = true, n", "pub override mt<int, bool> go(opt<int> n ?: 7) = n, true" }) {
 		expectError(s_base + s_bad + " }", Code::INVALID_VIRTUAL_METHOD);
 	}
-	expectError(s_base + "override: pub mt<int, bool> go(bool n) = 1, n }", Code::INVALID_INTERFACE_OVERRIDE);
+	expectError(s_base + "pub override mt<int, bool> go(bool n) = 1, n }", Code::INVALID_INTERFACE_OVERRIDE);
+	expectError("typedef<class> C { virtual mt f() {} }", Code::INVALID_VIRTUAL_METHOD);
 }
 
 TEST (SemanticDispatch, ResolvesStateContractsSelectionsAndOverloadsOnTheHost) {
@@ -279,13 +305,13 @@ TEST (SemanticDispatch, MaterializesGenericImplementationsSelectedThroughStaticC
 	const CheckedProgram                                            cp_program = checkSource(R"(typedef<interface> I { pub mt<V> echo<V>(V label) }
 typedef<class> Base(int seed) {
     pub Base() : (0) {}
-    virtual: pub mt<X> get<X>(X value) = value
+    pub virtual mt<X> get<X>(X value) = value
     pub state<T> ::read<T>(T item)
     default: state<void> Ready { mt<U> read<U>(U renamed) = renamed }
 }
 typedef<class> Child<A> : Base, I {
-    override: pub mt<B> echo<B>(B own) = own
-    override: pub mt<Y> get<Y>(Y name) = name
+    pub override mt<B> echo<B>(B own) = own
+    pub override mt<Y> get<Y>(Y name) = name
     default: state<void> Busy { mt<W> read<W>(W other) = other }
 }
 fn<bool> face(I item) = item.echo<bool>(label=true)
@@ -312,13 +338,13 @@ typedef<state<void>> Shared for Host {
     pub mt<int> idFromHost() = self.id()
 }
 typedef<class> A : Host {
-    override: pub mt<int> id() = 1
+    pub override mt<int> id() = 1
     default: state Shared
     pub state<void> Ready {}
 }
 )";
 	const CheckedProgram cp_program = checkSource(s_decls + R"(typedef<class> B<T> : Host {
-    override: pub mt<int> id() = 2
+    pub override mt<int> id() = 2
     default: state Shared
     pub state<int> Ready {}
 }
@@ -335,7 +361,7 @@ fn<bool> b(B<int> item) = item::ready()
 	const GenericInstance &gi_b = cp_program.instances.at({ &sym_query, rt_b, {} });
 	EXPECT_EQ(gi_b.body.expressions.at(&bodyExpression(sym_query)).symbol, &global(cp_program, "B").members.at("Ready").front());
 	EXPECT_EQ(cp_program.dispatchTables.at(rt_b).states.at("Shared").definition, &sym_shared);
-	expectError(s_decls + "typedef<class> Bad : Host { override: pub mt<int> id() = 3; default: state Shared }", Code::INVALID_STATE_TARGET);
+	expectError(s_decls + "typedef<class> Bad : Host { pub override mt<int> id() = 3; default: state Shared }", Code::INVALID_STATE_TARGET);
 	expectError(
 	        "typedef<class> Host { def<int> hidden = 1; default: state Shared }\ntypedef<state<void>> Shared for Host { pub mt<int> bad() = self.hidden }",
 	        Code::PRIVATE_CLASS_MEMBER);
@@ -353,15 +379,15 @@ TEST (SemanticDispatch, ChecksEveryPublicSignatureIncludingBoundsAndInferredStat
 
 TEST (SemanticDispatch, InheritsGenericMethodBoundsAndConstructorGuarantees) {
 	const CheckedProgram   cp_program = checkSource(R"(typedef<interface> Label { pub mt<int> read() }
-typedef<class> Value : Label { override: pub mt<int> read() = 5 }
+typedef<class> Value : Label { pub override mt<int> read() = 5 }
 typedef<class> Base(int seed) {
     pub Base() : (0) {}
-    virtual: pub mt<int> describe<T: Label>(T value) = value.read()
-    virtual: pub mt<T> make<T: new(int count)>(int value) = T::new(count=value)
+    pub virtual mt<int> describe<T: Label>(T value) = value.read()
+    pub virtual mt<T> make<T: new(int count)>(int value) = T::new(count=value)
 }
 typedef<class> Child : Base {
-    override: pub mt<int> describe<U>(U item) = item.read()
-    override: pub mt<R> make<R>(int item) = R::new(count=item)
+    pub override mt<int> describe<U>(U item) = item.read()
+    pub override mt<R> make<R>(int item) = R::new(count=item)
 }
 typedef<class> Product { pub Product(int renamed) : () {} }
 fn<int> describe(Base item, Value value) = item.describe(value)

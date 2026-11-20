@@ -4,8 +4,8 @@ typedef<struct> Slot<T> { pub T value }
 pub typedef<struct> Snapshot<T> {
     Slot<T>[] slots;
     pub mt<Snapshot<T>> copyOf(T[] values) {
-        def<Snapshot<T>> result = { [] }
-        def<usize> index = 0
+        Snapshot<T> result = { [] }
+        usize index = 0
         while (index < values::size) {
             result.slots.append({ values[index] })
             index += 1

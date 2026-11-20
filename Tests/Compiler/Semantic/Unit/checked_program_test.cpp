@@ -95,10 +95,10 @@ fn<int?> omitted() = maybe()
 TEST (SemanticChecking, UsesTheStaticParameterContractForMethodsAndConstruction) {
 	const CheckedProgram  cp_program = checkSource(R"(typedef<class> Base {
     pub Base(opt<int> n ?: 1) : () {}
-    virtual: pub mt<int> read(opt<int> count ?: 2) = count
+    pub virtual mt<int> read(opt<int> count ?: 2) = count
 }
 typedef<class> Child : Base() {
-    override: pub mt<int> read(int renamed) = renamed
+    pub override mt<int> read(int renamed) = renamed
 }
 fn<int> derived(Child child) = child.read()
 fn<int> labeled(Child child) = child.read(count = 7)
@@ -131,8 +131,8 @@ TEST (SemanticChecking, ChecksDefaultsEvenWhenEveryCallSuppliesTheArgument) {
 	expectError("fn f(opt<int> n ?: caller) {}\nfn test(int caller) = f()", Code::UNKNOWN_NAME);
 	expectError("fn f(opt<int> n ?: if (true) { return 1 } else { 2 }) {}", Code::INVALID_PARAMETER_DEFAULT);
 	expectError("fn f(int[] n, opt<int> x ?: if (true) { n[0] = 1\n n[0] } else { 0 }) {}", Code::INVALID_PARAMETER_DEFAULT);
-	expectError("fn f(int n, opt<int> x ?: if (true) { def<int> edit = { n++\n return n }\n edit } else { 0 }) {}", Code::INVALID_PARAMETER_DEFAULT);
-	EXPECT_NO_THROW(checkSource("fn f(int n, opt<int> x ?: if (true) { def<int> read = { return n }\n read } else { 0 }) { n++ }"));
+	expectError("fn f(int n, opt<int> x ?: if (true) { int edit = { n++\n return n }\n edit } else { 0 }) {}", Code::INVALID_PARAMETER_DEFAULT);
+	EXPECT_NO_THROW(checkSource("fn f(int n, opt<int> x ?: if (true) { int read = { return n }\n read } else { 0 }) { n++ }"));
 	expectError("fn f(opt<int> n ?: 1, int required) {}\nfn use() = f()", Code::INVALID_ARGUMENT_BINDING);
 	expectError("fn<int> f(int<8> x) = 1\nfn<int, bool> f(int<64> x, opt<bool> flag ?: true) = 2, flag\nfn<int> use() = f(1)", Code::AMBIGUOUS_CALL);
 }
@@ -222,7 +222,7 @@ TEST (SemanticChecking, ChecksArityAndEveryResultSlotEvenAfterAnExit) {
 	expectError("fn f(bool b) = if (b) { 1, true } else { 2, false }", Code::VALUE_IN_VOID);
 	expectError("fn noop() {}\nfn f() { def a, b = noop() }", Code::VOID_VALUE);
 	expectError("fn<int, bool> pair() = 1, true\nfn f() { def x = pair() }", Code::MULTIPLE_RESULTS_IN_SCALAR);
-	EXPECT_NO_THROW(checkSource("fn<int> f(bool flag) { def<int, int> a, b = if (flag) { return 1 } else { return 2 }\n return a + b }"));
+	EXPECT_NO_THROW(checkSource("fn<int> f(bool flag) { int a, int b = if (flag) { return 1 } else { return 2 }\n return a + b }"));
 	EXPECT_NO_THROW(checkSource("fn<int> f(bool flag, int x) { x = if (flag) { return 1 } else { return 2 } }"));
 }
 
@@ -330,7 +330,7 @@ TEST (SemanticChecking, ChecksBodiesScopesAssignmentsAndAllReturnPaths) {
 	using Code = cde::DiagnosticCode;
 	EXPECT_NO_THROW(checkSource(R"(fn<int,int> pair(int x) = x,x
 fn<int> run(int n) {
-    def<int,int> a,b = pair(n)
+    int a, int b = pair(n)
     if (a > 0) { return b } else { return a }
 }
 )"));
@@ -340,7 +340,7 @@ fn<int> run(int n) {
 	expectError("fn run() { if (true) { def x = 1 }\ndef y = x }", Code::UNKNOWN_NAME);
 	expectError("fn run(final int x) { x = 2 }", Code::IMMUTABLE_BINDING);
 	expectError("fn run() { def x := 1\nx++ }", Code::IMMUTABLE_BINDING);
-	expectError("fn run() { def<int> x = true }", Code::TYPE_MISMATCH);
+	expectError("fn run() { int x = true }", Code::TYPE_MISMATCH);
 	expectError("fn run() { if (1) {} }", Code::NON_BOOLEAN_CONDITION);
 	expectError("fn run() { break }", Code::INVALID_LOOP_JUMP);
 	expectError("fn<Missing> run() = 1", Code::UNSUPPORTED_TYPE);
@@ -349,12 +349,12 @@ fn<int> run(int n) {
 TEST (SemanticChecking, ChecksDeferredReturnsAndProducesNoValueForVoidReads) {
 	const CheckedProgram       cp_program = checkSource(R"(fn cleanup() {}
 fn use(bool early) {
-    def<void> later := { if (early) return; return cleanup() }
+    void later := { if (early) return; return cleanup() }
     later
     return later
 }
-fn<int> typed() { def<int> later = { return 3 }; return later }
-fn empty() { def<void> first, second = {}; first; second }
+fn<int> typed() { int later = { return 3 }; return later }
+fn empty() { void first, second = {}; first; second }
 )");
 	const Symbol              &sym_use    = cp_program.units.front()->get_globals().at("use").front();
 	const CallableSignature   &cs_use     = *std::get<const CallableSignature *>(sym_use.declaration);
@@ -372,30 +372,30 @@ fn empty() { def<void> first, second = {}; first; second }
 
 	using Code = cde::DiagnosticCode;
 	expectError("fn use() { def later = { return 1 } }", Code::BLOCK_RETURN_TYPE_REQUIRED);
-	expectError("fn use() { def<void> later = { return 1 } }", Code::VALUE_IN_VOID);
-	expectError("fn use() { def<int> later = { return } }", Code::RETURN_VALUE_REQUIRED);
-	expectError("fn use() { def<int> later = {} }", Code::MISSING_RETURN);
-	expectError("fn<int> use() { def<void> later = { return }; later }", Code::MISSING_RETURN);
-	expectError("fn use() { def<void> later = {}; def value = later }", Code::VOID_VALUE);
-	expectError("fn take(int n) {}\nfn use() { def<void> later = {}; take(later) }", Code::NO_MATCHING_CALL);
+	expectError("fn use() { void later = { return 1 } }", Code::VALUE_IN_VOID);
+	expectError("fn use() { int later = { return } }", Code::RETURN_VALUE_REQUIRED);
+	expectError("fn use() { int later = {} }", Code::MISSING_RETURN);
+	expectError("fn<int> use() { void later = { return }; later }", Code::MISSING_RETURN);
+	expectError("fn use() { void later = {}; def value = later }", Code::VOID_VALUE);
+	expectError("fn take(int n) {}\nfn use() { void later = {}; take(later) }", Code::NO_MATCHING_CALL);
 	for (const std::string s_use : { "later()", "later(1)", "later<int>()" })
-		expectError("fn use() { def<int> later = { return 1 }; " + s_use + " }", Code::NOT_CALLABLE);
+		expectError("fn use() { int later = { return 1 }; " + s_use + " }", Code::NOT_CALLABLE);
 	for (const std::string s_write : { "later = 1", "later += 1", "later++", "other, later = 2, 1" })
-		expectError("fn use(int other) { def<int> later = { return 1 }; " + s_write + " }", Code::BLOCK_ASSIGNMENT);
+		expectError("fn use(int other) { int later = { return 1 }; " + s_write + " }", Code::BLOCK_ASSIGNMENT);
 }
 
 TEST (SemanticChecking, AppliesDeferredWritesOnlyWhenTheBindingIsRead) {
-	const std::string s_source = "fn<usize> use(string? text) { if (text == null) return 0; def<void> clear = { text = null }; ";
+	const std::string s_source = "fn<usize> use(string? text) { if (text == null) return 0; void clear = { text = null }; ";
 	EXPECT_NO_THROW(checkSource(s_source + "return text::size }"));
 	expectError(s_source + "clear; return text::size }", cde::DiagnosticCode::NULLABLE_PAYLOAD_ACCESS);
 	const std::string s_delete = "typedef<class> Item { pub def<int> value = 1 }\n"
-	                             "fn<int> use(Item item) { def<void> destroy = { item::delete }; ";
+	                             "fn<int> use(Item item) { void destroy = { item::delete }; ";
 	EXPECT_NO_THROW(checkSource(s_delete + "return item.value }"));
 	expectError(s_delete + "destroy; return item.value }", cde::DiagnosticCode::DELETED_CLASS_ACCESS);
 }
 
 TEST (SemanticChecking, RecordsEachNamedDeferredResultByPosition) {
-	const CheckedProgram           cp_program  = checkSource("fn<bool,int> f(){def<int,string,bool> n,_,ok={return 1,\"value\",true};return ok,n}");
+	const CheckedProgram           cp_program  = checkSource("fn<bool,int> f(){int n, string _, bool ok={return 1,\"value\",true};return ok,n}");
 	const CallableSignature       &cs_function = *std::get<const CallableSignature *>(cp_program.units.front()->get_globals().at("f").front().declaration);
 	const BlockBody               &bb_body     = std::get<BlockBody>(cs_function.executableBody()->value);
 	const BindingGroupDeclaration &bg_group    = dynamic_cast<const BindingGroupDeclaration &>(*bb_body.statements.at(0));
@@ -413,19 +413,19 @@ TEST (SemanticChecking, RecordsEachNamedDeferredResultByPosition) {
 	EXPECT_EQ(cp_program.localTypes.at(&t_number), ResolvedType(kInteger));
 	EXPECT_EQ(cp_program.localTypes.at(&t_flag), ResolvedType(kBoolean));
 	using Code = cde::DiagnosticCode;
-	expectError("fn f(){def<int,bool> a,b={return 1,true};b=false}", Code::BLOCK_ASSIGNMENT);
-	expectError("fn f(){def<int,bool> a,b={return true,1}}", Code::RETURN_TYPE);
-	EXPECT_NO_THROW(checkSource("fn f(){def<int,bool> a,b=1,true;b=false}"));
+	expectError("fn f(){int a, bool b={return 1,true};b=false}", Code::BLOCK_ASSIGNMENT);
+	expectError("fn f(){int a, bool b={return true,1}}", Code::RETURN_TYPE);
+	EXPECT_NO_THROW(checkSource("fn f(){int a, bool b=1,true;b=false}"));
 }
 
 TEST (SemanticChecking, AppliesGroupedDeferredWritesOnEveryRead) {
 	using Code                 = cde::DiagnosticCode;
-	const std::string s_source = "fn<usize> use(string? text){if(text==null)return 0\ndef<int,bool> a,b={text=null;return 1,true}\n";
+	const std::string s_source = "fn<usize> use(string? text){if(text==null)return 0\nint a, bool b={text=null;return 1,true}\n";
 	EXPECT_NO_THROW(checkSource(s_source + "return text::size}"));
 	for (const std::string s_reads : { "a", "b", "a;text=\"restored\";a", "a;text=\"restored\";b" })
 		expectError(s_source + s_reads + ";return text::size}", Code::NULLABLE_PAYLOAD_ACCESS);
-	expectError(s_source + "def<void> nested={b};nested;return text::size}", Code::NULLABLE_PAYLOAD_ACCESS);
-	const std::string s_loop = "fn<usize> use(string? text,bool again){if(text==null)return 0\nwhile(again){def<int,bool> _,b={text=null;return 1,true}\n";
+	expectError(s_source + "void nested={b};nested;return text::size}", Code::NULLABLE_PAYLOAD_ACCESS);
+	const std::string s_loop = "fn<usize> use(string? text,bool again){if(text==null)return 0\nwhile(again){int _, bool b={text=null;return 1,true}\n";
 	EXPECT_NO_THROW(checkSource(s_loop + "}\nreturn text::size}"));
 	expectError(s_loop + "b}\nreturn text::size}", Code::NULLABLE_PAYLOAD_ACCESS);
 }
@@ -433,15 +433,14 @@ TEST (SemanticChecking, AppliesGroupedDeferredWritesOnEveryRead) {
 TEST (SemanticChecking, TracksOwnershipOfTheSelectedDeferredResult) {
 	using Code                   = cde::DiagnosticCode;
 	const std::string s_function = "typedef<class> Item {pub def<int> value=1}\nfn<int> use(Item x,Item y){";
-	const std::string s_pair     = s_function + "def<Item,Item> a,b={return x,y};";
+	const std::string s_pair     = s_function + "Item a, Item b={return x,y};";
 	expectError(s_pair + "b::delete;return y.value}", Code::DELETED_CLASS_ACCESS);
 	EXPECT_NO_THROW(checkSource(s_pair + "b::delete;return x.value}"));
 	expectError(s_pair + "b;y=x;b::delete;return x.value}", Code::DELETED_CLASS_ACCESS);
-	const std::string s_delete = s_function + "def<int,bool> a,b={x::delete;return 1,true};";
+	const std::string s_delete = s_function + "int a, bool b={x::delete;return 1,true};";
 	EXPECT_NO_THROW(checkSource(s_delete + "return x.value}"));
 	expectError(s_delete + "b;return x.value}", Code::DELETED_CLASS_ACCESS);
-	expectError(s_function + "def<int> destroy={x::delete;return 1};def<int,bool> _,ok={return destroy,true};ok;return x.value}",
-	            Code::DELETED_CLASS_ACCESS);
+	expectError(s_function + "int destroy={x::delete;return 1};int _, bool ok={return destroy,true};ok;return x.value}", Code::DELETED_CLASS_ACCESS);
 }
 
 TEST (SemanticChecking, EnforcesMemberVisibilityAndSpecializesReceiverTypes) {
@@ -532,7 +531,7 @@ TEST (SemanticChecking, ResolvesBodyNamesInDeclarationOrderBeforeCheckingOperand
 	                       { { "1:38-1:39", "first declared here" }, { "1:46-1:47", "declared again here" } });
 	expectDiagnosticLabels("fn f(final int n){n=missing}", Code::IMMUTABLE_BINDING, "Cannot reassign final parameter 'n'",
 	                       { { "1:16-1:17", "final parameter declared here" }, { "1:19-1:20", "reassigned here" } });
-	expectError("fn z(){true+false}\nfn a(){def<bool> x=0}", Code::BINARY_OPERANDS);
+	expectError("fn z(){true+false}\nfn a(){bool x=0}", Code::BINARY_OPERANDS);
 	expectError("fn f(){println<int>(missing)}", Code::GENERIC_ARITY);
 	expectError("fn f(int n){n.absent(x=other,x=2)}", Code::UNKNOWN_NAME);
 	expectError("typedef<class> C {pub mt f(){self.absent(x=other,x=2)}}", Code::UNKNOWN_MEMBER);
@@ -577,13 +576,13 @@ TEST (SemanticChecking, DistinguishesPrivateInterfaceOverridesFromInheritedPriva
 	const std::string s_interface       = "typedef<interface> Readable { pub mt<int> read() }\n";
 	const std::string s_privateOverride = s_interface + R"(typedef<class> Base(int n) : Readable {
     pub Base() : (0) {}
-    override: mt<int> read() = 1
+    override mt<int> read() = 1
 }
 )";
 	const std::string s_child           = "typedef<interface> Other { pub mt<int> read() }\ntypedef<class> Child : Base(), Other {}";
 	const std::string s_invalid         = "Interface implementation requires pub and matching ordered result types";
 	for (const std::string &s_source : { s_privateOverride, s_privateOverride + s_child }) {
-		expectDiagnosticLabels(s_source, Code::INVALID_INTERFACE_OVERRIDE, s_invalid, { { "4:23-4:27", s_invalid }, { "1:43-1:47", "declared here" } });
+		expectDiagnosticLabels(s_source, Code::INVALID_INTERFACE_OVERRIDE, s_invalid, { { "4:22-4:26", s_invalid }, { "1:43-1:47", "declared here" } });
 	}
 
 	const std::string s_missing = "Missing implementation of 'read'";
@@ -599,10 +598,10 @@ TEST (SemanticChecking, ChecksInheritedOverloadsAndGenericBounds) {
 	EXPECT_NO_THROW(checkSource(R"(typedef<interface> Readable { pub mt<int> read() }
 typedef<class> Base(int seed) : Readable {
     pub Base() : (0) {}
-    virtual: pub mt<int> read() = 1
+    pub virtual mt<int> read() = 1
     pub mt<int> read(int x) = x
 }
-typedef<class> Derived : Base { override: pub mt<int> read() = 2 }
+typedef<class> Derived : Base { pub override mt<int> read() = 2 }
 fn<int> through<T: Readable>(T x) = x.read()
 fn<int> check(Derived d) = through(d) + d.read(3) + d.read()
 )"));
@@ -712,7 +711,7 @@ TEST (SemanticChecking, RestrictsUsesOfTheInstanceDuringFieldInitialization) {
 	EXPECT_NO_THROW(checkSource(R"(typedef<class> C {
     default: state<void> Ready {}
     def<bool> ready = self is Ready
-    def<int> first = if (true) { def<int> local := { return 1 }; local } else { 0 }
+    def<int> first = if (true) { int local := { return 1 }; local } else { 0 }
 }
 )"));
 }
@@ -753,7 +752,7 @@ fn<Cell<int>> factory() = construct<Cell<int>>(5)
 
 TEST (SemanticChecking, ChecksGroupedBindingsAndTheirDeclaredTypes) {
 	EXPECT_NO_THROW(checkSource(R"(fn<int> private() {
-    def<int<8>> a,b = 1
+    int<8> a,b = 1
     a,b = 2
     def x, y = a, b
     while (true) {
@@ -762,8 +761,8 @@ TEST (SemanticChecking, ChecksGroupedBindingsAndTheirDeclaredTypes) {
     }
 }
 )"));
-	expectError("fn run() { def<int,int> a,b = 1 }", cde::DiagnosticCode::RECEPTION_ANNOTATIONS);
-	expectError("fn run() { def<int> a,b = 1, 2 }", cde::DiagnosticCode::RECEPTION_ANNOTATIONS);
+	expectError("fn run() { int a, int b = 1 }", cde::DiagnosticCode::RECEPTION_ANNOTATIONS);
+	expectError("fn run() { int a,b = 1, 2 }", cde::DiagnosticCode::RECEPTION_ANNOTATIONS);
 }
 
 }

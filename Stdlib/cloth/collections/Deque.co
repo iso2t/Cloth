@@ -33,34 +33,34 @@ pub typedef<class> Deque<T>(def<DequeSide<T>[2]> sides) {
     }
 
     mt<T> peekSide(usize end) {
-        def<usize> count = sides[end].items::size
+        usize count = sides[end].items::size
         if (count != 0) {
-            def<usize> index = count - 1
+            usize index = count - 1
             return sides[end].items[index].value
         }
-        def<usize> opposite = 1 - end
+        usize opposite = 1 - end
         return sides[opposite].items[0].value
     }
 
     mt<T> popSide(usize end) {
         if (sides[end].items::size == 0) refill(end)
-        def<usize> count = sides[end].items::size
+        usize count = sides[end].items::size
         // Index zero of an empty side follows the ordinary bounds error path.
-        def<usize> index = 0
+        usize index = 0
         if (count != 0) index = count - 1
-        def<DequeSlot<T>> removed = sides[end].items.removeAt(index)
+        DequeSlot<T> removed = sides[end].items.removeAt(index)
         return removed.value
     }
 
     mt refill(usize end) {
-        def<usize> opposite = 1 - end
-        def<usize> count = sides[opposite].items::size
+        usize opposite = 1 - end
+        usize count = sides[opposite].items::size
         if (count == 0) return
 
         // Save the outer half, reverse the inner half onto the empty side,
         // then restore the saved half. Only tail operations touch either side.
-        def<DequeSlot<T>[]> saved = []
-        def<usize> keep = count / 2
+        DequeSlot<T>[] saved = []
+        usize keep = count / 2
         saved.reserve(keep)
         while (saved::size < keep) {
             saved.append(sides[opposite].items.removeAt(sides[opposite].items::size - 1))

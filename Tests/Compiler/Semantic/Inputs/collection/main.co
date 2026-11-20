@@ -4,4 +4,4 @@ using cloth.collections.Snapshot : Snapshot
 typedef<class> Items<T>(def<Snapshot<T>> snapshot) {
     pub operator foreach() -> Snapshot<T> = snapshot
 }
-fn run(Items<int> items) { for (def item <- items) { def<int> copy = item } }
+fn run(Items<int> items) { for (def item <- items) { int copy = item } }

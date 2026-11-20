@@ -31,6 +31,10 @@ bool isPrimitiveType (std::string_view lexeme) {
 	return std::ranges::any_of(PRIMITIVE_TYPES, [lexeme] (const Keyword keyword) -> bool { return lexeme == to_string(keyword); });
 }
 
+bool isTypeName (const Token &token) {
+	return token.get_type() == TokenType::Identifier || (token.get_type() == TokenType::Keyword && isPrimitiveType(token.get_lexeme()));
+}
+
 bool touches (const Token &token, const Token &next) {
 	const TokenSpan ts_token = token.get_span();
 	const TokenSpan ts_next  = next.get_span();
@@ -247,8 +251,22 @@ bool TypeParser::startsQualifiedTypeCheck () const {
 	return at(oQuestion, i_offset);
 }
 
-int TypeParser::nameEnd () const {
-	int i_offset = 1;
+std::optional<int> TypeParser::typedTargetEnd (int start) const {
+	const int   i_name = p_parser.atKeyword(kUnsigned, start) ? start + 1 : start;
+	const Token t_name = p_parser.peek(i_name);
+	if (!isTypeName(t_name)) {
+		return std::nullopt;
+	}
+	const int                i_end      = t_name.get_type() == TokenType::Identifier ? nameEnd(i_name) : i_name + 1;
+	const std::optional<int> opt_target = at(oLess, i_end) ? applicationEnd(i_end) : suffixEnd(i_end);
+	if (!opt_target || !Parser::isReceivingTarget(p_parser.peek(*opt_target))) {
+		return std::nullopt;
+	}
+	return *opt_target + 1;
+}
+
+int TypeParser::nameEnd (const int start) const {
+	int i_offset = start + 1;
 	while (at(oDot, i_offset) && p_parser.peek(i_offset + 1).get_type() == TokenType::Identifier) {
 		i_offset += 2;
 	}
@@ -301,8 +319,7 @@ TypeReference TypeParser::parse (bool inCast, bool allowArrays) {
 }
 
 Token TypeParser::parseName () const {
-	if (const Token t_token = p_parser.peek();
-	    t_token.get_type() != TokenType::Identifier && !(t_token.get_type() == TokenType::Keyword && isPrimitiveType(t_token.get_lexeme()))) {
+	if (const Token t_token = p_parser.peek(); !isTypeName(t_token)) {
 		throw cde::SyntaxErrors::expected("a type name", t_token);
 	}
 	const Token t_first = p_parser.advance();

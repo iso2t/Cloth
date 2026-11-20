@@ -9,13 +9,9 @@ namespace cloth {
 
 class WhileLoopParser : public LoopParser {
     public:
-	WhileLoopParser (Parser &parser, DelimitedParser &delimited) : LoopParser(parser, delimited), p_parser(parser) {
-	}
+	using LoopParser::LoopParser;
 
 	WhileStatement parseWhile (bool allowWhileTrailer = false) const;
-
-    private:
-	Parser &p_parser;
 };
 
 }

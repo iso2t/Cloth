@@ -12,6 +12,6 @@ pub typedef<struct> Snapshot<T> {
 }
 
 pub fn<Snapshot<T>> emptySnapshot<T>() {
-    def<Snapshot.Factory> factory = {}
+    Snapshot.Factory factory = {}
     return factory.empty<T>()
 }

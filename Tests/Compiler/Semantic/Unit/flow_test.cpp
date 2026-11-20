@@ -43,7 +43,7 @@ const Expression &returned (const StatementPtr &stmt) {
 TEST (SemanticFlow, TracksDeletionThroughAliasesAndContinuingBranches) {
 	for (const char *s_body :
 	     { "def alias = item; item::delete; return alias.value", "if (flag) { item::delete } else { item::delete }; return item.value",
-	       "if (flag) return 0; item::delete; return item.value", "def<Item?> alias = item; item::delete; alias::delete; return 0",
+	       "if (flag) return 0; item::delete; return item.value", "Item? alias = item; item::delete; alias::delete; return 0",
 	       "def a, b = item; a::delete; return b.value", "def a, b = item, other; a, b = b, a; item::delete; return b.value",
 	       "if (flag) { item::delete } else { item = other; item::delete }; return item.value",
 	       "do { item::delete; break } while (true); return item.value", "do { item::delete; continue } while (false); return item.value" }) {
@@ -120,29 +120,29 @@ TEST (SemanticFlow, JoinsBreakContinueAndZeroTripPathsAtTheCorrectPoint) {
 
 TEST (SemanticFlow, ChecksLoopReadsAgainstWritesEvenOnUnreachablePaths) {
 	const std::string s_start = "fn f(bool? flag, bool? other) { if (flag != null) { ";
-	const std::string s_read  = "def<bool> plain = flag";
+	const std::string s_read  = "bool plain = flag";
 	for (const char *s_write : { "do flag = null while (false)", "if (false) flag = true", "break; flag = null", "flag, other = null, null",
-	                             "def<bool> clear = { flag = null; return true }; clear" }) {
+	                             "bool clear = { flag = null; return true }; clear" }) {
 		SCOPED_TRACE(s_write);
 		expectError(s_start + "while (false) { " + s_read + "; " + s_write + " } } }", Code::TYPE_MISMATCH);
 		expectError(s_start + "while (false) { " + s_write + " }; " + s_read + " } }", Code::TYPE_MISMATCH);
 	}
-	for (const char *s_write : { "other = null", "if (true) { def<bool?> flag = null; flag = null }", "def<bool> clear = { flag = null; return true }" }) {
+	for (const char *s_write : { "other = null", "if (true) { bool? flag = null; flag = null }", "bool clear = { flag = null; return true }" }) {
 		SCOPED_TRACE(s_write);
 		EXPECT_NO_THROW(checkSource(s_start + "while (false) { " + s_read + "; " + s_write + " }; " + s_read + " } }"));
 	}
 	const std::string s_cells = "typedef<struct> Cell { pub bool? flag }\nfn f(Cell[] cells, usize i) { if (cells[0].flag != null) { ";
-	expectError(s_cells + "while (false) { def<bool> plain = cells[0].flag; cells[i].flag = null } } }", Code::TYPE_MISMATCH);
-	EXPECT_NO_THROW(checkSource(s_cells + "while (false) { def<bool> plain = cells[0].flag; cells[1].flag = null } } }"));
-	expectError("fn f(bool? flag) { def<range<int>> clear = { flag = null; return 1..3 }; if (flag != null) { "
-	            "while (false) { def<bool> plain = flag; def<bool> member = 1 is clear } } }",
+	expectError(s_cells + "while (false) { bool plain = cells[0].flag; cells[i].flag = null } } }", Code::TYPE_MISMATCH);
+	EXPECT_NO_THROW(checkSource(s_cells + "while (false) { bool plain = cells[0].flag; cells[1].flag = null } } }"));
+	expectError("fn f(bool? flag) { range<int> clear = { flag = null; return 1..3 }; if (flag != null) { "
+	            "while (false) { bool plain = flag; bool member = 1 is clear } } }",
 	            Code::TYPE_MISMATCH);
 	const std::string s_do = s_start + "do { " + s_read + "; def bad = true + false; flag = null; ";
 	expectError(s_do + "continue } while (!true) } }", Code::BINARY_OPERANDS);
 	expectError(s_do + "break } while (true) } }", Code::BINARY_OPERANDS);
 	expectError(s_do + "continue } while (true) } }", Code::TYPE_MISMATCH);
 	expectError("typedef<class> Gate { pub operator &&(bool rhs) -> bool = true }\n"
-	            "fn f(Gate gate, bool? flag) { if (flag != null) { do { def<bool> plain = flag; flag = true } while (gate && false) } }",
+	            "fn f(Gate gate, bool? flag) { if (flag != null) { do { bool plain = flag; flag = true } while (gate && false) } }",
 	            Code::TYPE_MISMATCH);
 }
 
@@ -163,16 +163,16 @@ TEST (SemanticFlow, RequiresPresenceForBuiltinPostfixUpdates) {
 }
 
 TEST (SemanticFlow, RecordsLoopOverloadsAndGuardsSeparatelyFromReachableExits) {
-	const CheckedProgram    cp_program = checkSource(R"(fn<bool> pick(bool? value) = true
+	const CheckedProgram                                  cp_program   = checkSource(R"(fn<bool> pick(bool? value) = true
 fn<int> pick(bool value) = 1
 fn test(bool? flag) {
     if (flag == null) return
-    while (false) { def<bool> before = pick(flag); flag = null; return }
-    def<bool> after = pick(flag)
+    while (false) { bool before = pick(flag); flag = null; return }
+    bool after = pick(flag)
 }
-fn guarded(bool? flag) { while (flag != null && false) { def<int> present = pick(flag); flag = null; return } }
-fn once(bool? flag) { if (flag == null) return; do { def<int> present = pick(flag); flag = null; break } while (true) }
-fn repeats(bool? flag, bool again) { if (flag == null) return; do { def<bool> before = pick(flag); flag = true } while (again) }
+fn guarded(bool? flag) { while (flag != null && false) { int present = pick(flag); flag = null; return } }
+fn once(bool? flag) { if (flag == null) return; do { int present = pick(flag); flag = null; break } while (true) }
+fn repeats(bool? flag, bool again) { if (flag == null) return; do { bool before = pick(flag); flag = true } while (again) }
 )");
 	const BlockBody        &bb_test    = body(cp_program, "test");
 	const WhileStatement   &ws_never   = dynamic_cast<const WhileStatement &>(*bb_test.statements.at(1));
@@ -204,8 +204,8 @@ TEST (SemanticFlow, UsesBindingAndFieldIdentityAndInvalidatesResolvedWrites) {
 	expectError(s_fields + "fn<int> f(Box b, Box alias) { if (b.value == null) return 0; alias.value = null; return b.value + 1 }",
 	            Code::NULLABLE_PAYLOAD_ACCESS);
 	expectError(s_fields + "fn<int> f(Box b) { if (b.value == null) return 0; touch(b); return b.value }", Code::RETURN_TYPE);
-	EXPECT_NO_THROW(checkSource("fn f(bool flag, int? value) { if (value != null) { if (flag) { def<int?> value = null }; def v = value + 1 } }"));
-	expectError("fn<int> f(int? value) { def<int> clear = { value = null; return 1 }; if (value != null) { clear; return value }; return 0 }",
+	EXPECT_NO_THROW(checkSource("fn f(bool flag, int? value) { if (value != null) { if (flag) { int? value = null }; def v = value + 1 } }"));
+	expectError("fn<int> f(int? value) { int clear = { value = null; return 1 }; if (value != null) { clear; return value }; return 0 }",
 	            Code::RETURN_TYPE);
 	EXPECT_NO_THROW(checkSource("typedef<class> Base(int seed) { pub Base() : (0) {} }\ntypedef<class> Child : Base { pub mt<int> read() = 1 }\n"
 	                            "fn<int> test(Base? value) { if (value is Child) return value.read(); return 0 }"));
@@ -265,7 +265,7 @@ TEST (SemanticFlow, RevalidatesIndexedReceiversAcrossCallsAndResizes) {
 	const std::string s_read   = "; a.cells[0].rows.append(1) } }";
 	EXPECT_NO_THROW(checkSource(s_shared + "b.cells.reserve(8)" + s_read));
 	expectError(s_shared + "b.cells.clear()" + s_read, Code::NULLABLE_PAYLOAD_ACCESS);
-	const std::string s_deferred = s_cell + "fn f(Cell[] a, Cell replacement, usize i) { def<int> change = { ";
+	const std::string s_deferred = s_cell + "fn f(Cell[] a, Cell replacement, usize i) { int change = { ";
 	const std::string s_argument = " = replacement; return 1 }; if (a[0].rows != null) a[0].rows.append(change) }";
 	EXPECT_NO_THROW(checkSource(s_deferred + "a[1]" + s_argument));
 	expectError(s_deferred + "a[i]" + s_argument, Code::NULLABLE_PAYLOAD_ACCESS);
@@ -282,7 +282,7 @@ typedef<struct> Bag { pub Cell[] cells;
 TEST (SemanticFlow, CarriesPresenceThroughGuardsAndExitingFallbacks) {
 	const std::string s_reader = "typedef<class> Reader (pub def<int> n) { pub mt<int> take(int x) = x }\n";
 	EXPECT_NO_THROW(checkSource(s_reader + "fn<int?> f(Reader? r) = r?.take(r.n)"));
-	expectError(s_reader + "fn<int> f(Reader? r) { def<int?> n = r?.take(r.n); return r.n }", Code::NULLABLE_PAYLOAD_ACCESS);
+	expectError(s_reader + "fn<int> f(Reader? r) { int? n = r?.take(r.n); return r.n }", Code::NULLABLE_PAYLOAD_ACCESS);
 	EXPECT_NO_THROW(checkSource("fn<int> f(int? v) { def n = v ?: if (true) { return 0 } else { 1 }; return v }"));
 	expectError("fn<int> f(int? v) { def n = v ?: 0; return v }", Code::RETURN_TYPE);
 }
@@ -347,7 +347,7 @@ TEST (SemanticFlow, CapturesReceiversAndRestrictsDestructorPrivileges) {
 	EXPECT_NO_THROW(checkSource("typedef<class> C (pub def<int> n) { ~C { def copy = self.n } }"));
 	expectError("typedef<class> C { ~C { self::delete } }", Code::DELETED_CLASS_ACCESS);
 	expectError("typedef<class> C (pub def<int> n) { ~C { def alias = self; def copy = alias.n } }", Code::DELETED_CLASS_ACCESS);
-	EXPECT_NO_THROW(checkSource("fn f() { def<C?> empty = null; empty::delete; empty::delete }\ntypedef<class> C {}"));
+	EXPECT_NO_THROW(checkSource("fn f() { C? empty = null; empty::delete; empty::delete }\ntypedef<class> C {}"));
 }
 
 TEST (SemanticFlow, KeepsDestructorReceiverAccessThroughImmediateInterfaceCasts) {
@@ -358,7 +358,7 @@ TEST (SemanticFlow, KeepsDestructorReceiverAccessThroughImmediateInterfaceCasts)
 typedef<interface> More : Read {}
 fn<int> throughAlias(Read view) = view.report()
 typedef<class> Item : More {
-    override: pub mt<int> read() = 7
+    pub override mt<int> read() = 7
     ~Item { )";
 	const CheckedProgram        cp_program = checkSource(s_views + "((self -> More) -> Read).report(); throughAlias(self) } }");
 	const SymbolScope          &ss_globals = cp_program.units.front()->get_globals();
@@ -415,23 +415,23 @@ typedef<class> Box (pub def<Cell> cell)
 }
 
 TEST (SemanticFlow, RequiresStoredArraysToStayPresentThroughMutationArguments) {
-	const std::string s_setup = "fn f() { def<int[]?> items = [1]; def<int> clear = { items = null; return 0 }; if (items != null) ";
+	const std::string s_setup = "fn f() { int[]? items = [1]; int clear = { items = null; return 0 }; if (items != null) ";
 	for (const char *s_call : { "items.append(clear)", "items.insert(0, clear)", "items.removeAt(clear -> usize)", "items.reserve(clear -> usize)" })
 		expectError(s_setup + s_call + " }", Code::NULLABLE_PAYLOAD_ACCESS);
-	expectError("typedef<class> Box { pub def<int[]?> items = [1] }\nfn f(Box box, Box alias) { def<int> arg = { alias.items = null; return 1 }; "
+	expectError("typedef<class> Box { pub def<int[]?> items = [1] }\nfn f(Box box, Box alias) { int arg = { alias.items = null; return 1 }; "
 	            "if (box.items != null) box.items.append(arg) }",
 	            Code::NULLABLE_PAYLOAD_ACCESS);
-	expectError("typedef<struct> Row { pub int[] items }\nfn f(Row? row) { def<int> arg = { row = null; return 1 }; "
+	expectError("typedef<struct> Row { pub int[] items }\nfn f(Row? row) { int arg = { row = null; return 1 }; "
 	            "if (row != null) row.items.append(arg) }",
 	            Code::NULLABLE_PAYLOAD_ACCESS);
 	EXPECT_NO_THROW(checkSource(s_setup + "items.append(2) }"));
-	EXPECT_NO_THROW(checkSource("fn f() { def<int[]?> a = [1]; def<int[]?> b = [2]; def<int> arg = { b = null; return 1 }; "
+	EXPECT_NO_THROW(checkSource("fn f() { int[]? a = [1]; int[]? b = [2]; int arg = { b = null; return 1 }; "
 	                            "if (a != null) a.append(arg) }"));
 	EXPECT_NO_THROW(checkSource("fn f(int[]? a) { if (a != null) a.append(if (true) { return } else { 1 }) }"));
-	expectError("typedef<struct> Cell { pub mt set(int n) {} }\nfn f(Cell? cell) { def<int> arg = { cell = null; return 1 }; "
+	expectError("typedef<struct> Cell { pub mt set(int n) {} }\nfn f(Cell? cell) { int arg = { cell = null; return 1 }; "
 	            "if (cell != null) cell.set(arg) }",
 	            Code::NULLABLE_PAYLOAD_ACCESS);
-	EXPECT_NO_THROW(checkSource("typedef<class> Cell { pub mt set(int n) {} }\nfn f(Cell? cell) { def<int> arg = { cell = null; return 1 }; "
+	EXPECT_NO_THROW(checkSource("typedef<class> Cell { pub mt set(int n) {} }\nfn f(Cell? cell) { int arg = { cell = null; return 1 }; "
 	                            "if (cell != null) cell.set(arg) }"));
 }
 
@@ -465,7 +465,7 @@ TEST (SemanticFlow, CarriesFactsIntoSpecializationsAndSkipsExitedOperands) {
 	const std::string s_interface = R"(typedef<interface> Reader { pub mt<int> read() }
 typedef<class> Box : Reader { pub mt<int> read() = 1 }
 )";
-	expectError(s_interface + "fn<int> f(Box b) { def<Reader> alias = b; b::delete; return alias.read() }", Code::DELETED_CLASS_ACCESS);
+	expectError(s_interface + "fn<int> f(Box b) { Reader alias = b; b::delete; return alias.read() }", Code::DELETED_CLASS_ACCESS);
 	const CheckedProgram cp_program  = checkSource(s_interface + R"(fn<int> maybe<T:Reader>(T value, bool drop) {
     if (drop) value::delete
     return value.read()
@@ -481,7 +481,7 @@ fn<int> closed(Box box) = maybe<Box>(box, false)
 	EXPECT_TRUE(bf_closed.expressions.at(&e_call).receiverChecks.atAccess);
 	EXPECT_NO_THROW(checkSource(S_ITEM + "fn<bool> f(Item a) { a::delete; return a === a }"));
 	expectError(S_ITEM + "fn<bool> f(Item a) { a::delete; return a == a }", Code::DELETED_CLASS_ACCESS);
-	EXPECT_NO_THROW(checkSource(S_ITEM + "fn<int> f(Item a) { a::delete; def<int?> n = 1; return n ?: a.value }"));
+	EXPECT_NO_THROW(checkSource(S_ITEM + "fn<int> f(Item a) { a::delete; int? n = 1; return n ?: a.value }"));
 	EXPECT_NO_THROW(checkSource(S_ITEM + "fn<int> f(Item? a) { if (a == null) { a::delete; return 0 }; return a.value }"));
 	EXPECT_NO_THROW(checkSource("fn<int> f() { while (true) { def x = (if (true) { return 1 } else { 0 }) + (if (true) { break } else { 0 }) } }"));
 	const CheckedProgram cp_guarded =

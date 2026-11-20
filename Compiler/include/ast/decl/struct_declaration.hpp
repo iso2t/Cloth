@@ -41,8 +41,8 @@ struct MethodDeclaration : CallableDeclaration, StateMember {
 	                   const std::optional<TokenSpan> &overridePrefix = std::nullopt, const std::optional<TokenSpan> &virtualPrefix = std::nullopt,
 	                   std::optional<TypeParameterList> typeParameters = std::nullopt) :
 	        CallableDeclaration(keyword, name, std::move(parameters), std::move(body),
-	                            virtualPrefix.value_or(overridePrefix.value_or((visibility ? *visibility : keyword).get_span())), std::move(returnTypes),
-	                            visibility),
+	                            visibility ? visibility->get_span() : virtualPrefix.value_or(overridePrefix.value_or(keyword.get_span())),
+	                            std::move(returnTypes), visibility),
 	        operatorMember(std::move(operatorMember)),
 	        overridePrefix(overridePrefix),
 	        virtualPrefix(virtualPrefix),

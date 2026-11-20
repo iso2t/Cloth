@@ -27,6 +27,9 @@ can initialize its private fields. A free function in the same file can
 use a positional literal only if all the fields are public.
 
 A class method that implements a public interface requirement must itself
-be declared ``pub``, including when it uses ``override:``. A derived class
-can satisfy an interface it adds with a matching public method inherited
-from its base.
+be declared ``pub``. If the interface declares the method without a body,
+the class can supply the first body with either ``pub mt`` or
+``pub override mt``. A class method that replaces an inherited interface
+body introduced by ``= default`` must use ``override``.
+A derived class can satisfy an interface it adds with a matching public
+method inherited from its base.

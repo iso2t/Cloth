@@ -2,7 +2,7 @@
 
 fn<int> later() = 2
 fn<int> read() {
-    def<int> later = { return 1 }
+    int later = { return 1 }
     return later()
 }
 
@@ -10,5 +10,5 @@ fn<int> read() {
 // RUN: %filecheck "%/s" --input-file "%t.err"
 // CHECK: [C3021] Error: Local binding 'later' is not callable
 // CHECK: deferred-binding.co:6:12
-// CHECK: 5 |     def<int> later
+// CHECK: 5 |     int later
 // CHECK: declared here

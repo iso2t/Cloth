@@ -141,7 +141,7 @@ TEST (BuiltinCalls, CheckUnreachableOperandsAndCaptureTheReceiverBeforeArguments
 	expectError("fn f() { exit(0).unknown() }", Code::UNKNOWN_MEMBER);
 	expectError("fn f() { exit(exit(0), true) }", Code::INVALID_BUILTIN_ARGUMENT);
 	const std::string s_capture =
-	        "fn f() { def<string?> text = \"abc\"; def<string> clear = { text = null; return \"b\" }; if (text != null) { text.contains(clear); ";
+	        "fn f() { string? text = \"abc\"; string clear = { text = null; return \"b\" }; if (text != null) { text.contains(clear); ";
 	EXPECT_NO_THROW(checkSource(s_capture + "} }"));
 	expectError(s_capture + "text.trim() } }", Code::UNKNOWN_MEMBER);
 	EXPECT_NO_THROW(checkSource("fn f(int n, opt<int> magnitude ?: n.abs()) {}"));

@@ -161,7 +161,7 @@ TEST (SemanticValues, NestedArithmeticUsesTheSelectedOperatorResultAsItsPeer) {
 TEST (SemanticValues, ArrayInferenceUsesTypedBranchTailsBeforeDefaultingLiterals) {
 	const CheckedProgram cp_program = checkSource(R"(fn<bool> use(int[] row) = false
 fn<string> use(int<64>[] row) = "wide"
-fn<string> wide(bool flag) = use([2147483648, if(flag) { def<int<64>> n = 2; n } else { 1 }])
+fn<string> wide(bool flag) = use([2147483648, if(flag) { int<64> n = 2; n } else { 1 }])
 fn<bool> ordinary() = use([1, 2])
 fn matrix(int<64> n) { def rows = [[1, 2], [3, n]] }
 fn ranges(range<int<64>> r) { def intervals = [1 .. 2, r] }
@@ -274,7 +274,7 @@ TEST (SemanticValues, NullableFallbacksCarryTheDestinationIntoEachBranch) {
 	const CheckedProgram cp_program = checkSource(R"(fn<int?> value(bool flag, int? x) = x ?: if(flag) { null } else { 2 }
 fn<int?[]> row(bool flag) = [if(flag) { null } else { 2 }]
 fn<int?> left(bool flag, int? x) = (if(flag) { x } else { null }) ?: 5
-fn broadcast(bool flag, int? x) { def<int?> a, b = 1; a, b = x ?: if(flag) { null } else { 2 } }
+fn broadcast(bool flag, int? x) { int? a, b = 1; a, b = x ?: if(flag) { null } else { 2 } }
 )");
 	EXPECT_TRUE(returned(cp_program).types.front().nullable());
 	EXPECT_TRUE(returned(cp_program, "row").types.front().element().nullable());
@@ -285,21 +285,21 @@ fn broadcast(bool flag, int? x) { def<int?> a, b = 1; a, b = x ?: if(flag) { nul
 }
 
 TEST (SemanticValues, RangeCompoundStepsRetainTheirTypedUpdate) {
-	const CheckedProgram cp_program = checkSource("fn f() { for (def<float> i <- 0.0 .. 4.0; i += 1) {} }");
+	const CheckedProgram cp_program = checkSource("fn f() { for (float i <- 0.0 .. 4.0; i += 1) {} }");
 	ASSERT_EQ(cp_program.iterations.size(), 1u);
 	const ForStepper &fs_step = *cp_program.iterations.begin()->first->stepper;
 	ASSERT_TRUE(fs_step.compound);
 	EXPECT_EQ(fs_step.compound->op.get_operator(), oPlus);
 	EXPECT_EQ(cp_program.expressions.at(fs_step.update()).types.front(), ResolvedType(kFloat));
 	EXPECT_EQ(cp_program.expressions.at(fs_step.value.get()).types.front(), ResolvedType(kInteger));
-	expectError("fn f() { for (def<float> i <- 0.0 .. 4.0; i = 1) {} }", Code::TYPE_MISMATCH);
-	expectError("fn f() { for (def<float<16>> i <- 0.0 .. 4.0; i += 1) {} }", Code::TYPE_MISMATCH);
-	expectError("fn f() { for (def<int> i <- 0 .. 4; i /= 0) {} }", Code::INTEGER_ZERO_DIVISOR);
+	expectError("fn f() { for (float i <- 0.0 .. 4.0; i = 1) {} }", Code::TYPE_MISMATCH);
+	expectError("fn f() { for (float<16> i <- 0.0 .. 4.0; i += 1) {} }", Code::TYPE_MISMATCH);
+	expectError("fn f() { for (int i <- 0 .. 4; i /= 0) {} }", Code::INTEGER_ZERO_DIVISOR);
 }
 
 TEST (SemanticValues, ArrayBindingsKeepInnerExtentsAndSeparateCountsFromDeclaredTypes) {
 	const CheckedProgram program = checkSource(R"(fn run() {
-    def<int[][]> rows = [[1, 2]]
+    int[][] rows = [[1, 2]]
     rows = [[3, 4], [5, 6]]
     def copy = rows
 }
@@ -313,10 +313,10 @@ fn<int[2][3]> matrix() = [[1, 2, 3], [4, 5, 6]])");
 		}
 	ASSERT_TRUE(b_found);
 	EXPECT_EQ(returned(program, "matrix").types.front().element().spelling(), "int[3]");
-	expectError("fn run() { def<int[][]> a = [[1,2]]; a = [[3]] }", Code::INVALID_ARRAY);
-	expectError("fn run() { def<int[][]> a = [[1,2]]; a[0] = [3] }", Code::INVALID_ARRAY);
-	expectError("fn run() { def<int[][]> a = [[1,2],[3]] }", Code::INVALID_ARRAY);
-	expectError("fn run() { def<int[][]> a = [[1,2]]; def<int[][]> b = a; b = [[3]] }", Code::INVALID_ARRAY);
+	expectError("fn run() { int[][] a = [[1,2]]; a = [[3]] }", Code::INVALID_ARRAY);
+	expectError("fn run() { int[][] a = [[1,2]]; a[0] = [3] }", Code::INVALID_ARRAY);
+	expectError("fn run() { int[][] a = [[1,2],[3]] }", Code::INVALID_ARRAY);
+	expectError("fn run() { int[][] a = [[1,2]]; int[][] b = a; b = [[3]] }", Code::INVALID_ARRAY);
 	EXPECT_NO_THROW(checkSource("fn<int[][]> make() = [[1,2]]\nfn run() { def a = make(); a = [[3]] }"));
 }
 
@@ -330,7 +330,7 @@ TEST (SemanticValues, ArrayMutationsUseTheRetainedElementShape) {
 	for (const decltype(cp_program.expressions)::value_type &entry : cp_program.expressions)
 		if (entry.second.arrayMutation) ++st_mutations;
 	EXPECT_EQ(st_mutations, 5u);
-	expectError("fn f() { def<int[][]> rows = [[1,2]]; rows.clear(); rows.append([3]) }", Code::INVALID_ARRAY);
+	expectError("fn f() { int[][] rows = [[1,2]]; rows.clear(); rows.append([3]) }", Code::INVALID_ARRAY);
 	expectError("fn f() { def fixed = [1]; fixed.append(2) }", Code::INVALID_ARRAY_MUTATION);
 	expectError("fn f(int[][] rows) { rows[0].clear() }", Code::INVALID_ARRAY_MUTATION);
 }
@@ -341,7 +341,7 @@ fn<float<16>> high() = float<16>?::max
 fn<range<float<16>>> limits(float<16> high) = 1.0 ..= high
 fn<bool> member(int<8> n) = (1 .. 3) == n
 fn<typeinfo> element() = int[2]::type::element
-fn run() { for (def<float> n <- 0.0 .. 1.0) {} }
+fn run() { for (float n <- 0.0 .. 1.0) {} }
 )");
 	EXPECT_EQ(returned(program).provider->kind, ProviderKind::ArraySize);
 	EXPECT_EQ(std::get<IntegerConstant>(returned(program).numericConstant), (IntegerConstant{ { 2 } }));
@@ -357,8 +357,8 @@ fn run() { for (def<float> n <- 0.0 .. 1.0) {} }
 	expectError("fn<typeinfo> bad() = int::type::element", Code::INVALID_METADATA_ACCESS);
 	expectError("fn<range<float>> bad() = 1.0 .. (1.0 / 0.0)", Code::INVALID_RANGE_VALUE);
 	expectError("fn bad() { for (def n <- (0.0/0.0) .. 1.0) {} }", Code::INVALID_FOR_LOOP);
-	expectError("fn bad(int[] values) { for (def<float> n <- values) {} }", Code::INVALID_FOR_LOOP);
-	expectError("fn bad(int[] values) { for (def<void> n <- values) {} }", Code::INVALID_FOR_LOOP);
+	expectError("fn bad(int[] values) { for (float n <- values) {} }", Code::INVALID_FOR_LOOP);
+	expectError("fn bad(int[] values) { for (void n <- values) {} }", Code::INVALID_FOR_LOOP);
 }
 
 TEST (SemanticValues, ProviderDefaultsUseOnlyValuesAlreadyInScope) {
@@ -479,11 +479,11 @@ fn<usize> inspect(typeinfo descriptor) = descriptor::width
 
 TEST (SemanticValues, MetadataTracksContinuingPathsAndDeferredReads) {
 	expectError("fn f() { (null ?: bool::type)::width }", Code::INVALID_METADATA_ACCESS);
-	expectError("fn f() { def d := bool::type; def<usize> read = { return d::width } }", Code::INVALID_METADATA_ACCESS);
+	expectError("fn f() { def d := bool::type; usize read = { return d::width } }", Code::INVALID_METADATA_ACCESS);
 	expectError("fn f() { def d = bool::type; do { d::width } while (false) }", Code::INVALID_METADATA_ACCESS);
 	EXPECT_NO_THROW(checkSource(R"(typedef<class> Holder { pub def<typeinfo> d = bool::type }
 fn guarded(Holder? h) { (h?.d::type ?: typeinfo::type)::width }
-fn deferred() { def d = bool::type; def<usize> read = { return d::width }; read; d::width }
+fn deferred() { def d = bool::type; usize read = { return d::width }; read; d::width }
 fn repeat(bool flag) { def d = bool::type; do { d::width } while (flag) }
 fn iterate() { def d = bool::type; for (def i <- [1, 2]) { d::width }; d::width }
 )"));
@@ -559,7 +559,7 @@ fn format(View<int> item, opt<string> direct ?: item::str, opt<string> interpola
 	EXPECT_FALSE(cp_program.textConversions.begin()->second.callsFormatter);
 	EXPECT_FALSE(cp_program.defaultEffects.at(&cs_format.parameters[1]).mayCallOrMutate);
 	EXPECT_FALSE(cp_program.defaultEffects.at(&cs_format.parameters[2]).mayCallOrMutate);
-	expectError(s_program + "fn materialize<T>(T value) { def<Text<T>?> text = null }\nfn start() { materialize(1) }", Code::INVALID_PARAMETER_DEFAULT);
+	expectError(s_program + "fn materialize<T>(T value) { Text<T>? text = null }\nfn start() { materialize(1) }", Code::INVALID_PARAMETER_DEFAULT);
 }
 
 TEST (SemanticValues, ReadOnlyFormattersRequireAClassSatisfyingEveryBound) {
@@ -578,7 +578,7 @@ typedef<class> Text<T> : View<T> { pub operator ::str() = "text" }
 fn format(View<int> item, opt<int> n ?: if (true) { item::str; false + 1 } else { 0 }) {}
 )";
 	expectError(s_program, Code::BINARY_OPERANDS);
-	expectError(s_program + "fn later<T>() { def<Text<int>?> text = null }", Code::INVALID_PARAMETER_DEFAULT);
+	expectError(s_program + "fn later<T>() { Text<int>? text = null }", Code::INVALID_PARAMETER_DEFAULT);
 }
 
 TEST (SemanticValues, IterationRetainsTheLibrarySnapshotAndSlotDeclarations) {

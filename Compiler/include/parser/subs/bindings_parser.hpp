@@ -2,9 +2,11 @@
 
 #pragma once
 
+#include <optional>
 #include <vector>
 
 #include <ast/stmt/statement.hpp>
+#include <ast/type/type_reference.hpp>
 
 namespace cloth {
 
@@ -15,6 +17,8 @@ class BindingsParser {
 	explicit BindingsParser (Parser &parser) : p_parser(parser) {
 	}
 
+	bool                         startsBinding () const;
+	std::optional<TypeReference> parseBindingType () const;
 	std::vector<StatementPtr> parseBindings (bool allowWhileTrailer = false) const;
 
     private:

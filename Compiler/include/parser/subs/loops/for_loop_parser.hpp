@@ -10,14 +10,11 @@ namespace cloth {
 
 class ForLoopParser : public LoopParser {
     public:
-	ForLoopParser (Parser &parser, DelimitedParser &delimited) : LoopParser(parser, delimited), p_parser(parser) {
-	}
+	using LoopParser::LoopParser;
 
 	ForStatement parseFor (bool allowWhileTrailer = false);
 
     private:
-	Parser &p_parser;
-
 	ForStepper parseForStepper (const Token &counter) const;
 };
 

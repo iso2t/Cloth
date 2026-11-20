@@ -15,13 +15,12 @@
 namespace cloth {
 
 struct ForBinding {
-	Token                        keyword;
+	Token                        start;
 	std::optional<TypeReference> type;
 	Token                        name;
-	std::optional<TokenSpan>     annotationSpan;
 
 	[[nodiscard]] TokenSpan get_span () const {
-		return TokenSpan::span_through(keyword.get_span(), name.get_span());
+		return TokenSpan::span_through(start.get_span(), name.get_span());
 	}
 };
 

@@ -53,16 +53,16 @@ typedef<struct> Gauge { Item backing;
     mt<Item> make(int<8> n) = backing
     mt<Item?> make<T>(T n) = null
     pub operator<int<auto>> +() -> int<auto> {
-        def<Item?> result = make(1 -> int<auto>); result.read(); return 1
+        Item? result = make(1 -> int<auto>); result.read(); return 1
     }
 }
 )";
 	EXPECT_NO_THROW(checkSource(s_gauge));
 	EXPECT_NO_THROW(checkSource(s_gauge + "fn use(Gauge g, int<8> n) { g + n }"));
 	expectError(s_gauge + "fn use(Gauge g, int<8> n, int<16> m) { g + n; g + m }", Code::NULLABLE_PAYLOAD_ACCESS);
-	expectError(R"(typedef<class> Gauge { pub operator<int<auto>> +() -> int<auto> { def<int> n = "x"; return missing } })", Code::UNKNOWN_NAME);
+	expectError(R"(typedef<class> Gauge { pub operator<int<auto>> +() -> int<auto> { int n = "x"; return missing } })", Code::UNKNOWN_NAME);
 	expectError("typedef<class> Gauge<T> { pub operator<int<auto>> +() -> int<auto> = false }", Code::RETURN_TYPE);
-	const std::string s_annotation = "typedef<class> Gauge { pub operator<int<auto>> +() -> int<auto> { def<Missing> item = 1; return 1 } }\n";
+	const std::string s_annotation = "typedef<class> Gauge { pub operator<int<auto>> +() -> int<auto> { Missing item = 1; return 1 } }\n";
 	EXPECT_NO_THROW(checkSource(s_annotation));
 	expectError(s_annotation + "fn use(Gauge g) { g + 1 }", Code::UNSUPPORTED_TYPE);
 	expectError(s_annotation + "fn generic<T>() {}", Code::UNSUPPORTED_TYPE);
@@ -72,15 +72,15 @@ TEST (SemanticOperators, ResolvesWidthDependentMethodArgumentsAtTheChosenWidth) 
 	const std::string s_global = "fn<T> echo<T>(T x) = x\n";
 	const std::string s_prefix = "typedef<class> Gauge { mt<T> pick<T>(T x) = x\n pub operator<int<auto>> +() -> int<auto> { ";
 	const std::string s_use    = " } }\nfn<int<8>> narrow(Gauge g, int<8> n) = g+n";
-	EXPECT_NO_THROW(checkSource(s_prefix + "def<int<auto>[]> items = [1]; return pick<int<auto>>(items[0])" + s_use));
+	EXPECT_NO_THROW(checkSource(s_prefix + "int<auto>[] items = [1]; return pick<int<auto>>(items[0])" + s_use));
 	expectError(s_global + s_prefix + "return echo<int<auto>>(1)" + s_use, Code::UNSUPPORTED_TYPE);
 	EXPECT_NO_THROW(checkSource("fn<T> echo<T,U=bool>(T x) = x\n" + s_prefix + "return echo<int<auto>>(1)" + s_use));
-	expectError("typedef<class> Box<T> {}\n" + s_prefix + "def<Box<int<auto>>?> b=null; return 1" + s_use, Code::UNSUPPORTED_TYPE);
+	expectError("typedef<class> Box<T> {}\n" + s_prefix + "Box<int<auto>>? b=null; return 1" + s_use, Code::UNSUPPORTED_TYPE);
 }
 
 TEST (SemanticOperators, KeysCapturedWidthsByClosedReceiver) {
 	const CheckedProgram   cp_program = checkSource(R"(typedef<class> Gauge<T>(def<T> value) {
-    pub operator<float<auto>> +() -> float<auto> { def<T> local = value; return 1.0 }
+    pub operator<float<auto>> +() -> float<auto> { T local = value; return 1.0 }
 }
 fn<float<16>> first(Gauge<bool> g, float<16> n) = g + n
 fn<float<16>> second(Gauge<string> g, float<16> n) = g + n
@@ -176,7 +176,7 @@ fn<bool> right(string text, Tag tag) = text == tag
 	EXPECT_FALSE(resultOf(cp_program, "right").leftContext);
 	EXPECT_TRUE(resultOf(cp_program, "right").rightContext);
 	EXPECT_NO_THROW(checkSource(R"(typedef<class> Word { pub operator<string> ==() = "x" }
-fn<bool> f(Word w) { def<string> rhs = { w::delete; return "x" }; return w == rhs }
+fn<bool> f(Word w) { string rhs = { w::delete; return "x" }; return w == rhs }
 )"));
 	expectError(R"(typedef<class> Box { pub def<string?> name = "x" }
 typedef<class> Clear { pub operator<usize> ==() -> usize = 0 }

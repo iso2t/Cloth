@@ -21,7 +21,7 @@ pub typedef<class> List<T>(def<ListSlot<T>[]> items) {
     pub mt insert(usize index, T value) { items.insert(index, { value }) }
 
     pub mt<T> removeAt(usize index) {
-        def<ListSlot<T>> removed = items.removeAt(index)
+        ListSlot<T> removed = items.removeAt(index)
         return removed.value
     }
 
@@ -33,15 +33,15 @@ pub typedef<class> List<T>(def<ListSlot<T>[]> items) {
 
     pub operator foreach() -> Snapshot<T> {
         def snapshot = emptySnapshot<T>()
-        for (def<ListSlot<T>> item <- items) snapshot.append(item.value)
+        for (ListSlot<T> item <- items) snapshot.append(item.value)
         return snapshot
     }
 
     // Ordinary array reception checks rectangular shape when T is an array.
     pub mt<T[]> toArray() {
-        def<T[]> result = []
+        T[] result = []
         result.reserve(items::size)
-        for (def<ListSlot<T>> item <- items) result.append(item.value)
+        for (ListSlot<T> item <- items) result.append(item.value)
         return result
     }
 

@@ -3,10 +3,13 @@
 #include <gtest/gtest.h>
 #include <variant>
 
+#include <ast/decl/class_declaration.hpp>
 #include <ast/decl/declarations.hpp>
 #include <ast/decl/function_declaration.hpp>
 #include <ast/expr/expressions.hpp>
 #include <ast/source_unit.hpp>
+#include <ast/stmt/statements.hpp>
+#include <cde/syntax_exception.hpp>
 #include <lexer/lexer.hpp>
 #include <parser/parser.hpp>
 #include <token/numeric_literals.hpp>
@@ -41,5 +44,48 @@ TEST (ParserPrecedence, PowerBindsBeforeUnaryMinus) {
 	EXPECT_EQ(il_exponent->value, IntegerValue{ 2 });
 }
 
+TEST (ParserPrecedence, PreservesComparisonsThatResembleTypedBindings) {
+	Lexer                      l_lexer("fn probe() { left < middle > right, tail }");
+	Parser                     p_parser(l_lexer);
+	const SourceUnit           su_unit     = p_parser.parse();
+	const FunctionDeclaration &fd_function = dynamic_cast<const FunctionDeclaration &>(*su_unit.declarations.front());
+	const BlockBody           &bb_body     = std::get<BlockBody>(fd_function.body.value);
+	ASSERT_EQ(bb_body.statements.size(), 1u);
+	const ExpressionStatement  &es_statement = dynamic_cast<const ExpressionStatement &>(*bb_body.statements.front());
+	const ResultListExpression &rl_results   = dynamic_cast<const ResultListExpression &>(*es_statement.expression);
+	ASSERT_EQ(rl_results.values.size(), 2u);
+	const BinaryExpression &be_comparison = dynamic_cast<const BinaryExpression &>(*rl_results.values.front());
+	EXPECT_EQ(be_comparison.op.get_operator(), oGreater);
+}
+
+TEST (ParserDeclarations, RejectsBracketedLocalTypesAndMisplacedOverrideModifiers) {
+	for (const char *s_source : { "fn f() { def<int> x = 1 }", "fn f() { for (def<int> i <- 0..2) {} }", "typedef<class> C { override: pub mt f() {} }",
+	                              "typedef<class> C { override pub mt f() {} }", "typedef<class> C { pub override: mt f() {} }" }) {
+		SCOPED_TRACE(s_source);
+		Lexer  l_lexer(s_source);
+		Parser p_parser(l_lexer);
+		EXPECT_THROW(p_parser.parse(), cde::SyntaxException);
+	}
+}
+
+TEST (ParserDeclarations, PlacesVirtualBetweenVisibilityAndTheMethodKeyword) {
+	Lexer                    l_lexer("typedef<class> C {\n    pub virtual mt f() {}\n}");
+	Parser                   p_parser(l_lexer);
+	const SourceUnit         su_unit   = p_parser.parse();
+	const ClassDeclaration  &cd_class  = dynamic_cast<const ClassDeclaration &>(*su_unit.declarations.at(0));
+	const MethodDeclaration &md_method = std::get<MethodDeclaration>(cd_class.members.at(0).value);
+	ASSERT_TRUE(md_method.virtualPrefix);
+	EXPECT_EQ(md_method.virtualPrefix->to_string(), "2:9-2:16");
+	EXPECT_EQ(md_method.get_span().to_string(), "2:5-2:26");
+
+	for (const char *s_source :
+	     { "typedef<class> C { virtual: pub mt f() {} }", "typedef<class> C { virtual pub mt f() {} }", "typedef<class> C { pub virtual: mt f() {} }",
+	       "typedef<class> C { pub virtual override mt f() {} }", "typedef<class> C { pub override virtual mt f() {} }" }) {
+		SCOPED_TRACE(s_source);
+		Lexer  l_invalid(s_source);
+		Parser p_invalid(l_invalid);
+		EXPECT_THROW(p_invalid.parse(), cde::SyntaxException);
+	}
+}
 }
 }
