@@ -80,7 +80,7 @@ PlacementResult placeArguments (const std::vector<CallArgument> &arguments, cons
 			continue;
 		}
 		const std::vector<ParameterDeclaration>::const_iterator it_parameter = std::ranges::find_if(
-		        v_parameters, [&] (const ParameterDeclaration &parameter) { return parameter.name.get_lexeme() == opt_label->get_lexeme(); });
+		        v_parameters, [&] (const ParameterDeclaration &parameter) { return parameter.name.get_name_key() == opt_label->get_name_key(); });
 		if (it_parameter == v_parameters.end()) {
 			return BindingProblem{ opt_label->get_span(), "Unknown argument label '" + opt_label->get_lexeme() + "'", &symbol.name };
 		}
@@ -311,7 +311,7 @@ bool BodyChecker::checkArguments (const std::vector<CallArgument> &arguments, co
 
 std::vector<Candidate> BodyChecker::methodCandidates (const MemberCallExpression &site, const ResolvedType &receiver) const {
 	receiverClassBound(*site.receiver, receiver);
-	std::vector<Candidate> v_candidates = analyzer.members(receiver, site.name.get_lexeme(), SymbolKind::Method, MemberLookup::CallContract);
+	std::vector<Candidate> v_candidates = analyzer.members(receiver, site.name.get_name_key(), SymbolKind::Method, MemberLookup::CallContract);
 	if (!m_arguments.empty()) {
 		using Facts                             = std::unordered_map<const Expression *, ExpressionInfo>;
 		const Facts                &m_open      = openFacts().expressions;
@@ -339,7 +339,7 @@ bool validateArgumentLabels (const std::vector<CallArgument> &arguments) {
 			fail(Code::INVALID_ARGUMENT_BINDING, arg.get_span(), "Positional arguments must precede named arguments");
 		}
 		if (arg.label) {
-			const std::pair<decltype(labels)::iterator, bool> it_inserted = labels.emplace(arg.label->get_lexeme(), &*arg.label);
+			const std::pair<decltype(labels)::iterator, bool> it_inserted = labels.emplace(arg.label->get_name_key(), &*arg.label);
 			if (!it_inserted.second) {
 				fail(Code::INVALID_ARGUMENT_BINDING, arg.label->get_span(), "Duplicate argument label", it_inserted.first->second);
 			}

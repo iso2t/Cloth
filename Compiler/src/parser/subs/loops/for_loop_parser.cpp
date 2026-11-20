@@ -88,7 +88,7 @@ ForStepper ForLoopParser::parseForStepper (const Token &counter) const {
 	p_parser.skipNewLines();
 	const std::string s_description = std::format("the loop counter '{}' as the stepper target", counter.get_lexeme());
 	const Token       t_target      = p_parser.expect(TokenType::Identifier, s_description);
-	if (t_target.get_lexeme() != counter.get_lexeme()) {
+	if (t_target.get_name_key() != counter.get_name_key()) {
 		throw cde::SyntaxErrors::expected(s_description, t_target);
 	}
 

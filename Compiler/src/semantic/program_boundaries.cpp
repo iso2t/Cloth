@@ -58,7 +58,7 @@ const Symbol &fileError (const SymbolTable &unit, const IntrinsicBody &body) {
 			const EnumDeclaration        *ed_errors = td_type ? dynamic_cast<const EnumDeclaration *>(*td_type) : nullptr;
 			if (ed_errors && std::ranges::all_of(CASES, [&] (std::string_view name) {
 				    return std::ranges::any_of(ed_errors->cases,
-				                               [&] (const EnumCaseDeclaration &entry) { return entry.name.get_lexeme() == name; });
+				                               [&] (const EnumCaseDeclaration &entry) { return entry.name.get_name_key() == name; });
 			    }))
 				return sym;
 		}
@@ -132,7 +132,7 @@ void Analyzer::registerIntrinsics () {
 		const ClassDeclaration *cd_owner   = asClass(di_signature.owner);
 		const bool              b_function = sym.kind == SymbolKind::Function && !di_signature.owner;
 		const bool              b_method   = sym.kind == SymbolKind::Method && cd_owner && !declarations.at(di_signature.owner).owner &&
-		                      cd_owner->name.get_lexeme() == is_site.owner;
+		                      cd_owner->name.get_name_key() == is_site.owner;
 		if (!(is_site.owner.empty() ? b_function : b_method) || !it_paths->second.contains(is_site.path))
 			invalidIntrinsic(ib_body, std::format("requires the registered declaration in {}{}", is_site.path,
 			                                      is_site.owner.empty() ? std::string{} : std::format(" on class '{}'", is_site.owner)));

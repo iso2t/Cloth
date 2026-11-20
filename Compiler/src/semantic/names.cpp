@@ -102,7 +102,7 @@ void BodyChecker::resolveNames (const Statement &node) {
 			if (const ReceivingTarget::Named *nt_name = std::get_if<ReceivingTarget::Named>(&rt_target.value)) {
 				checkBindingName(nt_name->token);
 				const std::pair<std::map<std::string_view, const Token *>::iterator, bool> it_name =
-				        m_names.emplace(nt_name->token.get_lexeme(), &nt_name->token);
+				        m_names.emplace(nt_name->token.get_name_key(), &nt_name->token);
 				if (!it_name.second) duplicateBinding(nt_name->token, *it_name.first->second);
 			}
 		}
@@ -166,7 +166,7 @@ void BodyChecker::resolveNames (const Statement &node) {
 void BodyChecker::resolveCallName (const CallExpression &call) {
 	validateArgumentLabels(call.suppliedArguments);
 	const std::vector<Candidate> v_candidates = callCandidates(call);
-	if (v_candidates.empty() && builtinFunctionNamed(call.name.get_lexeme())) {
+	if (v_candidates.empty() && builtinFunctionNamed(call.name.get_name_key())) {
 		if (call.typeArguments) checkBuiltinTypeArguments(call, *call.typeArguments);
 		return;
 	}
@@ -203,7 +203,7 @@ void BodyChecker::resolveNames (const Expression &node) {
 			resolveNames(*mc_call->receiver);
 			if (mc_call->typeArguments) checkTypeArguments(*mc_call->typeArguments);
 			if (isSelfReference(*mc_call->receiver)) {
-				if (analyzer.members(selfType(), mc_call->name.get_lexeme(), SymbolKind::Method).empty())
+				if (analyzer.members(selfType(), mc_call->name.get_name_key(), SymbolKind::Method).empty())
 					throw cde::ClothDiagnostic(Code::UNKNOWN_MEMBER,
 					                           std::format("Type '{}' has no member method '{}'", selfType().spelling(),
 					                                       mc_call->name.get_lexeme()),
@@ -229,7 +229,7 @@ void BodyChecker::resolveNames (const Expression &node) {
 	} else if (const CastExpression *ce_cast = dynamic_cast<const CastExpression *>(&node)) {
 		resolveNames(*ce_cast->operand);
 		const Token *t_name = ce_cast->target.get_bare_identifier();
-		if (!t_name || !analyzer.hasStateName(context, t_name->get_lexeme())) analyzer.useWidthAnnotation(ce_cast->target, context);
+		if (!t_name || !analyzer.hasStateName(context, t_name->get_name_key())) analyzer.useWidthAnnotation(ce_cast->target, context);
 	} else if (const TypeCheckExpression *tc_test = dynamic_cast<const TypeCheckExpression *>(&node)) {
 		const Token *t_name = tc_test->target.get_bare_identifier();
 		if (t_name && !tc_test->valueCandidate && !hasValueName(*t_name) && !analyzer.hasTypeName(context, *t_name) &&
@@ -238,7 +238,7 @@ void BodyChecker::resolveNames (const Expression &node) {
 		resolveNames(*tc_test->operand);
 		if (tc_test->valueCandidate && !receiverType(*tc_test->valueCandidate))
 			resolveNames(*tc_test->valueCandidate);
-		else if (!t_name || (!hasValueName(*t_name) && !analyzer.hasStateName(context, t_name->get_lexeme())))
+		else if (!t_name || (!hasValueName(*t_name) && !analyzer.hasStateName(context, t_name->get_name_key())))
 			analyzer.useWidthAnnotation(tc_test->target, context);
 	} else if (const TypeReceiverExpression *tr_type = dynamic_cast<const TypeReceiverExpression *>(&node)) {
 		analyzer.useWidthAnnotation(tr_type->annotation, context);

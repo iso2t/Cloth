@@ -241,7 +241,7 @@ ResolvedType BodyChecker::nonReturningNumericReceiver (const CallSite &call) {
 }
 
 std::optional<ExpressionInfo> BodyChecker::builtinCall (const CallSite &call, const TypeArgumentList *typeArguments, const ExpressionInfo *receiver) {
-	const Definition *bd_builtin = definition(call.name.get_lexeme(), receiver != nullptr);
+	const Definition *bd_builtin = definition(call.name.get_name_key(), receiver != nullptr);
 	if (!bd_builtin) return {};
 	std::optional<ResolvedType> opt_receiver;
 	if (receiver && receiver->fallsThrough) {

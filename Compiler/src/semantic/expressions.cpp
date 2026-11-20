@@ -199,7 +199,7 @@ ResolvedType BodyChecker::recordSelf (const Expression &node) {
 }
 
 ExpressionInfo BodyChecker::name (const Token &token, NameUse use) {
-	const std::string &spelling = token.get_lexeme();
+	const std::string &spelling = token.get_name_key();
 	if (const Binding *binding = local(spelling)) {
 		remember(token, *binding->name);
 		if (binding->deferred) forgetMutableMetadata(fs_flow.narrowed);
@@ -254,17 +254,17 @@ ExpressionInfo BodyChecker::name (const Token &token, NameUse use) {
 		if (sym->kind == SymbolKind::Function) {
 			if (use == NameUse::Assignment) fail(Code::EXPECTED_BINDING, token.get_span(), "Expected a writable binding", &sym->name);
 			if (use == NameUse::Lexical) return {};
-			fail(Code::FUNCTION_VALUE, token.get_span(), "'" + spelling + "' is a function", &sym->name);
+			fail(Code::FUNCTION_VALUE, token.get_span(), "'" + token.get_lexeme() + "' is a function", &sym->name);
 		}
 		if (!b_builtinName && sym->kind == SymbolKind::Type) {
 			if (use == NameUse::Lexical) unknownName(token);
-			fail(Code::TYPE_RECEIVER_VALUE, token.get_span(), "'" + spelling + "' is a type", &sym->name);
+			fail(Code::TYPE_RECEIVER_VALUE, token.get_span(), "'" + token.get_lexeme() + "' is a type", &sym->name);
 		}
 	}
 	if (b_builtinName) {
 		if (use == NameUse::Assignment) fail(Code::EXPECTED_BINDING, token.get_span(), "Expected a writable binding");
 		if (use == NameUse::Lexical) return {};
-		fail(Code::FUNCTION_VALUE, token.get_span(), "'" + spelling + "' is a function");
+		fail(Code::FUNCTION_VALUE, token.get_span(), "'" + token.get_lexeme() + "' is a function");
 	}
 	unknownName(token);
 }
@@ -275,7 +275,7 @@ bool BodyChecker::isSelfReference (const Expression &node) {
 }
 
 bool BodyChecker::hasValueName (const Token &name) const {
-	return local(name.get_lexeme()) || (hasInstance() && !analyzer.members(selfType(), name.get_lexeme(), SymbolKind::Field).empty());
+	return local(name.get_name_key()) || (hasInstance() && !analyzer.members(selfType(), name.get_name_key(), SymbolKind::Field).empty());
 }
 
 std::optional<ResolvedType> BodyChecker::receiverType (const Expression &node, bool forConstruction) {
@@ -333,7 +333,7 @@ ExpressionInfo BodyChecker::field (const FieldAccessExpression &node) {
 	}
 	const std::optional<ResolvedType> opt_bound = r_receiver.isType ? std::nullopt : receiverClassBound(*node.receiver, rt);
 	const std::vector<Candidate>      fields =
-	        analyzer.members(opt_bound ? *opt_bound : rt, node.name.get_lexeme(), r_receiver.isType ? SymbolKind::EnumCase : SymbolKind::Field);
+	        analyzer.members(opt_bound ? *opt_bound : rt, node.name.get_name_key(), r_receiver.isType ? SymbolKind::EnumCase : SymbolKind::Field);
 	if (fields.empty()) {
 		Code dc_code = Code::INVALID_STRUCT_FIELD;
 		if (enumeration(rt))
@@ -366,11 +366,11 @@ std::optional<Candidate> BodyChecker::stateTarget (const ResolvedType &receiver,
 	std::optional<Candidate> opt_state;
 	if (host.suffixes.empty() && asClass(host.declaration)) {
 		const TypeDispatch                   &td_table = analyzer.dispatchFor(host);
-		const StateSelections::const_iterator it_state = td_table.states.find(name.get_lexeme());
+		const StateSelections::const_iterator it_state = td_table.states.find(name.get_name_key());
 		if (it_state != td_table.states.end()) opt_state = Candidate{ it_state->second.selection, analyzer.argumentsOf(it_state->second.owner) };
 	} else if (host.parameter) {
 		for (SymbolKind kind : { SymbolKind::State, SymbolKind::StateAttachment }) {
-			const std::vector<Candidate> v_states = analyzer.members(host, name.get_lexeme(), kind);
+			const std::vector<Candidate> v_states = analyzer.members(host, name.get_name_key(), kind);
 			if (!v_states.empty()) {
 				opt_state = v_states.front();
 				break;
@@ -383,7 +383,7 @@ std::optional<Candidate> BodyChecker::stateTarget (const ResolvedType &receiver,
 			analyzer.requireAccess(*opt_state->symbol, context, name.get_span());
 		remember(name, opt_state->symbol->name);
 	}
-	if (!opt_state && (b_attachedSelf || analyzer.hasStateName(context, name.get_lexeme()))) {
+	if (!opt_state && (b_attachedSelf || analyzer.hasStateName(context, name.get_name_key()))) {
 		fail(Code::INVALID_STATE_TARGET, name.get_span(), host.spelling() + " does not support state '" + name.get_lexeme() + "'");
 	}
 	return opt_state;
@@ -595,7 +595,7 @@ std::optional<ExpressionInfo> BodyChecker::contextualRangeComparison (const Bina
 			}
 		const BinaryExpression *be_range = dynamic_cast<const BinaryExpression *>(&source);
 		if (!be_range || (be_range->op.get_operator() != oRange && be_range->op.get_operator() != oRangeInclusive)) return nullptr;
-		if (analyzer.hasOperator(be_range->op.get_lexeme())) {
+		if (analyzer.hasOperator(be_range->op.get_name_key())) {
 			BodyChecker bc_probe = comparisonProbe();
 			try {
 				if (const std::optional<ExpressionInfo> opt_call = bc_probe.binaryOperator(*be_range, nullptr, true, {})) {
@@ -801,7 +801,7 @@ void BodyChecker::numericPeers (const Expression &node, NumericPeers &peers, boo
 			}
 		} else if (const UnaryExpression *ue_op = dynamic_cast<const UnaryExpression *>(&node)) {
 			if (ue_op->op.get_operator() == oNot) return;
-			if (analyzer.hasOperator(ue_op->op.get_lexeme()) && elementEvidence(*ue_op->operand) == ElementEvidence::Typed) {
+			if (analyzer.hasOperator(ue_op->op.get_name_key()) && elementEvidence(*ue_op->operand) == ElementEvidence::Typed) {
 				const ExpressionInfo ei_result = scalarInfo(node);
 				if (ei_result.symbol && ei_result.types.size() == 1) opt_type = ei_result.types.front();
 			}
@@ -941,8 +941,8 @@ ExpressionInfo BodyChecker::builtinBinary (const BinaryExpression &node, const R
 	}
 	if (left.nullable() || right.nullable()) fail(Code::NULLABLE_PAYLOAD_ACCESS, node.op.get_span(), "This operation requires a present value");
 	if (!analyzer.numeric(left) || !analyzer.numeric(right) || ((left.parameter || right.parameter) && left != right)) {
-		if (!analyzer.members(left, node.op.get_lexeme(), SymbolKind::Operator).empty() ||
-		    !analyzer.members(right, node.op.get_lexeme(), SymbolKind::Operator).empty())
+		if (!analyzer.members(left, node.op.get_name_key(), SymbolKind::Operator).empty() ||
+		    !analyzer.members(right, node.op.get_name_key(), SymbolKind::Operator).empty())
 			fail(Code::OPERATOR_MATCH, node.op.get_span(), "No matching overload for operator '" + node.op.get_lexeme() + "'");
 		fail(Code::BINARY_OPERANDS, node.op.get_span(), std::format("Operator '{}' requires numeric operands", node.op.get_lexeme()));
 	}
@@ -968,18 +968,18 @@ ExpressionInfo BodyChecker::builtinBinary (const BinaryExpression &node, const R
 
 std::vector<Candidate> BodyChecker::callCandidates (const CallExpression &node) {
 	checkDefaultName(node.name);
-	if (const Binding *b_local = local(node.name.get_lexeme()))
+	if (const Binding *b_local = local(node.name.get_name_key()))
 		fail(Code::NOT_CALLABLE, node.name.get_span(), "Local binding '" + node.name.get_lexeme() + "' is not callable", b_local->name);
 	std::vector<Candidate> group;
 	// Built-ins occupy the lexical function namespace. Explicit receivers still select their own members.
-	const bool b_builtinName = builtinFunctionNamed(node.name.get_lexeme());
+	const bool b_builtinName = builtinFunctionNamed(node.name.get_name_key());
 	if (!b_builtinName && owner && owner->kind == SymbolKind::State) {
-		group = analyzer.members(analyzer.substitute(analyzer.ownerType(*owner), m_arguments), node.name.get_lexeme(), SymbolKind::Method,
+		group = analyzer.members(analyzer.substitute(analyzer.ownerType(*owner), m_arguments), node.name.get_name_key(), SymbolKind::Method,
 		                         MemberLookup::CallContract);
 		for (Candidate &c_method : group) c_method.arguments.insert(m_arguments.begin(), m_arguments.end());
 	}
 	if (!b_builtinName && hasInstance() && group.empty()) {
-		group = analyzer.members(selfType(), node.name.get_lexeme(), SymbolKind::Method, MemberLookup::CallContract);
+		group = analyzer.members(selfType(), node.name.get_name_key(), SymbolKind::Method, MemberLookup::CallContract);
 	}
 	if (!group.empty()) checkValidatorReceiver(nullptr, node.get_span());
 	if (!group.empty() && rp_receiverPhase == ReceiverPhase::FieldInitializer) {
@@ -989,8 +989,8 @@ std::vector<Candidate> BodyChecker::callCandidates (const CallExpression &node) 
 		fail(Code::INVALID_PARAMETER_DEFAULT, node.name.get_span(), "A default cannot call a method on its receiver", &pd_default->name);
 	}
 	if (group.empty()) {
-		const Candidates candidates = !b_builtinName && hasInstance() ? analyzer.lookup(context, node.name.get_lexeme()) :
-		                                                                analyzer.lookupFile(context, node.name.get_lexeme());
+		const Candidates candidates = !b_builtinName && hasInstance() ? analyzer.lookup(context, node.name.get_name_key()) :
+		                                                                analyzer.lookupFile(context, node.name.get_name_key());
 		for (const Symbol *sym : candidates) {
 			if (sym->kind == SymbolKind::Function) {
 				group.push_back({ sym });
@@ -1005,7 +1005,7 @@ std::vector<Candidate> BodyChecker::callCandidates (const CallExpression &node) 
 
 ExpressionInfo BodyChecker::call (const CallExpression &node) {
 	const std::vector<Candidate> group = callCandidates(node);
-	if (group.empty() && builtinFunctionNamed(node.name.get_lexeme()))
+	if (group.empty() && builtinFunctionNamed(node.name.get_name_key()))
 		return builtinCall(node, node.typeArguments ? &*node.typeArguments : nullptr).value();
 	if (group.empty() && node.typeArguments) checkTypeArguments(*node.typeArguments);
 	ExpressionInfo ei_call = invoke(node.name, node.get_span(), node.suppliedArguments, group, node.typeArguments ? &*node.typeArguments : nullptr);
@@ -1025,7 +1025,7 @@ ExpressionInfo BodyChecker::memberCall (const MemberCallExpression &node) {
 	const ExpressionInfo    ei_receiver = scalarInfo(*node.receiver);
 	const TypeArgumentList *tal_types   = node.typeArguments ? &*node.typeArguments : nullptr;
 	if (std::optional<ExpressionInfo> opt_builtin = builtinCall(node, tal_types, &ei_receiver)) return std::move(*opt_builtin);
-	const std::optional<ArrayMutation> opt_mutation = arrayMutationNamed(node.name.get_lexeme());
+	const std::optional<ArrayMutation> opt_mutation = arrayMutationNamed(node.name.get_name_key());
 	if (!ei_receiver.fallsThrough) {
 		if (!opt_mutation) unknownMember(node, "a non-returning receiver");
 		ResolvedType rt_array(kInteger);
@@ -1281,7 +1281,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		bool                       b_continues = true;
 		std::optional<BodyChecker> opt_unreachable;
 		for (std::size_t i = 0; i < n->fields.size(); ++i) {
-			const Candidate member = analyzer.members(*hint, td->fields[i].name.get_lexeme(), SymbolKind::Field).front();
+			const Candidate member = analyzer.members(*hint, td->fields[i].name.get_name_key(), SymbolKind::Field).front();
 			analyzer.requireAccess(*member.symbol, context, n->fields[i]->get_span());
 			const ResolvedType                required = analyzer.substitute(*analyzer.declarations.at(member.symbol).value, member.arguments);
 			const std::optional<ResolvedType> actual   = onPath(b_continues, opt_unreachable).scalar(*n->fields[i], &required);
@@ -1335,7 +1335,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		const ExpressionInfo ei_operand = o_operation == oNot ? scalarInfo(*n->operand) : scalarInfo(*n->operand, hint, floats);
 		if (!ei_operand.fallsThrough) return ExpressionInfo::never();
 		const ResolvedType    &operand = ei_operand.types.front();
-		std::vector<Candidate> group   = analyzer.members(operand, n->op.get_lexeme(), SymbolKind::Operator);
+		std::vector<Candidate> group   = analyzer.members(operand, n->op.get_name_key(), SymbolKind::Operator);
 		std::erase_if(group, [&] (const Candidate &candidate) {
 			const MethodDeclaration &md_method = dynamic_cast<const MethodDeclaration &>(*callable(*candidate.symbol));
 			return md_method.operatorMember->selector || md_method.operatorMember->provider || !md_method.parameters.empty();
@@ -1361,7 +1361,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		return call(*n);
 	}
 	if (const MemberCallExpression *mc_method = dynamic_cast<const MemberCallExpression *>(&node)) {
-		if (!record && !ef_probeConstants && checksNumericMethod(mc_method->name.get_lexeme())) {
+		if (!record && !ef_probeConstants && checksNumericMethod(mc_method->name.get_name_key())) {
 			// A numeric method can reject its own operands before an enclosing overload is selected.
 			ExpressionFacts ef_constants;
 			BodyChecker     bc_probe   = *this;
@@ -1476,7 +1476,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 			     &pd_default->name);
 		if (opt_receiver->nullable()) fail(Code::NULLABLE_PAYLOAD_ACCESS, n->name.get_span(), "A state call requires a non-null receiver");
 		const ResolvedType          &rt_host   = rt_attachment && isSelfReference(*n->receiver) ? *rt_attachment : *opt_receiver;
-		const std::vector<Candidate> v_methods = analyzer.members(rt_host, n->name.get_lexeme(), SymbolKind::StateMethodContract);
+		const std::vector<Candidate> v_methods = analyzer.members(rt_host, n->name.get_name_key(), SymbolKind::StateMethodContract);
 		if (v_methods.empty()) fail(Code::INVALID_STATE_TARGET, n->name.get_span(), "Unknown state method '" + n->name.get_lexeme() + "'");
 		return invoke(n->name, node.get_span(), n->suppliedArguments, v_methods, n->typeArguments ? &*n->typeArguments : nullptr);
 	}

@@ -341,7 +341,7 @@ DestructorDeclaration ClassParser::parseDestructor (const Token &owner, const st
 }
 
 Token ClassParser::parseMemberName (const Token &owner, std::string_view kind) const {
-	if (const Token t_name = p_parser.peek(); t_name.get_type() != TokenType::Identifier || t_name.get_lexeme() != owner.get_lexeme()) {
+	if (const Token t_name = p_parser.peek(); t_name.get_type() != TokenType::Identifier || t_name.get_name_key() != owner.get_name_key()) {
 		throw cde::SyntaxErrors::expected(std::format("'{}' as the {} name", owner.get_lexeme(), kind), t_name);
 	}
 	return p_parser.advance();

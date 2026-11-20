@@ -5,8 +5,10 @@
 #include <exception>
 #include <iostream>
 #include <ostream>
+#include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include <cde/cloth_diagnostic.hpp>
 #include <cde/diagnostic_reporter.hpp>
@@ -19,7 +21,20 @@
 #include <system/compiler_options.hpp>
 #include <util/pstream.hpp>
 
+#ifdef _WIN32
+int wmain (const int argc, wchar_t *wideArgv[]) try {
+	// The Windows narrow entry point loses characters outside the active code page.
+	std::vector<std::string>  v_utf8;
+	std::vector<const char *> v_arguments;
+	v_utf8.reserve(argc);
+	v_arguments.reserve(argc);
+	for (int i_index = 0; i_index < argc; ++i_index) {
+		v_arguments.push_back(v_utf8.emplace_back(cloth::pathUtf8(wideArgv[i_index])).c_str());
+	}
+	const char *const *argv = v_arguments.data();
+#else
 int main (const int argc, char *argv[]) try {
+#endif
 	const cloth::sys::CompilerOptions co_options{ argc, argv };
 	if (co_options.is_empty()) {
 		std::fprintf(stderr, "incorrect usage: cloth <args>");

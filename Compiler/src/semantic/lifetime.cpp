@@ -148,7 +148,7 @@ OwningListMethods owningListMethods (const Analyzer &analyzer, const Symbol *own
 					olm_list.operations.emplace(&sym_member, ListOperation::Foreach);
 				continue;
 			}
-			const std::string                 &s_name       = sym_member.name.get_lexeme();
+			const std::string                 &s_name       = sym_member.name.get_name_key();
 			const std::optional<ArrayMutation> opt_mutation = arrayMutationNamed(s_name);
 			if (s_name == "get" && b_read)
 				olm_list.operations.emplace(&sym_member, ListOperation::Get);
@@ -165,11 +165,11 @@ OwningListMethods owningListMethods (const Analyzer &analyzer, const Symbol *own
 	return olm_list;
 }
 
-bool distinctAllocations (Identity left, Identity right, const Path &path) {
+bool distinctAllocations (const Identity left, const Identity right, const Path &path) {
 	return left != right && object(left, path).allocation && object(right, path).allocation;
 }
 
-void forgetOtherOrders (Identity list, Path &path) {
+void forgetOtherOrders (const Identity list, Path &path) {
 	std::erase_if(path.entries,
 	              [&] (const decltype(path.entries)::value_type &entry) { return entry.first != list && !distinctAllocations(entry.first, list, path); });
 }
@@ -192,12 +192,12 @@ class LifetimeChecker {
 	void check ();
 
     private:
-	Analyzer                                                &a_analyzer;
-	const Analyzer::LifetimeBody                            &lb_job;
-	BodyFacts                                               &bf_facts;
-	const OwningListMethods                                 &olm_list;
-	std::map<const LoopTarget *, LoopPaths>                  m_jumps;
-	std::map<const GuardedReceiver *, Handle>                m_guarded;
+	Analyzer                                 &a_analyzer;
+	const Analyzer::LifetimeBody             &lb_job;
+	BodyFacts                                &bf_facts;
+	const OwningListMethods                  &olm_list;
+	std::map<const LoopTarget *, LoopPaths>   m_jumps;
+	std::map<const GuardedReceiver *, Handle> m_guarded;
 	// Only enclosing writes observe projected class receivers. Capture them before evaluating the RHS.
 	std::map<const Expression *, Handle> m_observed;
 	Identity                             id_next   = 1;
@@ -210,7 +210,7 @@ class LifetimeChecker {
 	static bool                       equivalent (const Path &left, const Path &right, const Path &entry);
 	void                              access (const Handle &handle, const Path &path, const TokenSpan &span, bool permit, bool &runtime) const;
 	[[nodiscard]] const TypeDispatch *table (const ResolvedType &type) const;
-	void                              enter (Path &path, Handle handle, const Symbol &selection, const ResolvedType &host);
+	void                              enter (Path &path, Handle handle, const Symbol &selection, const ResolvedType &host) const;
 	void     selectState (const ExpressionInfo &call, Handle receiver, bool self, const Token &name, Path &path, ReceiverChecks &checks);
 	void     defaults (const ExpressionInfo &call, Path &path) const;
 	Handle   scalar (const Expression &node, Path &path);
@@ -232,7 +232,7 @@ class LifetimeChecker {
 	void                         destroyOwned (Identity list, const Token &site, Path &path) const;
 	void                         store (const Token &name, Handle handle, Path &path);
 	Values                       runDeferred (const FunctionBlockExpression &block, Path &path);
-	void                              checkDeferred (const FunctionBlockExpression &block, Path path);
+	void                         checkDeferred (const FunctionBlockExpression &block, Path path);
 	[[nodiscard]] const Token   *binding (const Token &name) const;
 	[[nodiscard]] StorageOwner   storageOwner (const Expression &target) const;
 	void   write (const Statement &node, const Expression &target, const ExpressionPtr &value, const ExpressionPtr &compound, Path &path);
@@ -332,17 +332,17 @@ void LifetimeChecker::access (const Handle &handle, const Path &path, const Toke
 }
 
 const TypeDispatch *LifetimeChecker::table (const ResolvedType &type) const {
-	const std::map<ResolvedType, TypeDispatch>::const_iterator it_entry = a_analyzer.program.dispatchTables.find(type);
+	const auto it_entry = a_analyzer.program.dispatchTables.find(type);
 	return it_entry == a_analyzer.program.dispatchTables.end() ? nullptr : &it_entry->second;
 }
 
-void LifetimeChecker::enter (Path &path, Handle handle, const Symbol &selection, const ResolvedType &host) {
+void LifetimeChecker::enter (Path &path, Handle handle, const Symbol &selection, const ResolvedType &host) const {
 	const TypeDispatch *td_host = table(host);
 	if (!td_host) {
 		unknownEffect(path);
 		return;
 	}
-	const auto it_entry = td_host->states.find(selection.name.get_lexeme());
+	const auto it_entry = td_host->states.find(selection.name.get_name_key());
 	if (it_entry == td_host->states.end() || it_entry->second.selection != &selection) {
 		unknownEffect(path);
 		return;
@@ -369,8 +369,7 @@ void LifetimeChecker::selectState (const ExpressionInfo &call, Handle receiver, 
 	const StateMethod  *sm_contract = nullptr;
 	for (const TypeDispatch *td_view : { td_host, table(call.dispatch->receiver) }) {
 		if (!td_view) continue;
-		const std::vector<StateMethod>::const_iterator it_entry =
-		        std::ranges::find(td_view->stateMethods, call.dispatch->contract, &StateMethod::contract);
+		const auto it_entry = std::ranges::find(td_view->stateMethods, call.dispatch->contract, &StateMethod::contract);
 		if (it_entry != td_view->stateMethods.end()) {
 			sm_contract = &*it_entry;
 			break;
@@ -387,7 +386,7 @@ void LifetimeChecker::defaults (const ExpressionInfo &call, Path &path) const {
 	const BodyFacts &bf_contract = call.contractInstance ? call.contractInstance->body : static_cast<const BodyFacts &>(a_analyzer.program);
 	for (const std::size_t st_index : call.omittedParameters) {
 		const ParameterDeclaration &pd_default = callable(*call.argumentContract)->parameters[st_index];
-		const std::unordered_map<const ParameterDeclaration *, DefaultEffects>::const_iterator it_entry = bf_contract.defaultEffects.find(&pd_default);
+		const auto                  it_entry   = bf_contract.defaultEffects.find(&pd_default);
 		if (it_entry == bf_contract.defaultEffects.end() || it_entry->second.mayCallOrMutate) unknownEffect(path);
 		if (it_entry != bf_contract.defaultEffects.end() && !it_entry->second.fallsThrough) {
 			path.reachable = false;
@@ -397,21 +396,21 @@ void LifetimeChecker::defaults (const ExpressionInfo &call, Path &path) const {
 }
 
 const Token *LifetimeChecker::binding (const Token &name) const {
-	const std::unordered_map<const Token *, const Token *>::const_iterator it_entry = bf_facts.references.find(&name);
+	const auto it_entry = bf_facts.references.find(&name);
 	return it_entry == bf_facts.references.end() ? &name : it_entry->second;
 }
 
 void LifetimeChecker::store (const Token &name, Handle handle, Path &path) {
-	const std::unordered_map<const Token *, ResolvedType>::const_iterator it_entry = bf_facts.localTypes.find(&name);
+	const auto it_entry = bf_facts.localTypes.find(&name);
 	if (it_entry == bf_facts.localTypes.end()) return;
 	if (!handle.identity && handle.presence == Presence::Unknown) handle = fresh(it_entry->second);
 	if (handle.identity || it_entry->second.nullable()) path.bindings[&name] = handle;
 }
 
 Handle LifetimeChecker::scalar (const Expression &node, Path &path) {
-	const Values                                         v_result = expression(node, path);
-	const Handle                                         h_value  = v_result.size() == 1 ? v_result.front() : Handle{};
-	const std::map<const Expression *, Handle>::iterator it_owner = m_observed.find(&node);
+	const Values v_result = expression(node, path);
+	const Handle h_value  = v_result.size() == 1 ? v_result.front() : Handle{};
+	const auto   it_owner = m_observed.find(&node);
 	if (it_owner != m_observed.end()) it_owner->second = h_value;
 	return h_value;
 }
@@ -430,8 +429,8 @@ void LifetimeChecker::formatText (const Expression &operand, Path &path, bool &r
 	const Handle h_value = scalar(operand, path);
 	if (!path.reachable) return;
 	if (h_value.identity) access(h_value, path, operand.get_span(), bf_facts.isDirectReceiver(operand), runtime);
-	const decltype(bf_facts.textConversions)::const_iterator it_format = bf_facts.textConversions.find(&operand);
-	if (it_format != bf_facts.textConversions.end() && it_format->second.callsFormatter) unknownEffect(path);
+	if (const auto it_format = bf_facts.textConversions.find(&operand); it_format != bf_facts.textConversions.end() && it_format->second.callsFormatter)
+		unknownEffect(path);
 }
 
 std::optional<std::uint64_t> LifetimeChecker::constantIndex (const Expression &index) const {
@@ -934,7 +933,7 @@ Values LifetimeChecker::expression (const Expression &node, Path &path) {
 		}
 	} else if (const ProviderAccessExpression *pa_provider = dynamic_cast<const ProviderAccessExpression *>(&node)) {
 		const Handle h_value = scalar(*pa_provider->receiver, path);
-		if (ei_info.argumentContract || pa_provider->name.get_lexeme() == provider::S_STRING) {
+		if (ei_info.argumentContract || pa_provider->name.get_name_key() == provider::S_STRING) {
 			access(h_value, path, pa_provider->receiver->get_span(), bf_facts.isDirectReceiver(*pa_provider->receiver), rc_checks.atAccess);
 			if (ei_info.argumentContract || (ei_info.provider && ei_info.provider->callsFormatter)) unknownEffect(path);
 		}
@@ -1261,7 +1260,7 @@ void LifetimeChecker::check () {
 			of_self.lifetime                    = sym_context.kind == SymbolKind::Destructor ? Lifetime::Destroying : Lifetime::Unknown;
 			if (lb_job.state) {
 				if (const TypeDispatch *td_host = table(*lb_job.host)) {
-					const StateSelections::const_iterator it_entry = td_host->states.find(lb_job.state->name.get_lexeme());
+					const StateSelections::const_iterator it_entry = td_host->states.find(lb_job.state->name.get_name_key());
 					if (it_entry != td_host->states.end() && it_entry->second.definition == lb_job.state)
 						of_self.active = Activation{ it_entry->second.selection, *lb_job.host,
 							                     sym_context.kind != SymbolKind::StateInitializer };

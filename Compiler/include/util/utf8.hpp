@@ -61,6 +61,17 @@ inline std::size_t utf8_scalar_length (std::string_view bytes) {
 	return length;
 }
 
+// Returns the number of bytes preceding the first invalid scalar.
+inline std::size_t utf8_valid_prefix_length (std::string_view bytes) {
+	std::size_t st_offset = 0;
+	while (st_offset < bytes.size()) {
+		const std::size_t st_length = utf8_scalar_length(bytes.substr(st_offset));
+		if (st_length == 0) break;
+		st_offset += st_length;
+	}
+	return st_offset;
+}
+
 // Decodes one scalar after utf8_scalar_length has validated its bytes.
 inline char32_t utf8_scalar_value (std::string_view scalar) {
 	const auto c_first = static_cast<unsigned char>(scalar.front());

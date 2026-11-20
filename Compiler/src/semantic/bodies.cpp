@@ -43,7 +43,7 @@ const Binding *BodyChecker::local (const std::string &name) const {
 }
 
 const Binding *BodyChecker::assignmentBinding (const Token &target) const {
-	const Binding *b_local = local(target.get_lexeme());
+	const Binding *b_local = local(target.get_name_key());
 	if (b_local && b_local->deferred)
 		fail(Code::BLOCK_ASSIGNMENT, target.get_span(), "Cannot assign to deferred binding '" + target.get_lexeme() + "'", b_local->name);
 	return b_local;
@@ -61,14 +61,14 @@ void duplicateBinding (const Token &name, const Token &previous) {
 }
 
 void BodyChecker::checkBindingName (const Token &name) const {
-	const std::map<std::string, Binding>::const_iterator it_bound = scopes.back().find(name.get_lexeme());
+	const std::map<std::string, Binding>::const_iterator it_bound = scopes.back().find(name.get_name_key());
 	if (it_bound != scopes.back().end()) duplicateBinding(name, *it_bound->second.name);
 }
 
 Binding &BodyChecker::bind (const Token &name, std::optional<ResolvedType> type, const bool mutableBinding, const bool deferred) {
 	if (type && type->parameter) type = analyzer.boundShape(*type);
 	const auto [fst, snd] = scopes.back().emplace(
-	        name.get_lexeme(), Binding{ .type = std::move(type), .name = &name, .mutableBinding = mutableBinding, .deferred = deferred });
+	        name.get_name_key(), Binding{ .type = std::move(type), .name = &name, .mutableBinding = mutableBinding, .deferred = deferred });
 	if (!snd) {
 		duplicateBinding(name, *fst->second.name);
 	}
@@ -85,9 +85,9 @@ void BodyChecker::bindDeferred (const Token &name, std::optional<ResolvedType> t
 }
 
 void BodyChecker::checkDefaultName (const Token &name) const {
-	if (!pd_default || local(name.get_lexeme())) return;
+	if (!pd_default || local(name.get_name_key())) return;
 	for (const ParameterDeclaration &pd_parameter : callable(context)->parameters) {
-		if (pd_parameter.name.get_lexeme() == name.get_lexeme()) {
+		if (pd_parameter.name.get_name_key() == name.get_name_key()) {
 			fail(Code::INVALID_PARAMETER_DEFAULT, name.get_span(), "A default can only read earlier parameters", &pd_parameter.name);
 		}
 	}
@@ -102,7 +102,7 @@ bool BodyChecker::readOnlyDefaultRoot (const Expression &node) const {
 	if (const auto *ga_access = dynamic_cast<const GuardedAccessExpression *>(&node)) return readOnlyDefaultRoot(*ga_access->continuation);
 	const auto *ne_name = dynamic_cast<const NameExpression *>(&node);
 	if (!ne_name) return false;
-	const std::string &s_name = ne_name->name.get_lexeme();
+	const std::string &s_name = ne_name->name.get_name_key();
 	if (const Binding *b_binding = local(s_name)) {
 		return std::ranges::any_of(callable(context)->parameters,
 		                           [b_binding] (const ParameterDeclaration &parameter) { return &parameter.name == b_binding->name; });
@@ -391,7 +391,7 @@ void BodyChecker::leaveScope () {
 		const std::function forget = [&] (Narrowing &facts) {
 			std::erase_if(facts, [&] (const Narrowing::value_type &entry) {
 				const Token &t_root   = *entry.first.root;
-				const auto   it_local = m_locals.find(t_root.get_lexeme());
+				const auto   it_local = m_locals.find(t_root.get_name_key());
 				return it_local != m_locals.end() && it_local->second.name == &t_root;
 			});
 		};
@@ -559,7 +559,7 @@ void BodyChecker::assignmentTarget (const Token &target) {
 void BodyChecker::assign (const Token &target, const std::optional<ResolvedType> &value, const Expression *source, std::size_t slot,
                           const std::optional<ResolvedType> &represented) {
 	assignmentTarget(target);
-	const Binding *b_local = local(target.get_lexeme());
+	const Binding *b_local = local(target.get_name_key());
 	if (b_local) {
 		if (value && b_local->type) require({ *value }, { *b_local->type }, target.get_span());
 		invalidate({ b_local->name });
@@ -676,7 +676,7 @@ void BodyChecker::writable (const Expression &target) {
 			fail(Code::INVALID_INDEX, target.get_span(), "An index getter returns a copy");
 		writable(*index->array);
 	} else if (const auto *name = dynamic_cast<const NameExpression *>(&target)) {
-		if (const Binding *b = local(name->name.get_lexeme()); b && (!b->mutableBinding || b->deferred)) {
+		if (const Binding *b = local(name->name.get_name_key()); b && (!b->mutableBinding || b->deferred)) {
 			fail(Code::IMMUTABLE_BINDING, name->get_span(), "Cannot modify an immutable value", b->name);
 		}
 	} else {
@@ -686,7 +686,7 @@ void BodyChecker::writable (const Expression &target) {
 
 std::optional<ExpressionInfo> BodyChecker::updateOperator (const Statement &statement, const ResolvedType &receiver, const Token &op,
                                                            const ExpressionPtr &rhs) {
-	const std::vector<Candidate> candidates = analyzer.members(receiver, op.get_lexeme(), SymbolKind::Operator);
+	const std::vector<Candidate> candidates = analyzer.members(receiver, op.get_name_key(), SymbolKind::Operator);
 	if (candidates.empty()) {
 		return std::nullopt;
 	}

@@ -202,10 +202,10 @@ class Token {
 	TokenType   t_type;
 	Operator    o_operator = oError;
 	std::string s_lexeme;
+	std::shared_ptr<const std::string> p_normalizedName;
 
     public:
-	Token (std::string lexeme, const TokenType type, TokenSpan span) : t_span(std::move(span)), t_type(type), s_lexeme(std::move(lexeme)) {
-	}
+	Token (std::string lexeme, TokenType type, TokenSpan span);
 
 	Token (std::string lexeme, const Operator op, TokenSpan span) :
 	        t_span(std::move(span)),
@@ -218,6 +218,11 @@ class Token {
 
 	[[nodiscard]] const std::string &get_lexeme () const {
 		return s_lexeme;
+	}
+
+	// Name comparisons use NFC. The lexeme and span keep the spelling as written.
+	[[nodiscard]] const std::string &get_name_key () const {
+		return p_normalizedName ? *p_normalizedName : s_lexeme;
 	}
 
 	[[nodiscard]] TokenSpan get_span () const {

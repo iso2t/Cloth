@@ -14,6 +14,8 @@
 #include <semantic/checker.hpp>
 #include <token/numeric_literals.hpp>
 #include <token/token.hpp>
+#include <util/unicode_identifier.hpp>
+#include <util/utf8.hpp>
 
 namespace cloth {
 
@@ -103,7 +105,12 @@ std::string ResolvedType::spelling () const {
                 b_truncated = true;
 	};
 	const std::function<void(const ResolvedType &)> write = [&] (const ResolvedType &type) {
-		append(type.name);
+		if (type.parameter)
+			append(type.parameter->name.get_lexeme());
+		else if (type.declaration)
+			append(type.declaration->name.get_lexeme());
+		else
+			append(type.name);
 		if (type.width && type.width != 32) append(std::format("{}{}{}", to_string(oLess), type.width, to_string(oGreater)));
 		if (!type.arguments().empty()) {
 			append(to_string(oLess));
@@ -238,7 +245,7 @@ Analyzer::Analyzer (CheckedProgram &program) : program(program), declarations(pr
 void Analyzer::registerScope (const SymbolScope &scope, std::size_t file, const Symbol *owner) {
 	for (const SymbolScope::value_type &entry : scope) {
 		for (const Symbol &sym : entry.second) {
-			if (sym.kind == SymbolKind::Type && sym.name.get_lexeme() == objectRoot().name.get_lexeme())
+			if (sym.kind == SymbolKind::Type && sym.name.get_name_key() == objectRoot().name.get_name_key())
 				fail(Code::INVALID_CLASS_MEMBER, sym.name.get_span(), std::format("{} is the built-in class root", sym.name.get_lexeme()));
 			declarations.emplace(&sym, DeclarationInfo{ file, owner });
 			if (!owner && entry.first == "Number" && sym.visibility == Visibility::Public && asInterface(&sym) && !typeParameters(sym) &&
@@ -276,6 +283,65 @@ void Analyzer::registerScope (const SymbolScope &scope, std::size_t file, const 
 	}
 }
 
+namespace {
+namespace fs = std::filesystem;
+
+using ModuleDirectory   = std::map<std::string, std::vector<fs::path>>;
+using ModuleDirectories = std::map<fs::path, ModuleDirectory>;
+
+std::optional<std::string> moduleFileKey (const fs::path &path) {
+	// A directory can also contain native filenames that cannot appear in Cloth source.
+	try {
+		std::string s_filename = pathUtf8(path.filename());
+		if (utf8_valid_prefix_length(s_filename) != s_filename.size()) return std::nullopt;
+		const std::string s_extension = lowercaseExtension(path);
+		if (!s_filename.ends_with(s_extension)) {
+			// Preserve native extension lookup on case-insensitive filesystems.
+			fs::path p_lower = path;
+			p_lower.replace_extension(s_extension);
+			std::error_code ec;
+			if (fs::equivalent(path, p_lower, ec)) s_filename.replace(s_filename.size() - s_extension.size(), s_extension.size(), s_extension);
+		}
+		return normalizeIdentifier(s_filename);
+	} catch (const fs::filesystem_error &error) {
+		if (error.code() != std::errc::illegal_byte_sequence) throw;
+	}
+	return std::nullopt;
+}
+
+// Index each directory once using the same name keys as the symbol table.
+// Retain the physical paths since filesystems can store either Unicode spelling.
+fs::path moduleEntry (ModuleDirectories &directories, const fs::path &parent, const std::string &key, bool directory, const TokenSpan &use) {
+	if (parent.empty() || !fs::is_directory(parent)) return {};
+	const std::pair<ModuleDirectories::iterator, bool> it_parent = directories.try_emplace(parent);
+	ModuleDirectory                                   &md_names  = it_parent.first->second;
+	if (it_parent.second) {
+		std::error_code              ec;
+		const fs::directory_iterator di_entries(parent, ec);
+		if (ec == std::errc::permission_denied) {
+			// Search-only directories still permit opening a known filename.
+			directories.erase(it_parent.first);
+			const fs::path p_exact = parent / std::u8string(key.begin(), key.end());
+			return (directory ? fs::is_directory(p_exact) : fs::is_regular_file(p_exact)) ? p_exact : fs::path{};
+		}
+		if (ec) throw fs::filesystem_error("Cannot read module directory", parent, ec);
+		for (const fs::directory_entry &de_entry : di_entries) {
+			if (const std::optional<std::string> opt_key = moduleFileKey(de_entry.path())) md_names[*opt_key].push_back(de_entry.path());
+		}
+	}
+	fs::path                              p_match;
+	const ModuleDirectory::const_iterator it_entries = md_names.find(key);
+	if (it_entries == md_names.end()) return {};
+	for (const fs::path &p_entry : it_entries->second) {
+		if (directory ? !fs::is_directory(p_entry) : !fs::is_regular_file(p_entry)) continue;
+		if (!p_match.empty()) fail(Code::AMBIGUOUS_IMPORT_SOURCE, use, "Multiple filesystem entries have the same normalized module name");
+		p_match = p_entry;
+	}
+	return p_match;
+}
+
+}
+
 void Analyzer::loadImports () {
 	namespace fs = std::filesystem;
 	using Edge   = std::pair<const ImportDeclaration *, std::size_t>;
@@ -287,6 +353,7 @@ void Analyzer::loadImports () {
 
 	std::vector<std::vector<Edge>>  v_edges;
 	std::map<fs::path, std::size_t> m_files;
+	ModuleDirectories               m_directories;
 	const SourceFile               *sf_entry = program.units.front()->get_source_unit().get_source();
 	fs::path                        p_root;
 	if (sf_entry && !sf_entry->get_path().empty() && sf_entry->get_path() != "<input>") {
@@ -304,20 +371,30 @@ void Analyzer::loadImports () {
 			if (p_root.empty()) {
 				fail(Code::MISSING_IMPORT_CONTEXT, id_import.path.get_span(), "A source path is required to resolve imports");
 			}
-			fs::path p_relative;
-			for (const Token &part : id_import.path.components) p_relative /= part.get_lexeme();
 			fs::path    p_target;
 			std::string s_libraryPath;
 			for (const ImportRoot &ir_root : ir_roots) {
-				if (ir_root.path.empty()) continue;
+				fs::path                  p_directory = ir_root.path;
+				const std::vector<Token> &v_parts     = id_import.path.components;
+				for (std::size_t st_index = 0; st_index + 1 < v_parts.size() && !p_directory.empty(); ++st_index) {
+					const Token &t_part = v_parts[st_index];
+					p_directory         = moduleEntry(m_directories, p_directory, t_part.get_name_key(), true, t_part.get_span());
+				}
+				if (p_directory.empty()) continue;
 				for (const char *extension : { ".co", ".clib" }) {
-					fs::path candidate = ir_root.path / p_relative;
-					candidate += extension;
-					if (!fs::is_regular_file(candidate)) continue;
+					const fs::path candidate = moduleEntry(m_directories, p_directory, v_parts.back().get_name_key() + extension, false,
+					                                       id_import.path.get_span());
+					if (candidate.empty()) continue;
 					if (!p_target.empty())
 						fail(Code::AMBIGUOUS_IMPORT_SOURCE, id_import.path.get_span(), "Both .co and .clib match this import");
 					p_target = fs::canonical(candidate);
-					if (ir_root.standardLibrary) s_libraryPath = p_relative.generic_string() + extension;
+					if (ir_root.standardLibrary) {
+						for (const Token &t_part : v_parts) {
+							if (!s_libraryPath.empty()) s_libraryPath += '/';
+							s_libraryPath += t_part.get_name_key();
+						}
+						s_libraryPath += extension;
+					}
 				}
 				if (!p_target.empty()) break;
 			}
@@ -340,29 +417,31 @@ void Analyzer::loadImports () {
 			const auto         importName = [&] (const std::string &name, const Token &use, const bool explicitName) {
                                 const auto it = ss_exports.find(name);
                                 if (it == ss_exports.end()) {
-                                        fail(Code::IMPORT_NAME_NOT_FOUND, use.get_span(), "Unknown imported name '" + name + "'");
-                                }
-                                Candidates v_public;
-                                for (const Symbol &sym : it->second) {
+					fail(Code::IMPORT_NAME_NOT_FOUND, use.get_span(), "Unknown imported name '" + use.get_lexeme() + "'");
+				}
+				Candidates v_public;
+				for (const Symbol &sym : it->second) {
                                         if (sym.visibility == Visibility::Public) {
                                                 v_public.push_back(&sym);
                                         }
                                 }
                                 if (v_public.empty()) {
                                         if (explicitName) {
-                                                fail(Code::IMPORT_PRIVATE_NAME, use.get_span(), "'" + name + "' is private", &it->second.front().name);
-                                        }
-                                        return;
-                                }
+						fail(Code::IMPORT_PRIVATE_NAME, use.get_span(), "'" + use.get_lexeme() + "' is private",
+						     &it->second.front().name);
+					}
+					return;
+				}
                                 Candidates &v_slot = v_names[st_file][name];
                                 if (!v_slot.empty() && v_slot != v_public) {
-                                        fail(Code::IMPORT_NAME_CONFLICT, use.get_span(), "Conflicting import of '" + name + "'", &v_slot.front()->name);
-                                }
-                                v_slot = std::move(v_public);
+					const std::string &s_spelling = explicitName ? use.get_lexeme() : v_public.front()->name.get_lexeme();
+					fail(Code::IMPORT_NAME_CONFLICT, use.get_span(), "Conflicting import of '" + s_spelling + "'", &v_slot.front()->name);
+				}
+				v_slot = std::move(v_public);
 			};
 			if (const ImportSelection::Names *names = std::get_if<ImportSelection::Names>(&edge.first->selection.value)) {
 				for (const Token &t_name : names->names) {
-					importName(t_name.get_lexeme(), t_name, true);
+					importName(t_name.get_name_key(), t_name, true);
 				}
 			} else {
 				for (const SymbolScope::value_type &entry : ss_exports) {
@@ -376,7 +455,7 @@ void Analyzer::loadImports () {
 Candidates Analyzer::lookup (const Symbol &context, const std::string &name, std::optional<SymbolKind> kind) const {
 	for (const Symbol *sym = &context; sym; sym = declarations.at(sym).owner) {
 		Candidates v_found;
-		if (sym->kind == SymbolKind::Type && (!kind || *kind == SymbolKind::Type) && sym->name.get_lexeme() == name) {
+		if (sym->kind == SymbolKind::Type && (!kind || *kind == SymbolKind::Type) && sym->name.get_name_key() == name) {
 			v_found.push_back(sym);
 		}
 		if (const SymbolScope::const_iterator it_members = sym->members.find(name); it_members != sym->members.end()) {
@@ -401,7 +480,7 @@ const Symbol *Analyzer::lookupTypeRoot (const Symbol &context, const std::string
 }
 
 bool Analyzer::hasTypeName (const Symbol &context, const Token &name, bool qualified) const {
-	return genericParameter(context, name.get_lexeme()) || lookupTypeRoot(context, name.get_lexeme(), qualified);
+	return genericParameter(context, name.get_name_key()) || lookupTypeRoot(context, name.get_name_key(), qualified);
 }
 
 const Symbol *Analyzer::lookupFileState (const Symbol &context, const std::string &name) const {
@@ -414,7 +493,7 @@ Candidates Analyzer::lookupFile (const Symbol &context, const std::string &name)
 	const Names &names   = v_names[declarations.at(&context).file];
 	const auto   it      = names.find(name);
 	Candidates   v_found = it == names.end() ? Candidates{} : it->second;
-	if (name == objectRoot().name.get_lexeme()) v_found.push_back(&objectRoot());
+	if (name == objectRoot().name.get_name_key()) v_found.push_back(&objectRoot());
 	return v_found;
 }
 
@@ -484,9 +563,9 @@ void Analyzer::checkBodies () {
 		if (const TypeDeclaration *const *type = std::get_if<const TypeDeclaration *>(&sym->declaration)) {
 			if (const EnumDeclaration *enumeration = dynamic_cast<const EnumDeclaration *>(*type)) {
 				for (const EnumFieldDeclaration &field : enumeration->fields)
-					checkBodyOf(*std::ranges::find(sym->members.at(field.name.get_lexeme()), SymbolKind::Field, &Symbol::kind));
+					checkBodyOf(*std::ranges::find(sym->members.at(field.name.get_name_key()), SymbolKind::Field, &Symbol::kind));
 				for (const EnumCaseDeclaration &entry : enumeration->cases)
-					checkBodyOf(*std::ranges::find(sym->members.at(entry.name.get_lexeme()), SymbolKind::EnumCase, &Symbol::kind));
+					checkBodyOf(*std::ranges::find(sym->members.at(entry.name.get_name_key()), SymbolKind::EnumCase, &Symbol::kind));
 			}
 		}
 		const Symbol *sym_primary = declarations.at(sym).primaryConstructor;
@@ -501,7 +580,7 @@ void Analyzer::checkBodies () {
 		// The primary checked its defaults and the class checked its base call. Field initializers now follow source order.
 		for (const ClassMember &cm_member : cd_class.members) {
 			if (const ClassFieldDeclaration *cfd_field = std::get_if<ClassFieldDeclaration>(&cm_member.value)) {
-				const std::vector<Symbol> &v_group = sym->members.at(cfd_field->name.get_lexeme());
+				const std::vector<Symbol> &v_group = sym->members.at(cfd_field->name.get_name_key());
 				checkBodyOf(*std::ranges::find(v_group, SymbolKind::Field, &Symbol::kind));
 			}
 		}

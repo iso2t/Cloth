@@ -180,17 +180,17 @@ void BodyChecker::enumValue (const EnumFieldDeclaration &field, const Expression
 ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node) {
 	std::optional<Receiver> opt_receiver = receiver(*node.receiver);
 	if (!opt_receiver || !opt_receiver->fallsThrough) return ExpressionInfo::never();
-	const std::string  &s_name = node.name.get_lexeme();
+	const std::string  &s_name = node.name.get_name_key();
 	const ResolvedType &type   = opt_receiver->type;
 	if (type == ResolvedType(kNull))
 		throw IntrinsicDiagnostic(Code::EXPLICIT_NULLABLE_TYPE, "A provider needs a typed receiver",
 		                          { { node.receiver->get_span(), "no payload type" } });
 	const std::function rejectForm = [&] {
-		fail(Code::INVALID_PROVIDER_RECEIVER, node.name.get_span(), "Provider '" + s_name + "' is unavailable on this receiver form");
+		fail(Code::INVALID_PROVIDER_RECEIVER, node.name.get_span(), "Provider '" + node.name.get_lexeme() + "' is unavailable on this receiver form");
 	};
 	const std::function requirePresent = [&] {
 		if (type.nullable() && !opt_receiver->isType)
-			fail(Code::NULLABLE_PAYLOAD_ACCESS, node.name.get_span(), "Provider '" + s_name + "' requires a present value");
+			fail(Code::NULLABLE_PAYLOAD_ACCESS, node.name.get_span(), "Provider '" + node.name.get_lexeme() + "' requires a present value");
 	};
 	const std::function selection = [&] (ProviderKind kind, ResolvedType result) {
 		return ExpressionInfo{ .types = { std::move(result) }, .provider = ProviderSelection{ kind, type, opt_receiver->isType } };
@@ -310,6 +310,6 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 			return ei_result;
 		}
 	}
-	fail(Code::UNKNOWN_PROVIDER, node.name.get_span(), "Unknown provider '" + s_name + "' on " + type.spelling());
+	fail(Code::UNKNOWN_PROVIDER, node.name.get_span(), "Unknown provider '" + node.name.get_lexeme() + "' on " + type.spelling());
 }
 }

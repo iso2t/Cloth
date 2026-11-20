@@ -165,12 +165,12 @@ ResolvedType Analyzer::substitute (ResolvedType type, const Substitutions &argum
 }
 
 ResolvedType Analyzer::ownerType (const Symbol &symbol) const {
-	ResolvedType rt_type(symbol.name.get_lexeme());
+	ResolvedType rt_type(symbol.name.get_name_key());
 	rt_type.declaration = &symbol;
 	if (const TypeParameterList *tp = typeParameters(symbol)) {
 		ResultTypes v_arguments;
 		for (const TypeParameterDeclaration &param : tp->parameters) {
-			ResolvedType rt_arg(param.name.get_lexeme());
+			ResolvedType rt_arg(param.name.get_name_key());
 			rt_arg.parameter = &param;
 			v_arguments.push_back(std::move(rt_arg));
 		}
@@ -194,7 +194,7 @@ const TypeParameterDeclaration *Analyzer::genericParameter (const Symbol &contex
 	for (const Symbol *sym = &context; sym; sym = declarations.at(sym).owner) {
 		if (const TypeParameterList *tp = typeParameters(*sym)) {
 			for (const TypeParameterDeclaration &param : tp->parameters) {
-				if (param.name.get_lexeme() == name) {
+				if (param.name.get_name_key() == name) {
 					return &param;
 				}
 			}
@@ -212,28 +212,28 @@ void Analyzer::checkParameterNames (const Symbol &symbol) const {
 	ParameterNames m_names;
 	for (const TypeParameterDeclaration &tp_parameter : tpl_parameters->parameters) {
 		const Token &t_name = tp_parameter.name;
-		if (t_name.get_lexeme() == symbol.name.get_lexeme())
+		if (t_name.get_name_key() == symbol.name.get_name_key())
 			fail(Code::INVALID_GENERIC_PARAMETER, t_name.get_span(), "A type parameter cannot have its owner's name", &symbol.name);
 		if (sym_owner && symbol.kind != SymbolKind::Type) {
-			if (const TypeParameterDeclaration *tp_outer = genericParameter(*sym_owner, t_name.get_lexeme()))
+			if (const TypeParameterDeclaration *tp_outer = genericParameter(*sym_owner, t_name.get_name_key()))
 				fail(Code::INVALID_GENERIC_PARAMETER, t_name.get_span(), "Type parameter already declared by the enclosing type",
 				     &tp_outer->name);
 		}
-		const std::pair<ParameterNames::iterator, bool> it_name = m_names.emplace(t_name.get_lexeme(), &t_name);
+		const std::pair<ParameterNames::iterator, bool> it_name = m_names.emplace(t_name.get_name_key(), &t_name);
 		if (!it_name.second) fail(Code::INVALID_GENERIC_PARAMETER, t_name.get_span(), "Duplicate type parameter", it_name.first->second);
 	}
 	// Defaults can refer to enclosing and earlier parameters, including inside a nested type application.
 	for (const TypeParameterDeclaration &tp_parameter : tpl_parameters->parameters) {
 		if (tp_parameter.defaultType) {
 			const std::function<void(const TypeReference &)> check = [&] (const TypeReference &ref) {
-				if (m_names.contains(ref.get_name().get_lexeme()))
+				if (m_names.contains(ref.get_name().get_name_key()))
 					fail(Code::INVALID_GENERIC_ARGUMENT, ref.get_span(), "A default can only use earlier type parameters",
 					     &tp_parameter.name);
 				for (const TypeReference &tr_argument : ref.get_type_arguments()) check(tr_argument);
 			};
 			check(*tp_parameter.defaultType);
 		}
-		m_names.erase(tp_parameter.name.get_lexeme());
+		m_names.erase(tp_parameter.name.get_name_key());
 	}
 }
 
@@ -258,7 +258,7 @@ ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol
 	if (depth > MAX_TYPE_ARG_NESTING) {
 		fail(Code::GENERIC_SUBSTITUTION_NESTING, ts_span, "Recursive generic type or default argument");
 	}
-	const std::string &s_name = t_name.get_lexeme();
+	const std::string &s_name = t_name.get_name_key();
 	ResolvedType       rt_type(s_name);
 	if (s_name == to_string(kRange) && !hasTypeName(context, t_name)) {
 		if (reference.get_type_arguments().size() != 1) fail(Code::INVALID_RANGE_VALUE, ts_span, "A range requires one numeric endpoint type");
@@ -272,7 +272,7 @@ ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol
 			std::size_t            st_end      = s_name.find(s_separator);
 			const Symbol          *sym         = lookupTypeRoot(context, s_name.substr(0, st_end), st_end != std::string::npos);
 			if (!sym) {
-				fail(Code::UNSUPPORTED_TYPE, ts_span, "Unknown type '" + s_name + "'");
+				fail(Code::UNSUPPORTED_TYPE, ts_span, "Unknown type '" + t_name.get_lexeme() + "'");
 			}
 			requireAccess(*sym, context, ts_span);
 			while (st_end != std::string::npos) {
@@ -289,20 +289,20 @@ ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol
 					}
 				}
 				if (!nested) {
-					fail(Code::UNSUPPORTED_TYPE, ts_span, "Unknown nested type '" + s_name + "'");
+					fail(Code::UNSUPPORTED_TYPE, ts_span, "Unknown nested type '" + t_name.get_lexeme() + "'");
 				}
 				sym = nested;
 				requireAccess(*sym, context, ts_span);
 			}
-			rt_type.name                                 = sym->name.get_lexeme();
+			rt_type.name                                 = sym->name.get_name_key();
 			rt_type.declaration                          = sym;
 			const TypeParameterList          *tp         = typeParameters(*sym);
 			const std::size_t                 st_count   = tp ? tp->parameters.size() : 0;
 			const std::vector<TypeReference> &v_supplied = reference.get_type_arguments();
 			if (tp && !allowOpen && !reference.get_application())
-				fail(Code::RAW_GENERIC_TYPE, ts_span, "Expected type arguments for '" + s_name + "'", &sym->name);
+				fail(Code::RAW_GENERIC_TYPE, ts_span, "Expected type arguments for '" + t_name.get_lexeme() + "'", &sym->name);
 			if (v_supplied.size() > st_count || (!tp && reference.get_application())) {
-				fail(Code::GENERIC_ARITY, ts_span, "Unexpected type arguments for '" + s_name + "'");
+				fail(Code::GENERIC_ARITY, ts_span, "Unexpected type arguments for '" + t_name.get_lexeme() + "'");
 			}
 			Substitutions m_args;
 			ResultTypes   v_arguments;
@@ -310,7 +310,7 @@ ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol
 				const TypeParameterDeclaration &param = tp->parameters[i];
 				ResolvedType                    rt_arg;
 				if (allowOpen && (i >= v_supplied.size() || v_supplied[i].is_placeholder())) {
-					rt_arg.name      = param.name.get_lexeme();
+					rt_arg.name      = param.name.get_name_key();
 					rt_arg.parameter = &param;
 				} else if (i < v_supplied.size()) {
 					rt_arg = resolveType(v_supplied[i], context, depth + 1, false, activeDefaults, operatorWidth);
@@ -401,7 +401,7 @@ bool Analyzer::sameSignature (const Candidate &left, const Candidate &right, boo
 	Substitutions mapped = right.arguments;
 	if (a && b) {
 		for (std::size_t i = 0; i < a->parameters.size(); ++i) {
-			ResolvedType parameter(a->parameters[i].name.get_lexeme());
+			ResolvedType parameter(a->parameters[i].name.get_name_key());
 			parameter.parameter       = &a->parameters[i];
 			mapped[&b->parameters[i]] = parameter;
 		}
@@ -459,14 +459,14 @@ std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_
 			const TypeDispatch &td_table = dispatchFor(receiver);
 			if (kind == SymbolKind::StateMethodContract) {
 				for (const StateMethod &sm_method : td_table.stateMethods) {
-					if (sm_method.contract.symbol->name.get_lexeme() != name) continue;
+					if (sm_method.contract.symbol->name.get_name_key() != name) continue;
 					Candidate c_method{ sm_method.contract.symbol, argumentsOf(sm_method.contract.owner) };
 					c_method.dispatch = CallDispatch{ DispatchKind::State, receiver, sm_method.contract };
 					v_members.push_back(std::move(c_method));
 				}
 			} else {
 				for (const MethodSlot &ms_slot : td_table.methods) {
-					if (ms_slot.contract.symbol->name.get_lexeme() != name) continue;
+					if (ms_slot.contract.symbol->name.get_name_key() != name) continue;
 					const MethodRef &mr_static = lookup == MemberLookup::Declaration && ms_slot.implementation ? *ms_slot.implementation :
 					                                                                                             ms_slot.contract;
 					Candidate        c_method{ mr_static.symbol, argumentsOf(mr_static.owner) };
@@ -767,7 +767,7 @@ void Analyzer::resolveDeclaration (const Symbol &symbol) {
 	if (const CallableSignature *cs = callable(symbol)) {
 		std::set<std::string> s_names;
 		for (const ParameterDeclaration &param : cs->parameters) {
-			if (!s_names.insert(param.name.get_lexeme()).second) {
+			if (!s_names.insert(param.name.get_name_key()).second) {
 				fail(Code::DUPLICATE_BINDING, param.name.get_span(), "Duplicate parameter '" + param.name.get_lexeme() + "'");
 			}
 			info.parameters.push_back(valueType(param.type));
@@ -863,7 +863,7 @@ void Analyzer::checkOverload (const Symbol &symbol, const Substitutions &argumen
 	if (!callable(symbol) || dynamic_cast<const ConstructorGuaranteeDeclaration *>(callable(symbol))) return;
 	const DeclarationInfo &di_info  = declarations.at(&symbol);
 	const SymbolScope     &ss_scope = di_info.owner ? di_info.owner->members : program.units[di_info.file]->get_globals();
-	for (const Symbol &sym_prior : ss_scope.at(symbol.name.get_lexeme())) {
+	for (const Symbol &sym_prior : ss_scope.at(symbol.name.get_name_key())) {
 		if (&sym_prior == &symbol) break;
 		if (sym_prior.kind != symbol.kind || !sameSignature({ &sym_prior, arguments }, { &symbol, arguments })) continue;
 		if (symbol.kind == SymbolKind::Operator) {
@@ -1014,7 +1014,7 @@ void Analyzer::checkDeclarations () {
 	for (const Symbol *sym : v_order) {
 		DeclarationInfo &info = declarations.at(sym);
 		if (sym->kind == SymbolKind::StateAttachment) {
-			info.attachedState = lookupFileState(*sym, sym->name.get_lexeme());
+			info.attachedState = lookupFileState(*sym, sym->name.get_name_key());
 			if (!info.attachedState) {
 				fail(Code::INVALID_STATE_ATTACHMENT, sym->name.get_span(), "Unknown attached state '" + sym->name.get_lexeme() + "'");
 			}

@@ -101,7 +101,7 @@ void BodyChecker::rowShape (const Expression &target, const Expression &value, c
 		e_root = index->array.get();
 	}
 	const NameExpression *name    = dynamic_cast<const NameExpression *>(e_root);
-	const Binding        *binding = name ? local(name->name.get_lexeme()) : nullptr;
+	const Binding        *binding = name ? local(name->name.get_name_key()) : nullptr;
 	if (!st_depth || !binding || !binding->type || !hasArrayShape(incoming)) return;
 	const std::vector<std::size_t> v_axes = dimensions(*binding->type);
 	if (st_depth >= v_axes.size()) return;

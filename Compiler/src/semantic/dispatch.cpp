@@ -34,7 +34,7 @@ const MethodDeclaration &classMethod (const MethodRef &method) {
 
 bool sameLabels (const Symbol &left, const Symbol &right) {
 	return std::ranges::equal(callable(left)->parameters, callable(right)->parameters,
-	                          [] (const ParameterDeclaration &a, const ParameterDeclaration &b) { return a.name.get_lexeme() == b.name.get_lexeme(); });
+	                          [] (const ParameterDeclaration &a, const ParameterDeclaration &b) { return a.name.get_name_key() == b.name.get_name_key(); });
 }
 
 bool hasDefaults (const Symbol &method) {
@@ -60,7 +60,7 @@ bool Analyzer::sameMethod (const MethodRef &left, const MethodRef &right, bool r
 	if (left.symbol != right.symbol && left.symbol->kind == SymbolKind::Method && right.symbol->kind == SymbolKind::Method &&
 	    declarations.at(left.symbol).owner == declarations.at(right.symbol).owner && typeParameters(*left.symbol))
 		return false;
-	return left.symbol->name.get_lexeme() == right.symbol->name.get_lexeme() &&
+	return left.symbol->name.get_name_key() == right.symbol->name.get_name_key() &&
 	       sameSignature({ left.symbol, argumentsOf(left.owner) }, { right.symbol, argumentsOf(right.owner) }, results);
 }
 
@@ -70,7 +70,7 @@ Substitutions Analyzer::methodArguments (const MethodRef &source, const Symbol &
 		const TypeParameterList &tpl_target = *typeParameters(target);
 		for (std::size_t st_index = 0; st_index < tpl_source->parameters.size(); ++st_index) {
 			const TypeParameterDeclaration &tp_target = tpl_target.parameters[st_index];
-			ResolvedType                    rt_slot(tp_target.name.get_lexeme());
+			ResolvedType                    rt_slot(tp_target.name.get_name_key());
 			rt_slot.parameter = &tp_target;
 			m_arguments.emplace(&tpl_source->parameters[st_index], std::move(rt_slot));
 		}
@@ -99,7 +99,7 @@ bool Analyzer::sameMethodBounds (const MethodRef &left, const MethodRef &right, 
 				for (const ParameterDeclaration &pd_param : cb_bound.declaration.parameters) {
 					cs_shape.parameters.push_back(resolve(pd_param.type));
 					if (constructorContracts) {
-						cs_shape.labels.push_back(pd_param.name.get_lexeme());
+						cs_shape.labels.push_back(pd_param.name.get_name_key());
 						if (pd_param.isOptional()) cs_shape.defaults = &cb_bound;
 					}
 				}
@@ -270,11 +270,11 @@ void Analyzer::addClassMethod (const MethodRef &method, const MethodGroups &requ
 	if (md_method.virtualPrefix && sym_method.visibility != Visibility::Public)
 		fail(Code::INVALID_VIRTUAL_METHOD, sym_method.name.get_span(), std::format("A virtual method requires {}", to_string(kPublic)));
 	if (md_method.overridePrefix) {
-		const MethodGroups::const_iterator it_groups = requirements.find(sym_method.name.get_lexeme());
+		const MethodGroups::const_iterator it_groups = requirements.find(sym_method.name.get_name_key());
 		if (it_groups == requirements.end() ||
 		    std::ranges::none_of(it_groups->second, [&] (const MethodGroup &group) { return sameMethod(group.front(), method); })) {
 			const std::vector<MethodSlot>::const_iterator it_named = std::ranges::find_if(table.methods, [&] (const MethodSlot &slot) {
-				return slot.contract.symbol->name.get_lexeme() == sym_method.name.get_lexeme();
+				return slot.contract.symbol->name.get_name_key() == sym_method.name.get_name_key();
 			});
 			fail(typeParameters(sym_method) ? Code::INVALID_VIRTUAL_METHOD : Code::INVALID_INTERFACE_OVERRIDE, sym_method.name.get_span(),
 			     "No matching virtual method or interface requirement for '" + sym_method.name.get_lexeme() + "'",
@@ -412,12 +412,12 @@ void Analyzer::buildStates (const ResolvedType &receiver, TypeDispatch &table) c
 		const StateSelectionDeclaration *ss_state  = sc_member ? dynamic_cast<const StateSelectionDeclaration *>(sc_member->get()) : nullptr;
 		if (!ss_state) continue;
 		const SymbolKind       sk_kind       = dynamic_cast<const NestedStateDeclaration *>(ss_state) ? SymbolKind::State : SymbolKind::StateAttachment;
-		const Symbol          &sym_selection = *std::ranges::find(sym_host.members.at(ss_state->get_name().get_lexeme()), sk_kind, &Symbol::kind);
+		const Symbol          &sym_selection  = *std::ranges::find(sym_host.members.at(ss_state->get_name().get_name_key()), sk_kind, &Symbol::kind);
 		const DeclarationInfo &di_info       = declarations.at(&sym_selection);
 		const Symbol          &sym_definition = di_info.attachedState ? *di_info.attachedState : sym_selection;
 		const ResolvedType     rt_payload     = substitute(*di_info.value, argumentsOf(receiver));
 		const std::pair<StateSelections::iterator, bool> it_state =
-		        table.states.emplace(sym_selection.name.get_lexeme(), StateSelection{ &sym_selection, &sym_definition, receiver, rt_payload });
+		        table.states.emplace(sym_selection.name.get_name_key(), StateSelection{ &sym_selection, &sym_definition, receiver, rt_payload });
 		if (!it_state.second)
 			fail(Code::INVALID_STATE_DECLARATION, sym_selection.name.get_span(), "State is already supported on this host",
 			     &it_state.first->second.selection->name);
@@ -470,7 +470,7 @@ void Analyzer::buildStates (const ResolvedType &receiver, TypeDispatch &table) c
 bool Analyzer::hasStateName (const Symbol &context, std::string_view name) const {
 	for (const Names::value_type &entry : v_names[declarations.at(&context).file]) {
 		for (const Symbol *sym : entry.second) {
-			if (sym->kind == SymbolKind::State && sym->name.get_lexeme() == name) return true;
+			if (sym->kind == SymbolKind::State && sym->name.get_name_key() == name) return true;
 			if (asClass(sym) && dispatchFor(ownerType(*sym)).states.contains(name)) return true;
 		}
 	}

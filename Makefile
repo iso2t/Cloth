@@ -16,6 +16,7 @@ ifneq ($(filter default undefined,$(origin CC)),)
 CC := gcc
 endif
 exe_suffix := .exe
+driver_ldflags := -municode
 make_dir = powershell.exe -NoProfile -Command "[void][System.IO.Directory]::CreateDirectory('$(@D)')"
 run_path = $(subst /,\,$(abspath $<))
 else
@@ -25,10 +26,11 @@ endif
 
 CC ?= cc
 musubi_object := $(BUILD_DIR)/obj/ThirdParty/musubi/musubi_impl.o
+utf8proc_object := $(BUILD_DIR)/obj/ThirdParty/utf8proc/utf8proc.o
 objects := $(addprefix $(BUILD_DIR)/obj/,$(obj-y)) \
            $(addprefix $(BUILD_DIR)/obj/Diagnostics/,$(diagnostics-obj-y)) \
            $(addprefix $(BUILD_DIR)/obj/Backend/,$(backend-obj-y)) \
-           $(musubi_object)
+           $(musubi_object) $(utf8proc_object)
 program := $(BUILD_DIR)/cloth$(exe_suffix)
 
 include Tests/Makefile
@@ -40,13 +42,14 @@ run: $(program)
 	"$(run_path)"
 
 $(program): $(objects) Makefile Compiler/Kbuild Diagnostics/Kbuild Backend/Kbuild
-	$(CXX) $(LDFLAGS) $(objects) $(LDLIBS) -o "$@"
+	$(CXX) $(LDFLAGS) $(driver_ldflags) $(objects) $(LDLIBS) -o "$@"
 
 $(BUILD_DIR)/obj/%.o: Compiler/src/%.cpp Makefile compile_flags.txt
 	@$(make_dir)
 	$(CXX) @compile_flags.txt $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c "$<" -o "$@"
 
 $(BUILD_DIR)/obj/Diagnostics/cde/diagnostic_reporter.o: private override CPPFLAGS += -IThirdParty/musubi -DMU_API=
+$(BUILD_DIR)/obj/util/unicode_identifier.o: private override CPPFLAGS += -DUTF8PROC_STATIC
 
 $(BUILD_DIR)/obj/Diagnostics/%.o: Diagnostics/src/%.cpp Makefile compile_flags.txt
 	@$(make_dir)
@@ -59,5 +62,9 @@ $(BUILD_DIR)/obj/Backend/%.o: Backend/src/%.cpp Makefile compile_flags.txt
 $(musubi_object): ThirdParty/musubi/src/musubi_impl.c Makefile
 	@$(make_dir)
 	$(CC) -std=c11 $(CPPFLAGS) $(CFLAGS) -DMU_API= -MMD -MP -c "$<" -o "$@"
+
+$(utf8proc_object): ThirdParty/utf8proc/utf8proc.c Makefile
+	@$(make_dir)
+	$(CC) -std=c11 -DUTF8PROC_STATIC $(CPPFLAGS) $(CFLAGS) -MMD -MP -c "$<" -o "$@"
 
 -include $(objects:.o=.d)

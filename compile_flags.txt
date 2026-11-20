@@ -2,3 +2,4 @@
 -ICompiler/include
 -IDiagnostics/include
 -IBackend/include
+-IThirdParty

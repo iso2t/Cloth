@@ -26,7 +26,7 @@ bool allowsOverloads (SymbolKind kind) {
 }
 
 Symbol &declare (SymbolScope &scope, SymbolKind kind, const Token &name, const std::optional<Token> &visibility, SymbolDeclaration declaration) {
-	std::vector<Symbol> &v_symbols = scope[name.get_lexeme()];
+	std::vector<Symbol> &v_symbols = scope[name.get_name_key()];
 	if (!allowsOverloads(kind)) {
 		const std::vector<Symbol>::const_iterator it_previous = std::ranges::find(v_symbols, kind, &Symbol::kind);
 		if (it_previous != v_symbols.end()) {

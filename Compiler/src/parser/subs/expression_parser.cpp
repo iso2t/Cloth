@@ -184,7 +184,7 @@ ExpressionPtr ExpressionParser::parseTypeCheck (ExpressionPtr operand, const Tok
 		// The parser and AST copy tokens. Match the source occurrence of the root.
 		const std::optional<Token> opt_path = typeNameCandidate(*fap_candidate, [&t_target, ts_target] (const Token &root) -> bool {
 			const TokenSpan ts_root = root.get_span();
-			return root.get_type() == t_target.get_type() && root.get_lexeme() == t_target.get_lexeme() &&
+			return root.get_type() == t_target.get_type() && root.get_name_key() == t_target.get_name_key() &&
 			       ts_root.startLine == ts_target.startLine && ts_root.startCol == ts_target.startCol && ts_root.endLine == ts_target.endLine &&
 			       ts_root.endCol == ts_target.endCol;
 		});

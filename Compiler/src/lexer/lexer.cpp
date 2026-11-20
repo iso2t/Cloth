@@ -12,6 +12,7 @@
 #include <lexer/lexer.hpp>
 #include <token/numeric_literals.hpp>
 #include <token/token.hpp>
+#include <util/unicode_identifier.hpp>
 #include <util/utf8.hpp>
 
 namespace cloth {
@@ -91,22 +92,8 @@ bool isDigit (const char c) {
 	return c >= '0' && c <= '9';
 }
 
-/**
- * @brief Checks if the given character is a valid identifier start character.
- *
- * @param c The character to check.
- * @return true If the character is a valid identifier start character.
- * @return false Otherwise.
- */
-bool isIdentifierStart (const char c) {
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
-}
-
 std::size_t identifierPartLength (const std::string_view source, const std::size_t offset) {
-	if (offset >= source.size()) {
-		return 0;
-	}
-	return isIdentifierStart(source[offset]) ? 1 : decimalDigit(source.substr(offset)).length;
+	return offset < source.size() ? identifierContinueLength(source.substr(offset)) : 0;
 }
 
 std::size_t radixDigitLength (const std::string_view source, const std::size_t offset, const int radix) {
@@ -328,6 +315,12 @@ void Lexer::scanToken () {
 		return;
 	}
 
+	if (const std::size_t st_start = identifierStartLength(s_remaining); st_start != 0) {
+		advanceBytes(st_start);
+		identifier();
+		return;
+	}
+
 	switch (const char c_character = advance()) {
 	case ' ':
 	case '\r':
@@ -337,11 +330,11 @@ void Lexer::scanToken () {
 		addToken(TokenType::NewLine, span(), "\n");
 		return;
 	default:
-		if (isIdentifierStart(c_character)) {
-			identifier();
-		} else {
-			lexerError(p_start, std::format("Unexpected byte 0x{:02X}", static_cast<unsigned char>(c_character)));
+		if (const std::size_t st_size = utf8_scalar_length(s_remaining); st_size > 1) {
+			const char32_t c32_scalar = utf8_scalar_value(s_remaining.substr(0, st_size));
+			lexerError(p_start, std::format("Unexpected character U+{:04X}", static_cast<unsigned>(c32_scalar)));
 		}
+		lexerError(p_start, std::format("Unexpected byte 0x{:02X}", static_cast<unsigned char>(c_character)));
 	}
 }
 

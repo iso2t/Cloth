@@ -26,6 +26,28 @@ void expectDiagnosticLabels (const std::string &source, cde::DiagnosticCode code
 	}
 }
 
+TEST (SemanticChecking, ResolvesCanonicalNamesInOverloadsTypesAndBindings) {
+	const CheckedProgram       cp_program  = checkSource("typedef<struct> Bo\u00eete<\u00c9> { pub E\u0301 co\u00fbt }\n"
+	                                                     "fn<int> caf\u00e9(Boi\u0302te<int> b) = b.cou\u0302t\n"
+	                                                     "fn<bool> cafe\u0301(bool pr\u00eat) = pre\u0302t\n"
+	                                                     "fn<bool> use() = caf\u00e9(pre\u0302t = true)\n"
+	                                                     "fn<int> distinct(int A, int \uff21, int a) = A + \uff21 + a\n");
+	const SymbolScope         &ss_globals  = cp_program.units.front()->get_globals();
+	const std::vector<Symbol> &v_overloads = ss_globals.at("caf\u00e9");
+	ASSERT_EQ(v_overloads.size(), 2u);
+	EXPECT_EQ(v_overloads[1].name.get_lexeme(), "cafe\u0301");
+	EXPECT_EQ(cp_program.expressions.at(&bodyExpression(ss_globals.at("use").front())).symbol, &v_overloads[1]);
+}
+
+TEST (SemanticChecking, UnicodeDiagnosticsPreserveWrittenNamesAndByteSpans) {
+	using Code = cde::DiagnosticCode;
+	expectDiagnosticLabels("typedef<struct> Caf\u00e9 {}\ntypedef<struct> Cafe\u0301 {}", Code::DUPLICATE_DECLARATION,
+	                       "'Cafe\u0301' is declared more than once in this scope",
+	                       { { "2:17-2:23", "redeclared here" }, { "1:17-1:22", "first declared here" } });
+	expectDiagnosticLabels("fn<int> read() = cafe\u0301", Code::UNKNOWN_NAME, "Unknown name 'cafe\u0301'", { { "1:18-1:24", "here" } });
+	expectError("using Tools: caf\u00e9, cafe\u0301", Code::DUPLICATE_IMPORT_SELECTION);
+}
+
 TEST (SemanticChecking, RetainsWrittenArgumentsAndDeclarationSiteDefaults) {
 	const CheckedProgram     cp_program = checkSource(R"(fn<int, bool> use(int helper) = pick(ok = true, n = helper)
 fn<int> helper(int n) = n

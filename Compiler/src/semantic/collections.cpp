@@ -30,14 +30,14 @@ std::optional<Iteration> Analyzer::snapshotLayout (const ResolvedType &type) con
 	    !std::filesystem::equivalent(source->get_path(), program.standardLibraryRoot / "cloth/collections/Snapshot.co", ec_file))
 		return {};
 	const StructDeclaration *sd_snapshot = asStruct(owner);
-	if (!sd_snapshot || sd_snapshot->fields.size() != 1 || sd_snapshot->fields.front().name.get_lexeme() != "slots") return {};
-	const Candidate    c_slots = members(type, sd_snapshot->fields.front().name.get_lexeme(), SymbolKind::Field).front();
+	if (!sd_snapshot || sd_snapshot->fields.size() != 1 || sd_snapshot->fields.front().name.get_name_key() != "slots") return {};
+	const Candidate    c_slots = members(type, sd_snapshot->fields.front().name.get_name_key(), SymbolKind::Field).front();
 	const ResolvedType array   = substitute(*declarations.at(c_slots.symbol).value, c_slots.arguments);
 	if (c_slots.symbol->visibility != Visibility::Private || !array.array() || array.suffixes.back() != arraySuffix()) return {};
 	const ResolvedType       rt_slot = array.element();
 	const StructDeclaration *sd_slot = rt_slot.suffixes.empty() ? asStruct(rt_slot.declaration) : nullptr;
 	if (!sd_slot || sd_slot->fields.size() != 1) return {};
-	const Candidate element = members(rt_slot, sd_slot->fields.front().name.get_lexeme(), SymbolKind::Field).front();
+	const Candidate element = members(rt_slot, sd_slot->fields.front().name.get_name_key(), SymbolKind::Field).front();
 	if (substitute(*declarations.at(element.symbol).value, element.arguments) != type.arguments().front()) return {};
 	return Iteration{ IterationKind::Snapshot, type.arguments().front(), {}, c_slots.symbol, element.symbol };
 }

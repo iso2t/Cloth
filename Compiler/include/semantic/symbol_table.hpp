@@ -49,7 +49,7 @@ using SymbolDeclaration = std::variant<const CallableSignature *, const TypeDecl
                                        const StateBodyDeclaration *, const StateAttachmentDeclaration *, const StateInitializerDeclaration *>;
 
 struct Symbol;
-// Lookup returns every candidate for the spelling. Its use determines the kind and overload.
+// Keys are NFC identifier spellings. A lookup returns every candidate for that name.
 using SymbolScope = std::map<std::string, std::vector<Symbol>, std::less<>>;
 
 struct Symbol {

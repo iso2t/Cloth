@@ -411,7 +411,7 @@ void Analyzer::checkInstances () {
 		if (tpl_parameters) {
 			InstanceKey ik_key{ sym_declaration, std::nullopt, {} };
 			for (const TypeParameterDeclaration &tp_parameter : tpl_parameters->parameters) {
-				ResolvedType rt_argument(tp_parameter.name.get_lexeme());
+				ResolvedType rt_argument(tp_parameter.name.get_name_key());
 				rt_argument.parameter = &tp_parameter;
 				ik_key.arguments.push_back(std::move(rt_argument));
 			}

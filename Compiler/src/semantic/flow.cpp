@@ -103,7 +103,7 @@ std::optional<BodyChecker::TypedPlace> BodyChecker::locate (const Expression &ex
 	const Token              *t_field  = nullptr;
 	const IndexExpression    *ie_index = dynamic_cast<const IndexExpression *>(&expression);
 	if (const auto *ne_name = dynamic_cast<const NameExpression *>(&expression)) {
-		if (const Binding *b_local = local(ne_name->name.get_lexeme())) {
+		if (const Binding *b_local = local(ne_name->name.get_name_key())) {
 			if (!b_local->type || b_local->deferred) return std::nullopt;
 			return TypedPlace{ { b_local->name }, *b_local->type };
 		}
@@ -129,7 +129,7 @@ std::optional<BodyChecker::TypedPlace> BodyChecker::locate (const Expression &ex
 		tp_receiver->type = rt_receiver.element();
 		return tp_receiver;
 	}
-	const std::vector<Candidate> v_fields = analyzer.members(rt_receiver, t_field->get_lexeme(), SymbolKind::Field);
+	const std::vector<Candidate> v_fields = analyzer.members(rt_receiver, t_field->get_name_key(), SymbolKind::Field);
 	if (v_fields.empty()) return std::nullopt;
 	const Candidate &c_field = v_fields.front();
 	tp_receiver->place.path.emplace_back(c_field.symbol);
@@ -425,7 +425,7 @@ bool BodyChecker::loop (const LoopStatement &node) {
 		} else if (fs_for && fs_for->stepper) {
 			body.remember(fs_for->stepper->target, fs_for->binding.name);
 			if (const Expression *e_update = fs_for->stepper->update()) {
-				const Binding                    &b_index = *body.local(fs_for->binding.name.get_lexeme());
+				const Binding                    &b_index = *body.local(fs_for->binding.name.get_name_key());
 				const std::optional<ResolvedType> rt_step = body.scalar(*e_update, b_index.type ? &*b_index.type : nullptr);
 				if (rt_step && b_index.type) body.require({ *rt_step }, { *b_index.type }, fs_for->stepper->span);
 				if (body.record && rt_step && rt_step->floating())

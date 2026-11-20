@@ -10,8 +10,16 @@
 #include <utility>
 
 #include <token/token.hpp>
+#include <util/unicode_identifier.hpp>
 
 namespace cloth {
+
+Token::Token (std::string lexeme, TokenType type, TokenSpan span) : t_span(std::move(span)), t_type(type), s_lexeme(std::move(lexeme)) {
+	if (type == TokenType::Identifier && std::ranges::any_of(s_lexeme, [] (unsigned char byte) { return byte >= 0x80; })) {
+		std::string s_key = normalizeIdentifier(s_lexeme);
+		if (s_key != s_lexeme) p_normalizedName = std::make_shared<const std::string>(std::move(s_key));
+	}
+}
 
 std::string_view to_string (const TokenType type) {
 	switch (type) {

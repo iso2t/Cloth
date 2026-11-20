@@ -54,12 +54,13 @@ void CompilerOptions::build_defaults () {
 		                                                else
 			                                                throw std::invalid_argument("--target-bits requires 32 or 64");
 	                                                } } });
-	add_flag({ "--stdlib",
-	           CompilerFlag::Value{ .s_description = "a directory", .f_func = [this] (const std::string_view path) { standardLibraryRoot = path; } } });
+	add_flag({ "--stdlib", CompilerFlag::Value{ .s_description = "a directory", .f_func = [this] (const std::string_view path) {
+		                                           standardLibraryRoot = std::u8string(path.begin(), path.end());
+	                                           } } });
 	add_flag({ .s_flag = "-l", .v_action = [this] () { i_lexer = 1; } });
 	add_flag({ .s_flag = "-L", .v_action = [this] () { i_lexer = 2; } });
 	add_flag({ .s_flag = "--src", .v_action = CompilerFlag::Value{ .s_description = "a file path", .f_func = [this] (std::string_view path) {
-		                                                              p_sourcePath.emplace(path);
+		                                                              p_sourcePath.emplace(std::u8string(path.begin(), path.end()));
 	                                                              } } });
 }
 

@@ -14,7 +14,7 @@ namespace cloth::semantic {
 namespace {
 // A declaration inside the loop can shadow an incoming proof. Only a deferred binding can write outer storage when read.
 void shadow (std::map<std::string, Binding> &scope, const Token &name, std::shared_ptr<const WriteEffects> writes = {}) {
-	scope.try_emplace(name.get_lexeme(),
+	scope.try_emplace(name.get_name_key(),
 	                  Binding{ .type = {}, .name = &name, .mutableBinding = false, .deferred = bool(writes), .presenceWrites = std::move(writes) });
 }
 }
@@ -74,7 +74,7 @@ BodyChecker::SourceFlow BodyChecker::collectWrites (const Expression &node, Writ
 	}
 	SourceFlow sf_operands;
 	if (const NameExpression *ne_name = dynamic_cast<const NameExpression *>(&node)) {
-		if (const Binding *b_local = local(ne_name->name.get_lexeme()); b_local && b_local->presenceWrites) {
+		if (const Binding *b_local = local(ne_name->name.get_name_key()); b_local && b_local->presenceWrites) {
 			const WriteEffects &we_block = *b_local->presenceWrites;
 			writes.places.insert(we_block.places.begin(), we_block.places.end());
 			writes.receivers.insert(we_block.receivers.begin(), we_block.receivers.end());
@@ -83,10 +83,10 @@ BodyChecker::SourceFlow BodyChecker::collectWrites (const Expression &node, Writ
 		if (const std::optional<TypedPlace> tp_receiver = locate(*mc_call->receiver)) {
 			const ResolvedType rt_type = tp_receiver->type.nullable() ? tp_receiver->type.element() : tp_receiver->type;
 			if (rt_type.array()) {
-				const std::optional<ArrayMutation> am_operation = arrayMutationNamed(mc_call->name.get_lexeme());
+				const std::optional<ArrayMutation> am_operation = arrayMutationNamed(mc_call->name.get_name_key());
 				if (!mc_call->typeArguments && am_operation && *am_operation != ArrayMutation::Reserve)
 					writes.receivers.insert(tp_receiver->place);
-			} else if (asStruct(rt_type.declaration) && !analyzer.members(rt_type, mc_call->name.get_lexeme(), SymbolKind::Method).empty())
+			} else if (asStruct(rt_type.declaration) && !analyzer.members(rt_type, mc_call->name.get_name_key(), SymbolKind::Method).empty())
 				writes.receivers.insert(tp_receiver->place);
 		}
 	}
@@ -94,7 +94,7 @@ BodyChecker::SourceFlow BodyChecker::collectWrites (const Expression &node, Writ
 	        node, [&] (const Expression &operand) { sf_operands = sf_operands.then(collectWrites(operand, writes)); },
 	        [&] (const std::vector<StatementPtr> &statements) { sf_operands = sf_operands.then(collectWrites(statements, writes)); });
 	if (const CallExpression *ce_call = dynamic_cast<const CallExpression *>(&node)) {
-		const std::string &s_name = ce_call->name.get_lexeme();
+		const std::string &s_name = ce_call->name.get_name_key();
 		if (!local(s_name)) {
 			if (builtinNeverReturns(s_name) && callCandidates(*ce_call).empty()) sf_operands.fallsThrough = false;
 			if (hasInstance() && asStruct(owner) && !builtinFunctionNamed(s_name) &&
@@ -106,7 +106,7 @@ BodyChecker::SourceFlow BodyChecker::collectWrites (const Expression &node, Writ
 		if (tc_test->valueCandidate)
 			sf_operands = sf_operands.then(collectWrites(*tc_test->valueCandidate, writes));
 		else if (const Token *t_name = tc_test->target.get_bare_identifier();
-		         t_name && local(t_name->get_lexeme()) && !analyzer.hasTypeName(context, *t_name))
+		         t_name && local(t_name->get_name_key()) && !analyzer.hasTypeName(context, *t_name))
 			sf_operands = sf_operands.then(collectWrites(NameExpression(*t_name), writes));
 	}
 	sf_operands.truth.reset();

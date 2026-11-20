@@ -48,4 +48,5 @@ obj-y := cloth.o \
          system/compiler_options.o \
          token/numeric_literals.o \
          token/token.o \
-         util/pstream.o
+         util/pstream.o \
+         util/unicode_identifier.o

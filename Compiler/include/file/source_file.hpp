@@ -13,6 +13,8 @@ namespace cloth {
 enum Extension { CLOTH_OBJECT, LIBRARY };
 
 std::string_view to_string (Extension type);
+std::string      pathUtf8 (const std::filesystem::path &path);
+std::string      lowercaseExtension (const std::filesystem::path &path);
 
 class SourceFile {
     public:

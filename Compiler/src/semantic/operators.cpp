@@ -124,7 +124,7 @@ void Analyzer::resolveOperator (const Symbol &operation, const MethodDeclaration
 	const std::function   invalid      = [&] (std::string_view message) {
                 fail(Code::INVALID_OPERATOR_DECLARATION, method.span, std::format("Operator '{}' {}", method.name.get_lexeme(), message));
 	};
-	s_operatorNames.insert(method.name.get_lexeme());
+	s_operatorNames.insert(method.name.get_name_key());
 	if (std::ranges::any_of(method.parameters, &ParameterDeclaration::isOptional)) invalid("requires explicit operands");
 	if (om_form.provider || om_form.selector) {
 		if (om_form.rightReceiver || st_arity || (om_form.provider && om_form.selector))
@@ -150,7 +150,7 @@ void Analyzer::resolveOperator (const Symbol &operation, const MethodDeclaration
 		opt_fixed = di_signature.value;
 	else if ((!om_form.selector && (o_op == oNot || isComparison(o_op) || o_op == oIndexValidate)) || b_is)
 		opt_fixed = ResolvedType(kBoolean);
-	else if (om_form.provider && method.name.get_lexeme() == provider::S_STRING)
+	else if (om_form.provider && method.name.get_name_key() == provider::S_STRING)
 		opt_fixed = ResolvedType(kString);
 	if (opt_fixed) {
 		if (!method.returnTypes.empty() && di_signature.returns != ResultTypes{ *opt_fixed }) invalid("must return " + opt_fixed->spelling());
@@ -170,7 +170,7 @@ std::optional<Candidate> BodyChecker::selectOperator (const Token &op, const Tok
 	const Symbol              *sym_private = nullptr;
 	for (bool b_right : { false, true }) {
 		const ResolvedType &rt_receiver = b_right ? right : left, &rt_peer = b_right ? left : right;
-		for (const Candidate &c_candidate : analyzer.members(rt_receiver, op.get_lexeme(), SymbolKind::Operator)) {
+		for (const Candidate &c_candidate : analyzer.members(rt_receiver, op.get_name_key(), SymbolKind::Operator)) {
 			const OperatorMember  &om_form      = form(c_candidate);
 			const DeclarationInfo &di_signature = analyzer.declarations.at(c_candidate.symbol);
 			if (om_form.provider || om_form.selector || om_form.rightReceiver != b_right || di_signature.parameters.size() != 1) continue;
@@ -212,7 +212,7 @@ std::optional<Candidate> BodyChecker::selectOperator (const Token &op, const Tok
 std::optional<Candidate> BodyChecker::selectContext (const Token &op, const ResolvedType &receiver, const ResolvedType &peer, bool typeTarget) const {
 	std::vector<OperatorMatch> v_matches;
 	const Symbol              *sym_private = nullptr;
-	for (const Candidate &c_context : analyzer.members(receiver, op.get_lexeme(), SymbolKind::Operator)) {
+	for (const Candidate &c_context : analyzer.members(receiver, op.get_name_key(), SymbolKind::Operator)) {
 		const OperatorMember &om_form = form(c_context);
 		if (!om_form.selector) continue;
 		const DeclarationInfo &di_signature = analyzer.declarations.at(c_context.symbol);
@@ -256,7 +256,7 @@ ExpressionInfo BodyChecker::callOperator (const Candidate &candidate, const Expr
 std::optional<ExpressionInfo> BodyChecker::binaryOperator (const BinaryExpression &node, const ResolvedType *expected, bool allowContexts,
                                                            FloatContext floats) {
 	const bool b_inequality = node.op.get_operator() == oNotEqual;
-	if (!analyzer.hasOperator(node.op.get_lexeme()) && !(b_inequality && analyzer.hasOperator(to_string(oEqual)))) return {};
+	if (!analyzer.hasOperator(node.op.get_name_key()) && !(b_inequality && analyzer.hasOperator(to_string(oEqual)))) return {};
 	ExpressionFacts ef_natural;
 	BodyChecker     bc_probe   = *this;
 	bc_probe.record            = false;

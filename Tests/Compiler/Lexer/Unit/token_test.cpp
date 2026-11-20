@@ -51,6 +51,27 @@ TEST (LexerKeywords, PrivateAndPrivAreOrdinaryIdentifiers) {
 	expectToken(v_tokens[3], TokenType::EndOfFile, "", 17, 17);
 }
 
+TEST (LexerIdentifiers, UnicodeStartsContinuationsAndOriginalByteSpans) {
+	Lexer                    l_lexer("計算 _\U00010400\u0662 e\u0301 fn\u0301 _");
+	const std::vector<Token> v_tokens = l_lexer.scanTokens();
+	ASSERT_EQ(v_tokens.size(), 6u);
+	expectToken(v_tokens[0], TokenType::Identifier, "計算", 1, 7);
+	expectToken(v_tokens[1], TokenType::Identifier, "_\U00010400\u0662", 8, 15);
+	expectToken(v_tokens[2], TokenType::Identifier, "e\u0301", 16, 19);
+	EXPECT_EQ(v_tokens[2].get_name_key(), "\u00e9");
+	expectToken(v_tokens[3], TokenType::Identifier, "fn\u0301", 20, 24);
+	expectToken(v_tokens[4], TokenType::Operator, "_", 25, 26);
+	EXPECT_EQ(v_tokens[4].get_operator(), oUnderscore);
+}
+
+TEST (LexerIdentifiers, RejectsInvalidStartsAndCharactersOutsideTheProfile) {
+	for (const std::string &s_source : std::vector<std::string>{ "\u0301x", "\U0001f408", "x\u00b2", "x\xF0\x80\x80\x80" }) {
+		SCOPED_TRACE(s_source);
+		Lexer l_lexer(s_source);
+		EXPECT_THROW(l_lexer.scanTokens(), std::runtime_error);
+	}
+}
+
 TEST (LexerSpans, Utf8StringUsesByteColumns) {
 	Lexer                    l_lexer("\"\xC3\xA9\" x");
 	const std::vector<Token> v_tokens = l_lexer.scanTokens();

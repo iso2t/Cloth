@@ -55,7 +55,7 @@ ImportSelection::Names ImportParser::names () const {
 		                                          std::format("an imported declaration name or '{}' as the entire selection", to_string(oMul)) :
 		                                          std::format("an imported declaration name after '{}'", to_string(oComma));
 		const Token       t_name        = p_parser.expect(TokenType::Identifier, s_description);
-		if (const auto [fst, snd] = m_seen.try_emplace(t_name.get_lexeme(), t_name); !snd) {
+		if (const auto [fst, snd] = m_seen.try_emplace(t_name.get_name_key(), t_name); !snd) {
 			throw cde::ImportErrors::duplicateSelection(fst->second, t_name);
 		}
 		v_names.push_back(t_name);

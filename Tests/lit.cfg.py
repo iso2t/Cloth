@@ -30,6 +30,7 @@ if "case" in params:
 
 config.test_exec_root = params["exec_root"]
 config.substitutions.extend([
+    ("%python", tool_path(sys.executable)),
     ("%cloth", tool_path(params["cloth"])),
     ("%filecheck", tool_path(params["filecheck"])),
     ("%expect_exit", tool_path(sys.executable) + " " + tool_path(suite / "Support" / "expect_exit.py")),
