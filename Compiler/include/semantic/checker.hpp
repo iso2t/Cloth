@@ -123,11 +123,12 @@ class Analyzer {
 	[[nodiscard]] ResolvedType substitute (ResolvedType type, const Substitutions &arguments) const;
 	void                       applyArguments (ResolvedType &type, ResultTypes arguments) const;
 	[[nodiscard]] const TypeParameterDeclaration *genericParameter (const Symbol &context, const std::string &name) const;
-	[[nodiscard]] bool                            hasTypeName (const Symbol &context, const Token &name) const;
+	[[nodiscard]] bool                            hasTypeName (const Symbol &context, const Token &name, bool qualified = false) const;
 	[[nodiscard]] ResolvedType                    ownerType (const Symbol &symbol) const;
 	[[nodiscard]] Substitutions                   argumentsOf (const ResolvedType &type) const;
 	[[nodiscard]] Candidates                      lookup (const Symbol &context, const std::string &name, std::optional<SymbolKind> kind = {}) const;
-	[[nodiscard]] const Symbol                   *lookupType (const Symbol &context, const std::string &name) const;
+	[[nodiscard]] const Symbol                   *lookupTypeRoot (const Symbol &context, const std::string &name, bool qualified) const;
+	[[nodiscard]] const Symbol                   *lookupFileState (const Symbol &context, const std::string &name) const;
 	[[nodiscard]] Candidates                      lookupFile (const Symbol &context, const std::string &name) const;
 	[[nodiscard]] std::vector<Candidate>          members (const ResolvedType &type, std::string_view name, SymbolKind kind,
 	                                                       MemberLookup lookup = MemberLookup::Declaration) const;

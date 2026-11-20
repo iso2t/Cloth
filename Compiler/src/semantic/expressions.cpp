@@ -280,7 +280,8 @@ std::optional<ResolvedType> BodyChecker::receiverType (const Expression &node, b
 			throw IntrinsicDiagnostic(error);
 		}
 	} else if (const std::optional<Token> opt_path = typeNameCandidate(node, [&] (const Token &root) {
-		           return (forConstruction || !hasValueName(root)) && analyzer.hasTypeName(context, root);
+		           const bool b_qualified = dynamic_cast<const FieldAccessExpression *>(&node) != nullptr;
+		           return (forConstruction || !hasValueName(root)) && analyzer.hasTypeName(context, root, b_qualified);
 	           })) {
 		try {
 			opt_type = bodyType(TypeReference(*opt_path), forConstruction);

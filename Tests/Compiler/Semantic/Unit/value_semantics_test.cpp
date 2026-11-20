@@ -405,6 +405,54 @@ fn<typeinfo> shadow(Fields Outer) = Outer.Leaf::type
 	expectError("typedef<enum> E { A }\nfn f() { E.missing::type }", Code::INVALID_ENUM_MEMBER);
 }
 
+TEST (SemanticValues, TopLevelStateQualifiesTheSameTypeInSignaturesMetadataAndTests) {
+	const CheckedProgram   cp_program = checkSource(R"(fn<Ready.Data> echo(Ready.Data data) = data
+fn<typeinfo> metadata() = Ready.Data::type
+fn<bool> matches(Object value) = value is Ready.Data
+fn<typeinfo> shadow(Fields Ready) = Ready.Data::type
+fn<bool> compare(Choice choice, Fields Ready) = choice is Ready.Data
+pub typedef<class> Host { default: state Ready }
+typedef<state<void>> pub Ready for Host { pub typedef<struct> Data {} }
+typedef<class> Choice { pub operator is(Choice other) = true }
+typedef<struct> Fields { pub Choice Data })");
+	const SymbolScope     &ss_globals = cp_program.units.front()->get_globals();
+	const Symbol          &sym_data   = ss_globals.at("Ready").front().members.at("Data").front();
+	const DeclarationInfo &di_echo    = cp_program.declarations.at(&ss_globals.at("echo").front());
+	ASSERT_EQ(di_echo.parameters.size(), 1u);
+	EXPECT_EQ(di_echo.parameters.front().declaration, &sym_data);
+	EXPECT_EQ(di_echo.returns, di_echo.parameters);
+	const ExpressionInfo &ei_metadata = returned(cp_program, "metadata"), &ei_shadow = returned(cp_program, "shadow");
+	EXPECT_EQ(ei_metadata.representedType, di_echo.parameters.front());
+	EXPECT_EQ(returned(cp_program, "matches").testedType, di_echo.parameters.front());
+	ASSERT_TRUE(ei_metadata.provider);
+	EXPECT_TRUE(ei_metadata.provider->typeReceiver);
+	ASSERT_TRUE(ei_shadow.representedType);
+	EXPECT_EQ(ei_shadow.representedType->declaration, &ss_globals.at("Choice").front());
+	ASSERT_TRUE(ei_shadow.provider);
+	EXPECT_FALSE(ei_shadow.provider->typeReceiver);
+	EXPECT_EQ(returned(cp_program, "compare").argumentContract, &ss_globals.at("Choice").front().members.at(std::string(to_string(kIs))).front());
+}
+
+TEST (SemanticValues, StateTypePathsRespectLexicalVisibilityAndNominalTypePrecedence) {
+	const std::string s_state = R"(pub typedef<class> Host { default: state Ready }
+typedef<state<void>> pub Ready for Host {
+    typedef<class> Hidden { pub typedef<struct> Leaf {} }
+    pub typedef<struct> Data {}
+    mt<Hidden.Leaf> keep(Hidden.Leaf value) = value
+}
+)";
+	expectError(s_state + "fn<typeinfo> f() = Ready.Hidden.Leaf::type", Code::PRIVATE_NESTED_TYPE);
+	expectError(s_state + "fn f(Ready stateValue) {}", Code::UNSUPPORTED_TYPE);
+	expectError(s_state + "fn f(Host.Ready.Data value) {}", Code::UNSUPPORTED_TYPE);
+	const CheckedProgram cp_program = checkSource(s_state + "typedef<class> Ready { pub typedef<class> Data {} }\nfn<typeinfo> f() = Ready.Data::type");
+	const std::vector<Symbol>                &v_names = cp_program.units.front()->get_globals().at("Ready");
+	const std::vector<Symbol>::const_iterator it_type = std::ranges::find(v_names, SymbolKind::Type, &Symbol::kind);
+	ASSERT_NE(it_type, v_names.end());
+	const std::optional<ResolvedType> &opt_data = returned(cp_program, "f").representedType;
+	ASSERT_TRUE(opt_data);
+	EXPECT_EQ(opt_data->declaration, &it_type->members.at("Data").front());
+}
+
 TEST (SemanticValues, MetadataValidatesKnownTypesAndPreservesSymbolicArrayElements) {
 	for (unsigned u_bits : { 32u, 64u }) {
 		const CheckedProgram cp_program = checkSource(R"(fn<typeinfo> value() = void::type

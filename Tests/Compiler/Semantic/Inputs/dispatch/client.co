@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-using library: Catalog, Query, Reader, keep
+using library: Catalog, Open, Query, Reader, keep
 typedef<class> Local {}
 fn<Local> privateUse(Local item) = keep(item)
 fn<Catalog.Entry> nested(Catalog.Entry item) = keep(item)
+fn<Open.Entry> stateEntry(Open.Entry item) = keep(item)
 fn<int> read(Query item, bool seed) = item.read()
 fn<int> amount(Reader item, bool seed) = item::amount()

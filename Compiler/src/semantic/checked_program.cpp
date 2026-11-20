@@ -393,13 +393,21 @@ Candidates Analyzer::lookup (const Symbol &context, const std::string &name, std
 	return v_found;
 }
 
-const Symbol *Analyzer::lookupType (const Symbol &context, const std::string &name) const {
+const Symbol *Analyzer::lookupTypeRoot (const Symbol &context, const std::string &name, bool qualified) const {
 	const Candidates v_types = lookup(context, name, SymbolKind::Type);
-	return v_types.empty() ? nullptr : v_types.front();
+	if (!v_types.empty()) return v_types.front();
+	// A top-level state can own the first nested type in a dotted path.
+	return qualified ? lookupFileState(context, name) : nullptr;
 }
 
-bool Analyzer::hasTypeName (const Symbol &context, const Token &name) const {
-	return genericParameter(context, name.get_lexeme()) || lookupType(context, name.get_lexeme());
+bool Analyzer::hasTypeName (const Symbol &context, const Token &name, bool qualified) const {
+	return genericParameter(context, name.get_lexeme()) || lookupTypeRoot(context, name.get_lexeme(), qualified);
+}
+
+const Symbol *Analyzer::lookupFileState (const Symbol &context, const std::string &name) const {
+	for (const Symbol *sym_candidate : lookupFile(context, name))
+		if (sym_candidate->kind == SymbolKind::State) return sym_candidate;
+	return nullptr;
 }
 
 Candidates Analyzer::lookupFile (const Symbol &context, const std::string &name) const {

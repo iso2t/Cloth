@@ -270,7 +270,7 @@ ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol
 		if (!rt_type.parameter) {
 			const std::string_view s_separator = to_string(oDot);
 			std::size_t            st_end      = s_name.find(s_separator);
-			const Symbol          *sym         = lookupType(context, s_name.substr(0, st_end));
+			const Symbol          *sym         = lookupTypeRoot(context, s_name.substr(0, st_end), st_end != std::string::npos);
 			if (!sym) {
 				fail(Code::UNSUPPORTED_TYPE, ts_span, "Unknown type '" + s_name + "'");
 			}
@@ -1059,14 +1059,7 @@ void Analyzer::checkDeclarations () {
 	for (const Symbol *sym : v_order) {
 		DeclarationInfo &info = declarations.at(sym);
 		if (sym->kind == SymbolKind::StateAttachment) {
-			const auto imported = v_names[info.file].find(sym->name.get_lexeme());
-			if (imported != v_names[info.file].end()) {
-				for (const Symbol *state : imported->second) {
-					if (state->kind == SymbolKind::State) {
-						info.attachedState = state;
-					}
-				}
-			}
+			info.attachedState = lookupFileState(*sym, sym->name.get_lexeme());
 			if (!info.attachedState) {
 				fail(Code::INVALID_STATE_ATTACHMENT, sym->name.get_span(), "Unknown attached state '" + sym->name.get_lexeme() + "'");
 			}
