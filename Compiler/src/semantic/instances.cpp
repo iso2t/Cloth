@@ -148,6 +148,20 @@ const GenericInstance *Analyzer::useInstance (InstanceKey key, const Symbol &con
 	return enqueue(std::move(key), where, b_symbolic);
 }
 
+std::optional<GenericLimit> genericLimit (unsigned nesting, std::size_t depth, std::size_t count, bool symbolic) {
+	if (nesting > MAX_TYPE_ARG_NESTING)
+		return GenericLimit{ Code::GENERIC_SUBSTITUTION_NESTING,
+			             std::format("Generic type argument nesting limit exceeded ({})", MAX_TYPE_ARG_NESTING) };
+	if (depth > MAX_GENERIC_DEPENDENCIES)
+		return GenericLimit{ symbolic ? Code::GENERIC_TEMPLATE_DEPENDENCY_LIMIT : Code::GENERIC_DEPENDENCY_LIMIT,
+			             std::format("Generic {} dependency limit exceeded ({})", symbolic ? "template analysis" : "instantiation",
+			                         MAX_GENERIC_DEPENDENCIES) };
+	if (count >= MAX_GENERIC_INSTANCES)
+		return GenericLimit{ symbolic ? Code::GENERIC_TEMPLATE_INSTANCE_LIMIT : Code::GENERIC_INSTANCE_LIMIT,
+			             std::format("Too many {} generic instances ({})", symbolic ? "symbolic" : "distinct", MAX_GENERIC_INSTANCES) };
+	return {};
+}
+
 const GenericInstance *Analyzer::enqueue (InstanceKey key, const TokenSpan &where, bool symbolic) {
 	const InstanceKey *ik_stored;
 	GenericInstance   *gi_instance = nullptr;
@@ -168,23 +182,15 @@ const GenericInstance *Analyzer::enqueue (InstanceKey key, const TokenSpan &wher
 	unsigned          u_depth   = ik_stored->receiver ? ik_stored->receiver->argumentDepth() : 0;
 	for (const ResolvedType &rt_arg : ik_stored->arguments) u_depth = std::max(u_depth, 1 + rt_arg.argumentDepth());
 	const Symbol &sym_declaration = *ik_stored->declaration;
-	if (u_depth > MAX_TYPE_ARG_NESTING) {
-		fail(Code::GENERIC_SUBSTITUTION_NESTING, where, std::format("Generic type argument nesting limit exceeded ({})", MAX_TYPE_ARG_NESTING),
-		     &sym_declaration.name);
-	}
-	if (st_depth > MAX_GENERIC_DEPENDENCIES) {
-		const Code        dc_code = symbolic ? Code::GENERIC_TEMPLATE_DEPENDENCY_LIMIT : Code::GENERIC_DEPENDENCY_LIMIT;
-		const std::string s_message =
-		        std::format("Generic {} dependency limit exceeded ({})", symbolic ? "template analysis" : "instantiation", MAX_GENERIC_DEPENDENCIES);
-		std::vector<cde::SourceLabel> v_labels{ { where, s_message }, { sym_declaration.name.get_span(), "generic declaration" } };
-		const InstanceWork           *iw_root = iw_active;
+	if (const std::optional<GenericLimit> opt_limit = genericLimit(u_depth, st_depth, b_charged ? st_count : 0, symbolic)) {
+		if (opt_limit->code != Code::GENERIC_TEMPLATE_DEPENDENCY_LIMIT && opt_limit->code != Code::GENERIC_DEPENDENCY_LIMIT)
+			fail(opt_limit->code, where, opt_limit->message, &sym_declaration.name);
+		const InstanceWork *iw_root = iw_active;
 		while (iw_root->parent) iw_root = iw_root->parent;
-		v_labels.push_back({ iw_root->where, "dependency 1 starts here" });
-		throw cde::ClothDiagnostic(dc_code, s_message, std::move(v_labels));
-	}
-	if (b_charged && st_count >= MAX_GENERIC_INSTANCES) {
-		fail(symbolic ? Code::GENERIC_TEMPLATE_INSTANCE_LIMIT : Code::GENERIC_INSTANCE_LIMIT, where,
-		     std::format("Too many {} generic instances ({})", symbolic ? "symbolic" : "distinct", MAX_GENERIC_INSTANCES), &sym_declaration.name);
+		throw cde::ClothDiagnostic(opt_limit->code, opt_limit->message,
+		                           { { where, opt_limit->message },
+		                             { sym_declaration.name.get_span(), "generic declaration" },
+		                             { iw_root->where, "dependency 1 starts here" } });
 	}
 	st_count += b_charged;
 	(symbolic ? q_templates : q_instances).push_back({ *ik_stored, gi_instance, iw_active, where, st_depth });

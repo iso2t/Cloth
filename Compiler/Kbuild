@@ -36,6 +36,7 @@ obj-y := cloth.o \
          semantic/dispatch.o \
          semantic/expressions.o \
          semantic/flow.o \
+         semantic/inheritance.o \
          semantic/instances.o \
          semantic/lifetime.o \
          semantic/loop_writes.o \

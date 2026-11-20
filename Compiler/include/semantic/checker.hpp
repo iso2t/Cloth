@@ -73,6 +73,13 @@ using Code       = cde::DiagnosticCode;
 using Candidates = std::vector<const Symbol *>;
 using Names      = std::map<std::string, Candidates, std::less<>>;
 
+struct GenericLimit {
+	Code        code;
+	std::string message;
+};
+
+std::optional<GenericLimit> genericLimit (unsigned nesting, std::size_t depth, std::size_t count, bool symbolic);
+
 // The enclosing overload cannot change an intrinsic expression or explicit type.
 struct IntrinsicDiagnostic : cde::ClothDiagnostic {
 	using ClothDiagnostic::ClothDiagnostic;
@@ -282,6 +289,8 @@ class Analyzer {
 	void         checkDeclaredBounds (const TypeParameterDeclaration &parameter, const Symbol &symbol) const;
 	void         checkArrayBound (const TypeParameterDeclaration &parameter, const ResolvedType &shape, const TokenSpan &where) const;
 	void         checkDeclarations ();
+	void                                         checkInheritance () const;
+	bool                                         usesSpecializedDeclarations () const;
 	void         checkOverload (const Symbol &symbol, const Substitutions &arguments, const TokenSpan *application) const;
 	mutable std::map<ResolvedType, TypeDispatch> m_dispatch;
 	using MethodGroup  = std::vector<MethodRef>;
@@ -573,6 +582,7 @@ class BodyChecker {
 	ExpressionInfo                rangeValue (const BinaryExpression &node, const ResolvedType *endpoint, Code code);
 	std::optional<ResolvedType> rangeEndpointHint (const Expression &start, const Expression &end);
 	void           require (const ResultTypes &actual, const ResultTypes &expected, const TokenSpan &span, Code code = Code::TYPE_MISMATCH) const;
+	void                          requireStoredValue (const ResolvedType &expected, const ResolvedType &actual, const TokenSpan &span, Code code) const;
 	bool           expect (const Expression &node, const ResolvedType &type);
 	bool           checkReturn (const Expression &node);
 	ExpressionInfo name (const Token &token, bool assignment = false);

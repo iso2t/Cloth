@@ -167,6 +167,13 @@ void BodyChecker::require (const ResultTypes &actual, const ResultTypes &expecte
 	}
 }
 
+void BodyChecker::requireStoredValue (const ResolvedType &expected, const ResolvedType &actual, const TokenSpan &span, Code code) const {
+	if (analyzer.accepts(expected, actual)) return;
+	const std::string s_message = std::format("{} requires '{}', got '{}'", code == Code::INVALID_ARRAY ? "Array element" : "Field assignment",
+	                                          expected.spelling(), actual.spelling());
+	throw cde::ClothDiagnostic(code, s_message, { { span, code == Code::INVALID_ARRAY ? "here" : "field use here" } });
+}
+
 bool BodyChecker::expect (const Expression &node, const ResolvedType &type) {
 	const std::optional<ResolvedType> opt_actual = scalar(node, &type);
 	if (opt_actual) require({ *opt_actual }, { type }, node.get_span());
@@ -711,7 +718,10 @@ bool BodyChecker::writeStorage (const Statement &statement, const ExpressionPtr 
 	}
 	checkFieldWrite(ei_target, target->get_span());
 	const ResolvedType &rt = ei_target.types.front();
-	writable(*target);
+	const bool          b_element = dynamic_cast<const ElementAssignmentStatement *>(&statement) != nullptr;
+	// An indexed store diagnoses an incompatible value before checking the mutability of its root.
+	const bool b_plainElement = b_element && rhs && !compound;
+	if (!b_plainElement) writable(*target);
 	const std::optional<TypedPlace> tp_target = locate(*target);
 	if (compound || !rhs) {
 		if (const std::optional<ExpressionInfo> opt_call = updateOperator(statement, rt, op, rhs)) {
@@ -724,12 +734,13 @@ bool BodyChecker::writeStorage (const Statement &statement, const ExpressionPtr 
 		const Expression               &e_value    = compound ? *compound : *rhs;
 		const std::optional<ResolvedType> opt_value  = scalar(e_value, &rt_storage);
 		if (opt_value) {
-			require({ *opt_value }, { rt_storage }, e_value.get_span());
+			requireStoredValue(rt_storage, *opt_value, rhs->get_span(), b_element ? Code::INVALID_ARRAY : Code::INVALID_STRUCT_FIELD);
 			const ResolvedType shape = shapeOf(e_value, *opt_value);
 			const TokenSpan    span  = e_value.get_span();
 			if (!ei_target.arrayShapes.empty()) refineShape(ei_target.arrayShapes.front(), shape, &span);
 			rowShape(*target, e_value, shape);
 		}
+		if (b_plainElement) writable(*target);
 		if (tp_target)
 			invalidate(tp_target->place);
 		else

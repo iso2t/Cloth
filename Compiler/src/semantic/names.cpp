@@ -15,16 +15,18 @@ void Analyzer::useWidthAnnotation (const TypeReference &reference, const Symbol 
 	v_widthAnnotations.emplace_back(&reference, &owner);
 }
 
+bool Analyzer::usesSpecializedDeclarations () const {
+	return !m_genericOwners.empty() || b_hasTypeApplications || std::ranges::any_of(v_order, [&] (const Symbol *symbol) {
+		const DeclarationInfo   &di_info   = declarations.at(symbol);
+		const MethodDeclaration *md_method = dynamic_cast<const MethodDeclaration *>(callable(*symbol));
+		return asInterface(symbol) || di_info.parents.size() > 1 || (symbol->kind == SymbolKind::State && !di_info.owner) ||
+		       (md_method && md_method->virtualPrefix);
+	});
+}
+
 void Analyzer::checkWidthAnnotations () const {
-	if (v_widthAnnotations.empty()) return;
 	// Generic and dispatch contracts bind type names before specialization. An ordinary body resolves its annotations at its selected width.
-	if (m_genericOwners.empty() && !b_hasTypeApplications && std::ranges::none_of(v_order, [&] (const Symbol *symbol) {
-		    const DeclarationInfo   &di_info   = declarations.at(symbol);
-		    const MethodDeclaration *md_method = dynamic_cast<const MethodDeclaration *>(callable(*symbol));
-		    return asInterface(symbol) || di_info.parents.size() > 1 || (symbol->kind == SymbolKind::State && !di_info.owner) ||
-		           (md_method && md_method->virtualPrefix);
-	    }))
-		return;
+	if (v_widthAnnotations.empty() || !usesSpecializedDeclarations()) return;
 	for (const std::pair<const TypeReference *, const Symbol *> &entry : v_widthAnnotations) (void)checkedType(*entry.first, *entry.second);
 }
 

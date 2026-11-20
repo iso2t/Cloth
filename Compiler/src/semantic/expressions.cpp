@@ -1251,8 +1251,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 				shape = bc_part.shapeOf(*part, *actual);
 			}
 			const TokenSpan span = part->get_span();
-			if (!analyzer.accepts(*elem, *actual))
-				fail(Code::INVALID_ARRAY, span, "Array element requires " + elem->spelling() + ", found " + actual->spelling());
+			requireStoredValue(*elem, *actual, span, Code::INVALID_ARRAY);
 			*elem  = refineShape(*elem, *actual, &span);
 			*shape = refineShape(*shape, bc_part.shapeOf(*part, *actual), &span);
 		}

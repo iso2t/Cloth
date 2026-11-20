@@ -8,6 +8,24 @@
 namespace cloth::test {
 namespace {
 
+void expectDiagnosticLabels (const std::string &source, cde::DiagnosticCode code, const std::string &message,
+                             const std::vector<std::pair<std::string, std::string>> &labels) {
+	SCOPED_TRACE(source);
+	try {
+		checkSource(source);
+		FAIL() << "Expected a semantic diagnostic";
+	} catch (const cde::ClothDiagnostic &error) {
+		EXPECT_EQ(error.get_code(), code);
+		EXPECT_EQ(error.get_message(), message);
+		ASSERT_EQ(error.get_source_labels().size(), labels.size());
+		for (std::size_t st_index = 0; st_index < labels.size(); ++st_index) {
+			const cde::SourceLabel &sl_label = error.get_source_labels()[st_index];
+			EXPECT_EQ(sl_label.span.to_string(), labels[st_index].first);
+			EXPECT_EQ(sl_label.text, labels[st_index].second);
+		}
+	}
+}
+
 TEST (SemanticChecking, RetainsWrittenArgumentsAndDeclarationSiteDefaults) {
 	const CheckedProgram     cp_program = checkSource(R"(fn<int, bool> use(int helper) = pick(ok = true, n = helper)
 fn<int> helper(int n) = n
@@ -376,6 +394,54 @@ fn<int> sum(Point? point, int[] items) {
 	expectError("fn<int,int> pair() = 1, 2\nfn run() { def a,b,c = pair() }", Code::RECEPTION_ARITY);
 }
 
+TEST (SemanticChecking, LabelsTheAssignedValueForArrayAndFieldWrites) {
+	using Code = cde::DiagnosticCode;
+	expectDiagnosticLabels("fn f(int[] items) {\n    items[0] = false\n}", Code::INVALID_ARRAY, "Array element requires 'int', got 'bool'",
+	                       { { "2:16-2:21", "here" } });
+	expectDiagnosticLabels("typedef<class> Item {pub operator +(int rhs) -> bool = false}\nfn f(Item[] a){a[0]+=1}", Code::INVALID_ARRAY,
+	                       "Array element requires 'Item', got 'bool'", { { "2:22-2:23", "here" } });
+	expectDiagnosticLabels("typedef<class> Bag(pub def<int[]> items) {}\nfn f(Bag bag){bag.items[0]=false}", Code::INVALID_STRUCT_FIELD,
+	                       "Field assignment requires 'int', got 'bool'", { { "2:28-2:33", "field use here" } });
+	expectError("fn f(final int[] items) { items[0] = false }", Code::INVALID_ARRAY);
+	expectError("fn f(int<8>[] items) { items[0] = 128 }", Code::INTEGER_RANGE);
+	expectError("fn f(int[] items) { items[false] = false }", Code::INVALID_INDEX);
+	EXPECT_NO_THROW(checkSource("fn f(int<8>[] items) { items[0] = 127 }"));
+}
+
+TEST (SemanticChecking, ReportsTheBaseClauseOfTheRepeatedClassApplication) {
+	using Code = cde::DiagnosticCode;
+	expectDiagnosticLabels("typedef<class> Z : I, X() {}\ntypedef<class> X : Z() {}\ntypedef<interface> I {}", Code::INVALID_CLASS_MEMBER,
+	                       "Inheritance cycle involving 'Z'", { { "1:23-1:24", "class member here" } });
+	expectDiagnosticLabels("typedef<class> Z<T> : A<int> {}\ntypedef<class> A<T> : Z<T> {}", Code::INVALID_CLASS_MEMBER, "Inheritance cycle involving 'A'",
+	                       { { "2:23-2:24", "class member here" } });
+	expectDiagnosticLabels("typedef<class> Z<T> : A<T[]> {}\ntypedef<class> A<T> : Z<T> {}", Code::GENERIC_TEMPLATE_DEPENDENCY_LIMIT,
+	                       "Generic template analysis dependency limit exceeded (64)",
+	                       { { "2:23-2:27", "this application exceeds the generic resource limit" },
+	                         { "1:16-1:17", "generic template declared here" },
+	                         { "1:23-1:29", "dependency 2: 'A' required here" } });
+	expectError("typedef<class> Seed<S> : Grow<int> {}\ntypedef<class> Grow<T> : Grow<T[]> {}", Code::GENERIC_DEPENDENCY_LIMIT);
+	expectDiagnosticLabels("typedef<class> P<X,Y> {}\ntypedef<class> G<X> : G<P<X,X>> {}", Code::GENERIC_TEMPLATE_DEPENDENCY_LIMIT,
+	                       "Generic template analysis dependency limit exceeded (64)",
+	                       { { "2:25-2:31", "this application exceeds the generic resource limit" },
+	                         { "1:16-1:17", "generic template declared here" },
+	                         { "2:16-2:17", "dependency 1: 'G' required here" },
+	                         { "2:23-2:32", "dependency 2: 'G' required here" } });
+}
+
+TEST (SemanticChecking, LabelsTheClosingInterfaceParentAndOnlyTheEdgesOnItsCycle) {
+	using Code = cde::DiagnosticCode;
+	expectDiagnosticLabels(
+	        "typedef<interface> Root : Good, Left {}\ntypedef<interface> Good {}\ntypedef<interface> Left : Right {}\ntypedef<interface> Right : Left {}",
+	        Code::INTERFACE_INHERITANCE_CYCLE, "Interface inheritance cycle involving 'Left'",
+	        { { "4:28-4:32", "parent closes this cycle" }, { "3:20-3:24", "interface declared here" }, { "3:27-3:32", "parent on the cycle" } });
+	expectDiagnosticLabels(
+	        "typedef<interface> Z<T> : A<T[]> {}\ntypedef<interface> A<T> : Z<T> {}", Code::INTERFACE_INHERITANCE_CYCLE,
+	        "Interface inheritance cycle involving 'Z'",
+	        { { "2:27-2:31", "parent closes this cycle" }, { "1:20-1:21", "interface declared here" }, { "1:27-1:33", "parent on the cycle" } });
+	EXPECT_NO_THROW(
+	        checkSource("typedef<interface> Top {}\ntypedef<interface> L : Top {}\ntypedef<interface> R : Top {}\ntypedef<interface> Bottom : L, R {}"));
+}
+
 TEST (SemanticChecking, ChecksInheritedOverloadsAndGenericBounds) {
 	EXPECT_NO_THROW(checkSource(R"(typedef<interface> Readable { pub mt<int> read() }
 typedef<class> Base(int seed) : Readable {
@@ -390,7 +456,7 @@ fn<int> check(Derived d) = through(d) + d.read(3) + d.read()
 	using Code = cde::DiagnosticCode;
 	expectError("fn<T> choose<T>(T x) = x\nfn<U> choose<U>(U y) = y", Code::DUPLICATE_FUNCTION);
 	expectError("typedef<interface> I {}\nfn<T> constrained<T:I>(T x) = x\nfn<int> wrong() = constrained(1)", Code::UNSATISFIED_GENERIC_BOUND);
-	expectError("typedef<class> A : B\ntypedef<class> B : A", Code::INTERFACE_INHERITANCE_CYCLE);
+	expectError("typedef<class> A : B\ntypedef<class> B : A", Code::INVALID_CLASS_MEMBER);
 	expectError("typedef<interface> I { pub mt<int> get() }\ntypedef<class> C : I", Code::MISSING_INTERFACE_IMPLEMENTATION);
 	expectError("typedef<interface> I { pub mt<int> get() }\ntypedef<class> C : I { mt<int> get() = 0 }", Code::INCOMPATIBLE_INTERFACE_REQUIREMENT);
 	expectError("typedef<interface> I { pub mt<int> get() }\ntypedef<class> C : I { pub mt<bool> get() = true }", Code::INCOMPATIBLE_INTERFACE_REQUIREMENT);

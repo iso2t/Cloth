@@ -1010,52 +1010,7 @@ void Analyzer::checkDeclaredBounds (const TypeParameterDeclaration &parameter, c
 }
 
 void Analyzer::checkDeclarations () {
-	std::set<const Symbol *>            s_done, s_path;
-	std::function<void(const Symbol &)> visit = [&] (const Symbol &sym) {
-		if (s_done.contains(&sym)) {
-			return;
-		}
-		if (!s_path.insert(&sym).second) {
-			fail(Code::INTERFACE_INHERITANCE_CYCLE, sym.name.get_span(), "Cyclic inheritance at '" + sym.name.get_lexeme() + "'");
-		}
-		const ClassDeclaration                *base = nullptr;
-		std::map<const Symbol *, ResolvedType> m_direct;
-		for (const ResolvedType &parent : declarations.at(&sym).parents) {
-			if (!parent.declaration || !parent.suffixes.empty()) {
-				fail(sym.kind == SymbolKind::State ? Code::INVALID_STATE_ATTACHMENT : Code::INVALID_INTERFACE_HEADER, sym.name.get_span(),
-				     "Expected a named parent type");
-			}
-			const std::pair<std::map<const Symbol *, ResolvedType>::iterator, bool> it_parent = m_direct.emplace(parent.declaration, parent);
-			if (!it_parent.second) {
-				if (it_parent.first->second != parent)
-					fail(Code::CONFLICTING_INTERFACE_APPLICATION, sym.name.get_span(),
-					     "Conflicting applications of " + it_parent.first->second.spelling() + " and " + parent.spelling(),
-					     &parent.declaration->name);
-				fail(Code::INVALID_INTERFACE_HEADER, sym.name.get_span(), "Duplicate parent type", &parent.declaration->name);
-			}
-			const ClassDeclaration *parentClass = asClass(parent.declaration);
-			if (sym.kind == SymbolKind::State) {
-				if (!parentClass && !asInterface(parent.declaration)) {
-					fail(Code::INVALID_STATE_ATTACHMENT, sym.name.get_span(), "A state needs a class or interface host",
-					     &parent.declaration->name);
-				}
-			} else if (parentClass && asClass(&sym)) {
-				if (base || parentClass->finalKeyword) {
-					fail(Code::INVALID_CLASS_MEMBER, sym.name.get_span(),
-					     base ? "A class can have only one base class" : "Cannot inherit a final class", &parent.declaration->name);
-				}
-				base = parentClass;
-			} else if (!asInterface(parent.declaration)) {
-				fail(Code::INVALID_INTERFACE_HEADER, sym.name.get_span(), "Invalid parent type", &parent.declaration->name);
-			}
-			visit(*parent.declaration);
-		}
-		s_path.erase(&sym);
-		s_done.insert(&sym);
-	};
-	for (const Symbol *sym : v_order) {
-		visit(*sym);
-	}
+	checkInheritance();
 	for (const Symbol *sym : v_order) {
 		DeclarationInfo &info = declarations.at(sym);
 		if (sym->kind == SymbolKind::StateAttachment) {
