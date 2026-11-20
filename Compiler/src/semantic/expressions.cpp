@@ -52,6 +52,13 @@ bool arithmetic (Operator op) {
 	return op == oPlus || op == oMinus || op == oMul || op == oDiv || op == oMod || op == oMulMul;
 }
 
+bool hasEqualityHint (const Expression &node) {
+	return dynamic_cast<const NameExpression *>(&node) || dynamic_cast<const CallSite *>(&node) || dynamic_cast<const CastExpression *>(&node) ||
+	       dynamic_cast<const IndexExpression *>(&node) || dynamic_cast<const FieldAccessExpression *>(&node) ||
+	       dynamic_cast<const ProviderAccessExpression *>(&node) || dynamic_cast<const ElvisExpression *>(&node) ||
+	       dynamic_cast<const GuardedAccessExpression *>(&node);
+}
+
 bool takesNumericContext (const Expression &operand) {
 	if (const UnaryExpression *ue_value = dynamic_cast<const UnaryExpression *>(&operand))
 		return ue_value->op.get_operator() != oNot && takesNumericContext(*ue_value->operand);
@@ -70,6 +77,12 @@ void mergeElementHint (std::optional<ResolvedType> &common, const std::optional<
 	} else
 		common = next;
 }
+}
+
+const ResolvedType *rangeEndpoint (const ResolvedType &type) {
+	if (type.name != to_string(kRange) || type.declaration || type.arguments().size() != 1) return nullptr;
+	if (!type.suffixes.empty() && !(type.suffixes.size() == 1 && type.nullable())) return nullptr;
+	return &type.arguments().front();
 }
 
 ElementEvidence elementEvidence (const Expression &operand) {
@@ -490,35 +503,202 @@ std::optional<ResolvedType> BodyChecker::elementHint (const Expression &node, Fl
 
 std::optional<ResolvedType> BodyChecker::rangeEndpointHint (const Expression &start, const Expression &end) {
 	for (const Expression *ep_endpoint : { &start, &end }) {
-		const std::optional<ResolvedType> opt_hint = elementHint(*ep_endpoint, { true });
+		const std::optional<ResolvedType> opt_hint = comparisonHint(*ep_endpoint);
 		if (opt_hint && analyzer.numeric(*opt_hint)) return opt_hint;
 	}
 	return {};
 }
 
-std::optional<ResolvedType> BodyChecker::rangeEndpoints (const Expression &start, const Expression &end, const ResolvedType *hint, Code code, bool &continues) {
-	std::optional<ResolvedType> required;
-	if (hint) required = *hint;
-	if (!required) {
-		BodyChecker probe = *this;
-		probe.record      = false;
-		probe.we_capture  = nullptr;
-		required          = probe.rangeEndpointHint(start, end);
+BodyChecker BodyChecker::comparisonProbe () const {
+	BodyChecker bc_probe       = *this;
+	bc_probe.record            = false;
+	bc_probe.we_capture        = nullptr;
+	bc_probe.ef_probeConstants = nullptr;
+	return bc_probe;
+}
+
+std::optional<ResolvedType> BodyChecker::comparisonHint (const Expression &node, bool defaultLiterals) const {
+	for (const CapturedOperand *co_value = captured; co_value; co_value = co_value->previous)
+		if (co_value->node == &node)
+			return co_value->value.resultKind() == ResultKind::Single ? std::optional{ co_value->value.types.front() } : std::nullopt;
+	BodyChecker bc_probe = comparisonProbe();
+	try {
+		if (defaultLiterals) {
+			bc_probe.b_inferenceDefaults = true;
+			return bc_probe.scalar(node);
+		}
+		const std::optional<ResolvedType> opt_hint = bc_probe.elementHint(node, { true });
+		if (opt_hint && dynamic_cast<const IfExpression *>(&node)) {
+			// Only a branch that reaches the comparison can supply an operand type.
+			return bc_probe.scalar(node, &*opt_hint, FloatContext{ true });
+		}
+		return opt_hint;
+	} catch (const cde::ClothDiagnostic &error) {
+		// The committed check supplies the peer's type and the effects of preceding operands.
+		if (error.get_code() == Code::UNKNOWN_NAME) throw;
+		return {};
 	}
-	const std::optional<ResolvedType> left = scalar(start, required ? &*required : nullptr, FloatContext{ true });
-	if (!required) required = left;
-	std::optional<BodyChecker>        unreachable;
-	const std::optional<ResolvedType> right = onPath(left.has_value(), unreachable).scalar(end, required ? &*required : nullptr, FloatContext{ true });
-	if (!required) required = right;
-	const std::function checkEndpoint = [&] (const Expression &operand, const std::optional<ResolvedType> &type) {
-		if (type && (!analyzer.numeric(*type) || *type != required)) fail(code, operand.get_span(), "Range endpoints require one exact numeric type");
-		const ExpressionFacts *ef_numeric = record ? &bf_facts.expressions : ef_probeConstants;
-		if (!b_inferenceDefaults && ef_numeric && type && type->floating()) requireFinite(operand, *ef_numeric, code);
+}
+
+ExpressionInfo BodyChecker::arrayLiteralComparison (const BinaryExpression &node, const ArrayLiteral *left, const ArrayLiteral *right) {
+	std::optional<ResolvedType> opt_peer;
+	bool                        b_independent = false;
+	if (left && right) {
+		const std::optional<ResolvedType> opt_left = comparisonHint(*left), opt_right = comparisonHint(*right);
+		b_independent = opt_left && opt_right && comparisonShape(*opt_left) != comparisonShape(*opt_right);
+		opt_peer      = opt_left ? opt_left : opt_right;
+		if (b_independent || (opt_peer && containsNullability(*opt_peer))) opt_peer.reset();
+	}
+	if (left && !opt_peer && !b_independent &&
+	    (!right || (elementEvidence(*left) == ElementEvidence::None && elementEvidence(*right) != ElementEvidence::None))) {
+		// The peer's actual overload determines its array type, including argument range checks.
+		BodyChecker bc_probe = comparisonProbe();
+		try {
+			opt_peer = bc_probe.scalar(*node.right);
+		} catch (const cde::ClothDiagnostic &) {
+			// The right operand will be checked with the flow established by the left.
+		}
+	}
+
+	const std::function operand = [] (BodyChecker &checker, const Expression &source, const ArrayLiteral *literal,
+	                                  const std::optional<ResolvedType> &peer) {
+		if (!literal || !peer || !hasArrayShape(*peer)) return checker.scalar(source);
+		const ResolvedType rt_hint = comparisonShape(peer->nullable() ? peer->element() : *peer, literal);
+		return checker.scalar(source, &rt_hint);
 	};
-	checkEndpoint(start, left);
-	checkEndpoint(end, right);
-	continues = left.has_value() && right.has_value();
-	return required;
+	const std::optional<ResolvedType> opt_left = operand(*this, *node.left, left, opt_peer);
+	std::optional<BodyChecker>        opt_unreachable;
+	const std::optional<ResolvedType> opt_right =
+	        operand(onPath(opt_left.has_value(), opt_unreachable), *node.right, right, opt_peer || b_independent ? opt_peer : opt_left);
+	if (!opt_left || !opt_right) return ExpressionInfo::never();
+	return equality(node, *opt_left, *opt_right);
+}
+
+std::optional<ExpressionInfo> BodyChecker::contextualRangeComparison (const BinaryExpression &node) {
+	const std::function literal = [&] (const Expression &source, std::optional<ResolvedType> &hint) -> const BinaryExpression * {
+		for (const CapturedOperand *co_value = captured; co_value; co_value = co_value->previous)
+			if (co_value->node == &source) {
+				if (co_value->value.resultKind() == ResultKind::Single) hint = co_value->value.types.front();
+				return nullptr;
+			}
+		const BinaryExpression *be_range = dynamic_cast<const BinaryExpression *>(&source);
+		if (!be_range || (be_range->op.get_operator() != oRange && be_range->op.get_operator() != oRangeInclusive)) return nullptr;
+		if (analyzer.hasOperator(be_range->op.get_lexeme())) {
+			BodyChecker bc_probe = comparisonProbe();
+			try {
+				if (const std::optional<ExpressionInfo> opt_call = bc_probe.binaryOperator(*be_range, nullptr, true, {})) {
+					if (opt_call->resultKind() == ResultKind::Single) hint = opt_call->types.front();
+					return nullptr;
+				}
+			} catch (const cde::ClothDiagnostic &) {
+				// Resolve the operator with the effects of preceding operands in scope.
+				return nullptr;
+			}
+		}
+		return be_range;
+	};
+	std::optional<ResolvedType> opt_leftHint, opt_rightHint;
+	const BinaryExpression     *be_left = literal(*node.left, opt_leftHint), *be_right = literal(*node.right, opt_rightHint);
+	const Expression           *e_member = nullptr;
+	std::optional<ResolvedType> opt_endpoint;
+	if (be_left && be_right) {
+		opt_endpoint = rangeEndpointHint(*be_left->left, *be_left->right);
+		if (!opt_endpoint) opt_endpoint = rangeEndpointHint(*be_right->left, *be_right->right);
+	} else {
+		const std::function endpointOf = [&] (const Expression &source, const std::optional<ResolvedType> &hint) -> std::optional<ResolvedType> {
+			if (const ResolvedType *rt_fixed = hint ? rangeEndpoint(*hint) : nullptr) return *rt_fixed;
+			if (!dynamic_cast<const IfExpression *>(&source)) return {};
+			// Literal-only branches can describe a range before their endpoint width is known.
+			BodyChecker bc_probe                          = comparisonProbe();
+			bc_probe.b_inferenceDefaults                  = true;
+			const std::optional<ResolvedType> opt_natural = bc_probe.scalar(source);
+			const ResolvedType               *rt_endpoint = opt_natural ? rangeEndpoint(*opt_natural) : nullptr;
+			return rt_endpoint ? std::optional{ *rt_endpoint } : std::nullopt;
+		};
+		if (const BinaryExpression *be_literal = be_left ? be_left : be_right) {
+			const Expression                 &e_peer   = be_left ? *node.right : *node.left;
+			const std::optional<ResolvedType> opt_peer = comparisonHint(e_peer);
+			opt_endpoint                               = endpointOf(e_peer, opt_peer);
+			if (!opt_endpoint) {
+				e_member = &e_peer;
+				// The member's fixed type takes precedence over typed bounds and then literal defaults.
+				opt_endpoint = opt_peer;
+				for (const ExpressionPtr &ep_bound : { be_literal->left, be_literal->right })
+					if (!opt_endpoint) opt_endpoint = comparisonHint(*ep_bound);
+				for (const Expression *e_value : { &e_peer, be_literal->left.get(), be_literal->right.get() })
+					if (!opt_endpoint) opt_endpoint = comparisonHint(*e_value, true);
+				if (!opt_endpoint) opt_endpoint = ResolvedType(kInteger);
+				if (!analyzer.numeric(*opt_endpoint))
+					fail(Code::INVALID_RANGE_MEMBERSHIP, e_peer.get_span(), "Range membership requires a non-nullable numeric value");
+			}
+		} else {
+			if (dynamic_cast<const NullLiteral *>(node.left.get()) || dynamic_cast<const NullLiteral *>(node.right.get())) return {};
+			if (!opt_leftHint && hasEqualityHint(*node.left)) opt_leftHint = comparisonHint(*node.left);
+			if (!opt_rightHint && hasEqualityHint(*node.right)) opt_rightHint = comparisonHint(*node.right);
+			const ResolvedType *rt_left  = opt_leftHint ? rangeEndpoint(*opt_leftHint) : nullptr,
+			                   *rt_right = opt_rightHint ? rangeEndpoint(*opt_rightHint) : nullptr;
+			if (!rt_left && !rt_right) return {};
+			opt_endpoint                                = rt_left ? *rt_left : *rt_right;
+			const Expression                  &e_peer   = rt_left ? *node.right : *node.left;
+			const std::optional<ResolvedType> &opt_hint = rt_left ? opt_rightHint : opt_leftHint;
+			if (!endpointOf(e_peer, opt_hint ? opt_hint : comparisonHint(e_peer))) e_member = &e_peer;
+		}
+	}
+
+	ResolvedType rt_range(kRange);
+	if (opt_endpoint) analyzer.applyArguments(rt_range, { *opt_endpoint });
+	std::exception_ptr  ex_bound;
+	const std::function operand = [&] (BodyChecker &checker, const Expression &source, const BinaryExpression *range) -> std::optional<ResolvedType> {
+		if (range && e_member) {
+			ExpressionInfo ei_range;
+			try {
+				ei_range = checker.rangeValue(*range, &*opt_endpoint, Code::INVALID_RANGE_MEMBERSHIP);
+			} catch (const cde::ClothDiagnostic &error) {
+				if (!contextualFailure(error)) throw;
+				// Check in source order, but diagnose the membership value before a mistyped bound.
+				ex_bound = std::current_exception();
+				return {};
+			}
+			ExpressionFacts *ef_body = checker.record ? &checker.bf_facts.expressions : checker.ef_probeConstants;
+			if (ef_body) ef_body->insert_or_assign(range, ei_range);
+			return ei_range.fallsThrough ? std::optional{ ei_range.types.front() } : std::nullopt;
+		}
+		const ResolvedType *rt_hint = opt_endpoint ? (&source == e_member ? &*opt_endpoint : &rt_range) : nullptr;
+		return checker.scalar(source, rt_hint, FloatContext{ true });
+	};
+	const std::optional<ResolvedType> opt_left = operand(*this, *node.left, be_left);
+	if (!opt_endpoint && opt_left && rangeEndpoint(*opt_left)) {
+		opt_endpoint = *rangeEndpoint(*opt_left);
+		analyzer.applyArguments(rt_range, { *opt_endpoint });
+	}
+	std::optional<BodyChecker>        opt_unreachable;
+	const std::optional<ResolvedType> opt_right = operand(onPath(opt_left.has_value(), opt_unreachable), *node.right, be_right);
+	if (ex_bound) {
+		const std::optional<ResolvedType> &opt_member = be_left ? opt_right : opt_left;
+		if (opt_member) requireRangeMember(*e_member, *opt_member, *opt_endpoint);
+		std::rethrow_exception(ex_bound);
+	}
+	if (!opt_left || !opt_right) return ExpressionInfo::never();
+	return equality(node, *opt_left, *opt_right);
+}
+
+ExpressionInfo BodyChecker::rangeValue (const BinaryExpression &node, const ResolvedType *endpoint, Code code) {
+	std::optional<ResolvedType> required      = endpoint ? std::optional{ *endpoint } : rangeEndpointHint(*node.left, *node.right);
+	const std::function         checkEndpoint = [&] (BodyChecker &checker, const Expression &operand) {
+		const std::optional<ResolvedType> type = checker.scalar(operand, required ? &*required : nullptr, FloatContext{ true });
+		if (!required) required = type;
+		if (type && (!analyzer.numeric(*type) || *type != required)) fail(code, operand.get_span(), "Range endpoints require one exact numeric type");
+		const ExpressionFacts *ef_numeric = checker.record ? &checker.bf_facts.expressions : checker.ef_probeConstants;
+		if (!b_inferenceDefaults && ef_numeric && type && type->floating()) requireFinite(operand, *ef_numeric, code);
+		return type.has_value();
+	};
+	const bool                 b_start = checkEndpoint(*this, *node.left);
+	std::optional<BodyChecker> unreachable;
+	const bool                 b_end = checkEndpoint(onPath(b_start, unreachable), *node.right);
+	if (!b_start || !b_end) return ExpressionInfo::never();
+	ResolvedType rt_range(kRange);
+	analyzer.applyArguments(rt_range, { *required });
+	return { .types = { std::move(rt_range) }, .range = RangeOperation::Construct };
 }
 
 ExpressionInfo BodyChecker::elvis (const ElvisExpression &node, const ResultTypes *expected, FloatContext floats) {
@@ -675,27 +855,23 @@ ExpressionInfo BodyChecker::builtinBinary (const BinaryExpression &node, const R
 		fs_flow.narrowed = std::move(*opt_after);
 		return value(ResolvedType(kBoolean));
 	}
-	const std::function rangeType = [] (const ResolvedType &type) {
-		const ResolvedType base = type.nullable() ? type.element() : type;
-		return base.name == to_string(kRange) && !base.declaration && base.suffixes.empty() && base.arguments().size() == 1;
-	};
-	if (o_operation == oRange || o_operation == oRangeInclusive) {
-		bool                              continues;
-		const std::optional<ResolvedType> element = rangeEndpoints(*node.left, *node.right,
-		                                                           expected && rangeType(*expected) ? &expected->arguments().front() : nullptr,
-		                                                           Code::INVALID_RANGE_VALUE, continues);
-		if (!continues) return ExpressionInfo::never();
-		ResolvedType range(kRange);
-		analyzer.applyArguments(range, { *element });
-		return { .types = { std::move(range) }, .range = RangeOperation::Construct };
+	if (o_operation == oRange || o_operation == oRangeInclusive)
+		return rangeValue(node, expected ? rangeEndpoint(*expected) : nullptr, Code::INVALID_RANGE_VALUE);
+	const bool equality = o_operation == oEqual || o_operation == oNotEqual || node.op.get_lexeme() == to_string(kIs);
+	if (equality) {
+		try {
+			if (const std::optional<ExpressionInfo> opt_range = contextualRangeComparison(node)) return *opt_range;
+		} catch (const cde::ClothDiagnostic &error) {
+			// A range comparison owns its numeric contract, including inside an overload trial.
+			throw IntrinsicDiagnostic(error);
+		}
+		const ArrayLiteral *al_left  = dynamic_cast<const ArrayLiteral *>(node.left.get()),
+		                   *al_right = dynamic_cast<const ArrayLiteral *>(node.right.get());
+		if ((al_left || al_right) && isEquality(o_operation) && !dynamic_cast<const NullLiteral *>(node.left.get()) &&
+		    !dynamic_cast<const NullLiteral *>(node.right.get()))
+			return arrayLiteralComparison(node, al_left, al_right);
 	}
-	const bool                  compare = isComparison(o_operation);
-	std::optional<ResolvedType> opt_left, opt_right;
-	const std::function         rangeSyntax = [] (const Expression &operand) {
-                const BinaryExpression *binary = dynamic_cast<const BinaryExpression *>(&operand);
-                return binary && (binary->op.get_operator() == oRange || binary->op.get_operator() == oRangeInclusive);
-	};
-	const bool   equality = o_operation == oEqual || o_operation == oNotEqual || node.op.get_lexeme() == to_string(kIs);
+	const bool   compare = isComparison(o_operation);
 	NumericPeers np_peers;
 	if (takesNumericContext(*node.left) || takesNumericContext(*node.right)) {
 		BodyChecker bc_probe = *this;
@@ -721,68 +897,20 @@ ExpressionInfo BodyChecker::builtinBinary (const BinaryExpression &node, const R
 		opt_numeric        = ResolvedType(kFloat);
 		opt_numeric->width = floats.width;
 	}
-	const std::function peerHint = [&] (const Expression &operand, const ResolvedType &peer) {
-		if (isEquality(o_operation) && hasArrayShape(peer))
-			return comparisonShape(peer.nullable() ? peer.element() : peer, dynamic_cast<const ArrayLiteral *>(&operand));
-		if (equality && rangeType(peer) && numericLiteral(operand)) return peer.arguments().front();
-		if (equality && rangeSyntax(operand) && analyzer.numeric(peer)) {
-			ResolvedType range(kRange);
-			analyzer.applyArguments(range, { peer });
-			return range;
-		}
-		return peer;
-	};
-	{
-		std::optional<ResolvedType> opt_hint = opt_numeric;
-		const ArrayLiteral         *al_left  = dynamic_cast<const ArrayLiteral *>(node.left.get()),
-		                   *al_right         = dynamic_cast<const ArrayLiteral *>(node.right.get());
-		const bool b_typedArrays             = equality && al_left && al_right && elementEvidence(*al_left) == ElementEvidence::Typed &&
-		                           elementEvidence(*al_right) == ElementEvidence::Typed;
-		if (equality && (((rangeSyntax(*node.left) || numericLiteral(*node.left)) && !numericLiteral(*node.right)) ||
-		                 (al_left && (!al_right || elementEvidence(*al_left) < elementEvidence(*al_right))))) {
-			BodyChecker bc_probe = *this;
-			bc_probe.record      = false;
-			bc_probe.we_capture  = nullptr;
-			try {
-				if (const std::optional<ResolvedType> opt_peer = bc_probe.scalar(*node.right); opt_peer && !analyzer.numeric(*opt_peer))
-					opt_hint = peerHint(*node.left, *opt_peer);
-				else if (opt_peer && rangeSyntax(*node.left))
-					opt_hint = peerHint(*node.left, *opt_peer);
-			} catch (const cde::ClothDiagnostic &error) {
-				if (error.get_code() != Code::INVALID_ARRAY && error.get_code() != Code::INVALID_STRUCT_LITERAL) throw;
-			}
-		}
-		opt_left = scalar(*node.left, opt_hint ? &*opt_hint : nullptr, floats);
-		std::optional<BodyChecker> opt_unreachable;
-		opt_hint = opt_numeric;
-		if (equality && opt_left && !b_typedArrays && !dynamic_cast<const NullLiteral *>(node.right.get()) &&
-		    (!analyzer.numeric(*opt_left) || rangeSyntax(*node.right)))
-			opt_hint = peerHint(*node.right, *opt_left);
-		opt_right = onPath(opt_left.has_value(), opt_unreachable).scalar(*node.right, opt_hint ? &*opt_hint : nullptr, floats);
+	std::optional<ResolvedType> opt_hint = opt_numeric;
+	if (equality && numericLiteral(*node.left) && hasEqualityHint(*node.right)) {
+		if (const std::optional<ResolvedType> opt_peer = comparisonHint(*node.right); opt_peer && opt_peer->nullable()) opt_hint = opt_peer;
 	}
+	const std::optional<ResolvedType> opt_left = scalar(*node.left, opt_hint ? &*opt_hint : nullptr, floats);
+	std::optional<BodyChecker>        opt_unreachable;
+	opt_hint = opt_numeric;
+	if (equality && opt_left && !analyzer.numeric(*opt_left) && !rangeEndpoint(*opt_left) && !dynamic_cast<const NullLiteral *>(node.right.get()))
+		opt_hint = hasArrayShape(*opt_left) ? comparisonShape(opt_left->nullable() ? opt_left->element() : *opt_left) : *opt_left;
+	const std::optional<ResolvedType> opt_right =
+	        onPath(opt_left.has_value(), opt_unreachable).scalar(*node.right, opt_hint ? &*opt_hint : nullptr, floats);
 	if (!opt_left || !opt_right) return ExpressionInfo::never();
 	const ResolvedType &left = *opt_left, &right = *opt_right;
-	if (equality && (rangeType(left) || rangeType(right)) && left.name != to_string(kNull) && right.name != to_string(kNull)) {
-		if (rangeType(left) && rangeType(right)) {
-			if (left.arguments() != right.arguments())
-				fail(Code::INCOMPARABLE_TYPES, node.op.get_span(), "Compared ranges need the same endpoint type");
-			return { .types = { ResolvedType(kBoolean) }, .range = RangeOperation::Equal };
-		}
-		const bool          onLeft = rangeType(left);
-		const ResolvedType &range  = onLeft ? left : right;
-		if (range.nullable()) fail(Code::NULLABLE_PAYLOAD_ACCESS, node.get_span(), "Range membership requires a present range");
-		if ((onLeft ? right : left) != range.arguments().front())
-			fail(Code::INVALID_RANGE_MEMBERSHIP, node.get_span(), "Range membership requires the exact endpoint type");
-		return { .types = { ResolvedType(kBoolean) }, .range = RangeOperation::Membership };
-	}
-	if (node.op.get_lexeme() == to_string(kIs)) {
-		if (right.name != to_string(kRange) || right.declaration || right.arguments().size() != 1 ||
-		    !analyzer.accepts(right.arguments().front(), left)) {
-			fail(Code::INVALID_RANGE_MEMBERSHIP, node.get_span(), "Membership requires a range with compatible endpoints");
-		}
-		return value(ResolvedType(kBoolean));
-	}
-	if (isEquality(o_operation)) return this->equality(node, left, right);
+	if (isEquality(o_operation) || equality) return this->equality(node, left, right);
 	if (o_operation == oPlus && left == ResolvedType(kString) && right == left) {
 		return value(left);
 	}

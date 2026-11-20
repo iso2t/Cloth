@@ -177,6 +177,99 @@ fn ranges(range<int<64>> r) { def intervals = [1 .. 2, r] }
 	expectError("fn f(float<64> wide) { def vals = [1.0,wide] }", Code::INVALID_ARRAY);
 }
 
+TEST (SemanticValues, ArrayEqualityChecksFloatingLiteralsAtThePeerElementWidth) {
+	const CheckedProgram cp_program = checkSource(R"(fn<bool> left(float<16>[]? row) = [1.000488281250000001, -0.0] == row
+fn<bool> right(float<16>[]? row) = row != [1.000488281250000001, -0.0]
+fn<bool> nested(float<64> wide) = [[16777217.0]] == [[wide]]
+fn<float<16>[]> choose(int<8> n) = [0.0]
+fn<float<64>[]> choose(int<16> n) = [0.0]
+fn<bool> selected() = [16777217.0] == choose(300))");
+	const SymbolScope   &ss_globals = cp_program.units.front()->get_globals();
+	for (const std::string s_name : { "left", "right" }) {
+		const BinaryExpression &be_compare = dynamic_cast<const BinaryExpression &>(bodyExpression(ss_globals.at(s_name).front()));
+		const ArrayLiteral     &al_row     = dynamic_cast<const ArrayLiteral &>(s_name == "left" ? *be_compare.left : *be_compare.right);
+		const ExpressionInfo   &ei_first   = cp_program.expressions.at(al_row.elements[0].get()),
+		                     &ei_zero      = cp_program.expressions.at(al_row.elements[1].get());
+		EXPECT_EQ(ei_first.types.front().width, 16u);
+		EXPECT_EQ(std::get<double>(ei_first.numericConstant), 1.0009765625);
+		EXPECT_EQ(ei_zero.types.front().width, 16u);
+		EXPECT_TRUE(std::signbit(std::get<double>(ei_zero.numericConstant)));
+	}
+	const BinaryExpression &be_nested = dynamic_cast<const BinaryExpression &>(bodyExpression(ss_globals.at("nested").front()));
+	const ArrayLiteral     &al_outer  = dynamic_cast<const ArrayLiteral &>(*be_nested.left);
+	const ArrayLiteral     &al_inner  = dynamic_cast<const ArrayLiteral &>(*al_outer.elements.front());
+	const ExpressionInfo   &ei_wide   = cp_program.expressions.at(al_inner.elements.front().get());
+	EXPECT_EQ(ei_wide.types.front().width, 64u);
+	EXPECT_EQ(std::get<double>(ei_wide.numericConstant), 16777217.);
+	const BinaryExpression &be_selected = dynamic_cast<const BinaryExpression &>(bodyExpression(ss_globals.at("selected").front()));
+	const ArrayLiteral     &al_selected = dynamic_cast<const ArrayLiteral &>(*be_selected.left);
+	EXPECT_EQ(cp_program.expressions.at(be_selected.right.get()).argumentContract, &ss_globals.at("choose")[1]);
+	EXPECT_EQ(std::get<double>(cp_program.expressions.at(al_selected.elements.front().get()).numericConstant), 16777217.);
+	expectError("fn<bool> f(float<16>[] row) = row == [70000.0]", Code::FLOAT_RANGE);
+	expectError("fn<bool> f(float<16>[] row, float<64> wide) = [wide] == row", Code::INVALID_ARRAY);
+}
+
+TEST (SemanticValues, RangeComparisonsRecordTheSelectedEndpointType) {
+	const CheckedProgram cp_program = checkSource(R"(fn<bool> stored(range<float<64>> r) = 16777217.0 == r
+fn<bool> inlineRange(float<16> high) = (1.000488281250000001 ..= high) != -0.0
+fn<bool> conditional(bool flag, range<int<8>> r) = (if(flag) 0..3 else 1..4) == r
+fn<bool> exiting() = (if(true) { return true } else { false }) == 1..2
+typedef<struct> Cursor { pub operator ..(int last) -> range<int<8>> = 0..1 }
+fn<bool> overloaded(Cursor cur) = (cur .. 2) == 1)");
+	const SymbolScope   &ss_globals = cp_program.units.front()->get_globals();
+	const std::function  comparison = [&] (const std::string &name) -> const BinaryExpression  &{
+		return dynamic_cast<const BinaryExpression &>(bodyExpression(ss_globals.at(name).front()));
+	};
+	const BinaryExpression &be_stored = comparison("stored"), &be_inline = comparison("inlineRange"), &be_conditional = comparison("conditional");
+	const ExpressionInfo   &ei_wide = cp_program.expressions.at(be_stored.left.get()), &ei_zero = cp_program.expressions.at(be_inline.right.get());
+	EXPECT_EQ(cp_program.expressions.at(&be_stored).range, RangeOperation::Membership);
+	EXPECT_EQ(ei_wide.types.front().width, 64u);
+	EXPECT_EQ(std::get<double>(ei_wide.numericConstant), 16777217.);
+	EXPECT_EQ(cp_program.expressions.at(&be_inline).range, RangeOperation::Membership);
+	EXPECT_EQ(ei_zero.types.front().width, 16u);
+	EXPECT_TRUE(std::signbit(std::get<double>(ei_zero.numericConstant)));
+	const BinaryExpression &be_bounds = dynamic_cast<const BinaryExpression &>(*be_inline.left);
+	const ExpressionInfo   &ei_low    = cp_program.expressions.at(be_bounds.left.get());
+	EXPECT_EQ(cp_program.expressions.at(&be_bounds).range, RangeOperation::Construct);
+	EXPECT_EQ(ei_low.types.front().width, 16u);
+	EXPECT_EQ(std::get<double>(ei_low.numericConstant), 1.0009765625);
+	EXPECT_EQ(cp_program.expressions.at(&be_conditional).range, RangeOperation::Equal);
+	EXPECT_EQ(cp_program.expressions.at(be_conditional.left.get()).types.front().arguments().front().width, 8u);
+	EXPECT_FALSE(returned(cp_program, "exiting").fallsThrough);
+	const BinaryExpression &be_overloaded = comparison("overloaded");
+	EXPECT_EQ(cp_program.expressions.at(be_overloaded.left.get()).argumentContract,
+	          &ss_globals.at("Cursor").front().members.at(std::string(to_string(oRange))).front());
+	EXPECT_EQ(cp_program.expressions.at(be_overloaded.right.get()).types.front().width, 8u);
+}
+
+TEST (SemanticValues, RangeMembershipValidatesExactTypesAndTargetLimits) {
+	const std::string s_endpoint = "fn<bool> f(float<16> x, float<64> high) = x == 0.0..high";
+	try {
+		checkSource(s_endpoint);
+		FAIL() << "Expected an endpoint type mismatch";
+	} catch (const cde::ClothDiagnostic &error) {
+		EXPECT_EQ(error.get_code(), Code::INVALID_RANGE_MEMBERSHIP);
+		ASSERT_FALSE(error.get_source_labels().empty());
+		const TokenSpan &ts_bound = error.get_source_labels().front().span;
+		EXPECT_EQ(ts_bound.startCol, s_endpoint.rfind("high") + 1);
+		EXPECT_EQ(ts_bound.endCol, s_endpoint.size() + 1);
+	}
+	expectError("fn<bool> f(float<16> x, float<64> high) = (x..1.0) == (0.0..high)", Code::INVALID_RANGE_VALUE);
+	expectError("fn<bool> f(float<16> x) = x == (0.0 .. (50000.0 * 2.0))", Code::INVALID_RANGE_MEMBERSHIP);
+	expectError("fn<bool> f(int<8> low) = (low..true) == 128", Code::INTEGER_RANGE);
+	expectError("fn<bool> f(float<16> x) = (if(true) 1.0 else x) == 0.0..1.5", Code::BRANCH_TYPE_MISMATCH);
+	expectError("fn accept(bool ok) {}\nfn f(range<int<8>> r) { accept(r != 128) }", Code::INTEGER_RANGE);
+	expectError("fn<bool> f(range<int<8>>? r) = 1 == r", Code::NULLABLE_PAYLOAD_ACCESS);
+	const std::string s_source = "fn<bool> f(range<usize> r) = 4294967296 == r";
+	EXPECT_NO_THROW(checkSource(s_source, { 64 }));
+	try {
+		checkSource(s_source, { 32 });
+		FAIL() << "Expected the 32-bit endpoint limit";
+	} catch (const cde::ClothDiagnostic &error) {
+		EXPECT_EQ(error.get_code(), Code::INTEGER_RANGE);
+	}
+}
+
 TEST (SemanticValues, NullableFallbacksCarryTheDestinationIntoEachBranch) {
 	const CheckedProgram cp_program = checkSource(R"(fn<int?> value(bool flag, int? x) = x ?: if(flag) { null } else { 2 }
 fn<int?[]> row(bool flag) = [if(flag) { null } else { 2 }]

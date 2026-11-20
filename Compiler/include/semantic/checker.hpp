@@ -61,6 +61,8 @@ std::optional<ArrayMutation> arrayMutationNamed (std::string_view name);
 bool                         builtinFunctionNamed (std::string_view name);
 bool                         checksNumericMethod (std::string_view name);
 bool                         hasArrayShape (const ResolvedType &type);
+const ResolvedType          *rangeEndpoint (const ResolvedType &type);
+void                         requireRangeMember (const Expression &member, const ResolvedType &actual, const ResolvedType &endpoint);
 ResolvedType                 comparisonShape (ResolvedType type, const ArrayLiteral *literal = nullptr);
 ResolvedType                 refineShape (ResolvedType target, const ResolvedType &source, const TokenSpan *use = nullptr);
 ResolvedType                 commonShape (ResolvedType left, const ResolvedType &right);
@@ -387,7 +389,6 @@ class BodyChecker {
 	IndexedAccess          indexAccess (const ExpressionInfo &operation, const TokenSpan &span);
 	bool writeIndex (const Statement &statement, const ExpressionPtr &target, const ExpressionInfo &array, const Token &op, const ExpressionPtr &rhs,
 	                 const ExpressionPtr &compound);
-	std::optional<ResolvedType>   rangeEndpoints (const Expression &start, const Expression &end, const ResolvedType *hint, Code code, bool &continues);
 	[[nodiscard]] ResolvedType    shapeOf (const Expression &value, const ResolvedType &fallback, std::size_t slot = 0) const;
 	void                          receiveShape (const Token &binding, const ResolvedType &declared, const ResolvedType &shape, const TokenSpan &use);
 	ExpressionInfo                mutateArray (const MemberCallExpression &call, const ExpressionInfo &receiver, ArrayMutation operation);
@@ -541,6 +542,11 @@ class BodyChecker {
 	ExpressionInfo              scalarInfo (const Expression &node, const ResolvedType *expected = nullptr, std::optional<FloatContext> floats = {});
 	void                        numericPeers (const Expression &node, NumericPeers &peers, bool contextualFloat);
 	std::optional<ResolvedType> elementHint (const Expression &node, FloatContext floats);
+	BodyChecker                  comparisonProbe () const;
+	std::optional<ResolvedType>  comparisonHint (const Expression &node, bool defaultLiterals = false) const;
+	ExpressionInfo               arrayLiteralComparison (const BinaryExpression &node, const ArrayLiteral *left, const ArrayLiteral *right);
+	std::optional<ExpressionInfo> contextualRangeComparison (const BinaryExpression &node);
+	ExpressionInfo                rangeValue (const BinaryExpression &node, const ResolvedType *endpoint, Code code);
 	std::optional<ResolvedType> rangeEndpointHint (const Expression &start, const Expression &end);
 	void           require (const ResultTypes &actual, const ResultTypes &expected, const TokenSpan &span, Code code = Code::TYPE_MISMATCH) const;
 	bool           expect (const Expression &node, const ResolvedType &type);

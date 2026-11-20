@@ -360,14 +360,37 @@ std::optional<ExpressionInfo> BodyChecker::applyBinaryOperator (const BinaryExpr
 	return ei_result;
 }
 
+void requireRangeMember (const Expression &member, const ResolvedType &actual, const ResolvedType &endpoint) {
+	if (actual != endpoint)
+		fail(Code::INVALID_RANGE_MEMBERSHIP, member.get_span(),
+		     std::format("Range membership requires {}, got {}", endpoint.spelling(), actual.spelling()));
+}
+
 ExpressionInfo BodyChecker::equality (const BinaryExpression &node, const ResolvedType &left, const ResolvedType &right) {
-	receiverClassBound(*node.left, left);
-	receiverClassBound(*node.right, right);
 	const Operator      o_op = node.op.get_operator();
 	ExpressionInfo      ei_result{ { ResolvedType(kBoolean) } };
 	const std::function incomparable = [&] {
 		fail(Code::INCOMPARABLE_TYPES, node.op.get_span(), "Cannot compare " + left.spelling() + " with " + right.spelling());
 	};
+	const ResolvedType *rt_leftEndpoint = rangeEndpoint(left), *rt_rightEndpoint = rangeEndpoint(right);
+	if (o_op != oIdentity && (rt_leftEndpoint || rt_rightEndpoint) && left != ResolvedType(kNull) && right != ResolvedType(kNull)) {
+		if (rt_leftEndpoint && rt_rightEndpoint) {
+			if (*rt_leftEndpoint != *rt_rightEndpoint) incomparable();
+			ei_result.range = RangeOperation::Equal;
+		} else {
+			const Expression   &e_range = rt_leftEndpoint ? *node.left : *node.right, &e_member = rt_leftEndpoint ? *node.right : *node.left;
+			const ResolvedType &rt_endpoint = rt_leftEndpoint ? *rt_leftEndpoint : *rt_rightEndpoint, &rt_member = rt_leftEndpoint ? right : left;
+			if ((rt_leftEndpoint ? left : right).nullable())
+				fail(Code::NULLABLE_PAYLOAD_ACCESS, e_range.get_span(), "Range membership requires a present range");
+			requireRangeMember(e_member, rt_member, rt_endpoint);
+			ei_result.range = RangeOperation::Membership;
+		}
+		return ei_result;
+	}
+	if (node.op.get_lexeme() == to_string(kIs))
+		fail(Code::INVALID_RANGE_MEMBERSHIP, node.get_span(), "Membership requires a range with compatible endpoints");
+	receiverClassBound(*node.left, left);
+	receiverClassBound(*node.right, right);
 	if (left == ResolvedType(kNull) || right == ResolvedType(kNull)) {
 		const bool                      b_leftNull  = left == ResolvedType(kNull);
 		const ResolvedType             &rt_peer     = b_leftNull ? right : left;
