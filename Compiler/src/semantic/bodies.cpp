@@ -487,10 +487,10 @@ ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTyp
 		if (!b_remaining) bc_test.we_capture = nullptr;
 		const TestPaths tp_paths = bc_test.test(*cb_branch.condition);
 		if (b_remaining) mergeExits(exits, bc_test.fs_flow.exits);
-		fs_flow.narrowed = tp_paths.yes.value_or(bc_test.fs_flow.narrowed);
-		branch(cb_branch.statements, cb_branch.span, b_remaining && tp_paths.yes.has_value());
-		fs_flow.narrowed = tp_paths.no.value_or(bc_test.fs_flow.narrowed);
-		b_remaining &= tp_paths.no.has_value();
+		fs_flow.narrowed = tp_paths.yes.facts;
+		branch(cb_branch.statements, cb_branch.span, b_remaining && tp_paths.yes.reachable);
+		fs_flow.narrowed = tp_paths.no.facts;
+		b_remaining &= tp_paths.no.reachable;
 	}
 	if (node.otherwise) {
 		branch(*node.otherwise, *node.otherwiseSpan, b_remaining);
@@ -736,6 +736,7 @@ bool BodyChecker::writeStorage (const Statement &statement, const ExpressionPtr 
 			invalidateShared();
 		return opt_value.has_value();
 	} else if (!analyzer.numeric(rt)) {
+		requirePresentOperand(rt, target->get_span());
 		fail(Code::UNARY_OPERAND, op.get_span(), "Update needs a numeric target");
 	}
 	if (tp_target)
@@ -771,10 +772,13 @@ bool BodyChecker::checkStatement (const Statement &node) {
 		if (s->type) {
 			annotation = bodyType(*s->type);
 		}
-		if (dynamic_cast<const FunctionBlockExpression *>(s->initializer.get())) {
+		if (const FunctionBlockExpression *fb_block = dynamic_cast<const FunctionBlockExpression *>(s->initializer.get())) {
 			expression(*s->initializer);
+			const std::shared_ptr<const WriteEffects> we_presence = deferredPresenceWrites(*fb_block);
 			bind(s->name, annotation, s->isMutable, true);
-			scopes.back().at(s->name.get_lexeme()).effects = we_deferred;
+			Binding &b_block       = scopes.back().at(s->name.get_lexeme());
+			b_block.effects        = we_deferred;
+			b_block.presenceWrites = we_presence;
 			return true;
 		}
 		if (annotation == ResolvedType(kVoid)) fail(Code::VOID_TYPE, s->type->get_span(), "A binding requires a value type");
@@ -818,6 +822,7 @@ bool BodyChecker::checkStatement (const Statement &node) {
 		if (!assignmentBinding(s->name) && !locate(*s->target)) name(s->name, true);
 		const std::optional<ResolvedType> opt_target = scalar(*s->target);
 		if (opt_target && !updateOperator(node, *opt_target, s->op, nullptr) && !analyzer.numeric(*opt_target)) {
+			requirePresentOperand(*opt_target, s->get_span());
 			fail(Code::UNARY_OPERAND, s->op.get_span(), "Update needs a numeric binding or a matching operator");
 		}
 		assign(s->name, opt_target);

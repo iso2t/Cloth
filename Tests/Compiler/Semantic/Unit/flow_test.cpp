@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <functional>
+
 #include <ast/decl/class_declaration.hpp>
 #include <ast/expr/member_call_expression.hpp>
 #include <ast/stmt/do_while_statement.hpp>
@@ -114,6 +116,86 @@ TEST (SemanticFlow, JoinsBreakContinueAndZeroTripPathsAtTheCorrectPoint) {
 	expectError("fn<int> f(bool skip, int? v) { do { if (skip) break; v = 1 } while (v == null); return v }", Code::RETURN_TYPE);
 	expectError("fn f(int? v) { if (v != null) { do { def a = v+1; v = null } while (true) } }", Code::NULLABLE_PAYLOAD_ACCESS);
 	expectError("fn<int> f() { while (true) { do continue while (if (true) { break } else { false }) } }", Code::MISSING_RETURN);
+}
+
+TEST (SemanticFlow, ChecksLoopReadsAgainstWritesEvenOnUnreachablePaths) {
+	const std::string s_start = "fn f(bool? flag, bool? other) { if (flag != null) { ";
+	const std::string s_read  = "def<bool> plain = flag";
+	for (const char *s_write : { "do flag = null while (false)", "if (false) flag = true", "break; flag = null", "flag, other = null, null",
+	                             "def<bool> clear = { flag = null; return true }; clear" }) {
+		SCOPED_TRACE(s_write);
+		expectError(s_start + "while (false) { " + s_read + "; " + s_write + " } } }", Code::TYPE_MISMATCH);
+		expectError(s_start + "while (false) { " + s_write + " }; " + s_read + " } }", Code::TYPE_MISMATCH);
+	}
+	for (const char *s_write : { "other = null", "if (true) { def<bool?> flag = null; flag = null }", "def<bool> clear = { flag = null; return true }" }) {
+		SCOPED_TRACE(s_write);
+		EXPECT_NO_THROW(checkSource(s_start + "while (false) { " + s_read + "; " + s_write + " }; " + s_read + " } }"));
+	}
+	const std::string s_cells = "typedef<struct> Cell { pub bool? flag }\nfn f(Cell[] cells, usize i) { if (cells[0].flag != null) { ";
+	expectError(s_cells + "while (false) { def<bool> plain = cells[0].flag; cells[i].flag = null } } }", Code::TYPE_MISMATCH);
+	EXPECT_NO_THROW(checkSource(s_cells + "while (false) { def<bool> plain = cells[0].flag; cells[1].flag = null } } }"));
+	expectError("fn f(bool? flag) { def<range<int>> clear = { flag = null; return 1..3 }; if (flag != null) { "
+	            "while (false) { def<bool> plain = flag; def<bool> member = 1 is clear } } }",
+	            Code::TYPE_MISMATCH);
+	const std::string s_do = s_start + "do { " + s_read + "; def bad = true + false; flag = null; ";
+	expectError(s_do + "continue } while (!true) } }", Code::BINARY_OPERANDS);
+	expectError(s_do + "break } while (true) } }", Code::BINARY_OPERANDS);
+	expectError(s_do + "continue } while (true) } }", Code::TYPE_MISMATCH);
+	expectError("typedef<class> Gate { pub operator &&(bool rhs) -> bool = true }\n"
+	            "fn f(Gate gate, bool? flag) { if (flag != null) { do { def<bool> plain = flag; flag = true } while (gate && false) } }",
+	            Code::TYPE_MISMATCH);
+}
+
+TEST (SemanticFlow, RequiresPresenceForBuiltinPostfixUpdates) {
+	for (const char *s_operator : { "++", "--" }) {
+		SCOPED_TRACE(s_operator);
+		const std::string s_update = std::string("n") + s_operator;
+		expectError("fn f(int? n) { " + s_update + " }", Code::NULLABLE_PAYLOAD_ACCESS);
+		expectError("fn f(int? n) { if (n != null) { while (false) { " + s_update + " } } }", Code::NULLABLE_PAYLOAD_ACCESS);
+		expectError("fn f(int?[] items) { items[0]" + std::string(s_operator) + " }", Code::NULLABLE_PAYLOAD_ACCESS);
+		EXPECT_NO_THROW(checkSource("fn f(int? n) { while (n != null) { " + s_update + "; break } }"));
+		EXPECT_NO_THROW(checkSource("fn f(int? n) { if (n != null) { do { " + s_update + "; break } while (true) } }"));
+	}
+	expectError("fn f(bool? flag) { if (flag != null) { while (false && flag) flag = null } }", Code::NULLABLE_PAYLOAD_ACCESS);
+	const CheckedProgram   cp_program = checkSource("fn f(int? n) { if (n == null) return; n++ }");
+	const UpdateStatement &us_update  = dynamic_cast<const UpdateStatement &>(*body(cp_program, "f").statements.back());
+	EXPECT_EQ(cp_program.expressions.at(us_update.target.get()).types, ResultTypes{ ResolvedType(kInteger) });
+}
+
+TEST (SemanticFlow, RecordsLoopOverloadsAndGuardsSeparatelyFromReachableExits) {
+	const CheckedProgram    cp_program = checkSource(R"(fn<bool> pick(bool? value) = true
+fn<int> pick(bool value) = 1
+fn test(bool? flag) {
+    if (flag == null) return
+    while (false) { def<bool> before = pick(flag); flag = null; return }
+    def<bool> after = pick(flag)
+}
+fn guarded(bool? flag) { while (flag != null && false) { def<int> present = pick(flag); flag = null; return } }
+fn once(bool? flag) { if (flag == null) return; do { def<int> present = pick(flag); flag = null; break } while (true) }
+fn repeats(bool? flag, bool again) { if (flag == null) return; do { def<bool> before = pick(flag); flag = true } while (again) }
+)");
+	const BlockBody        &bb_test    = body(cp_program, "test");
+	const WhileStatement   &ws_never   = dynamic_cast<const WhileStatement &>(*bb_test.statements.at(1));
+	const WhileStatement   &ws_guard   = dynamic_cast<const WhileStatement &>(*body(cp_program, "guarded").statements.front());
+	const DoWhileStatement &ds_once    = dynamic_cast<const DoWhileStatement &>(*body(cp_program, "once").statements.back());
+	const DoWhileStatement &ds_repeats = dynamic_cast<const DoWhileStatement &>(*body(cp_program, "repeats").statements.back());
+	const std::function<void(const StatementPtr &, bool)> fn_checkCall = [&] (const StatementPtr &statement, bool nullable) {
+		const BindingDeclaration &bd_local = dynamic_cast<const BindingDeclaration &>(*statement);
+		const CallExpression     &ce_call  = dynamic_cast<const CallExpression &>(*bd_local.initializer);
+		const ExpressionInfo     &ei_call  = cp_program.expressions.at(&ce_call);
+		ASSERT_NE(ei_call.argumentContract, nullptr);
+		EXPECT_EQ(cp_program.declarations.at(ei_call.argumentContract).parameters.front().nullable(), nullable);
+		EXPECT_EQ(cp_program.expressions.at(ce_call.suppliedArguments.front().expression.get()).types.front().nullable(), nullable);
+	};
+	fn_checkCall(ws_never.body.statements.front(), true);
+	fn_checkCall(bb_test.statements.back(), true);
+	fn_checkCall(ws_guard.body.statements.front(), false);
+	fn_checkCall(ds_once.body.statements.front(), false);
+	fn_checkCall(ds_repeats.body.statements.front(), true);
+	EXPECT_TRUE(cp_program.controlFlow.at(&ws_never).fallsThrough);
+	EXPECT_FALSE(cp_program.controlFlow.at(&ws_never).canReturn);
+	EXPECT_TRUE(cp_program.controlFlow.at(ws_never.body.statements.back().get()).canReturn);
+	EXPECT_FALSE(cp_program.controlFlow.at(&ws_guard).canReturn);
 }
 
 TEST (SemanticFlow, UsesBindingAndFieldIdentityAndInvalidatesResolvedWrites) {

@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -16,6 +17,10 @@
 #include <token/token.hpp>
 
 namespace cloth {
+
+// Visit expression operands and conditional branch scopes in source order. The caller resolves value-dependent type-test targets and deferred bodies.
+void visitOperands (const Expression &node, const std::function<void(const Expression &)> &visit,
+                    const std::function<void(const std::vector<StatementPtr> &)> &visitBlock);
 
 struct NameExpression : Expression {
 	Token name;

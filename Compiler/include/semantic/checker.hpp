@@ -42,6 +42,7 @@ NumericConstant  numericLimit (const ResolvedType &type, TargetLayout layout, bo
 int              compareIntegers (const IntegerConstant &left, const IntegerConstant &right);
 void             checkNumeric (const Expression &node, ExpressionInfo &result, const ExpressionFacts &facts, TargetLayout layout);
 void             requireFinite (const Expression &operand, const ExpressionFacts &facts, cde::DiagnosticCode code);
+void             requirePresentOperand (const ResolvedType &type, const TokenSpan &use);
 std::string      arraySuffix (std::string_view extent = {});
 enum class ElementEvidence { None, Literal, Typed };
 
@@ -59,6 +60,7 @@ struct NumericPeers {
 ElementEvidence              elementEvidence (const Expression &operand);
 std::optional<ArrayMutation> arrayMutationNamed (std::string_view name);
 bool                         builtinFunctionNamed (std::string_view name);
+bool                         builtinNeverReturns (std::string_view name);
 bool                         checksNumericMethod (std::string_view name);
 bool                         hasArrayShape (const ResolvedType &type);
 const ResolvedType          *rangeEndpoint (const ResolvedType &type);
@@ -353,6 +355,8 @@ struct Binding {
 	bool                                mutableBinding;
 	bool                                deferred = false;
 	std::shared_ptr<const WriteEffects> effects  = {};
+	// A deferred read inside a loop also accounts for writes in unreachable source in the deferred body.
+	std::shared_ptr<const WriteEffects> presenceWrites = {};
 };
 
 class BodyChecker {
@@ -454,8 +458,13 @@ class BodyChecker {
 	using OperatorProbes           = std::unordered_map<const Expression *, OperandProbe>;
 	OperatorProbes *operatorProbes = nullptr;
 
+	struct TestPath {
+		Narrowing facts;
+		bool      reachable = false;
+	};
+
 	struct TestPaths {
-		std::optional<Narrowing> yes, no;
+		TestPath yes, no;
 	};
 
 	struct TypedPlace {
@@ -478,6 +487,20 @@ class BodyChecker {
 	void                                    invalidateShared ();
 	void                                    forgetMutableMetadata (Narrowing &facts) const;
 	void                                    applyWrites (const Binding &binding);
+
+	struct SourceFlow {
+		// The write walk visits all source. These paths describe which statements can reach a post-test loop's next iteration.
+		bool                     fallsThrough = true, breaks = false, continues = false;
+		std::optional<bool>      truth = {};
+		[[nodiscard]] SourceFlow then (SourceFlow next) const;
+		[[nodiscard]] SourceFlow either (const SourceFlow &other) const;
+	};
+
+	SourceFlow                              collectWrites (const Expression &node, WriteEffects &writes);
+	SourceFlow                              collectWrites (const std::vector<StatementPtr> &statements, WriteEffects &writes);
+	SourceFlow                              collectRepeatedWrites (const LoopStatement &node, WriteEffects &writes, bool *canRepeat = nullptr);
+	std::shared_ptr<const WriteEffects>     deferredPresenceWrites (const FunctionBlockExpression &node);
+	Narrowing                               loopPresence (const LoopStatement &node, bool &canRepeat);
 	bool                                    containsNullability (const ResolvedType &type) const;
 	void                                    checkInferredBinding (const ResolvedType &type, const TokenSpan &span) const;
 	void                                    setPresence (const StoragePlace &place, const ResolvedType &declared, const std::optional<ResolvedType> &value);

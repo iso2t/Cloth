@@ -269,11 +269,11 @@ void BodyChecker::applyWrites (const Binding &binding) {
 }
 
 BodyChecker::TestPaths BodyChecker::splitTest (const Expression &node, const ExpressionInfo &result) {
-	if (!result.fallsThrough) return {};
-	if (e_test == &node) return tp_test;
-	TestPaths tp_paths{ .yes = fs_flow.narrowed, .no = fs_flow.narrowed };
+	if (result.fallsThrough && e_test == &node) return tp_test;
+	TestPaths tp_paths{ .yes = { fs_flow.narrowed, result.fallsThrough }, .no = { fs_flow.narrowed, result.fallsThrough } };
+	if (!result.fallsThrough) return tp_paths;
 	if (const auto *bl_test = dynamic_cast<const BooleanLiteral *>(&node)) {
-		(bl_test->value ? tp_paths.no : tp_paths.yes).reset();
+		(bl_test->value ? tp_paths.no : tp_paths.yes).reachable = false;
 	} else if (const auto *be_test = dynamic_cast<const BinaryExpression *>(&node); be_test && !result.argumentContract) {
 		const Operator o_op = be_test->op.get_operator();
 		if (o_op != oEqual && o_op != oNotEqual && o_op != oIdentity) return tp_paths;
@@ -282,15 +282,16 @@ BodyChecker::TestPaths BodyChecker::splitTest (const Expression &node, const Exp
 		                                                                                                      nullptr;
 		const std::optional<TypedPlace> tp_place  = e_operand ? locate(*e_operand) : std::nullopt;
 		if (tp_place && tp_place->place.stable() && tp_place->type.nullable()) {
-			(o_op == oNotEqual ? *tp_paths.yes : *tp_paths.no).try_emplace(tp_place->place, tp_place->type.element());
-			forgetPresence(o_op == oNotEqual ? *tp_paths.no : *tp_paths.yes, tp_place->place);
+			(o_op == oNotEqual ? tp_paths.yes : tp_paths.no).facts.try_emplace(tp_place->place, tp_place->type.element());
+			forgetPresence((o_op == oNotEqual ? tp_paths.no : tp_paths.yes).facts, tp_place->place);
 		}
 	} else if (const auto *tc_test = dynamic_cast<const TypeCheckExpression *>(&node); tc_test && result.testedType && result.testedType->declaration) {
 		const std::optional<TypedPlace> tp_place  = locate(*tc_test->operand);
 		const ResolvedType             &rt_target = *result.testedType;
 		if (tp_place && tp_place->place.stable() && analyzer.referenceType(rt_target)) {
 			FlowFact &ff_proof =
-			        tp_paths.yes->try_emplace(tp_place->place, tp_place->type.nullable() ? tp_place->type.element() : tp_place->type).first->second;
+			        tp_paths.yes.facts.try_emplace(tp_place->place, tp_place->type.nullable() ? tp_place->type.element() : tp_place->type)
+			                .first->second;
 			// Fields prove presence. Only a binding can expose the tested class or interface contract.
 			if (tp_place->place.path.empty() && tp_place->place.root != &context.name && analyzer.referenceType(ff_proof.type)) {
 				const std::span<const ResolvedType> sp_tests =
@@ -372,7 +373,6 @@ bool BodyChecker::loop (const LoopStatement &node) {
 		bind(fs_for->binding.name, annotation ? annotation : opt_element, true);
 	}
 	if (!ds_do) forgetMutableMetadata(fs_flow.narrowed);
-	const Narrowing n_entry = fs_flow.narrowed;
 
 	struct Iteration {
 		std::optional<Narrowing> back, exit;
@@ -384,9 +384,9 @@ bool BodyChecker::loop (const LoopStatement &node) {
 		bool      b_body = b_source;
 		if (ws_while) {
 			const TestPaths tp_paths = body.test(*ws_while->condition);
-			it_result.exit           = tp_paths.no;
-			b_body                   = tp_paths.yes.has_value();
-			if (b_body) body.fs_flow.narrowed = *tp_paths.yes;
+			if (tp_paths.no.reachable) it_result.exit = tp_paths.no.facts;
+			b_body                = tp_paths.yes.reachable;
+			body.fs_flow.narrowed = tp_paths.yes.facts;
 		} else if (fs_for && b_source)
 			it_result.exit = body.fs_flow.narrowed;
 		WriteEffects *we_entry = body.we_capture;
@@ -416,8 +416,11 @@ bool BodyChecker::loop (const LoopStatement &node) {
 		if (ds_do) {
 			const TestPaths tp_paths = body.test(*ds_do->condition);
 			if (b_trailer) {
-				it_result.back = tp_paths.yes;
-				if (tp_paths.no) join(it_result.exit, *tp_paths.no);
+				if (tp_paths.yes.reachable)
+					it_result.back = tp_paths.yes.facts;
+				else
+					it_result.back.reset();
+				if (tp_paths.no.reachable) join(it_result.exit, tp_paths.no.facts);
 			}
 		} else if (fs_for && fs_for->stepper) {
 			body.remember(fs_for->stepper->target, fs_for->binding.name);
@@ -435,29 +438,51 @@ bool BodyChecker::loop (const LoopStatement &node) {
 		body.we_capture = we_entry;
 		return it_result;
 	};
-	// A loop header can only lose incoming proofs. Check its body with the stable header before committing overloads.
-	Narrowing                n_header = n_entry;
-	std::optional<Iteration> opt_stable;
+	const std::function<Iteration(const Narrowing &)> fn_trial = [&] (const Narrowing &header) {
+		BodyChecker bc_trial = *this;
+		bc_trial.record      = false;
+		bc_trial.we_capture  = nullptr;
+		bc_trial.fs_flow     = { header, {} };
+		return iteration(bc_trial);
+	};
+	// A pre-test loop checks every occurrence against its source writes, including paths that never execute.
+	// A post-test loop keeps first-entry proofs when no path reaches a second iteration.
+	bool                     b_sourceRepeats = false;
+	Narrowing                n_header        = loopPresence(node, b_sourceRepeats);
+	std::optional<Iteration> opt_trial;
+	if (ds_do && n_header != fs_flow.narrowed) {
+		bool b_writtenHeader = b_sourceRepeats;
+		try {
+			opt_trial = fn_trial(b_writtenHeader ? n_header : fs_flow.narrowed);
+		} catch (const cde::ClothDiagnostic &) {
+			// An overloaded condition can change whether the loop repeats. Prefer the source diagnostic if neither header type-checks.
+			b_writtenHeader = !b_writtenHeader;
+			try {
+				opt_trial = fn_trial(b_writtenHeader ? n_header : fs_flow.narrowed);
+			} catch (const cde::ClothDiagnostic &) {
+				opt_trial.reset();
+			}
+			if (!opt_trial || opt_trial->back.has_value() != b_writtenHeader) throw;
+		}
+		const bool b_repeats = opt_trial->back.has_value();
+		if (!b_repeats) n_header = fs_flow.narrowed;
+		if (b_repeats != b_writtenHeader) opt_trial.reset();
+	}
+	// Other facts, such as array shapes, still join over the actual back edges.
 	while (!n_header.empty()) {
-		BodyChecker bc_trial     = *this;
-		bc_trial.record          = false;
-		bc_trial.we_capture      = nullptr;
-		bc_trial.fs_flow         = { n_header, {} };
-		const Iteration it_trial = iteration(bc_trial);
-		Narrowing       n_next   = n_header;
-		if (it_trial.back) {
+		if (!opt_trial) opt_trial = fn_trial(n_header);
+		Narrowing n_next = n_header;
+		if (opt_trial->back) {
 			if (ds_do) forgetMutableMetadata(n_next);
-			intersect(n_next, *it_trial.back);
+			intersect(n_next, *opt_trial->back);
 		}
-		if (n_next == n_header) {
-			if (!record && !we_capture) opt_stable = it_trial;
-			break;
-		}
+		if (n_next == n_header) break;
+		opt_trial.reset();
 		n_header = std::move(n_next);
 	}
 	Exits ex_incoming         = std::exchange(fs_flow.exits, {});
 	fs_flow.narrowed          = std::move(n_header);
-	const Iteration it_result = opt_stable ? std::move(*opt_stable) : iteration(*this);
+	const Iteration it_result = opt_trial && !record && !we_capture ? std::move(*opt_trial) : iteration(*this);
 	fs_flow.exits             = std::move(ex_incoming);
 	mergeExits(fs_flow.exits, it_result.outward);
 	if (it_result.exit) fs_flow.narrowed = *it_result.exit;

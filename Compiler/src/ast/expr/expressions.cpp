@@ -7,14 +7,71 @@
 #include <vector>
 
 #include <ast/decl/function_declaration.hpp>
+#include <ast/expr/class_expression.hpp>
 #include <ast/expr/expression.hpp>
 #include <ast/expr/expressions.hpp>
+#include <ast/expr/member_call_expression.hpp>
+#include <ast/expr/provider_expressions.hpp>
 #include <ast/stmt/statement.hpp>
 #include <ast/type/type_reference.hpp>
 #include <token/numeric_literals.hpp>
 #include <token/token.hpp>
 
 namespace cloth {
+
+void visitOperands (const Expression &node, const std::function<void(const Expression &)> &visit,
+                    const std::function<void(const std::vector<StatementPtr> &)> &visitBlock) {
+	if (const CallSite *cs_call = dynamic_cast<const CallSite *>(&node)) {
+		if (const MemberCallExpression *mc_member = dynamic_cast<const MemberCallExpression *>(cs_call))
+			visit(*mc_member->receiver);
+		else if (const StateCallExpression *sc_state = dynamic_cast<const StateCallExpression *>(cs_call))
+			visit(*sc_state->receiver);
+		else if (const ClassCreationExpression *cc_create = dynamic_cast<const ClassCreationExpression *>(cs_call))
+			visit(*cc_create->receiver);
+		for (const CallArgument &ca_argument : cs_call->suppliedArguments) visit(*ca_argument.expression);
+	} else if (const FieldAccessExpression *fa_field = dynamic_cast<const FieldAccessExpression *>(&node))
+		visit(*fa_field->receiver);
+	else if (const CastExpression *ce_cast = dynamic_cast<const CastExpression *>(&node))
+		visit(*ce_cast->operand);
+	else if (const TypeCheckExpression *tc_test = dynamic_cast<const TypeCheckExpression *>(&node))
+		visit(*tc_test->operand);
+	else if (const ProviderAccessExpression *pa_provider = dynamic_cast<const ProviderAccessExpression *>(&node))
+		visit(*pa_provider->receiver);
+	else if (const IndexExpression *ie_index = dynamic_cast<const IndexExpression *>(&node)) {
+		visit(*ie_index->array);
+		visit(*ie_index->index);
+	} else if (const ArrayLiteral *al_array = dynamic_cast<const ArrayLiteral *>(&node)) {
+		for (const ExpressionPtr &ep_item : al_array->elements) visit(*ep_item);
+	} else if (const StructLiteral *sl_struct = dynamic_cast<const StructLiteral *>(&node)) {
+		for (const ExpressionPtr &ep_item : sl_struct->fields) visit(*ep_item);
+	} else if (const ResultListExpression *rl_list = dynamic_cast<const ResultListExpression *>(&node)) {
+		for (const ExpressionPtr &ep_item : rl_list->values) visit(*ep_item);
+	} else if (const InterpolatedString *is_string = dynamic_cast<const InterpolatedString *>(&node)) {
+		for (const ExpressionPtr &ep_item : is_string->parts) visit(*ep_item);
+	} else if (const BinaryExpression *be_binary = dynamic_cast<const BinaryExpression *>(&node)) {
+		visit(*be_binary->left);
+		visit(*be_binary->right);
+	} else if (const UnaryExpression *ue_unary = dynamic_cast<const UnaryExpression *>(&node))
+		visit(*ue_unary->operand);
+	else if (const ElvisExpression *ee_elvis = dynamic_cast<const ElvisExpression *>(&node)) {
+		visit(*ee_elvis->left);
+		visit(*ee_elvis->fallback);
+	} else if (const GuardedAccessExpression *ga_access = dynamic_cast<const GuardedAccessExpression *>(&node)) {
+		visit(*ga_access->get_receiver());
+		visit(*ga_access->continuation);
+	} else if (const IfExpression *ie_conditional = dynamic_cast<const IfExpression *>(&node)) {
+		for (const ConditionalBranch &cb_branch : ie_conditional->branches) {
+			visit(*cb_branch.condition);
+			visitBlock(cb_branch.statements);
+		}
+		if (ie_conditional->otherwise) visitBlock(*ie_conditional->otherwise);
+	} else if (const ClassDeletionExpression *cd_delete = dynamic_cast<const ClassDeletionExpression *>(&node))
+		visit(*cd_delete->receiver);
+	else if (const StateTransitionExpression *st_transition = dynamic_cast<const StateTransitionExpression *>(&node)) {
+		visit(*st_transition->receiver);
+		if (st_transition->payload) visit(*st_transition->payload);
+	}
+}
 
 NameExpression::NameExpression (const Token &name) : name(name) {
 }

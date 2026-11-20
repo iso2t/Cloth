@@ -160,34 +160,6 @@ void BodyChecker::resolveNames (const Expression &node) {
 		analyzer.useWidthAnnotation(tr_type->annotation, context);
 	} else if (const ProviderAccessExpression *pa_provider = dynamic_cast<const ProviderAccessExpression *>(&node)) {
 		if (!receiverType(*pa_provider->receiver)) resolveNames(*pa_provider->receiver);
-	} else if (const IndexExpression *ie_index = dynamic_cast<const IndexExpression *>(&node)) {
-		resolveNames(*ie_index->array);
-		resolveNames(*ie_index->index);
-	} else if (const ArrayLiteral *al_array = dynamic_cast<const ArrayLiteral *>(&node)) {
-		for (const ExpressionPtr &ep_item : al_array->elements) resolveNames(*ep_item);
-	} else if (const StructLiteral *sl_struct = dynamic_cast<const StructLiteral *>(&node)) {
-		for (const ExpressionPtr &ep_item : sl_struct->fields) resolveNames(*ep_item);
-	} else if (const ResultListExpression *rl_list = dynamic_cast<const ResultListExpression *>(&node)) {
-		for (const ExpressionPtr &ep_item : rl_list->values) resolveNames(*ep_item);
-	} else if (const InterpolatedString *is_string = dynamic_cast<const InterpolatedString *>(&node)) {
-		for (const ExpressionPtr &ep_item : is_string->parts) resolveNames(*ep_item);
-	} else if (const BinaryExpression *be_binary = dynamic_cast<const BinaryExpression *>(&node)) {
-		resolveNames(*be_binary->left);
-		resolveNames(*be_binary->right);
-	} else if (const UnaryExpression *ue_unary = dynamic_cast<const UnaryExpression *>(&node)) {
-		resolveNames(*ue_unary->operand);
-	} else if (const ElvisExpression *ee_elvis = dynamic_cast<const ElvisExpression *>(&node)) {
-		resolveNames(*ee_elvis->left);
-		resolveNames(*ee_elvis->fallback);
-	} else if (const GuardedAccessExpression *ga_access = dynamic_cast<const GuardedAccessExpression *>(&node)) {
-		resolveNames(*ga_access->get_receiver());
-		resolveNames(*ga_access->continuation);
-	} else if (const IfExpression *ie_conditional = dynamic_cast<const IfExpression *>(&node)) {
-		for (const ConditionalBranch &cb_branch : ie_conditional->branches) {
-			resolveNames(*cb_branch.condition);
-			resolveNames(cb_branch.statements);
-		}
-		if (ie_conditional->otherwise) resolveNames(*ie_conditional->otherwise);
 	} else if (const FunctionBlockExpression *fb_block = dynamic_cast<const FunctionBlockExpression *>(&node)) {
 		if (fb_block->declaration.returnTypes.empty())
 			fail(Code::BLOCK_RETURN_TYPE_REQUIRED, node.get_span(), "A deferred binding requires a result type");
@@ -195,12 +167,10 @@ void BodyChecker::resolveNames (const Expression &node) {
 		const LoopTarget *lt_previous = std::exchange(lt_loop, nullptr);
 		resolveBodyNames(fb_block->declaration.body);
 		lt_loop = lt_previous;
-	} else if (const ClassDeletionExpression *cd_delete = dynamic_cast<const ClassDeletionExpression *>(&node)) {
-		resolveNames(*cd_delete->receiver);
-	} else if (const StateTransitionExpression *st_transition = dynamic_cast<const StateTransitionExpression *>(&node)) {
-		resolveNames(*st_transition->receiver);
-		if (st_transition->payload) resolveNames(*st_transition->payload);
-	}
+	} else
+		visitOperands(
+		        node, [&] (const Expression &operand) { resolveNames(operand); },
+		        [&] (const std::vector<StatementPtr> &statements) { resolveNames(statements); });
 }
 
 }

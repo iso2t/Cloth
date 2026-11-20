@@ -172,6 +172,11 @@ bool builtinFunctionNamed (std::string_view name) {
 	return definition(name, false) != nullptr;
 }
 
+bool builtinNeverReturns (std::string_view name) {
+	const Definition *d_builtin = definition(name, false);
+	return d_builtin && d_builtin->result == Slot::Never;
+}
+
 bool checksNumericMethod (std::string_view name) {
 	const Definition *bd_method = definition(name, true);
 	return bd_method && (bd_method->family == Family::Numeric || bd_method->operation == BuiltinOperation::ToStringRadix);

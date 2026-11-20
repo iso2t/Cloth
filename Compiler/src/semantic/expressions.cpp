@@ -13,8 +13,12 @@
 #include <token/token.hpp>
 
 namespace cloth::semantic {
-namespace {
+void requirePresentOperand (const ResolvedType &type, const TokenSpan &use) {
+	if (type.nullable() || type == ResolvedType(kNull))
+		fail(Code::NULLABLE_PAYLOAD_ACCESS, use, std::format("Access to {} requires proof that its payload is present", type.spelling()));
+}
 
+namespace {
 ExpressionInfo value (ResolvedType type, const Symbol *symbol = nullptr, ReceiverFieldPath fieldPath = ReceiverFieldPath::None) {
 	return { .types = { std::move(type) }, .symbol = symbol, .receiverFieldPath = fieldPath };
 }
@@ -474,8 +478,8 @@ std::optional<ResolvedType> BodyChecker::elementHint (const Expression &node, Fl
 		BodyChecker bc_test = *this;
 		for (const ConditionalBranch &cb_branch : ie_conditional->branches) {
 			const TestPaths tp_paths = bc_test.test(*cb_branch.condition);
-			branch(cb_branch.statements, tp_paths.yes.value_or(bc_test.fs_flow.narrowed));
-			bc_test.fs_flow.narrowed = tp_paths.no.value_or(bc_test.fs_flow.narrowed);
+			branch(cb_branch.statements, tp_paths.yes.facts);
+			bc_test.fs_flow.narrowed = tp_paths.no.facts;
 		}
 		if (ie_conditional->otherwise) branch(*ie_conditional->otherwise, bc_test.fs_flow.narrowed);
 		return opt_common;
@@ -833,23 +837,36 @@ ExpressionInfo BodyChecker::builtinBinary (const BinaryExpression &node, const R
 		return elvis({ node.left, node.op, node.right }, expected ? &v_hint : nullptr, floats);
 	}
 	if (o_operation == oAnd || o_operation == oOr) {
-		TestPaths                 tp_left      = test(*node.left);
-		const bool                b_and        = o_operation == oAnd;
-		std::optional<Narrowing> &opt_evaluate = b_and ? tp_left.yes : tp_left.no;
-		BodyChecker               bc_right     = *this;
-		bc_right.fs_flow                       = { opt_evaluate.value_or(fs_flow.narrowed), {} };
-		if (!opt_evaluate) bc_right.we_capture = nullptr;
-		TestPaths tp_right = bc_right.test(*node.right);
-		if (opt_evaluate)
+		const ExpressionInfo ei_left     = scalarInfo(*node.left);
+		TestPaths            tp_left     = splitTest(*node.left, ei_left);
+		const bool           b_and       = o_operation == oAnd;
+		TestPath            &tp_evaluate = b_and ? tp_left.yes : tp_left.no;
+		TestPath            &tp_skip     = b_and ? tp_left.no : tp_left.yes;
+		BodyChecker          bc_right    = *this;
+		bc_right.fs_flow                 = { tp_evaluate.facts, {} };
+		if (!tp_evaluate.reachable) bc_right.we_capture = nullptr;
+		const ExpressionInfo ei_right = bc_right.scalarInfo(*node.right);
+		TestPaths            tp_right = bc_right.splitTest(*node.right, ei_right);
+		if (ei_left.fallsThrough) requirePresentOperand(ei_left.types.front(), node.left->get_span());
+		if (ei_right.fallsThrough) requirePresentOperand(ei_right.types.front(), node.right->get_span());
+		if ((ei_left.fallsThrough && ei_left.types.front() != ResolvedType(kBoolean)) ||
+		    (ei_right.fallsThrough && ei_right.types.front() != ResolvedType(kBoolean)))
+			fail(Code::BINARY_OPERANDS, node.op.get_span(),
+			     std::format("Operator '{}' requires {} operands", node.op.get_lexeme(), to_string(kBoolean)));
+		if (tp_evaluate.reachable) {
 			mergeExits(fs_flow.exits, bc_right.fs_flow.exits);
-		else
-			tp_right = {};
-		std::optional<Narrowing>       &opt_skip  = b_and ? tp_left.no : tp_left.yes;
-		const std::optional<Narrowing> &opt_short = b_and ? tp_right.no : tp_right.yes;
-		if (opt_short) join(opt_skip, *opt_short);
-		opt_evaluate                       = b_and ? tp_right.yes : tp_right.no;
-		std::optional<Narrowing> opt_after = tp_left.yes;
-		if (tp_left.no) join(opt_after, *tp_left.no);
+			const TestPath &tp_short = b_and ? tp_right.no : tp_right.yes;
+			if (!tp_skip.reachable)
+				tp_skip = tp_short;
+			else if (tp_short.reachable)
+				intersect(tp_skip.facts, tp_short.facts);
+		}
+		TestPath &tp_result = b_and ? tp_right.yes : tp_right.no;
+		tp_result.reachable &= tp_evaluate.reachable;
+		tp_evaluate = std::move(tp_result);
+		std::optional<Narrowing> opt_after;
+		if (tp_left.yes.reachable) opt_after = tp_left.yes.facts;
+		if (tp_left.no.reachable) join(opt_after, tp_left.no.facts);
 		e_test  = &node;
 		tp_test = std::move(tp_left);
 		if (!opt_after) return ExpressionInfo::never();
@@ -1318,6 +1335,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		if (!group.empty()) {
 			return callOperator(group.front(), *n->operand, operand, n->op, node.get_span());
 		}
+		requirePresentOperand(operand, n->operand->get_span());
 		if ((o_operation == oNot && operand != ResolvedType(kBoolean)) || (o_operation != oNot && !analyzer.numeric(operand))) {
 			fail(Code::UNARY_OPERAND, node.get_span(), "Invalid unary operand");
 		}
