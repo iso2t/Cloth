@@ -689,8 +689,8 @@ Branches LifetimeChecker::condition (const Expression &node, Path &path) {
 		else if (active)
 			br_paths.yes.reset();
 		if (h_receiver.identity && br_paths.yes) {
-			const ResolvedType &rt_host = lb_job.state && b_self && lb_job.host ? *lb_job.host :
-			                                                                      bf_facts.expressions.at(tc_test->operand.get()).types.front();
+			const ResolvedType &rt_host                       = lb_job.state && b_self && lb_job.host ? *lb_job.host :
+			                                                                                            bf_facts.expressions.at(tc_test->operand.get()).types.front();
 			br_paths.yes->objects[h_receiver.identity].active = Activation{ sym_target, rt_host, b_self && (!active || active->directOnly) };
 		}
 		return br_paths;

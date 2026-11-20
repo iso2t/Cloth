@@ -169,8 +169,8 @@ void failGenericLimit (const GenericLimit &limit, const Token &declaration, cons
 	std::vector<cde::SourceLabel>                                                                v_labels;
 	std::set<std::tuple<const SourceFile *, std::size_t, std::size_t, std::size_t, std::size_t>> s_labeled;
 	const std::function                                                                          add = [&] (const TokenSpan &span, std::string text) {
-		if (s_labeled.emplace(span.source.get(), span.startLine, span.startCol, span.endLine, span.endCol).second)
-			v_labels.push_back({ span, std::move(text) });
+                if (s_labeled.emplace(span.source.get(), span.startLine, span.startCol, span.endLine, span.endCol).second)
+                        v_labels.push_back({ span, std::move(text) });
 	};
 	add(use, "this application exceeds the generic resource limit");
 	add(declaration.get_span(), "generic template declared here");
@@ -198,9 +198,9 @@ const GenericInstance *Analyzer::enqueue (InstanceKey key, const TokenSpan &wher
 	const bool        b_charged = !ik_stored->arguments.empty();
 	const std::size_t st_depth  = (iw_active ? iw_active->depth : 0) + b_charged;
 	// Template analysis can reach a fully concrete application before any executable code calls it.
-	const bool        b_open    = symbolic && dependsOnTypeParameter(*ik_stored);
-	std::size_t      &st_count  = !symbolic ? st_instances : b_open ? st_openTemplates : st_closedTemplates;
-	unsigned          u_depth   = ik_stored->receiver ? ik_stored->receiver->argumentDepth() : 0;
+	const bool   b_open   = symbolic && dependsOnTypeParameter(*ik_stored);
+	std::size_t &st_count = !symbolic ? st_instances : b_open ? st_openTemplates : st_closedTemplates;
+	unsigned     u_depth  = ik_stored->receiver ? ik_stored->receiver->argumentDepth() : 0;
 	for (const ResolvedType &rt_arg : ik_stored->arguments) u_depth = std::max(u_depth, 1 + rt_arg.argumentDepth());
 	const Symbol &sym_declaration = *ik_stored->declaration;
 	if (const std::optional<GenericLimit> opt_limit = genericLimit(u_depth, st_depth, b_charged ? st_count : 0, b_open)) {

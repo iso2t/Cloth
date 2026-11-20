@@ -417,9 +417,9 @@ std::optional<Candidate> BodyChecker::initialStateTest (const TypeCheckExpressio
 }
 
 ExpressionInfo BodyChecker::typeCheck (const TypeCheckExpression &node) {
-	const Token  *identifier = node.target.get_bare_identifier();
+	const Token                *identifier    = node.target.get_bare_identifier();
 	const bool                  b_unboundName = identifier && !analyzer.hasTypeName(context, *identifier);
-	ExpressionPtr valueTarget;
+	ExpressionPtr               valueTarget;
 	std::optional<ResolvedType> opt_type;
 	if (node.valueCandidate) {
 		opt_type = receiverType(*node.valueCandidate);
@@ -697,12 +697,12 @@ std::optional<ExpressionInfo> BodyChecker::contextualRangeComparison (const Bina
 ExpressionInfo BodyChecker::rangeValue (const BinaryExpression &node, const ResolvedType *endpoint, Code code) {
 	std::optional<ResolvedType> required      = endpoint ? std::optional{ *endpoint } : rangeEndpointHint(*node.left, *node.right);
 	const std::function         checkEndpoint = [&] (BodyChecker &checker, const Expression &operand) {
-		const std::optional<ResolvedType> type = checker.scalar(operand, required ? &*required : nullptr, FloatContext{ true });
-		if (!required) required = type;
-		if (type && (!analyzer.numeric(*type) || *type != required)) fail(code, operand.get_span(), "Range endpoints require one exact numeric type");
-		const ExpressionFacts *ef_numeric = checker.record ? &checker.bf_facts.expressions : checker.ef_probeConstants;
-		if (!b_inferenceDefaults && ef_numeric && type && type->floating()) requireFinite(operand, *ef_numeric, code);
-		return type.has_value();
+                const std::optional<ResolvedType> type = checker.scalar(operand, required ? &*required : nullptr, FloatContext{ true });
+                if (!required) required = type;
+                if (type && (!analyzer.numeric(*type) || *type != required)) fail(code, operand.get_span(), "Range endpoints require one exact numeric type");
+                const ExpressionFacts *ef_numeric = checker.record ? &checker.bf_facts.expressions : checker.ef_probeConstants;
+                if (!b_inferenceDefaults && ef_numeric && type && type->floating()) requireFinite(operand, *ef_numeric, code);
+                return type.has_value();
 	};
 	const bool                 b_start = checkEndpoint(*this, *node.left);
 	std::optional<BodyChecker> unreachable;
@@ -738,7 +738,7 @@ ExpressionInfo BodyChecker::elvis (const ElvisExpression &node, const ResultType
 		onPath(false, opt_unreachable).scalar(*node.fallback, rt_expected, floats);
 		return ExpressionInfo::never();
 	}
-	ResolvedType rt = ei_left.types.front();
+	ResolvedType                    rt      = ei_left.types.front();
 	const std::optional<TypedPlace> tp_left = locate(*node.left);
 	if (!rt.nullable() && tp_left && tp_left->type.nullable()) rt = tp_left->type;
 	if (!rt.nullable()) {
@@ -1415,7 +1415,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 				if (tp_place && tp_place->type.nullable()) rt_source = tp_place->type;
 			}
 			if (!rt_source.nullable()) fail(Code::INVALID_GUARDED_RECEIVER, n->op.get_span(), "Guarded access requires a nullable receiver");
-			gp_present.value = value(ei_source.types.front().nullable() ? rt_source.element() : ei_source.types.front());
+			gp_present.value                 = value(ei_source.types.front().nullable() ? rt_source.element() : ei_source.types.front());
 			gp_present.value.representedType = ei_source.representedType;
 		}
 		const bool  b_present    = ei_source.fallsThrough && !ei_source.types.front().nullable();
