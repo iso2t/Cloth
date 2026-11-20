@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# RUN: %python "%/S/Inputs/stdlib_modules.py" %cloth "%/S/../../../Stdlib" "%t"

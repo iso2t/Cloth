@@ -412,7 +412,7 @@ void Analyzer::buildStates (const ResolvedType &receiver, TypeDispatch &table) c
 		const StateSelectionDeclaration *ss_state  = sc_member ? dynamic_cast<const StateSelectionDeclaration *>(sc_member->get()) : nullptr;
 		if (!ss_state) continue;
 		const SymbolKind       sk_kind       = dynamic_cast<const NestedStateDeclaration *>(ss_state) ? SymbolKind::State : SymbolKind::StateAttachment;
-		const Symbol          &sym_selection  = *std::ranges::find(sym_host.members.at(ss_state->get_name().get_name_key()), sk_kind, &Symbol::kind);
+		const Symbol          &sym_selection = *std::ranges::find(sym_host.members.at(ss_state->get_name().get_name_key()), sk_kind, &Symbol::kind);
 		const DeclarationInfo &di_info       = declarations.at(&sym_selection);
 		const Symbol          &sym_definition = di_info.attachedState ? *di_info.attachedState : sym_selection;
 		const ResolvedType     rt_payload     = substitute(*di_info.value, argumentsOf(receiver));

@@ -5,6 +5,7 @@
 #include <format>
 #include <functional>
 #include <tuple>
+#include <unordered_map>
 
 #include <ast/decl/struct_declaration.hpp>
 #include <semantic/checker.hpp>
@@ -27,6 +28,30 @@ constexpr std::size_t MAX_GENERIC_INSTANCES    = 4096;
 bool dependsOnTypeParameter (const InstanceKey &key) {
 	return (key.receiver && key.receiver->dependent()) || std::ranges::any_of(key.arguments, &ResolvedType::dependent);
 }
+
+// Diagnostic traversal follows source order, including the origins of nested type arguments.
+struct StorageTypeOrder {
+	const std::unordered_map<const Symbol *, DeclarationInfo>                  &declarations;
+	const std::unordered_map<const TypeParameterDeclaration *, const Symbol *> &parameterOwners;
+
+	std::tuple<std::size_t, std::size_t, std::size_t> position (const ResolvedType &type) const {
+		if (!type.declaration && !type.parameter) return {};
+		const Symbol   &sym_owner = type.parameter ? *parameterOwners.at(type.parameter) : *type.declaration;
+		const TokenSpan ts_name   = (type.parameter ? type.parameter->name : sym_owner.name).get_span();
+		return { declarations.at(&sym_owner).file, ts_name.startLine, ts_name.startCol };
+	}
+
+	std::strong_ordering operator()(const ResolvedType &left, const ResolvedType &right) const {
+		if (left.declaration != right.declaration || left.parameter != right.parameter) {
+			if (const std::strong_ordering so_origin = position(left) <=> position(right); so_origin != 0) return so_origin;
+		}
+		const std::strong_ordering so_type = std::tie(left.name, left.width, left.suffixes, left.projectedSuffixes) <=>
+		                                     std::tie(right.name, right.width, right.suffixes, right.projectedSuffixes);
+		if (so_type != 0 || left.application == right.application) return so_type;
+		return std::lexicographical_compare_three_way(left.arguments().begin(), left.arguments().end(), right.arguments().begin(),
+		                                              right.arguments().end(), *this);
+	}
+};
 }
 
 DeclarationInfo Analyzer::specialize (DeclarationInfo info, const Substitutions &arguments) const {
@@ -273,6 +298,12 @@ void Analyzer::visitTypeMembers (const ResolvedType &type, const Substitutions &
 			}
 		}
 	}
+	if (v_edges) {
+		std::ranges::sort(*v_edges, {}, [] (const StorageEdges::value_type &edge) {
+			const TokenSpan ts_field = edge.second->name.get_span();
+			return std::pair{ ts_field.startLine, ts_field.startCol };
+		});
+	}
 }
 
 Substitutions Analyzer::instanceArguments (const InstanceKey &key) const {
@@ -379,13 +410,22 @@ void Analyzer::completeInstance (const InstanceWork &work) {
 }
 
 void Analyzer::checkStorage () const {
+	using Layout = decltype(m_storage)::value_type;
+	std::vector<const Layout *> v_roots;
+	v_roots.reserve(m_storage.size());
+	for (const Layout &layout : m_storage) {
+		if (!layout.second.empty()) v_roots.push_back(&layout);
+	}
+	const StorageTypeOrder compare{ declarations, m_genericOwners };
+	std::ranges::sort(v_roots, [&] (const Layout *left, const Layout *right) { return compare(left->first, right->first) < 0; });
+
 	// Only a type already on the current field path makes the layout recursive.
 	std::set<ResolvedType>    s_active, s_done;
 	std::vector<StorageVisit> v_path;
-	for (const std::pair<const ResolvedType, StorageEdges> &entry : m_storage) {
-		if (s_done.contains(entry.first)) continue;
-		s_active.insert(entry.first);
-		v_path.push_back({ entry.first, entry.second });
+	for (const Layout *root : v_roots) {
+		if (s_done.contains(root->first)) continue;
+		s_active.insert(root->first);
+		v_path.push_back({ root->first, root->second });
 		while (!v_path.empty()) {
 			StorageVisit &v_current = v_path.back();
 			if (v_current.next == v_current.fields.size()) {
@@ -397,8 +437,9 @@ void Analyzer::checkStorage () const {
 			const std::pair<ResolvedType, const Symbol *> &edge = v_current.fields[v_current.next++];
 			if (s_done.contains(edge.first)) continue;
 			if (!s_active.insert(edge.first).second) {
+				const Token &t_name = edge.first.declaration->name;
 				fail(Code::RECURSIVE_STRUCT, edge.second->name.get_span(),
-				     std::format("Recursive storage in {} '{}'", to_string(kStruct), edge.first.name), &edge.first.declaration->name);
+				     std::format("Recursive storage in {} '{}'", to_string(kStruct), t_name.get_lexeme()), &t_name);
 			}
 			v_path.push_back({ edge.first, m_storage.at(edge.first) });
 		}

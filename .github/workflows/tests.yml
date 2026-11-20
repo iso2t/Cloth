@@ -71,6 +71,19 @@ jobs:
             --xunit-xml-output=build/Tests/reports/lit.xml
           GTEST_OUTPUT: xml:build/Tests/reports/unit.xml
         run: ${{ matrix.make }} -k test 2>&1 | tee build/Tests/reports/test.log
+      - name: Run CLI fixtures with UBSan
+        if: runner.os == 'Linux'
+        env:
+          # Cloth itself returns 1 for an expected diagnostic.
+          UBSAN_OPTIONS: exitcode=86
+          LIT_OPTS: >-
+            -j2 --order=lexical --timeout=60
+            --output=build/Tests/reports/ubsan-lit.json
+            --xunit-xml-output=build/Tests/reports/ubsan-lit.xml
+        run: |
+          sanitizer_flags="-fsanitize=undefined -fno-sanitize-recover=undefined"
+          make -j2 BUILD_DIR=build/ubsan CFLAGS="$sanitizer_flags" CXXFLAGS="$sanitizer_flags" \
+            LDFLAGS=-fsanitize=undefined lit-all 2>&1 | tee build/Tests/reports/ubsan.log
       - name: Summarize test results
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: python Tests/Support/ci_summary.py build/Tests/reports
@@ -82,5 +95,6 @@ jobs:
           path: |
             build/Tests/reports/
             build/Tests/run-*/
+            build/ubsan/Tests/run-*/
           retention-days: 14
           if-no-files-found: error

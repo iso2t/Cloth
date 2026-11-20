@@ -97,9 +97,12 @@ Continuous integration
 
 On each push and pull request, GitHub Actions runs the whole suite on
 Ubuntu 24.04 with GCC and Windows Server 2025 with MinGW. Each job builds
-the compiler and unit-test executable once with ``make -j2 test-build``,
-then runs ``make -k test``. Lit uses two workers and a 60-second timeout
-per fixture. A failure on either host leaves the other job running.
+the compiler and unit-test executable with ``make -j2 test-build``, then
+runs ``make -k test``. Ubuntu also builds the compiler in ``build/ubsan``
+with UndefinedBehaviorSanitizer enabled for C and C++ and reruns the CLI
+fixtures. A sanitizer finding fails the fixture even when it expects a
+Cloth diagnostic. Lit uses two workers and a 60-second timeout per fixture.
+A failure on either host leaves the other job running.
 
 The job summary shows each runner's executed count, elapsed time, result
 codes, and slowest case. A missing report or a runner with zero executed

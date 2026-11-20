@@ -1137,7 +1137,8 @@ static int muG_make_groups(mu_Report *R, const mu_Cache *C) {
     for (i = 0, len = muA_size(R->groups); i < len; ++i) {
         mu_Group     *g = &R->groups[i];
         mu_LabelInfo *li = g->multi_labels;
-        qsort(li, muA_size(li), sizeof(mu_LabelInfo), muG_cmp_li);
+        unsigned      count = muA_size(li);
+        if (count > 1) qsort(li, count, sizeof(mu_LabelInfo), muG_cmp_li);
         if (R->config->context_lines > 0) {
             unsigned ctx = R->config->context_lines;
             unsigned limit = g->src->line_count(g->src) - 1;

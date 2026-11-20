@@ -7,7 +7,7 @@ description: Write and review Cloth source accepted by the C++ parser, including
 
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
-Use the C++ parser to answer what can be written in a Cloth source file. A successful `--src` invocation reaches the parsed syntax tree. Name resolution, type checking, and execution require further backend work. [Parser entry](../../../Compiler/src/parser/parser.cpp) · [Backend handoff](../../../Compiler/src/cloth.cpp)
+Use the parser to trace accepted syntax and its `SourceUnit`. The ordinary `--src` invocation also builds the file's `SymbolTable`, resolves declarations and checks bodies across reachable imports. The backend receives the resulting `CheckedProgram`. [Parser](../../../Compiler/src/parser/parser.cpp) · [Semantic checking](../../../Compiler/src/semantic/checked_program.cpp) · [Driver](../../../Compiler/src/cloth.cpp)
 
 ## Source files and functions
 
@@ -33,4 +33,4 @@ fn main() {
 - For literals, calls, indexing, interpolation, guarded access, providers, casts, and operator grouping, read [Expressions](references/expressions.md).
 - For bindings, result lists, assignments, conditionals, and loop headers, read [Statements and control flow](references/statements.md).
 
-For a spelling question, check the scanner's keyword and operator tables, then follow the grammar that consumes the token. Use the ordinary driver invocation for a parser check. [Token spellings](../../../Compiler/src/token/token.cpp) · [Frontend internals](../cloth-frontend/SKILL.md) · [Build and invocation](../cloth-repository/SKILL.md)
+For a spelling question, check the scanner's keyword and operator tables, then follow the grammar that consumes the token. Use the ordinary driver invocation to check a complete source file. [Token spellings](../../../Compiler/src/token/token.cpp) · [Frontend internals](../cloth-frontend/SKILL.md) · [Build and invocation](../cloth-repository/SKILL.md)

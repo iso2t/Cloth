@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <algorithm>
+#include <format>
 #include <stdexcept>
 #include <string_view>
 
+#include <cde/cloth_diagnostic.hpp>
+#include <cde/diagnostic_code.hpp>
 #include <system/compiler_options.hpp>
 
 namespace cloth::sys {
@@ -17,7 +20,10 @@ CompilerOptions::CompilerOptions (const int argc, const char *const argv[]) {
 		const std::string_view s_argument = argv[index];
 		const auto             bi_flag    = std::ranges::find(v_compilerFlags, s_argument, &CompilerFlag::s_flag);
 		if (bi_flag == v_compilerFlags.end()) {
-			continue;
+			if (s_argument.starts_with('-')) {
+				throw cde::ClothDiagnostic(cde::DiagnosticCode::UNKNOWN_OPTION, std::format("Unknown option '{}'", s_argument));
+			}
+			throw cde::ClothDiagnostic(cde::DiagnosticCode::TOO_MANY_ARGUMENTS, std::format("Unexpected positional argument '{}'", s_argument));
 		}
 
 		if (const auto *rr_value = std::get_if<CompilerFlag::Value>(&bi_flag->v_action)) {

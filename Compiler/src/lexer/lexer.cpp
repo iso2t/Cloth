@@ -8,6 +8,7 @@
 #include <string_view>
 #include <vector>
 
+#include <cde/diagnostic_code.hpp>
 #include <cde/syntax_exception.hpp>
 #include <lexer/lexer.hpp>
 #include <token/numeric_literals.hpp>
@@ -17,6 +18,8 @@
 
 namespace cloth {
 namespace {
+
+using cde::DiagnosticCode;
 
 const std::string_view S_STRING_QUOTE         = to_string(oDoubleQuotation);
 const std::string_view S_CHARACTER_QUOTE      = to_string(oQuotation);
@@ -129,18 +132,12 @@ bool isValidEscape (const char c) {
 	return c == S_STRING_QUOTE.front() || c == S_CHARACTER_QUOTE.front() || std::string_view{ "nrt0\\" }.find(c) != std::string_view::npos;
 }
 
-/**
- * @brief Reports a lexer error at the given position with the specified
- * message.
- *
- * @param position The position in the source where the error occurred.
- * @param message The error message describing the lexer error.
- */
-[[noreturn]] void lexerError (Position position, std::string_view message) {
-	throw std::runtime_error(std::format("{}:{}: {}", position.line, position.column, message));
-}
-
 } // namespace
+
+Lexer::Lexer (const SourceFile &source, const std::size_t offset) : Lexer(source) {
+	if (offset > source_text().size()) throw std::out_of_range("Lexer offset exceeds the source length");
+	advanceBytes(offset);
+}
 
 /**
  * @brief Advances the lexer by one character and updates the current position.
@@ -148,7 +145,7 @@ bool isValidEscape (const char c) {
  * @return char The character that was advanced past.
  */
 char Lexer::advance () {
-	const char c = source_text()[i_current++];
+	const char c = source_text()[st_current++];
 	if (c == '\n') {
 		p_current = { .line = p_current.line + 1, .column = 1 };
 	} else {
@@ -169,11 +166,11 @@ void Lexer::advanceBytes (const std::size_t length) {
  * @return char The current character without advancing the lexer.
  */
 char Lexer::peek () const {
-	return charAt(source_text(), i_current);
+	return charAt(source_text(), st_current);
 }
 
 bool Lexer::startsWith (std::string_view spelling) const {
-	return std::string_view(source_text()).substr(i_current).starts_with(spelling);
+	return std::string_view(source_text()).substr(st_current).starts_with(spelling);
 }
 
 /**
@@ -183,7 +180,7 @@ bool Lexer::startsWith (std::string_view spelling) const {
  * @return false Otherwise.
  */
 bool Lexer::isAtEnd () const {
-	return static_cast<std::size_t>(i_current) >= source_text().size();
+	return st_current >= source_text().size();
 }
 
 /**
@@ -198,13 +195,13 @@ std::vector<Token> Lexer::scanTokens () {
 
 void Lexer::scan () {
 	while (!isAtEnd()) {
-		i_start = i_current;
-		p_start = p_current;
+		st_start = st_current;
+		p_start  = p_current;
 		scanToken();
 	}
 
 	if (v_tokens.empty() || v_tokens.back().get_type() != TokenType::EndOfFile) {
-		addToken(TokenType::EndOfFile, cursorSpan(), "");
+		addToken(TokenType::EndOfFile, spanFrom(p_current), "");
 	}
 }
 
@@ -227,16 +224,11 @@ void Lexer::addToken (TokenType type, const TokenSpan &span, const std::string &
  * @return TokenSpan The span of the current token.
  */
 TokenSpan Lexer::span () const {
-	return { .startLine = p_start.line, .startCol = p_start.column, .endLine = p_current.line, .endCol = p_current.column, .source = p_source };
+	return spanFrom(p_start);
 }
 
-/**
- * @brief Returns the span at the current cursor position.
- *
- * @return TokenSpan The span at the current cursor position.
- */
-TokenSpan Lexer::cursorSpan () const {
-	return { .startLine = p_current.line, .startCol = p_current.column, .endLine = p_current.line, .endCol = p_current.column, .source = p_source };
+TokenSpan Lexer::spanFrom (Position start) const {
+	return { .startLine = start.line, .startCol = start.column, .endLine = p_current.line, .endCol = p_current.column, .source = p_source };
 }
 
 /**
@@ -246,7 +238,7 @@ TokenSpan Lexer::cursorSpan () const {
  * operator matches.
  */
 Operator Lexer::matchOperator () {
-	const std::string_view s_remaining = std::string_view{ source_text() }.substr(i_current);
+	const std::string_view s_remaining = std::string_view{ source_text() }.substr(st_current);
 
 	for (const auto &[op, spelling] : V_OPERATORS) {
 		if (!s_remaining.starts_with(spelling)) {
@@ -274,11 +266,11 @@ Operator Lexer::matchOperator () {
  * @return void
  */
 void Lexer::scanToken () {
-	const std::string_view s_remaining = std::string_view{ source_text() }.substr(i_current);
+	const std::string_view s_remaining = std::string_view{ source_text() }.substr(st_current);
 
 	if (s_remaining.starts_with(S_INTERPOLATION_PREFIX)) {
 		advanceBytes(S_INTERPOLATION_PREFIX.size());
-		addToken(TokenType::InterpolationStart, span(), source_text().substr(i_start, i_current - i_start));
+		addToken(TokenType::InterpolationStart, span(), source_text().substr(st_start, st_current - st_start));
 		interpolatedString();
 		return;
 	}
@@ -306,7 +298,7 @@ void Lexer::scanToken () {
 	}
 
 	if (const auto op = matchOperator(); op != oError) {
-		v_tokens.emplace_back(source_text().substr(i_start, i_current - i_start), op, span());
+		v_tokens.emplace_back(source_text().substr(st_start, st_current - st_start), op, span());
 		return;
 	}
 
@@ -329,12 +321,17 @@ void Lexer::scanToken () {
 	case '\n':
 		addToken(TokenType::NewLine, span(), "\n");
 		return;
-	default:
-		if (const std::size_t st_size = utf8_scalar_length(s_remaining); st_size > 1) {
+	default: {
+		const std::size_t st_size = utf8_scalar_length(s_remaining);
+		if (st_size > 1) {
 			const char32_t c32_scalar = utf8_scalar_value(s_remaining.substr(0, st_size));
-			lexerError(p_start, std::format("Unexpected character U+{:04X}", static_cast<unsigned>(c32_scalar)));
+			advanceBytes(st_size - 1);
+			throw cde::SyntaxException{ DiagnosticCode::UNEXPECTED_CHARACTER,
+				                    std::format("Unexpected character U+{:04X}", static_cast<unsigned>(c32_scalar)), span() };
 		}
-		lexerError(p_start, std::format("Unexpected byte 0x{:02X}", static_cast<unsigned char>(c_character)));
+		throw cde::SyntaxException{ st_size == 0 ? DiagnosticCode::INVALID_UNICODE : DiagnosticCode::UNEXPECTED_CHARACTER,
+			                    std::format("Unexpected byte 0x{:02X}", static_cast<unsigned char>(c_character)), span() };
+	}
 	}
 }
 
@@ -349,7 +346,7 @@ bool Lexer::skipComments () {
 		return false;
 	}
 
-	switch (charAt(source_text(), i_current + 1)) {
+	switch (charAt(source_text(), st_current + 1)) {
 	case '/':
 		advance();
 		advance();
@@ -358,18 +355,20 @@ bool Lexer::skipComments () {
 		}
 		return true;
 
-	case '*':
+	case '*': {
 		advance();
 		advance();
+		const TokenSpan ts_opening = span();
 		while (!isAtEnd()) {
-			if (peek() == '*' && charAt(source_text(), i_current + 1) == '/') {
+			if (peek() == '*' && charAt(source_text(), st_current + 1) == '/') {
 				advance();
 				advance();
 				return true;
 			}
 			advance();
 		}
-		lexerError(p_start, "Unterminated block comment");
+		throw cde::SyntaxException{ DiagnosticCode::UNTERMINATED_COMMENT, "Unterminated block comment", ts_opening };
+	}
 
 	default:
 		return false;
@@ -386,7 +385,7 @@ bool Lexer::skipComments () {
  */
 void Lexer::number () {
 	const std::string_view s_source  = source_text();
-	const int              i_radix   = integerLiteralRadix(s_source.substr(i_current));
+	const int              i_radix   = integerLiteralRadix(s_source.substr(st_current));
 	bool                   b_isFloat = false;
 
 	if (i_radix != 10) {
@@ -394,18 +393,18 @@ void Lexer::number () {
 		if (peek() == '_') {
 			invalidNumericSeparator();
 		}
-		if (radixDigitLength(s_source, i_current, i_radix) == 0) {
+		if (radixDigitLength(s_source, st_current, i_radix) == 0) {
 			invalidNumber(std::format("Expected a base-{} digit after the prefix", i_radix));
 		}
 	}
 	consumeNumericDigits(i_radix);
 
 	if (peek() == '.') {
-		const char c_next           = charAt(s_source, i_current + 1);
-		const bool b_completeSuffix = identifierPartLength(s_source, i_current + 2) == 0;
+		const char c_next           = charAt(s_source, st_current + 1);
+		const bool b_completeSuffix = identifierPartLength(s_source, st_current + 2) == 0;
 		const bool b_trailingFloat  = b_completeSuffix && (c_next == 'f' || c_next == 'F');
 		if (const bool b_trailingInteger = b_completeSuffix && (c_next == 'i' || c_next == 'I');
-		    decimalDigit(s_source.substr(i_current + 1)).length != 0 || b_trailingFloat || b_trailingInteger || c_next == '_') {
+		    decimalDigit(s_source.substr(st_current + 1)).length != 0 || b_trailingFloat || b_trailingInteger || c_next == '_') {
 			advance();
 			if (i_radix != 10) {
 				invalidNumber("Base-prefixed literals cannot have a decimal point or suffix");
@@ -430,19 +429,19 @@ void Lexer::number () {
 		b_isFloat = b_isFloat || floatSuffix;
 	}
 
-	if (identifierPartLength(s_source, i_current) != 0) {
+	if (identifierPartLength(s_source, st_current) != 0) {
 		invalidNumber(i_radix == 10 ? "Invalid numeric suffix" : std::format("Invalid base-{} digit or forbidden suffix", i_radix));
 	}
 
-	addToken(b_isFloat ? TokenType::FloatingPointLiteral : TokenType::IntegerLiteral, span(), source_text().substr(i_start, i_current - i_start));
+	addToken(b_isFloat ? TokenType::FloatingPointLiteral : TokenType::IntegerLiteral, span(), source_text().substr(st_start, st_current - st_start));
 }
 
 void Lexer::consumeNumericDigits (const int radix) {
 	const std::string_view s_source = source_text();
-	for (std::size_t st_length = radixDigitLength(s_source, i_current, radix); st_length != 0; st_length = radixDigitLength(s_source, i_current, radix)) {
+	for (std::size_t st_length = radixDigitLength(s_source, st_current, radix); st_length != 0; st_length = radixDigitLength(s_source, st_current, radix)) {
 		advanceBytes(st_length);
 		if (peek() == '_') {
-			if (radixDigitLength(s_source, i_current + 1, radix) == 0) {
+			if (radixDigitLength(s_source, st_current + 1, radix) == 0) {
 				invalidNumericSeparator();
 			}
 			advance();
@@ -453,18 +452,18 @@ void Lexer::consumeNumericDigits (const int radix) {
 void Lexer::invalidNumber (std::string_view reason) {
 	consumeIdentifierParts();
 	throw cde::SyntaxException{ cde::DiagnosticCode::INVALID_NUMERIC_LITERAL,
-		                    std::format("Invalid numeric literal '{}': {}", source_text().substr(i_start, i_current - i_start), reason), span() };
+		                    std::format("Invalid numeric literal '{}': {}", source_text().substr(st_start, st_current - st_start), reason), span() };
 }
 
 void Lexer::invalidNumericSeparator () const {
-	TokenSpan ts_separator = cursorSpan();
+	TokenSpan ts_separator = spanFrom(p_current);
 	++ts_separator.endCol;
 	throw cde::SyntaxException{ cde::DiagnosticCode::INVALID_SEPARATOR, "Numeric separators must appear between digits", ts_separator };
 }
 
 void Lexer::consumeIdentifierParts () {
 	const std::string_view s_source = source_text();
-	for (std::size_t st_length = identifierPartLength(s_source, i_current); st_length != 0; st_length = identifierPartLength(s_source, i_current)) {
+	for (std::size_t st_length = identifierPartLength(s_source, st_current); st_length != 0; st_length = identifierPartLength(s_source, st_current)) {
 		advanceBytes(st_length);
 	}
 }
@@ -481,7 +480,7 @@ void Lexer::consumeIdentifierParts () {
 void Lexer::identifier () {
 	consumeIdentifierParts();
 
-	const std::string s_text      = source_text().substr(i_start, i_current - i_start);
+	const std::string s_text      = source_text().substr(st_start, st_current - st_start);
 	const bool        b_isKeyword = std::ranges::any_of(V_KEYWORDS, [&s_text] (const Keyword keyword) { return to_string(keyword) == s_text; });
 
 	addToken(b_isKeyword ? TokenType::Keyword : TokenType::Identifier, span(), s_text);
@@ -495,16 +494,15 @@ void Lexer::identifier () {
  * list of tokens.
  */
 void Lexer::interpolatedString () {
-	const Position p_opening = p_start;
-	const auto     mark      = [this] {
-                i_start = i_current;
-                p_start = p_current;
+	const TokenSpan ts_opening = span();
+	const auto      mark       = [this] {
+                st_start = st_current;
+                p_start  = p_current;
 	};
-	const auto emit = [this] (const TokenType type) { addToken(type, span(), source_text().substr(i_start, i_current - i_start)); };
+	const auto emit = [this] (const TokenType type) { addToken(type, span(), source_text().substr(st_start, st_current - st_start)); };
 
 	mark();
 	while (!isAtEnd()) {
-		const char c_character = peek();
 		if (startsWith(S_STRING_QUOTE)) {
 			emit(TokenType::StringSegment);
 			mark();
@@ -516,20 +514,23 @@ void Lexer::interpolatedString () {
 		const bool b_open = startsWith(S_INTERPOLATION_OPEN);
 		if (b_open || startsWith(S_INTERPOLATION_CLOSE)) {
 			const std::string_view s_brace = b_open ? S_INTERPOLATION_OPEN : S_INTERPOLATION_CLOSE;
-			if (std::string_view(source_text()).substr(i_current + s_brace.size()).starts_with(s_brace)) {
+			if (std::string_view(source_text()).substr(st_current + s_brace.size()).starts_with(s_brace)) {
 				advanceBytes(2 * s_brace.size());
 				continue;
 			}
 			if (!b_open) {
-				lexerError(p_current, std::format("Expected '{0}{0}' for a literal closing brace", s_brace));
+				mark();
+				advanceBytes(s_brace.size());
+				throw cde::SyntaxException{ DiagnosticCode::UNMATCHED_INTERPOLATION_BRACE,
+					                    std::format("Expected '{0}{0}' for a literal closing brace", s_brace), span() };
 			}
 
 			emit(TokenType::StringSegment);
 			mark();
 			advanceBytes(S_INTERPOLATION_OPEN.size());
 			emit(TokenType::InterpolationOpen);
-			const auto hole  = p_start;
-			int        depth = 0;
+			const TokenSpan ts_hole = span();
+			int             depth   = 0;
 			while (!isAtEnd()) {
 				mark();
 				if (startsWith(S_INTERPOLATION_CLOSE)) {
@@ -543,7 +544,7 @@ void Lexer::interpolatedString () {
 				scanToken();
 			}
 			if (isAtEnd()) {
-				lexerError(hole, "Unterminated interpolation");
+				throw cde::SyntaxException{ DiagnosticCode::UNTERMINATED_INTERPOLATION, "Unterminated interpolation", ts_hole };
 			}
 
 			advanceBytes(S_INTERPOLATION_CLOSE.size());
@@ -552,26 +553,10 @@ void Lexer::interpolatedString () {
 			continue;
 		}
 
-		if (c_character == '\\') {
-			const auto escapeStart = p_current;
-			advance();
-			if (isAtEnd()) {
-				break;
-			}
-			if (isLineBreak(peek())) {
-				lexerError(p_current, "Newline in interpolated string");
-			}
-			if (const char escaped = advance(); !isValidEscape(escaped)) {
-				lexerError(escapeStart, "Invalid escape in interpolated string");
-			}
-		} else if (isLineBreak(c_character)) {
-			lexerError(p_current, "Newline in interpolated string");
-		} else {
-			advanceStringScalar();
-		}
+		advanceStringCharacter("interpolated string");
 	}
 
-	lexerError(p_opening, "Unterminated interpolated string");
+	throw cde::SyntaxException{ DiagnosticCode::UNTERMINATED_STRING, "Unterminated interpolated string", ts_opening };
 }
 
 /**
@@ -582,17 +567,18 @@ void Lexer::interpolatedString () {
  * tokens.
  */
 void Lexer::rawString () {
+	const TokenSpan ts_opening = span();
 	while (!isAtEnd()) {
 		if (startsWith(rawStringDelimiter())) {
 			advanceBytes(rawStringDelimiter().size());
-			addToken(TokenType::RawStringLiteral, span(), source_text().substr(i_start, i_current - i_start));
+			addToken(TokenType::RawStringLiteral, span(), source_text().substr(st_start, st_current - st_start));
 			return;
 		}
 
 		advanceStringScalar();
 	}
 
-	lexerError(p_start, "Unterminated raw string");
+	throw cde::SyntaxException{ DiagnosticCode::UNTERMINATED_RAW_STRING, "Unterminated raw string", ts_opening };
 }
 
 /**
@@ -604,13 +590,40 @@ void Lexer::rawString () {
  * value.
  */
 void Lexer::advanceStringScalar () {
-	const auto length = utf8_scalar_length(std::string_view{ source_text() }.substr(i_current));
-	if (length == 0) {
-		lexerError(p_current, "Invalid UTF-8 in literal");
-	}
-	for (std::size_t i = 0; i < length; ++i) {
+	const std::size_t st_length = utf8_scalar_length(std::string_view{ source_text() }.substr(st_current));
+	if (st_length == 0) {
+		const Position p_byte = p_current;
 		advance();
+		throw cde::SyntaxException{ DiagnosticCode::INVALID_UNICODE, "Invalid UTF-8 in literal", spanFrom(p_byte) };
 	}
+	advanceBytes(st_length);
+}
+
+void Lexer::advanceEscape (Position start, std::string_view kind) {
+	if (isValidEscape(peek())) {
+		advance();
+		return;
+	}
+	advanceStringScalar();
+	throw cde::SyntaxException{ DiagnosticCode::INVALID_ESCAPE, std::format("Invalid escape in {}", kind), spanFrom(start) };
+}
+
+void Lexer::advanceStringCharacter (std::string_view kind) {
+	const Position p_startChar = p_current;
+	const bool     b_escape    = peek() == '\\';
+	if (b_escape) {
+		advance();
+		if (isAtEnd()) return;
+	}
+	if (isLineBreak(peek())) {
+		const Position p_newline = p_current;
+		if (advance() == '\r' && peek() == '\n') advance();
+		throw cde::SyntaxException{ DiagnosticCode::MULTILINE_STRING, std::format("Newline in {}", kind), spanFrom(p_newline) };
+	}
+	if (b_escape)
+		advanceEscape(p_startChar, kind);
+	else
+		advanceStringScalar();
 }
 
 /**
@@ -622,34 +635,18 @@ void Lexer::advanceStringScalar () {
  * tokens.
  */
 void Lexer::string () {
+	const TokenSpan ts_opening = span();
 	while (!isAtEnd()) {
-		const char c_character = peek();
 		if (startsWith(S_STRING_QUOTE)) {
 			advanceBytes(S_STRING_QUOTE.size());
-			addToken(TokenType::StringLiteral, span(), source_text().substr(i_start, i_current - i_start));
+			addToken(TokenType::StringLiteral, span(), source_text().substr(st_start, st_current - st_start));
 			return;
 		}
 
-		if (c_character == '\\') {
-			const Position p_escapeStart = p_current;
-			advance();
-			if (isAtEnd()) {
-				break;
-			}
-			if (isLineBreak(peek())) {
-				lexerError(p_current, "Newline in string literal");
-			}
-			if (const char c_escaped = advance(); !isValidEscape(c_escaped)) {
-				lexerError(p_escapeStart, "Invalid escape in string literal");
-			}
-		} else if (isLineBreak(c_character)) {
-			lexerError(p_current, "Newline in string literal");
-		} else {
-			advanceStringScalar();
-		}
+		advanceStringCharacter("string literal");
 	}
 
-	lexerError(p_start, "Unterminated string literal");
+	throw cde::SyntaxException{ DiagnosticCode::UNTERMINATED_STRING, "Unterminated string literal", ts_opening };
 }
 
 /**
@@ -662,33 +659,33 @@ void Lexer::string () {
  * tokens.
  */
 void Lexer::character () {
+	const TokenSpan ts_opening = span();
 	if (isAtEnd() || isLineBreak(peek())) {
-		lexerError(p_start, "Unterminated character literal");
+		throw cde::SyntaxException{ DiagnosticCode::UNTERMINATED_CHARACTER, "Unterminated character literal", ts_opening };
 	}
 
 	if (startsWith(S_CHARACTER_QUOTE)) {
-		lexerError(p_start, "Empty character literal");
+		advanceBytes(S_CHARACTER_QUOTE.size());
+		throw cde::SyntaxException{ DiagnosticCode::EMPTY_CHARACTER, "Empty character literal", span() };
 	}
 
 	if (peek() == '\\') {
 		const Position p_escapeStart = p_current;
 		advance();
 		if (isAtEnd()) {
-			lexerError(p_start, "Unterminated character literal");
+			throw cde::SyntaxException{ DiagnosticCode::UNTERMINATED_CHARACTER, "Unterminated character literal", ts_opening };
 		}
-		if (const char escaped = advance(); !isValidEscape(escaped)) {
-			lexerError(p_escapeStart, "Invalid escape in character literal");
-		}
+		advanceEscape(p_escapeStart, "character literal");
 	} else {
 		advanceStringScalar();
 	}
 
 	if (!startsWith(S_CHARACTER_QUOTE)) {
-		lexerError(p_start, "Character literal must contain exactly one character");
+		throw cde::SyntaxException{ DiagnosticCode::INVALID_CHARACTER_LENGTH, "Character literal must contain exactly one character", span() };
 	}
 
 	advanceBytes(S_CHARACTER_QUOTE.size());
-	addToken(TokenType::CharacterLiteral, span(), source_text().substr(i_start, i_current - i_start));
+	addToken(TokenType::CharacterLiteral, span(), source_text().substr(st_start, st_current - st_start));
 }
 
 }

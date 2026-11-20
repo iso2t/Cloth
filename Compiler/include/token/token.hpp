@@ -198,10 +198,10 @@ std::string_view        to_string (TokenType type);
 std::string_view        rawStringDelimiter ();
 
 class Token {
-	TokenSpan   t_span;
-	TokenType   t_type;
-	Operator    o_operator = oError;
-	std::string s_lexeme;
+	TokenSpan                          t_span;
+	TokenType                          t_type;
+	Operator                           o_operator = oError;
+	std::string                        s_lexeme;
 	std::shared_ptr<const std::string> p_normalizedName;
 
     public:

@@ -32,9 +32,7 @@ class Lexer {
 	Lexer (const char *src, const size_t length) : Lexer(std::string(src, length)) {
 	}
 
-	Lexer (const SourceFile &source, const size_t offset) :
-	        Lexer(SourceFile{ source.get_path(), source.get_contents().substr(offset), source.get_extension() }) {
-	}
+	Lexer (const SourceFile &source, std::size_t offset);
 
 	~Lexer () = default;
 
@@ -48,8 +46,8 @@ class Lexer {
     private:
 	std::shared_ptr<const SourceFile> p_source;
 	std::vector<Token>                v_tokens;
-	int                               i_start   = 0;
-	int                               i_current = 0;
+	std::size_t                       st_start   = 0;
+	std::size_t                       st_current = 0;
 
 	Position p_start{ 1, 1 };
 	Position p_current{ 1, 1 };
@@ -65,7 +63,7 @@ class Lexer {
 	[[nodiscard]] bool      isAtEnd () const;
 	void                    addToken (TokenType type, const TokenSpan &span, const std::string &lexeme);
 	[[nodiscard]] TokenSpan span () const;
-	[[nodiscard]] TokenSpan cursorSpan () const;
+	[[nodiscard]] TokenSpan spanFrom (Position start) const;
 	Operator                matchOperator ();
 	void                    scanToken ();
 	bool                    skipComments ();
@@ -76,6 +74,8 @@ class Lexer {
 	void                    interpolatedString ();
 	void                    rawString ();
 	void                    advanceStringScalar ();
+	void                    advanceStringCharacter (std::string_view kind);
+	void                    advanceEscape (Position start, std::string_view kind);
 	void                    string ();
 	void                    character ();
 

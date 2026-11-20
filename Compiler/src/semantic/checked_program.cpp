@@ -4,8 +4,10 @@
 #include <filesystem>
 #include <format>
 #include <stdexcept>
+#include <system_error>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include <ast/decl/class_declaration.hpp>
 #include <ast/expr/expressions.hpp>
@@ -19,7 +21,7 @@
 
 namespace cloth {
 
-ResolvedType::ResolvedType (Keyword keyword) : ResolvedType(std::string(to_string(keyword))) {
+ResolvedType::ResolvedType (const Keyword keyword) : ResolvedType(std::string(to_string(keyword))) {
 }
 
 ResolvedType::ResolvedType (std::string name) : name(std::move(name)) {
@@ -39,7 +41,7 @@ std::strong_ordering ResolvedType::operator<=>(const ResolvedType &other) const 
 }
 
 bool ResolvedType::operator==(const ResolvedType &other) const {
-	return (*this <=> other) == 0;
+	return *this <=> other == 0;
 }
 
 const ResultTypes &ResolvedType::arguments () const {
@@ -354,26 +356,34 @@ void Analyzer::loadImports () {
 	std::vector<std::vector<Edge>>  v_edges;
 	std::map<fs::path, std::size_t> m_files;
 	ModuleDirectories               m_directories;
-	const SourceFile               *sf_entry = program.units.front()->get_source_unit().get_source();
-	fs::path                        p_root;
+	const SourceFile               *sf_entry      = program.units.front()->get_source_unit().get_source();
+	const fs::path                 &p_libraryRoot = program.standardLibraryRoot;
+	fs::path                        p_entryRoot;
+	std::vector<ImportRoot>         v_roots;
 	if (sf_entry && !sf_entry->get_path().empty() && sf_entry->get_path() != "<input>") {
 		const fs::path p_entry = fs::weakly_canonical(fs::absolute(sf_entry->get_path()));
-		p_root                 = p_entry.parent_path();
+		p_entryRoot            = p_entry.parent_path();
 		m_files.emplace(p_entry, 0);
+
+		// Search a shared directory as the Stdlib root so its imports retain their registered module paths.
+		std::error_code ec_root;
+		if (p_libraryRoot.empty() || !fs::equivalent(p_entryRoot, p_libraryRoot, ec_root)) {
+			v_roots.push_back({ p_entryRoot, false });
+		}
 	}
-	const ImportRoot ir_roots[] = { { p_root, false }, { program.standardLibraryRoot, true } };
+	if (!p_libraryRoot.empty()) v_roots.push_back({ p_libraryRoot, true });
 	for (std::size_t st_file = 0; st_file < program.units.size(); ++st_file) {
 		v_names.emplace_back();
 		v_edges.emplace_back();
 		const SymbolTable &st_unit = *program.units[st_file];
 		registerScope(st_unit.get_globals(), st_file, nullptr);
 		for (const ImportDeclaration &id_import : st_unit.get_source_unit().imports) {
-			if (p_root.empty()) {
+			if (p_entryRoot.empty()) {
 				fail(Code::MISSING_IMPORT_CONTEXT, id_import.path.get_span(), "A source path is required to resolve imports");
 			}
 			fs::path    p_target;
 			std::string s_libraryPath;
-			for (const ImportRoot &ir_root : ir_roots) {
+			for (const ImportRoot &ir_root : v_roots) {
 				fs::path                  p_directory = ir_root.path;
 				const std::vector<Token> &v_parts     = id_import.path.components;
 				for (std::size_t st_index = 0; st_index + 1 < v_parts.size() && !p_directory.empty(); ++st_index) {
@@ -417,27 +427,27 @@ void Analyzer::loadImports () {
 			const auto         importName = [&] (const std::string &name, const Token &use, const bool explicitName) {
                                 const auto it = ss_exports.find(name);
                                 if (it == ss_exports.end()) {
-					fail(Code::IMPORT_NAME_NOT_FOUND, use.get_span(), "Unknown imported name '" + use.get_lexeme() + "'");
-				}
-				Candidates v_public;
-				for (const Symbol &sym : it->second) {
+                                        fail(Code::IMPORT_NAME_NOT_FOUND, use.get_span(), "Unknown imported name '" + use.get_lexeme() + "'");
+                                }
+                                Candidates v_public;
+                                for (const Symbol &sym : it->second) {
                                         if (sym.visibility == Visibility::Public) {
                                                 v_public.push_back(&sym);
                                         }
                                 }
                                 if (v_public.empty()) {
                                         if (explicitName) {
-						fail(Code::IMPORT_PRIVATE_NAME, use.get_span(), "'" + use.get_lexeme() + "' is private",
-						     &it->second.front().name);
-					}
-					return;
-				}
+                                                fail(Code::IMPORT_PRIVATE_NAME, use.get_span(), "'" + use.get_lexeme() + "' is private",
+						             &it->second.front().name);
+                                        }
+                                        return;
+                                }
                                 Candidates &v_slot = v_names[st_file][name];
                                 if (!v_slot.empty() && v_slot != v_public) {
-					const std::string &s_spelling = explicitName ? use.get_lexeme() : v_public.front()->name.get_lexeme();
-					fail(Code::IMPORT_NAME_CONFLICT, use.get_span(), "Conflicting import of '" + s_spelling + "'", &v_slot.front()->name);
-				}
-				v_slot = std::move(v_public);
+                                        const std::string &s_spelling = explicitName ? use.get_lexeme() : v_public.front()->name.get_lexeme();
+                                        fail(Code::IMPORT_NAME_CONFLICT, use.get_span(), "Conflicting import of '" + s_spelling + "'", &v_slot.front()->name);
+                                }
+                                v_slot = std::move(v_public);
 			};
 			if (const ImportSelection::Names *names = std::get_if<ImportSelection::Names>(&edge.first->selection.value)) {
 				for (const Token &t_name : names->names) {

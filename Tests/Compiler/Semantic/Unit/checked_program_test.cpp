@@ -45,7 +45,20 @@ TEST (SemanticChecking, UnicodeDiagnosticsPreserveWrittenNamesAndByteSpans) {
 	                       "'Cafe\u0301' is declared more than once in this scope",
 	                       { { "2:17-2:23", "redeclared here" }, { "1:17-1:22", "first declared here" } });
 	expectDiagnosticLabels("fn<int> read() = cafe\u0301", Code::UNKNOWN_NAME, "Unknown name 'cafe\u0301'", { { "1:18-1:24", "here" } });
+	expectDiagnosticLabels("typedef<struct> \u212aind { Kind value }", Code::RECURSIVE_STRUCT, "Recursive storage in struct '\u212aind'",
+	                       { { "1:31-1:36", "Recursive storage in struct '\u212aind'" }, { "1:17-1:23", "declared here" } });
 	expectError("using Tools: caf\u00e9, cafe\u0301", Code::DUPLICATE_IMPORT_SELECTION);
+}
+
+TEST (SemanticChecking, ReportsTheFirstRecursiveStoragePathInSourceOrder) {
+	using Code = cde::DiagnosticCode;
+	expectDiagnosticLabels("typedef<struct> Loop<T> { Other<T> value }\ntypedef<struct> Other<T> { Loop<T>? value }", Code::RECURSIVE_STRUCT,
+	                       "Recursive storage in struct 'Loop'",
+	                       { { "2:37-2:42", "Recursive storage in struct 'Loop'" }, { "1:17-1:21", "declared here" } });
+	expectDiagnosticLabels("typedef<struct> Root { Later zFirst, Earlier aSecond }\ntypedef<struct> Later { Root closesFirst }\n"
+	                       "typedef<struct> Earlier { Root closesSecond }",
+	                       Code::RECURSIVE_STRUCT, "Recursive storage in struct 'Root'",
+	                       { { "2:30-2:41", "Recursive storage in struct 'Root'" }, { "1:17-1:21", "declared here" } });
 }
 
 TEST (SemanticChecking, RetainsWrittenArgumentsAndDeclarationSiteDefaults) {

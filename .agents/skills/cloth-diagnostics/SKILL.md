@@ -7,7 +7,7 @@ description: Trace Cloth frontend errors from their C++ throw sites through stab
 
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
-Start at the throw site for the failing input. The driver catches `cde::ClothDiagnostic`, reports it on stderr, and returns `1`. It also catches `std::exception` and prints `what()` directly. The lexer uses the structured path for malformed numbers and the plain path for errors such as unterminated strings. [Driver](../../../Compiler/src/cloth.cpp) · [Lexer](../../../Compiler/src/lexer/lexer.cpp) · [Diagnostic code registry](../../../Diagnostics/include/cde/diagnostic_code.hpp)
+Start at the throw site for the failing input. The driver catches `cde::ClothDiagnostic`, reports it on stderr, and returns `1`. It also catches `std::exception` and prints `what()` directly. The lexer raises `cde::SyntaxException` with the source file and UTF-8 byte span for malformed tokens and literals. [Driver](../../../Compiler/src/cloth.cpp) · [Lexer](../../../Compiler/src/lexer/lexer.cpp) · [Diagnostic code registry](../../../Diagnostics/include/cde/diagnostic_code.hpp)
 
 ## Codes and labels
 

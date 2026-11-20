@@ -156,8 +156,8 @@ bool BodyChecker::bindText (const Expression &operand, const ResolvedType &type)
 }
 
 void BodyChecker::enumValue (const EnumFieldDeclaration &field, const Expression &value, const Token *caseName) {
-	const std::string   subject = std::format("{} for '{}.{}'", caseName ? "Case '" + caseName->get_lexeme() + "'" : "Default", owner->name.get_lexeme(),
-	                                          field.name.get_lexeme());
+	const std::string   subject = std::format("{} for '{}{}{}'", caseName ? "Case '" + caseName->get_lexeme() + "'" : "Default", owner->name.get_lexeme(),
+	                                          to_string(oDot), field.name.get_lexeme());
 	const std::function error   = [&] (const Expression &expression, std::string message, Code code) {
                 std::vector<cde::SourceLabel> v_labels{ { expression.get_span(), message }, { field.type.get_span(), "payload field type declared here" } };
                 if (caseName) v_labels.push_back({ caseName->get_span(), "enum case declared here" });

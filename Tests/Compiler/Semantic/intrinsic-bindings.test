@@ -1,19 +1,32 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: mkdir -p "%t/regular/cloth/text" "%t/library/cloth/text" "%t/library/cloth/collections" "%t/library/cloth/io/fs"
-# RUN: echo "using cloth.text.Utf8: decode" > "%t/regular/user.co"
-# RUN: cat "%/S/Inputs/boundaries/library/cloth/text/Utf8.co" > "%t/regular/cloth/text/Utf8.co"
-# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%/S/Inputs/boundaries/library" --src "%t/regular/user.co" 2> "%t.err"
+# RUN: cat "%/S/../../../Stdlib/cloth/text/Utf8.co" > "%t/library/cloth/text/Utf8.co"
+# RUN: echo "using cloth.text.Utf8: decodeUtf8" > "%t/regular/user.co"
+# RUN: echo "fn<string?> decode(unsigned int<8>[] bytes) = decodeUtf8(bytes)" >> "%t/regular/user.co"
+# RUN: cat "%t/regular/user.co" > "%t/library/user.co"
+
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 32 --stdlib "%t/library" --src "%t/regular/user.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 64 --stdlib "%t/library" --src "%t/regular/user.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 32 --stdlib "%t/library" --src "%t/library/user.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 64 --stdlib "%t/library" --src "%t/library/user.co"
+# RUN: cd "%t/library" && %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 32 --stdlib . --src user.co
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 64 --stdlib . --src user.co
+
+# RUN: cat "%t/library/cloth/text/Utf8.co" > "%t/regular/cloth/text/Utf8.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --target-bits 32 --stdlib "%t/library" --src "%t/regular/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=ORIGIN --input-file "%t.err"
-# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%/S/Inputs/boundaries/library" --src "%/S/Inputs/boundaries/library/cloth/text/Utf8.co" 2> "%t.err"
+# RUN: %expect_exit --empty-stdout 1 %cloth --target-bits 64 --stdlib "%t/library" --src "%t/regular/user.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=ORIGIN --input-file "%t.err"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/library/cloth/text/Utf8.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=ORIGIN --input-file "%t.err"
 # ORIGIN: [C3136] Error: Invalid compiler binding 'text.utf8.decode': requires a declaration imported from the selected standard library
-# ORIGIN: Utf8.co:3:
+# ORIGIN: Utf8.co:{{[0-9]+}}:
 # ORIGIN: binding declared here
 
-# RUN: echo "using cloth.text.Other: decode" > "%t/user.co"
+# RUN: echo "using cloth.text.Other: decode" > "%t/library/user.co"
 # RUN: cat "%/S/Inputs/boundaries/library/cloth/text/Utf8.co" > "%t/library/cloth/text/Other.co"
-# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/library/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=SITE --input-file "%t.err"
 # SITE: [C3136] Error: Invalid compiler binding 'text.utf8.decode': requires the registered declaration in cloth/text/Utf8.co
 # SITE: Other.co:3:
@@ -36,7 +49,8 @@
 # DUPLICATE-DAG: duplicate binding
 
 # RUN: echo 'pub fn<string?> decode(unsigned int<16>[] bytes) = intrinsic "text.utf8.decode"' > "%t/library/cloth/text/Utf8.co"
-# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
+# RUN: cat "%t/user.co" > "%t/library/user.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/library/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=UTF8 --input-file "%t.err"
 # UTF8: [C3136] Error: Invalid compiler binding 'text.utf8.decode': expected parameters (unsigned int<8>[]) and results (string?)
 

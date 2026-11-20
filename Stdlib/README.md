@@ -20,34 +20,26 @@ It supports direct foreach through `Snapshot<T>` in `cloth/collections/Snapshot.
 [`OwningList<T>`](cloth/collections/README.md#owninglist) takes deletion authority
 over class objects and supplies checked reads, snapshot foreach, and ordered cleanup.
 
-The module's source root is the repository root (`StandardLibrary = "."`), so
-that file is imported as `using cloth.collections.List : List`.
-The module identity is configuration metadata and is not an import prefix.
-Ordinary subfolders do not need their own `module.toml` files. Importable
-declarations must be `pub`.
+Import paths start at the standard library source root, the directory containing
+`cloth/`. For example, `using cloth.collections.List : List` selects the public
+declaration from `cloth/collections/List.co`. A declaration must be `pub` for
+another module to import it.
 
 ## Validate the library sources
 
-With Shuttle on your PATH, run from this repository:
+Run these commands from this directory (`Stdlib/`) in the Cloth checkout.
+Use `mingw32-make` in place of `make` on Windows with MinGW.
 
-```text
-shuttle build --stdlib . --emit object
+```sh
+make -C .. run
+make -C .. test-file CASE=Tests/Compiler/Semantic/stdlib-modules.test
 ```
 
-When checked out as the compiler's `Standard-Library/` submodule, run from the
-compiler repository root:
-
-```powershell
-.\gradlew.bat :Shuttle:run --args="build --project Standard-Library --stdlib Standard-Library --emit object"
-```
-
-Shuttle currently requires `project.entryPoint` even for object builds. The
-configured `StandardLibrary.cloth.Library.main` selects `cloth/Library.co`;
-`--emit object` does not require a `main` declaration. The root imports the public
-collections so standalone validation checks their generic declarations. Only
-reachable sources are compiled. Consumers import each collection from its own
-file under `cloth.collections`.
-The output is `build/Cloth-Standard-Library.o`.
+The first command checks `cloth/Library.co` and its imports with the native
+frontend. The second checks the entry and imports every other shipped module
+from a separate consumer at both 32 and 64 bits. See the
+[full-library fixture](../Tests/Compiler/Semantic/stdlib-modules.test) and
+[test prerequisites](../Documentation/contributing/Testing.rst#test-dependencies).
 
 ## Use library sources
 
@@ -57,24 +49,7 @@ integers, target-sized integers, and floating-point types satisfy this
 interface. A numeric type parameter retains its caller's exact type. Classes
 can implement `Number` explicitly and provide the operators their callers use.
 
-Toolchains that bundle this library make its source root available automatically;
-consumers still import each declaration explicitly. Select another checkout with
-`--stdlib PATH` on either command. The
-[collections guide](cloth/collections/README.md) covers List, OwningList, Deque,
-Queue, and Stack. These sources use user-defined generic classes and structs.
-
-A project that configures this root explicitly can add it to `[modules]`, using
-a path relative to its own `build.k`:
-
-```toml
-[modules]
-stdlib = "../Stdlib"
-```
-
-Keep the module identity `Stdlib` to match this repository's
-`module.toml`. Sources then select public declarations through `cloth.*` paths.
-Use `--stdlib PATH` for that same checkout so a bundled root is not attached in
-conflict with the configured module.
-The current toolchain compiles reachable library sources together with the
-application; the object build does not provide a separately linked library or
-package download support.
+Pass `--stdlib PATH` to the native compiler with the directory containing
+`cloth/`. The frontend resolves the consumer's `using` imports against that
+source root and checks reachable modules together. For collection APIs, see
+the [collections guide](cloth/collections/README.md).

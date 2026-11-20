@@ -1,17 +1,19 @@
 ---
 name: cloth-frontend
-description: Trace Cloth source through the C++ loader, token stream, parser, and AST. Use for lexer or parser changes
-and questions about how accepted syntax is represented.
+description: Trace Cloth source through the C++ lexer, parser, symbol table, and frontend semantic checker.
 ---
 
 # Cloth C++ frontend
 
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
-Start at `Compiler/src/cloth.cpp` for CLI behavior. On the ordinary `--src` path, `SourceFile` validates the extension
-and UTF-8 bytes. `Parser(Lexer&)` calls `scanTokens()`, then `Parser::parse()` builds the `SourceUnit` passed to
-`backend::BackendObject`. A source unit records declarations, a separate list of header imports, and the end-of-file
-span. [Driver](../../../Compiler/src/cloth.cpp) · [File loader](../../../Compiler/src/file/source_file.cpp) · [Parser constructors](../../../Compiler/include/parser/parser.hpp) · [Source unit](../../../Compiler/include/ast/source_unit.hpp)
+On the ordinary `--src` path, `SourceFile` validates the extension and UTF-8 bytes. `Parser::parse()` builds a
+`SourceUnit` containing declarations, header imports, and the end-of-file span. The driver constructs a `SymbolTable`
+from that unit. [Driver](../../../Compiler/src/cloth.cpp) · [File loader](../../../Compiler/src/file/source_file.cpp) · [Source unit](../../../Compiler/include/ast/source_unit.hpp) · [Declaration collection](../../../Compiler/src/semantic/symbol_table.cpp)
+
+Constructing the `CheckedProgram` loads symbol tables for reachable imports, resolves declaration signatures, and then
+checks bodies. Look here for name and overload resolution, visibility, and expression types. The backend receives the
+checked program. [Frontend checker](../../../Compiler/src/semantic/checked_program.cpp) · [Checked program](../../../Compiler/include/semantic/checked_program.hpp) · [Backend handoff](../../../Backend/src/backend/backend.cpp)
 
 ## Tokens and source locations
 
@@ -37,6 +39,6 @@ span. [Driver](../../../Compiler/src/cloth.cpp) · [File loader](../../../Compil
 | How does an expression group?                                              | `ExpressionParser` handles primary, postfix, and infix forms. Assignment and postfix update statements return to `Parser::parseStatement`. Range loop headers consume their own outer range delimiter. [Expressions](../../../Compiler/src/parser/subs/expression_parser.cpp) · [For loops](../../../Compiler/src/parser/subs/loops/for_loop_parser.cpp)                                 |
 | Who consumes the closing delimiter or newline?                             | `DelimitedParser` pairs delimiters and reads comma-separated items. The enclosing grammar controls which newlines it skips. Block comments can cross lines without emitting a newline token, so imports also compare token spans. [Delimiter helpers](../../../Compiler/include/parser/subs/delimited_parser.hpp) · [Import parser](../../../Compiler/src/parser/subs/import_parser.cpp) |
 
-Use `-L --src` to inspect lexemes, token kinds, and spans. Use `--src` with a complete file to check parser acceptance.
+Use `-L --src` to inspect lexemes, token kinds, and spans. Use `--src` with a complete file to check parsing and semantics.
 For questions about AST shape, trace the constructor at the accepting
 branch. [Token-table printer](../../../Compiler/src/util/pstream.cpp) · [AST headers](../../../Compiler/include/ast/) · [Build and invocation](../cloth-repository/SKILL.md)

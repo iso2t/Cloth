@@ -39,7 +39,7 @@ include Tests/Makefile
 all: $(program)
 
 run: $(program)
-	"$(run_path)"
+	"$(run_path)" --kind library --stdlib Stdlib --src Stdlib/cloth/Library.co
 
 $(program): $(objects) Makefile Compiler/Kbuild Diagnostics/Kbuild Backend/Kbuild
 	$(CXX) $(LDFLAGS) $(driver_ldflags) $(objects) $(LDLIBS) -o "$@"

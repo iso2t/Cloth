@@ -2,9 +2,12 @@
 
 #include <cstddef>
 #include <gtest/gtest.h>
+#include <string>
 #include <string_view>
 #include <vector>
 
+#include <cde/syntax_exception.hpp>
+#include <file/source_file.hpp>
 #include <lexer/lexer.hpp>
 #include <token/token.hpp>
 
@@ -68,7 +71,74 @@ TEST (LexerIdentifiers, RejectsInvalidStartsAndCharactersOutsideTheProfile) {
 	for (const std::string &s_source : std::vector<std::string>{ "\u0301x", "\U0001f408", "x\u00b2", "x\xF0\x80\x80\x80" }) {
 		SCOPED_TRACE(s_source);
 		Lexer l_lexer(s_source);
-		EXPECT_THROW(l_lexer.scanTokens(), std::runtime_error);
+		EXPECT_THROW(l_lexer.scanTokens(), cde::SyntaxException);
+	}
+}
+
+TEST (LexerDiagnostics, RetainsSourceAndLabelsOffendingBytes) {
+	using cde::DiagnosticCode;
+
+	struct ErrorCase {
+		std::string_view source;
+		DiagnosticCode   code;
+		std::string_view span;
+	};
+
+	const ErrorCase cases[] = {
+		{ "$", DiagnosticCode::UNEXPECTED_CHARACTER, "1:1-1:2" },
+		{ "計算 \U0001F408", DiagnosticCode::UNEXPECTED_CHARACTER, "1:8-1:12" },
+		{ "\n/* comment\n", DiagnosticCode::UNTERMINATED_COMMENT, "2:1-2:3" },
+		{ "1__2", DiagnosticCode::INVALID_SEPARATOR, "1:2-1:3" },
+		{ "\"missing", DiagnosticCode::UNTERMINATED_STRING, "1:1-1:2" },
+		{ "\"\\", DiagnosticCode::UNTERMINATED_STRING, "1:1-1:2" },
+		{ R"co(#"{1}tail)co", DiagnosticCode::UNTERMINATED_STRING, "1:1-1:3" },
+		{ "\"\"\"\nraw", DiagnosticCode::UNTERMINATED_RAW_STRING, "1:1-1:4" },
+		{ "\"\\é\"", DiagnosticCode::INVALID_ESCAPE, "1:2-1:5" },
+		{ R"co(#"text\q")co", DiagnosticCode::INVALID_ESCAPE, "1:7-1:9" },
+		{ "'\\q'", DiagnosticCode::INVALID_ESCAPE, "1:2-1:4" },
+		{ "\"a\n", DiagnosticCode::MULTILINE_STRING, "1:3-2:1" },
+		{ "#\"\\\r\n", DiagnosticCode::MULTILINE_STRING, "1:4-2:1" },
+		{ "\"\xFF", DiagnosticCode::INVALID_UNICODE, "1:2-1:3" },
+		{ "x\xF0\x80", DiagnosticCode::INVALID_UNICODE, "1:2-1:3" },
+		{ "'", DiagnosticCode::UNTERMINATED_CHARACTER, "1:1-1:2" },
+		{ "'\\", DiagnosticCode::UNTERMINATED_CHARACTER, "1:1-1:2" },
+		{ "''", DiagnosticCode::EMPTY_CHARACTER, "1:1-1:3" },
+		{ "'ab'", DiagnosticCode::INVALID_CHARACTER_LENGTH, "1:1-1:3" },
+		{ R"co(#"a {#"b {1)co", DiagnosticCode::UNTERMINATED_INTERPOLATION, "1:10-1:11" },
+		{ R"co(#"ok })co", DiagnosticCode::UNMATCHED_INTERPOLATION_BRACE, "1:6-1:7" },
+		{ "0b2", DiagnosticCode::INVALID_NUMERIC_LITERAL, "1:1-1:4" },
+	};
+	for (const ErrorCase &test : cases) {
+		SCOPED_TRACE(test.source);
+		try {
+			Lexer{ SourceFile{ "fixture.co", std::string(test.source) } }.scan();
+			FAIL() << "Expected a lexer diagnostic";
+		} catch (const cde::SyntaxException &error) {
+			EXPECT_EQ(error.get_code(), test.code);
+			ASSERT_EQ(error.get_source_labels().size(), 1u);
+			const TokenSpan &ts_primary = error.get_source_labels().front().span;
+			ASSERT_NE(ts_primary.source, nullptr);
+			EXPECT_EQ(ts_primary.source->get_path(), "fixture.co");
+			EXPECT_EQ(ts_primary.source->get_contents(), test.source);
+			EXPECT_EQ(ts_primary.to_string(), test.span);
+		}
+	}
+}
+
+TEST (LexerDiagnostics, OffsetScanUsesOriginalFileCoordinates) {
+	const std::string s_prefix = "$ skipped\r\n";
+	const SourceFile  sf_file{ "offset.co", s_prefix + "計算 \U0001F408" };
+	try {
+		Lexer{ sf_file, s_prefix.size() }.scan();
+		FAIL() << "Expected a lexer diagnostic";
+	} catch (const cde::SyntaxException &error) {
+		ASSERT_EQ(error.get_code(), cde::DiagnosticCode::UNEXPECTED_CHARACTER);
+		ASSERT_EQ(error.get_source_labels().size(), 1u);
+		const TokenSpan &ts_primary = error.get_source_labels().front().span;
+		ASSERT_NE(ts_primary.source, nullptr);
+		EXPECT_EQ(ts_primary.source->get_path(), sf_file.get_path());
+		EXPECT_EQ(ts_primary.source->get_contents(), sf_file.get_contents());
+		EXPECT_EQ(ts_primary.to_string(), "2:8-2:12");
 	}
 }
 
@@ -96,6 +166,15 @@ TEST (LexerSpans, LiteralAndInterpolationDelimiters) {
 	expectToken(v_tokens[7], TokenType::InterpolationEnd, R"co(")co", 20, 21);
 	expectToken(v_tokens[8], TokenType::CharacterLiteral, "'x'", 22, 25);
 	expectToken(v_tokens[9], TokenType::EndOfFile, "", 25, 25);
+}
+
+TEST (LexerSpans, ValidEscapesInEachLiteralKind) {
+	Lexer                    l_lexer(R"co("é\n" #"\t{{x}}" '\\')co");
+	const std::vector<Token> v_tokens = l_lexer.scanTokens();
+	ASSERT_EQ(v_tokens.size(), 6u);
+	expectToken(v_tokens[0], TokenType::StringLiteral, R"co("é\n")co", 1, 7);
+	expectToken(v_tokens[2], TokenType::StringSegment, R"co(\t{{x}})co", 10, 17);
+	expectToken(v_tokens[4], TokenType::CharacterLiteral, R"co('\\')co", 19, 23);
 }
 
 TEST (LexerKeywords, JoinsKeywordSpellingsInSourceOrder) {

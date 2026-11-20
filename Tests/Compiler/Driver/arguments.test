@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# RUN: echo "fn<usize> wide() = 4294967296" > "%t.co"
+
+# RUN: %expect_exit --empty-stdout 1 %cloth --src "%t.co" --knd executable 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=UNKNOWN-KIND --input-file "%t.err"
+# UNKNOWN-KIND: [C0001] Error: Unknown option '--knd'
+# RUN: %expect_exit --empty-stdout 1 %cloth --src "%t.co" --target-bits 64 --kind executable 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=MISSING-MAIN --input-file "%t.err"
+# MISSING-MAIN: [C3034] Error: Executable program requires a main function
+
+# RUN: %expect_exit --empty-stdout 1 %cloth --target-bit 32 --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=UNKNOWN-WIDTH --input-file "%t.err"
+# UNKNOWN-WIDTH: [C0001] Error: Unknown option '--target-bit'
+# RUN: %expect_exit --empty-stdout 1 %cloth --target-bits 32 --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=RANGE --input-file "%t.err"
+# RANGE: [C3004] Error: Integer literal is outside usize
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 64 --src "%t.co"
+
+# RUN: %expect_exit --empty-stdout 1 %cloth --src "%t.co" "extra source.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=POSITIONAL --input-file "%t.err"
+# POSITIONAL: [C0004] Error: Unexpected positional argument 'extra source.co'
+# RUN: %expect_exit --empty-stdout 1 %cloth -x 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=SHORT --input-file "%t.err"
+# SHORT: [C0001] Error: Unknown option '-x'
+# RUN: %expect_exit --empty-stdout 1 %cloth --src 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=MISSING-VALUE --input-file "%t.err"
+# MISSING-VALUE: --src requires a file path
