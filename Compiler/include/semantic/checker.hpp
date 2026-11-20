@@ -78,6 +78,13 @@ struct GenericLimit {
 	std::string message;
 };
 
+struct GenericDependency {
+	TokenSpan        use;
+	std::string_view name;
+};
+
+[[noreturn]] void failGenericLimit (const GenericLimit &limit, const Token &declaration, const TokenSpan &use, const std::vector<GenericDependency> &ancestry);
+
 std::optional<GenericLimit> genericLimit (unsigned nesting, std::size_t depth, std::size_t count, bool symbolic);
 
 // The enclosing overload cannot change an intrinsic expression or explicit type.
@@ -92,6 +99,11 @@ bool contextualFailure (const cde::ClothDiagnostic &error);
 bool validateArgumentLabels (const std::vector<CallArgument> &arguments);
 
 [[noreturn]] void           fail (Code code, const TokenSpan &span, std::string message, const Token *related = nullptr);
+[[noreturn]] void                unknownName (const Token &name);
+[[noreturn]] void                duplicateBinding (const Token &name, const Token &previous);
+const StateSelectionDeclaration *stateSelection (const Symbol &symbol);
+bool                             acceptsTypeArgumentCount (const TypeParameterList *parameters, std::size_t count);
+[[noreturn]] void                rejectTypeArgumentCount (const TypeArgumentList &arguments, const Symbol &declaration, bool generic);
 const CallableSignature    *callable (const Symbol &symbol);
 const TypeParameterList    *typeParameters (const Symbol &symbol);
 const StructDeclaration    *asStruct (const Symbol *symbol);
@@ -251,7 +263,7 @@ class Analyzer {
 	std::set<InstanceKey>    s_templates;
 	std::deque<InstanceWork> q_templates, q_instances;
 	const InstanceWork      *iw_active    = nullptr;
-	std::size_t              st_templates = 0, st_instances = 0;
+	std::size_t              st_openTemplates = 0, st_closedTemplates = 0, st_instances = 0;
 	using StorageEdges = std::vector<std::pair<ResolvedType, const Symbol *>>;
 
 	struct StorageVisit {
@@ -374,7 +386,7 @@ class BodyChecker {
 	             const ResolvedType *attachment = nullptr, unsigned operatorWidth = 0);
 	void check ();
 	void inferOperatorResult ();
-	void resolveBodyNames (const FunctionBody &body);
+	void resolveDeclarationNames ();
 
     private:
 	enum class ReceiverPhase { Ready, ConstructorDefault, Delegation, FieldInitializer };
@@ -409,6 +421,7 @@ class BodyChecker {
 	std::optional<ExpressionInfo> builtinCall (const CallSite &call, const TypeArgumentList *typeArguments, const ExpressionInfo *receiver = nullptr);
 	void              checkBuiltinArguments (const CallSite &call, const TypeArgumentList *typeArguments, std::size_t minimum, std::size_t maximum);
 	void              checkArgumentNames (const CallSite &call, std::size_t start);
+	[[noreturn]] void                checkBuiltinTypeArguments (const CallSite &call, const TypeArgumentList &arguments);
 	void              checkTypeArguments (const TypeArgumentList &arguments) const;
 	ResolvedType      nonReturningNumericReceiver (const CallSite &call);
 	[[noreturn]] void unknownMember (const MemberCallExpression &call, std::string_view receiver);
@@ -532,7 +545,11 @@ class BodyChecker {
 	bool                         checkStatement (const Statement &node);
 	void                         finishStatement (const Statement &node, bool fallsThrough, const Exits &incoming);
 	void                         typeBody ();
+	void                         resolveCallName (const CallExpression &call);
 	void                         resolveNames (const Expression &node);
+	void                         resolveNames (const FunctionBody &body);
+	void                         assignmentTarget (const Token &target);
+	std::optional<Candidate>     initialStateTest (const TypeCheckExpression &test, const Token *state);
 	void                         resolveNames (const std::vector<StatementPtr> &statements);
 	void                         resolveNames (const Statement &node);
 	void                         leaveScope ();
@@ -549,6 +566,7 @@ class BodyChecker {
 	[[nodiscard]] const Binding *local (const std::string &name) const;
 	[[nodiscard]] const Binding *assignmentBinding (const Token &target) const;
 	void                         bind (const Token &name, std::optional<ResolvedType> type, bool mutableBinding, bool deferred = false);
+	void                         checkBindingName (const Token &name) const;
 	void                         checkDefaultName (const Token &name) const;
 	bool                         readOnlyDefaultRoot (const Expression &node) const;
 	[[nodiscard]] ResolvedType   selfType () const;
@@ -585,7 +603,9 @@ class BodyChecker {
 	void                          requireStoredValue (const ResolvedType &expected, const ResolvedType &actual, const TokenSpan &span, Code code) const;
 	bool           expect (const Expression &node, const ResolvedType &type);
 	bool           checkReturn (const Expression &node);
-	ExpressionInfo name (const Token &token, bool assignment = false);
+	void                          checkReturnContext (const ReturnStatement &statement) const;
+	enum class NameUse { Value, Assignment, Lexical };
+	ExpressionInfo                name (const Token &token, NameUse use = NameUse::Value);
 	bool           hasValueName (const Token &name) const;
 	std::optional<ResolvedType>   receiverType (const Expression &node, bool forConstruction = false);
 	std::optional<Receiver>       receiver (const Expression &node);

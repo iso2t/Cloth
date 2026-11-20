@@ -24,6 +24,9 @@ namespace {
 constexpr std::size_t MAX_GENERIC_DEPENDENCIES = 64;
 constexpr std::size_t MAX_GENERIC_INSTANCES    = 4096;
 
+bool dependsOnTypeParameter (const InstanceKey &key) {
+	return (key.receiver && key.receiver->dependent()) || std::ranges::any_of(key.arguments, &ResolvedType::dependent);
+}
 }
 
 DeclarationInfo Analyzer::specialize (DeclarationInfo info, const Substitutions &arguments) const {
@@ -141,7 +144,7 @@ const GenericInstance *Analyzer::useInstance (InstanceKey key, const Symbol &con
 		return nullptr;
 	}
 	const bool b_symbolic = iw_active && !iw_active->instance;
-	if (!b_symbolic && ((key.receiver && key.receiver->dependent()) || std::ranges::any_of(key.arguments, &ResolvedType::dependent))) {
+	if (!b_symbolic && dependsOnTypeParameter(key)) {
 		fail(Code::GENERIC_INFERENCE_FAILED, where, "Cannot determine the type arguments of '" + key.declaration->name.get_lexeme() + "'",
 		     &key.declaration->name);
 	}
@@ -162,6 +165,22 @@ std::optional<GenericLimit> genericLimit (unsigned nesting, std::size_t depth, s
 	return {};
 }
 
+void failGenericLimit (const GenericLimit &limit, const Token &declaration, const TokenSpan &use, const std::vector<GenericDependency> &ancestry) {
+	std::vector<cde::SourceLabel>                                                                v_labels;
+	std::set<std::tuple<const SourceFile *, std::size_t, std::size_t, std::size_t, std::size_t>> s_labeled;
+	const std::function                                                                          add = [&] (const TokenSpan &span, std::string text) {
+		if (s_labeled.emplace(span.source.get(), span.startLine, span.startCol, span.endLine, span.endCol).second)
+			v_labels.push_back({ span, std::move(text) });
+	};
+	add(use, "this application exceeds the generic resource limit");
+	add(declaration.get_span(), "generic template declared here");
+	for (std::size_t st_index = 0; st_index < ancestry.size(); ++st_index) {
+		const GenericDependency &gd_step = ancestry[ancestry.size() - st_index - 1];
+		add(gd_step.use, std::format("dependency {}: '{}' required here", st_index + 1, gd_step.name));
+	}
+	throw cde::ClothDiagnostic(limit.code, limit.message, std::move(v_labels));
+}
+
 const GenericInstance *Analyzer::enqueue (InstanceKey key, const TokenSpan &where, bool symbolic) {
 	const InstanceKey *ik_stored;
 	GenericInstance   *gi_instance = nullptr;
@@ -178,19 +197,17 @@ const GenericInstance *Analyzer::enqueue (InstanceKey key, const TokenSpan &wher
 	// A non-generic member of a specialized receiver shares its owner's budget charge.
 	const bool        b_charged = !ik_stored->arguments.empty();
 	const std::size_t st_depth  = (iw_active ? iw_active->depth : 0) + b_charged;
-	std::size_t      &st_count  = symbolic ? st_templates : st_instances;
+	// Template analysis can reach a fully concrete application before any executable code calls it.
+	const bool        b_open    = symbolic && dependsOnTypeParameter(*ik_stored);
+	std::size_t      &st_count  = !symbolic ? st_instances : b_open ? st_openTemplates : st_closedTemplates;
 	unsigned          u_depth   = ik_stored->receiver ? ik_stored->receiver->argumentDepth() : 0;
 	for (const ResolvedType &rt_arg : ik_stored->arguments) u_depth = std::max(u_depth, 1 + rt_arg.argumentDepth());
 	const Symbol &sym_declaration = *ik_stored->declaration;
-	if (const std::optional<GenericLimit> opt_limit = genericLimit(u_depth, st_depth, b_charged ? st_count : 0, symbolic)) {
-		if (opt_limit->code != Code::GENERIC_TEMPLATE_DEPENDENCY_LIMIT && opt_limit->code != Code::GENERIC_DEPENDENCY_LIMIT)
-			fail(opt_limit->code, where, opt_limit->message, &sym_declaration.name);
-		const InstanceWork *iw_root = iw_active;
-		while (iw_root->parent) iw_root = iw_root->parent;
-		throw cde::ClothDiagnostic(opt_limit->code, opt_limit->message,
-		                           { { where, opt_limit->message },
-		                             { sym_declaration.name.get_span(), "generic declaration" },
-		                             { iw_root->where, "dependency 1 starts here" } });
+	if (const std::optional<GenericLimit> opt_limit = genericLimit(u_depth, st_depth, b_charged ? st_count : 0, b_open)) {
+		std::vector<GenericDependency> v_ancestry;
+		for (const InstanceWork *iw_step = iw_active; iw_step; iw_step = iw_step->parent)
+			if (!iw_step->key.arguments.empty()) v_ancestry.push_back({ iw_step->where, iw_step->key.declaration->name.get_lexeme() });
+		failGenericLimit(*opt_limit, sym_declaration.name, where, v_ancestry);
 	}
 	st_count += b_charged;
 	(symbolic ? q_templates : q_instances).push_back({ *ik_stored, gi_instance, iw_active, where, st_depth });

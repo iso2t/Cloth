@@ -47,11 +47,12 @@ bool hasDefaults (const Symbol &method) {
 	        { { owner.name.get_span(), message }, { first.name.get_span(), "first declaration" }, { second.name.get_span(), "other declaration" } });
 }
 
-const StateSelectionDeclaration *stateSelection (const Symbol &symbol) {
-	if (symbol.kind == SymbolKind::StateAttachment) return std::get<const StateAttachmentDeclaration *>(symbol.declaration);
-	return dynamic_cast<const NestedStateDeclaration *>(std::get<const StateBodyDeclaration *>(symbol.declaration));
 }
 
+const StateSelectionDeclaration *stateSelection (const Symbol &symbol) {
+	if (symbol.kind == SymbolKind::StateAttachment) return std::get<const StateAttachmentDeclaration *>(symbol.declaration);
+	return symbol.kind == SymbolKind::State ? dynamic_cast<const NestedStateDeclaration *>(std::get<const StateBodyDeclaration *>(symbol.declaration)) :
+	                                          nullptr;
 }
 
 bool Analyzer::sameMethod (const MethodRef &left, const MethodRef &right, bool results) const {

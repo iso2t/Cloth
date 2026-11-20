@@ -482,6 +482,21 @@ typedef<class> Holder<T>(def<Slot<T>?> slot ?: null)
 fn use(Holder<int> item) {})"));
 }
 
+TEST (SemanticGenerics, ClassifiesTheApplicationAtTheDependencyLimit) {
+	// Each call drops one type parameter and appends int until the substitution repeats.
+	const auto shift = [] (unsigned count) {
+		std::string s_parameters = "T0", s_arguments;
+		for (unsigned u_index = 1; u_index < count; ++u_index) {
+			s_parameters += std::format(",T{}", u_index);
+			s_arguments += std::format("T{},", u_index);
+		}
+		return std::format("fn shift<{}>(){{shift<{}int>()}}", s_parameters, s_arguments);
+	};
+	EXPECT_NO_THROW(checkSource(shift(63)));
+	expectError(shift(64), cde::DiagnosticCode::GENERIC_DEPENDENCY_LIMIT);
+	expectError(shift(65), cde::DiagnosticCode::GENERIC_TEMPLATE_DEPENDENCY_LIMIT);
+}
+
 TEST (SemanticGenerics, StopsGrowingDependenciesEvenWithoutAClosedCall) {
 	using Code = cde::DiagnosticCode;
 	expectError("fn grow<T>() = grow<T[]>()", Code::GENERIC_TEMPLATE_DEPENDENCY_LIMIT);

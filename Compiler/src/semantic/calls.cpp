@@ -41,6 +41,18 @@ bool contextualFailure (const cde::ClothDiagnostic &error) {
 	}
 }
 
+bool acceptsTypeArgumentCount (const TypeParameterList *parameters, std::size_t count) {
+	return parameters && count <= parameters->parameters.size() &&
+	       std::ranges::all_of(parameters->parameters | std::views::drop(count),
+	                           [] (const TypeParameterDeclaration &parameter) { return parameter.defaultType.has_value(); });
+}
+
+void rejectTypeArgumentCount (const TypeArgumentList &arguments, const Symbol &declaration, bool generic) {
+	if (arguments.arguments.empty() && !generic)
+		fail(Code::INVALID_GENERIC_ARGUMENT, arguments.get_span(), "This declaration has no type parameters", &declaration.name);
+	fail(Code::GENERIC_ARITY, arguments.get_span(), "No overload accepts this number of type arguments", &declaration.name);
+}
+
 namespace {
 
 struct ArgumentPlacement {
@@ -175,13 +187,7 @@ std::vector<PlacedCandidate> bindCandidates (const Token &name, const TokenSpan 
 	for (const Candidate &c_candidate : group) {
 		const TypeParameterList *tpl_parameters = c_candidate.inferOwner ? c_candidate.inferOwner : typeParameters(*c_candidate.symbol);
 		b_generic |= tpl_parameters != nullptr;
-		if (written) {
-			const std::size_t st_count = written->arguments.size();
-			if (!tpl_parameters || st_count > tpl_parameters->parameters.size() ||
-			    std::ranges::any_of(tpl_parameters->parameters | std::views::drop(st_count),
-			                        [] (const TypeParameterDeclaration &p) { return !p.defaultType; }))
-				continue;
-		}
+		if (written && !acceptsTypeArgumentCount(tpl_parameters, written->arguments.size())) continue;
 		PlacementResult pr_result = placeArguments(arguments, *c_candidate.symbol, span);
 		if (ArgumentPlacement *ap_placement = std::get_if<ArgumentPlacement>(&pr_result)) {
 			v_placed.push_back({ &c_candidate, std::move(*ap_placement), tpl_parameters });
@@ -191,12 +197,7 @@ std::vector<PlacedCandidate> bindCandidates (const Token &name, const TokenSpan 
 		}
 	}
 	if (v_placed.empty()) {
-		if (!opt_firstProblem) {
-			if (written->arguments.empty() && !b_generic)
-				fail(Code::INVALID_GENERIC_ARGUMENT, written->get_span(), "This declaration has no type parameters",
-				     &group.front().symbol->name);
-			fail(Code::GENERIC_ARITY, written->get_span(), "No overload accepts this number of type arguments", &group.front().symbol->name);
-		}
+		if (!opt_firstProblem) rejectTypeArgumentCount(*written, *group.front().symbol, b_generic);
 		if (named || b_optional) fail(Code::INVALID_ARGUMENT_BINDING, opt_firstProblem->span, opt_firstProblem->message, opt_firstProblem->declaration);
 		fail(Code::CALL_ARITY, span, "No overload of '" + name.get_lexeme() + "' accepts these arguments", &group.front().symbol->name);
 	}
@@ -350,7 +351,7 @@ bool validateArgumentLabels (const std::vector<CallArgument> &arguments) {
 ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, const std::vector<CallArgument> &arguments, const std::vector<Candidate> &group,
                                       const TypeArgumentList *typeArguments, const ResultTypes *knownArguments, const ReceiverProofs &proofs) {
 	const std::string &spelling = name.get_lexeme();
-	if (group.empty()) fail(Code::UNKNOWN_NAME, name.get_span(), "Unknown callable '" + spelling + "'");
+	if (group.empty()) unknownName(name);
 	std::vector<PlacedCandidate>                 v_placed = bindCandidates(name, span, arguments, group, validateArgumentLabels(arguments), typeArguments);
 	const std::vector<PlacedCandidate>::iterator it_firstGeneric =
 	        std::stable_partition(v_placed.begin(), v_placed.end(), [] (const PlacedCandidate &placed) { return !placed.parameters; });
@@ -392,12 +393,17 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 				b_naturalContinues &= ap_probe.result->fallsThrough;
 			} catch (const cde::ClothDiagnostic &error) {
 				if (!contextualFailure(error)) throw;
-				if (it_firstGeneric != v_placed.end() && (error.get_code() == Code::INTEGER_RANGE || error.get_code() == Code::FLOAT_RANGE)) {
-					// Determine the default type without letting the default width exclude a wider candidate.
-					BodyChecker bc_default         = bc_input;
-					bc_default.b_inferenceDefaults = true;
+				if (it_firstGeneric != v_placed.end()) {
+					BodyChecker bc_default = bc_input;
 					try {
-						opt_evidence = bc_default.scalar(*arg.expression);
+						if (error.get_code() == Code::INTEGER_RANGE || error.get_code() == Code::FLOAT_RANGE) {
+							bc_default.b_inferenceDefaults = true;
+							opt_evidence                   = bc_default.scalar(*arg.expression);
+						} else if (error.get_code() == Code::EXPLICIT_NULLABLE_TYPE) {
+							// The inferred parameter supplies a destination for an array of possibly absent elements.
+							const std::optional<ResolvedType> opt_array = bc_default.elementHint(*arg.expression, {});
+							if (opt_array && opt_array->array()) opt_evidence = bc_default.scalar(*arg.expression, &*opt_array);
+						}
 					} catch (const cde::ClothDiagnostic &failure) {
 						if (!contextualFailure(failure)) throw;
 					}
@@ -539,7 +545,8 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 	const GenericInstance *gi_contract = nullptr, *gi_target = nullptr;
 	if (record) {
 		const ResolvedType *rt_host = best.dispatch && best.dispatch->kind == DispatchKind::State ? &best.dispatch->contract.owner : nullptr;
-		gi_target = gi_contract = analyzer.useCallable(*best.contract, best.substitutions, context, span, rt_host, best.operatorWidth);
+		const TokenSpan     ts_use  = typeArguments ? typeArguments->get_span() : span;
+		gi_target = gi_contract = analyzer.useCallable(*best.contract, best.substitutions, context, ts_use, rt_host, best.operatorWidth);
 		if (best.dispatch) analyzer.useDispatch(*best.dispatch, best.substitutions, context, span);
 		if (best.symbol != best.contract) {
 			Substitutions m_target = *best.overridingArguments;

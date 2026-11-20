@@ -55,12 +55,22 @@ void BodyChecker::remember (const Token &use, const Token &declaration) const {
 	}
 }
 
+void duplicateBinding (const Token &name, const Token &previous) {
+	throw cde::ClothDiagnostic(Code::DUPLICATE_BINDING, std::format("Binding '{}' is already declared in this scope", name.get_lexeme()),
+	                           { { previous.get_span(), "first declared here" }, { name.get_span(), "declared again here" } });
+}
+
+void BodyChecker::checkBindingName (const Token &name) const {
+	const std::map<std::string, Binding>::const_iterator it_bound = scopes.back().find(name.get_lexeme());
+	if (it_bound != scopes.back().end()) duplicateBinding(name, *it_bound->second.name);
+}
+
 void BodyChecker::bind (const Token &name, std::optional<ResolvedType> type, const bool mutableBinding, const bool deferred) {
 	if (type && type->parameter) type = analyzer.boundShape(*type);
 	const auto [fst, snd] = scopes.back().emplace(
 	        name.get_lexeme(), Binding{ .type = std::move(type), .name = &name, .mutableBinding = mutableBinding, .deferred = deferred });
 	if (!snd) {
-		fail(Code::DUPLICATE_BINDING, name.get_span(), "Duplicate binding '" + name.get_lexeme() + "'", fst->second.name);
+		duplicateBinding(name, *fst->second.name);
 	}
 	if (record && fst->second.type) bf_facts.localTypes[&name] = *fst->second.type;
 }
@@ -352,16 +362,8 @@ void BodyChecker::typeBody () {
 			}
 			if (record) bf_facts.enumPayloads[&context].push_back((i < ec.values.size() ? ec.values[i] : ed->fields[i].defaultValue).get());
 		}
-	} else if (context.kind == SymbolKind::State || context.kind == SymbolKind::StateAttachment) {
-		const StateSelectionDeclaration *selection = nullptr;
-		if (context.kind == SymbolKind::State) {
-			selection = dynamic_cast<const NestedStateDeclaration *>(std::get<const StateBodyDeclaration *>(context.declaration));
-		} else {
-			selection = std::get<const StateAttachmentDeclaration *>(context.declaration);
-		}
-		if (selection && selection->initial) {
-			statePayload(selection->initial->payload, *info.value, selection->initial->span, context.name);
-		}
+	} else if (const StateSelectionDeclaration *ss_state = stateSelection(context); ss_state && ss_state->initial) {
+		statePayload(ss_state->initial->payload, *info.value, ss_state->initial->span, context.name);
 	}
 }
 
@@ -520,17 +522,22 @@ ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTyp
 	return ei_joined;
 }
 
-void BodyChecker::assign (const Token &target, const std::optional<ResolvedType> &value, const Expression *source, std::size_t slot,
-                          const std::optional<ResolvedType> &represented) {
-	const ExpressionInfo ei_binding = name(target, true);
+void BodyChecker::assignmentTarget (const Token &target) {
+	const ExpressionInfo ei_binding = name(target, NameUse::Assignment);
 	checkFieldWrite(ei_binding, target.get_span());
 	if (pd_default && readOnlyDefaultRoot(NameExpression(target))) {
 		fail(Code::INVALID_PARAMETER_DEFAULT, target.get_span(), "Parameter defaults can only read the receiver and earlier parameters",
 		     &pd_default->name);
 	}
-	const Binding *b_local = local(target.get_lexeme());
+	const Binding *b_local = assignmentBinding(target);
 	if (b_local && !b_local->mutableBinding) {
-		fail(Code::IMMUTABLE_BINDING, target.get_span(), "Cannot assign to immutable binding '" + target.get_lexeme() + "'", b_local->name);
+		const CallableSignature *cs_signature = callable(context);
+		const bool        b_parameter = cs_signature && std::ranges::any_of(cs_signature->parameters, [&] (const ParameterDeclaration &parameter) {
+			                         return &parameter.name == b_local->name;
+		                         });
+		const std::string s_kind      = b_parameter ? std::format("{} parameter", to_string(kFinal)) : "immutable binding";
+		throw cde::ClothDiagnostic(Code::IMMUTABLE_BINDING, std::format("Cannot reassign {} '{}'", s_kind, target.get_lexeme()),
+		                           { { b_local->name->get_span(), s_kind + " declared here" }, { target.get_span(), "reassigned here" } });
 	}
 	if (!ei_binding.binding && (!ei_binding.symbol || ei_binding.symbol->kind != SymbolKind::Field)) {
 		fail(Code::EXPECTED_BINDING, target.get_span(), "Expected a writable binding");
@@ -538,6 +545,12 @@ void BodyChecker::assign (const Token &target, const std::optional<ResolvedType>
 	if (ei_binding.symbol && std::holds_alternative<const EnumFieldDeclaration *>(ei_binding.symbol->declaration)) {
 		fail(Code::INVALID_FIELD_TARGET, target.get_span(), "Enum payload fields are read-only", &ei_binding.symbol->name);
 	}
+}
+
+void BodyChecker::assign (const Token &target, const std::optional<ResolvedType> &value, const Expression *source, std::size_t slot,
+                          const std::optional<ResolvedType> &represented) {
+	assignmentTarget(target);
+	const Binding *b_local = local(target.get_lexeme());
 	if (b_local) {
 		if (value && b_local->type) require({ *value }, { *b_local->type }, target.get_span());
 		invalidate({ b_local->name });
@@ -582,7 +595,7 @@ bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Ex
 			else if (const Binding *binding = assignmentBinding(target.get_token()))
 				expected.push_back(binding->type.value_or(ResolvedType{}));
 			else
-				expected.push_back(name(target.get_token(), true).types.front());
+				expected.push_back(name(target.get_token(), NameUse::Assignment).types.front());
 		}
 	}
 	const bool           b_shared     = annotations && expected.size() == 1;
@@ -757,18 +770,21 @@ bool BodyChecker::writeStorage (const Statement &statement, const ExpressionPtr 
 	return true;
 }
 
+void BodyChecker::checkReturnContext (const ReturnStatement &statement) const {
+	if (t_deferredBinding) return;
+	if (pd_default)
+		fail(Code::INVALID_PARAMETER_DEFAULT, statement.span, std::format("'{}' cannot leave a parameter default", to_string(kReturn)),
+		     &pd_default->name);
+	if (rp_receiverPhase != ReceiverPhase::Ready || stateSelection(context))
+		fail(Code::PARTIAL_CLASS_INSTANCE, statement.span, std::format("'{}' cannot leave class initialization", to_string(kReturn)));
+}
+
 bool BodyChecker::checkStatement (const Statement &node) {
 	if (const auto *s = dynamic_cast<const ExpressionStatement *>(&node)) {
 		return expression(*s->expression, nullptr, true).fallsThrough;
 	}
 	if (const auto *s = dynamic_cast<const ReturnStatement *>(&node)) {
-		if (pd_default && !t_deferredBinding) {
-			fail(Code::INVALID_PARAMETER_DEFAULT, s->span, std::format("'{}' cannot leave a parameter default", to_string(kReturn)),
-			     &pd_default->name);
-		}
-		if (!t_deferredBinding && rp_receiverPhase != ReceiverPhase::Ready) {
-			fail(Code::PARTIAL_CLASS_INSTANCE, s->span, std::format("'{}' cannot leave class initialization", to_string(kReturn)));
-		}
+		checkReturnContext(*s);
 		if (!s->value && !returns.empty()) {
 			fail(Code::RETURN_VALUE_REQUIRED, s->span, "A return value is required", t_deferredBinding);
 		}
@@ -813,7 +829,9 @@ bool BodyChecker::checkStatement (const Statement &node) {
 	if (const auto *s = dynamic_cast<const AssignmentStatement *>(&node)) {
 		const Binding                    *binding  = assignmentBinding(s->name);
 		const std::optional<TypedPlace>   tp_field = binding ? std::nullopt : locate(NameExpression(s->name));
-		const std::optional<ResolvedType> opt_type = binding ? binding->type : tp_field ? tp_field->type : name(s->name, true).types.front();
+		const std::optional<ResolvedType> opt_type = binding  ? binding->type :
+		                                             tp_field ? tp_field->type :
+		                                                        name(s->name, NameUse::Assignment).types.front();
 		if (const BinaryExpression *compound = s->get_compound()) {
 			if (const std::optional<ResolvedType> opt_left = scalar(*compound->left)) {
 				if (const std::optional<ExpressionInfo> opt_update = updateOperator(node, *opt_left, *s->compoundOperator, compound->right)) {
@@ -830,7 +848,7 @@ bool BodyChecker::checkStatement (const Statement &node) {
 		return receive(s->targets, *s->value, nullptr);
 	}
 	if (const auto *s = dynamic_cast<const UpdateStatement *>(&node)) {
-		if (!assignmentBinding(s->name) && !locate(*s->target)) name(s->name, true);
+		if (!assignmentBinding(s->name) && !locate(*s->target)) name(s->name, NameUse::Assignment);
 		const std::optional<ResolvedType> opt_target = scalar(*s->target);
 		if (opt_target && !updateOperator(node, *opt_target, s->op, nullptr) && !analyzer.numeric(*opt_target)) {
 			requirePresentOperand(*opt_target, s->get_span());

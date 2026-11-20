@@ -198,7 +198,7 @@ ResolvedType BodyChecker::recordSelf (const Expression &node) {
 	return rt_self;
 }
 
-ExpressionInfo BodyChecker::name (const Token &token, bool assignment) {
+ExpressionInfo BodyChecker::name (const Token &token, NameUse use) {
 	const std::string &spelling = token.get_lexeme();
 	if (const Binding *binding = local(spelling)) {
 		remember(token, *binding->name);
@@ -252,18 +252,21 @@ ExpressionInfo BodyChecker::name (const Token &token, bool assignment) {
 	}
 	for (const Symbol *sym : b_builtinName ? analyzer.lookupFile(context, spelling) : analyzer.lookup(context, spelling)) {
 		if (sym->kind == SymbolKind::Function) {
-			if (assignment) fail(Code::EXPECTED_BINDING, token.get_span(), "Expected a writable binding", &sym->name);
+			if (use == NameUse::Assignment) fail(Code::EXPECTED_BINDING, token.get_span(), "Expected a writable binding", &sym->name);
+			if (use == NameUse::Lexical) return {};
 			fail(Code::FUNCTION_VALUE, token.get_span(), "'" + spelling + "' is a function", &sym->name);
 		}
 		if (!b_builtinName && sym->kind == SymbolKind::Type) {
+			if (use == NameUse::Lexical) unknownName(token);
 			fail(Code::TYPE_RECEIVER_VALUE, token.get_span(), "'" + spelling + "' is a type", &sym->name);
 		}
 	}
 	if (b_builtinName) {
-		if (assignment) fail(Code::EXPECTED_BINDING, token.get_span(), "Expected a writable binding");
+		if (use == NameUse::Assignment) fail(Code::EXPECTED_BINDING, token.get_span(), "Expected a writable binding");
+		if (use == NameUse::Lexical) return {};
 		fail(Code::FUNCTION_VALUE, token.get_span(), "'" + spelling + "' is a function");
 	}
-	fail(Code::UNKNOWN_NAME, token.get_span(), "Unknown name '" + spelling + "'");
+	unknownName(token);
 }
 
 bool BodyChecker::isSelfReference (const Expression &node) {
@@ -407,6 +410,12 @@ ExpressionInfo BodyChecker::transition (const Candidate &state, const Expression
 	return { .types = {}, .symbol = state.symbol, .fallsThrough = b_normal };
 }
 
+std::optional<Candidate> BodyChecker::initialStateTest (const TypeCheckExpression &test, const Token *state) {
+	if (state && rp_receiverPhase == ReceiverPhase::FieldInitializer && isSelfReference(*test.operand))
+		return stateTarget(selfType(), *state, *test.operand);
+	return {};
+}
+
 ExpressionInfo BodyChecker::typeCheck (const TypeCheckExpression &node) {
 	const Token  *identifier = node.target.get_bare_identifier();
 	const bool                  b_unboundName = identifier && !analyzer.hasTypeName(context, *identifier);
@@ -425,11 +434,9 @@ ExpressionInfo BodyChecker::typeCheck (const TypeCheckExpression &node) {
 		}
 		return expression(*test);
 	}
-	if (b_unboundName && rp_receiverPhase == ReceiverPhase::FieldInitializer && isSelfReference(*node.operand)) {
-		if (const std::optional<Candidate> state = stateTarget(selfType(), *identifier, *node.operand)) {
-			recordSelf(*node.operand);
-			return value(ResolvedType(kBoolean), state->symbol);
-		}
+	if (const std::optional<Candidate> opt_state = initialStateTest(node, b_unboundName ? identifier : nullptr)) {
+		recordSelf(*node.operand);
+		return value(ResolvedType(kBoolean), opt_state->symbol);
 	}
 	const std::optional<ResolvedType> opt_source = scalar(*node.operand);
 	if (b_unboundName && opt_source) {
@@ -1105,7 +1112,9 @@ ExpressionInfo BodyChecker::create (const ClassCreationExpression &node) {
 		}
 	}
 	if (record) {
-		analyzer.useType(rt, context, node.get_span());
+		TokenSpan ts_use = node.get_span();
+		if (written) ts_use = written->hasPlaceholders() ? written->get_span() : node.receiver->get_span();
+		analyzer.useType(rt, context, ts_use);
 		bf_facts.expressions.at(node.receiver.get()).representedType = rt;
 	}
 	result.types = { rt };

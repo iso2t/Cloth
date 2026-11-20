@@ -84,20 +84,9 @@ struct ClassApplication {
 };
 
 [[noreturn]] void classApplicationLimit (const GenericLimit &limit, const Symbol &declaration, const TokenSpan &use, const ClassApplication *via) {
-	std::vector<cde::SourceLabel>                                      v_labels;
-	std::set<std::tuple<const SourceFile *, std::size_t, std::size_t>> s_labeled;
-	const std::function                                                add = [&] (const TokenSpan &span, const std::string &label) {
-		if (s_labeled.emplace(span.source.get(), span.startLine, span.startCol).second) v_labels.push_back({ span, label });
-	};
-	add(use, "this application exceeds the generic resource limit");
-	add(declaration.name.get_span(), "generic template declared here");
-	std::vector<const ClassApplication *> v_chain;
-	for (; via && via->depth; via = via->via) v_chain.push_back(via);
-	for (std::size_t st_index = 0; st_index < v_chain.size(); ++st_index) {
-		const ClassApplication &ca_step = *v_chain[v_chain.size() - st_index - 1];
-		add(ca_step.use, std::format("dependency {}: '{}' required here", st_index + 1, ca_step.type.declaration->name.get_lexeme()));
-	}
-	throw cde::ClothDiagnostic(limit.code, limit.message, std::move(v_labels));
+	std::vector<GenericDependency> v_ancestry;
+	for (; via && via->depth; via = via->via) v_ancestry.push_back({ via->use, via->type.declaration->name.get_lexeme() });
+	failGenericLimit(limit, declaration.name, use, v_ancestry);
 }
 
 // Expand only after finding a cyclic declaration chain. Distinct applications can converge, repeat, or exhaust the generic worklist limits.

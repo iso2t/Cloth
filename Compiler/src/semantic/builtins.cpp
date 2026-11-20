@@ -206,12 +206,14 @@ void BodyChecker::checkArgumentNames (const CallSite &call, std::size_t start) {
 	}
 }
 
+void BodyChecker::checkBuiltinTypeArguments (const CallSite &call, const TypeArgumentList &arguments) {
+	checkTypeArguments(arguments);
+	if (dynamic_cast<const MemberCallExpression *>(&call)) checkArgumentNames(call, 0);
+	fail(Code::GENERIC_ARITY, arguments.get_span(), std::format("'{}' takes no type arguments", call.name.get_lexeme()));
+}
+
 void BodyChecker::checkBuiltinArguments (const CallSite &call, const TypeArgumentList *typeArguments, std::size_t minimum, std::size_t maximum) {
-	if (typeArguments) {
-		checkTypeArguments(*typeArguments);
-		if (dynamic_cast<const MemberCallExpression *>(&call)) checkArgumentNames(call, 0);
-		fail(Code::GENERIC_ARITY, typeArguments->get_span(), std::format("'{}' takes no type arguments", call.name.get_lexeme()));
-	}
+	if (typeArguments) checkBuiltinTypeArguments(call, *typeArguments);
 	const std::vector<CallArgument>::const_iterator it_label =
 	        std::ranges::find_if(call.suppliedArguments, [] (const CallArgument &argument) { return argument.label.has_value(); });
 	const std::size_t st_supplied = call.suppliedArguments.size();

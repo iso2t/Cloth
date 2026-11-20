@@ -408,6 +408,34 @@ TEST (SemanticChecking, LabelsTheAssignedValueForArrayAndFieldWrites) {
 	EXPECT_NO_THROW(checkSource("fn f(int<8>[] items) { items[0] = 127 }"));
 }
 
+TEST (SemanticChecking, InfersArrayArgumentsBeforeChargingGenericDependencies) {
+	using Code = cde::DiagnosticCode;
+	expectDiagnosticLabels("typedef<class> Branch<T>(T v) {pub mt grow(T v){Branch::new([v])}}", Code::GENERIC_TEMPLATE_DEPENDENCY_LIMIT,
+	                       "Generic template analysis dependency limit exceeded (64)",
+	                       { { "1:49-1:65", "this application exceeds the generic resource limit" }, { "1:16-1:22", "generic template declared here" } });
+	expectDiagnosticLabels("fn grow<T>(T v){grow<_>([v])}", Code::GENERIC_TEMPLATE_DEPENDENCY_LIMIT,
+	                       "Generic template analysis dependency limit exceeded (64)",
+	                       { { "1:21-1:24", "this application exceeds the generic resource limit" }, { "1:4-1:8", "generic template declared here" } });
+	EXPECT_NO_THROW(checkSource("typedef<class> Branch<T>(T[] seed){pub mt grow(T v){Branch::new([v])}}"));
+	EXPECT_NO_THROW(checkSource("fn use<X>(X value) {}\nfn wrap<T>(T value){use([[value]])}\nfn nullable(int? value){use([value])}"));
+	expectError("fn wrap<T>(T value){def local=[value]}", Code::EXPLICIT_NULLABLE_TYPE);
+	expectError("fn use<X>(X value) {}\nfn f(){use([])}", Code::GENERIC_INFERENCE_FAILED);
+}
+
+TEST (SemanticChecking, ResolvesBodyNamesInDeclarationOrderBeforeCheckingOperands) {
+	using Code = cde::DiagnosticCode;
+	expectDiagnosticLabels("fn f(){true + false;missing}", Code::UNKNOWN_NAME, "Unknown name 'missing'", { { "1:21-1:28", "here" } });
+	expectDiagnosticLabels("fn z(){later}\nfn a(){earlier}", Code::UNKNOWN_NAME, "Unknown name 'later'", { { "1:8-1:13", "here" } });
+	expectDiagnosticLabels("fn f(int n,int[] a){true + false;def x=1;def x=2}", Code::DUPLICATE_BINDING, "Binding 'x' is already declared in this scope",
+	                       { { "1:38-1:39", "first declared here" }, { "1:46-1:47", "declared again here" } });
+	expectDiagnosticLabels("fn f(final int n){n=missing}", Code::IMMUTABLE_BINDING, "Cannot reassign final parameter 'n'",
+	                       { { "1:16-1:17", "final parameter declared here" }, { "1:19-1:20", "reassigned here" } });
+	expectError("fn z(){true+false}\nfn a(){def<bool> x=0}", Code::BINARY_OPERANDS);
+	expectError("fn f(){println<int>(missing)}", Code::GENERIC_ARITY);
+	expectError("fn f(int n){n.absent(x=other,x=2)}", Code::UNKNOWN_NAME);
+	expectError("typedef<class> C {pub mt f(){self.absent(x=other,x=2)}}", Code::UNKNOWN_MEMBER);
+}
+
 TEST (SemanticChecking, ReportsTheBaseClauseOfTheRepeatedClassApplication) {
 	using Code = cde::DiagnosticCode;
 	expectDiagnosticLabels("typedef<class> Z : I, X() {}\ntypedef<class> X : Z() {}\ntypedef<interface> I {}", Code::INVALID_CLASS_MEMBER,

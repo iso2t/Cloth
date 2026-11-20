@@ -459,7 +459,25 @@ void Analyzer::requireAccess (const Symbol &symbol, const Symbol &context, const
 void Analyzer::checkBodies () {
 	collectFormatterClasses();
 	for (const Symbol *sym_declaration : v_order) collectSignature(*sym_declaration);
-	for (const Symbol *sym : v_order) {
+	// Bind every body before typing any of them. Functions and methods each follow file and source order.
+	Candidates v_bodies = v_order;
+	std::ranges::stable_sort(v_bodies, {}, [&] (const Symbol *symbol) {
+		const TokenSpan ts_name = symbol->name.get_span();
+		const unsigned  u_group = symbol->kind == SymbolKind::Function                                         ? 0u :
+		                          (symbol->kind == SymbolKind::Method || symbol->kind == SymbolKind::Operator) ? 1u :
+		                                                                                                         2u;
+		return std::tuple{ u_group, declarations.at(symbol).file, ts_name.startLine, ts_name.startCol };
+	});
+	for (const Symbol *sym : v_bodies) {
+		const std::unordered_map<const Symbol *, ResultTypes>::const_iterator it_hosts = m_stateHosts.find(standaloneState(*sym));
+		if (it_hosts == m_stateHosts.end()) {
+			BodyChecker(*this, *sym, program, {}, declarations.at(sym)).resolveDeclarationNames();
+		} else {
+			for (const ResolvedType &rt_host : it_hosts->second)
+				BodyChecker(*this, *sym, program, {}, declarations.at(sym), &rt_host).resolveDeclarationNames();
+		}
+	}
+	for (const Symbol *sym : v_bodies) {
 		if (sym->classFieldIndex) {
 			continue;
 		}
@@ -535,7 +553,6 @@ void Analyzer::checkBodyOf (const Symbol &symbol) {
 	try {
 		const std::unordered_map<const Symbol *, ResultTypes>::const_iterator it_hosts = m_stateHosts.find(standaloneState(symbol));
 		if (const TypeReference *tr_width = widthSelector(symbol)) {
-			BodyChecker(*this, symbol, program, {}, declarations.at(&symbol)).resolveBodyNames(*callable(symbol)->executableBody());
 			if (isTemplate(symbol)) widthTemplate(symbol, tr_width->get_name().get_lexeme() == to_string(kInteger) ? MAX_INTEGER_BITS : 64u);
 		} else if (it_hosts != m_stateHosts.end()) {
 			for (const ResolvedType &rt_host : it_hosts->second)

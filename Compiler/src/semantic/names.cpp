@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <algorithm>
+#include <format>
 #include <utility>
 
 #include <ast/stmt/do_while_statement.hpp>
@@ -10,7 +11,13 @@
 
 namespace cloth::semantic {
 
+void unknownName (const Token &name) {
+	throw cde::ClothDiagnostic(Code::UNKNOWN_NAME, std::format("Unknown name '{}'", name.get_lexeme()), { { name.get_span(), "here" } },
+	                           "Declare a visible binding or function with this name.");
+}
+
 void Analyzer::useWidthAnnotation (const TypeReference &reference, const Symbol &owner) {
+	if (!widthSelector(owner)) return;
 	if (reference.get_application()) b_hasTypeApplications = true;
 	v_widthAnnotations.emplace_back(&reference, &owner);
 }
@@ -30,13 +37,51 @@ void Analyzer::checkWidthAnnotations () const {
 	for (const std::pair<const TypeReference *, const Symbol *> &entry : v_widthAnnotations) (void)checkedType(*entry.first, *entry.second);
 }
 
-// A width template has lexical bindings before there is a peer to supply types for its body.
-void BodyChecker::resolveBodyNames (const FunctionBody &body) {
+void BodyChecker::resolveDeclarationNames () {
 	record = false;
-	if (const BlockBody *bb_block = std::get_if<BlockBody>(&body.value))
-		resolveNames(bb_block->statements);
-	else if (const ExpressionBody *eb_body = std::get_if<ExpressionBody>(&body.value))
+	if (const CallableSignature *cs_callable = callable(context)) {
+		if (context.kind == SymbolKind::Constructor) rp_receiverPhase = ReceiverPhase::ConstructorDefault;
+		for (const ParameterDeclaration &pd_parameter : cs_callable->parameters) {
+			if (pd_parameter.defaultValue) {
+				BodyChecker bc_default = *this;
+				bc_default.pd_default  = &pd_parameter;
+				bc_default.resolveNames(*pd_parameter.defaultValue);
+			}
+			bind(pd_parameter.name, {}, pd_parameter.isMutable());
+		}
+		if (const ConstructorDeclaration *cd_constructor = dynamic_cast<const ConstructorDeclaration *>(cs_callable)) {
+			rp_receiverPhase = ReceiverPhase::Delegation;
+			for (const CallArgument &ca_argument : cd_constructor->delegation.suppliedArguments) resolveNames(*ca_argument.expression);
+		}
+		rp_receiverPhase = ReceiverPhase::Ready;
+		if (const FunctionBody *fb_body = cs_callable->executableBody()) resolveNames(*fb_body);
+	} else if (const ClassDeclaration *cd_class = asClass(context.kind == SymbolKind::Type ? &context : owner);
+	           cd_class && (context.kind == SymbolKind::Type || context.kind == SymbolKind::Field)) {
+		owner = context.kind == SymbolKind::Type ? &context : owner;
+		for (const ClassParameterDeclaration &cp_parameter : cd_class->parameters)
+			bind(cp_parameter.parameter.name, {}, cp_parameter.parameter.isMutable());
+		if (context.kind == SymbolKind::Type) {
+			rp_receiverPhase = ReceiverPhase::Delegation;
+			for (const ClassParentClause &cp_parent : cd_class->parents)
+				if (cp_parent.constructorArguments)
+					for (const CallArgument &ca_argument : *cp_parent.constructorArguments) resolveNames(*ca_argument.expression);
+		} else if (const ClassFieldDeclaration *const *cf_field = std::get_if<const ClassFieldDeclaration *>(&context.declaration)) {
+			rp_receiverPhase = ReceiverPhase::FieldInitializer;
+			if ((*cf_field)->initializer) resolveNames(*(*cf_field)->initializer);
+		}
+	} else if (context.kind == SymbolKind::StateInitializer) {
+		resolveNames(std::get<const StateInitializerDeclaration *>(context.declaration)->body);
+	} else if (const StateSelectionDeclaration *ss_state = stateSelection(context); ss_state && ss_state->initial && ss_state->initial->payload) {
+		resolveNames(*ss_state->initial->payload);
+	}
+}
+
+void BodyChecker::resolveNames (const FunctionBody &body) {
+	if (const BlockBody *bb_block = std::get_if<BlockBody>(&body.value)) {
+		for (const StatementPtr &sp_statement : bb_block->statements) resolveNames(*sp_statement);
+	} else if (const ExpressionBody *eb_body = std::get_if<ExpressionBody>(&body.value)) {
 		resolveNames(*eb_body->expression);
+	}
 }
 
 void BodyChecker::resolveNames (const std::vector<StatementPtr> &statements) {
@@ -47,10 +92,20 @@ void BodyChecker::resolveNames (const std::vector<StatementPtr> &statements) {
 
 void BodyChecker::resolveNames (const Statement &node) {
 	if (const BindingDeclaration *bd_local = dynamic_cast<const BindingDeclaration *>(&node)) {
+		checkBindingName(bd_local->name);
 		if (bd_local->type) analyzer.useWidthAnnotation(*bd_local->type, context);
 		resolveNames(*bd_local->initializer);
 		bind(bd_local->name, {}, bd_local->isMutable, dynamic_cast<const FunctionBlockExpression *>(bd_local->initializer.get()) != nullptr);
 	} else if (const BindingGroupDeclaration *bg_group = dynamic_cast<const BindingGroupDeclaration *>(&node)) {
+		std::map<std::string_view, const Token *> m_names;
+		for (const ReceivingTarget &rt_target : bg_group->targets) {
+			if (const ReceivingTarget::Named *nt_name = std::get_if<ReceivingTarget::Named>(&rt_target.value)) {
+				checkBindingName(nt_name->token);
+				const std::pair<std::map<std::string_view, const Token *>::iterator, bool> it_name =
+				        m_names.emplace(nt_name->token.get_lexeme(), &nt_name->token);
+				if (!it_name.second) duplicateBinding(nt_name->token, *it_name.first->second);
+			}
+		}
 		for (const TypeReference &tr_slot : bg_group->types)
 			if (!tr_slot.is_placeholder()) analyzer.useWidthAnnotation(tr_slot, context);
 		resolveNames(*bg_group->initializer);
@@ -60,14 +115,15 @@ void BodyChecker::resolveNames (const Statement &node) {
 	} else if (const ExpressionStatement *es_value = dynamic_cast<const ExpressionStatement *>(&node)) {
 		resolveNames(*es_value->expression);
 	} else if (const ReturnStatement *rs_return = dynamic_cast<const ReturnStatement *>(&node)) {
+		checkReturnContext(*rs_return);
 		if (rs_return->value) resolveNames(*rs_return->value);
 	} else if (const AssignmentStatement *as_write = dynamic_cast<const AssignmentStatement *>(&node)) {
-		if (!assignmentBinding(as_write->name)) name(as_write->name, true);
+		assignmentTarget(as_write->name);
 		resolveNames(*as_write->value);
 	} else if (const MultiAssignmentStatement *ma_group = dynamic_cast<const MultiAssignmentStatement *>(&node)) {
 		for (const ReceivingTarget &rt_target : ma_group->targets) {
 			if (const ReceivingTarget::Named *nt_name = std::get_if<ReceivingTarget::Named>(&rt_target.value)) {
-				if (!assignmentBinding(nt_name->token)) name(nt_name->token, true);
+				assignmentTarget(nt_name->token);
 			}
 		}
 		resolveNames(*ma_group->value);
@@ -79,7 +135,7 @@ void BodyChecker::resolveNames (const Statement &node) {
 			scopes.emplace_back();
 			bind(fs_for->binding.name, {}, true);
 			if (fs_for->stepper) {
-				name(fs_for->stepper->target, true);
+				assignmentTarget(fs_for->stepper->target);
 				if (fs_for->stepper->value) resolveNames(*fs_for->stepper->value);
 			}
 			resolveNames(fs_for->body.statements);
@@ -93,8 +149,12 @@ void BodyChecker::resolveNames (const Statement &node) {
 			resolveNames(*ds_do.condition);
 		}
 		lt_loop = lt_previous;
-	} else if (dynamic_cast<const LoopJumpStatement *>(&node)) {
-		if (!lt_loop) fail(Code::INVALID_LOOP_JUMP, node.get_span(), "Loop jump outside a loop");
+	} else if (const UpdateStatement *us_update = dynamic_cast<const UpdateStatement *>(&node)) {
+		assignmentTarget(us_update->name);
+	} else if (const LoopJumpStatement *lj_jump = dynamic_cast<const LoopJumpStatement *>(&node)) {
+		if (!lt_loop)
+			throw cde::ClothDiagnostic(Code::INVALID_LOOP_JUMP, std::format("'{}' requires an enclosing loop body", lj_jump->keyword.get_lexeme()),
+			                           { { lj_jump->keyword.get_span(), "here" } });
 	} else {
 		const std::pair<ExpressionPtr, ExpressionPtr> ep_operands = updateOperands(node);
 		resolveNames(*ep_operands.first);
@@ -102,45 +162,63 @@ void BodyChecker::resolveNames (const Statement &node) {
 	}
 }
 
+void BodyChecker::resolveCallName (const CallExpression &call) {
+	validateArgumentLabels(call.suppliedArguments);
+	const std::vector<Candidate> v_candidates = callCandidates(call);
+	if (v_candidates.empty() && builtinFunctionNamed(call.name.get_lexeme())) {
+		if (call.typeArguments) checkBuiltinTypeArguments(call, *call.typeArguments);
+		return;
+	}
+	if (call.typeArguments) checkTypeArguments(*call.typeArguments);
+	if (v_candidates.empty()) unknownName(call.name);
+	if (!call.typeArguments || v_candidates.front().symbol->kind != SymbolKind::Function) return;
+
+	const std::vector<TypeReference> &v_types   = call.typeArguments->arguments;
+	bool                              b_generic = false, b_accepts = false, b_usesDefault = false;
+	for (const Candidate &c_candidate : v_candidates) {
+		const TypeParameterList *tpl_parameters = typeParameters(*c_candidate.symbol);
+		if (!tpl_parameters) continue;
+		b_generic = true;
+		if (acceptsTypeArgumentCount(tpl_parameters, v_types.size())) {
+			b_accepts = true;
+			b_usesDefault |= v_types.size() < tpl_parameters->parameters.size();
+		}
+	}
+	if (!b_accepts) rejectTypeArgumentCount(*call.typeArguments, *v_candidates.front().symbol, b_generic);
+	// Complete function applications bind before argument inference supplies a width.
+	if (b_usesDefault || call.typeArguments->hasPlaceholders()) return;
+	for (const TypeReference &tr_argument : v_types)
+		if (tr_argument.capturesWidth())
+			fail(Code::UNSUPPORTED_TYPE, tr_argument.get_span(), "A closed function application needs a concrete numeric width");
+}
+
 void BodyChecker::resolveNames (const Expression &node) {
 	if (const NameExpression *ne_name = dynamic_cast<const NameExpression *>(&node)) {
-		name(ne_name->name);
+		name(ne_name->name, NameUse::Lexical);
 	} else if (const CallSite *cs_call = dynamic_cast<const CallSite *>(&node)) {
 		if (const CallExpression *ce_call = dynamic_cast<const CallExpression *>(&node)) {
-			const std::vector<Candidate> v_candidates = callCandidates(*ce_call);
-			if (ce_call->typeArguments) checkTypeArguments(*ce_call->typeArguments);
-			if (v_candidates.empty() && !builtinFunctionNamed(ce_call->name.get_lexeme()))
-				fail(Code::UNKNOWN_NAME, ce_call->name.get_span(), "Unknown callable '" + ce_call->name.get_lexeme() + "'");
-			// Complete function applications bind before a peer is available. Defaults and placeholders use call-site inference.
-			if (ce_call->typeArguments && !v_candidates.empty() && v_candidates.front().symbol->kind == SymbolKind::Function &&
-			    !ce_call->typeArguments->hasPlaceholders()) {
-				const std::vector<TypeReference> &v_types     = ce_call->typeArguments->arguments;
-				const bool                        b_completes = std::ranges::any_of(v_candidates, [&] (const Candidate &candidate) {
-					const TypeParameterList *tpl_parameters = typeParameters(*candidate.symbol);
-					return tpl_parameters && tpl_parameters->parameters.size() > v_types.size() &&
-					       tpl_parameters->parameters[v_types.size()].defaultType.has_value();
-				});
-				if (!b_completes) {
-					for (const TypeReference &tr_argument : v_types)
-						if (tr_argument.capturesWidth())
-							fail(Code::UNSUPPORTED_TYPE, tr_argument.get_span(),
-							     "A closed function application needs a concrete numeric width");
-				}
-			}
+			resolveCallName(*ce_call);
 		} else if (const MemberCallExpression *mc_call = dynamic_cast<const MemberCallExpression *>(&node)) {
 			resolveNames(*mc_call->receiver);
 			if (mc_call->typeArguments) checkTypeArguments(*mc_call->typeArguments);
-			if (isSelfReference(*mc_call->receiver) && analyzer.members(selfType(), mc_call->name.get_lexeme(), SymbolKind::Method).empty())
-				unknownMember(*mc_call, selfType().spelling());
+			if (isSelfReference(*mc_call->receiver)) {
+				if (analyzer.members(selfType(), mc_call->name.get_lexeme(), SymbolKind::Method).empty())
+					throw cde::ClothDiagnostic(Code::UNKNOWN_MEMBER,
+					                           std::format("Type '{}' has no member method '{}'", selfType().spelling(),
+					                                       mc_call->name.get_lexeme()),
+					                           { { mc_call->name.get_span(), "here" } });
+				validateArgumentLabels(cs_call->suppliedArguments);
+			}
 		} else if (const ClassCreationExpression *ce_new = dynamic_cast<const ClassCreationExpression *>(&node)) {
 			const std::optional<ResolvedType> opt_type = receiverType(*ce_new->receiver, true);
 			if (!opt_type || (!opt_type->parameter && !asClass(opt_type->declaration)))
 				fail(Code::INVALID_CLASS_LIFECYCLE, ce_new->receiver->get_span(), "Construction requires a class type");
+			validateArgumentLabels(cs_call->suppliedArguments);
 		} else if (const StateCallExpression *sc_state = dynamic_cast<const StateCallExpression *>(&node)) {
+			validateArgumentLabels(cs_call->suppliedArguments);
 			resolveNames(*sc_state->receiver);
 			if (sc_state->typeArguments) checkTypeArguments(*sc_state->typeArguments);
 		}
-		validateArgumentLabels(cs_call->suppliedArguments);
 		for (const CallArgument &ca_argument : cs_call->suppliedArguments) resolveNames(*ca_argument.expression);
 	} else if (const FieldAccessExpression *fa_field = dynamic_cast<const FieldAccessExpression *>(&node)) {
 		if (isSelfReference(*fa_field->receiver) || receiverType(*fa_field->receiver))
@@ -152,8 +230,11 @@ void BodyChecker::resolveNames (const Expression &node) {
 		const Token *t_name = ce_cast->target.get_bare_identifier();
 		if (!t_name || !analyzer.hasStateName(context, t_name->get_lexeme())) analyzer.useWidthAnnotation(ce_cast->target, context);
 	} else if (const TypeCheckExpression *tc_test = dynamic_cast<const TypeCheckExpression *>(&node)) {
-		resolveNames(*tc_test->operand);
 		const Token *t_name = tc_test->target.get_bare_identifier();
+		if (t_name && !tc_test->valueCandidate && !hasValueName(*t_name) && !analyzer.hasTypeName(context, *t_name) &&
+		    initialStateTest(*tc_test, t_name))
+			return;
+		resolveNames(*tc_test->operand);
 		if (tc_test->valueCandidate && !receiverType(*tc_test->valueCandidate))
 			resolveNames(*tc_test->valueCandidate);
 		else if (!t_name || (!hasValueName(*t_name) && !analyzer.hasStateName(context, t_name->get_lexeme())))
@@ -166,9 +247,11 @@ void BodyChecker::resolveNames (const Expression &node) {
 		if (fb_block->declaration.returnTypes.empty())
 			fail(Code::BLOCK_RETURN_TYPE_REQUIRED, node.get_span(), "A deferred binding requires a result type");
 		for (const TypeReference &tr_result : fb_block->declaration.returnTypes) analyzer.useWidthAnnotation(tr_result, context);
-		const LoopTarget *lt_previous = std::exchange(lt_loop, nullptr);
-		resolveBodyNames(fb_block->declaration.body);
-		lt_loop = lt_previous;
+		BodyChecker bc_deferred       = *this;
+		bc_deferred.lt_loop           = nullptr;
+		bc_deferred.t_deferredBinding = &fb_block->declaration.name;
+		bc_deferred.scopes.emplace_back();
+		bc_deferred.resolveNames(fb_block->declaration.body);
 	} else
 		visitOperands(
 		        node, [&] (const Expression &operand) { resolveNames(operand); },
