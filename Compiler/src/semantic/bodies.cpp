@@ -533,8 +533,8 @@ void BodyChecker::assignmentTarget (const Token &target) {
 	if (b_local && !b_local->mutableBinding) {
 		const CallableSignature *cs_signature = callable(context);
 		const bool        b_parameter = cs_signature && std::ranges::any_of(cs_signature->parameters, [&] (const ParameterDeclaration &parameter) {
-			                         return &parameter.name == b_local->name;
-		                         });
+                                                 return &parameter.name == b_local->name;
+                                         });
 		const std::string s_kind      = b_parameter ? std::format("{} parameter", to_string(kFinal)) : "immutable binding";
 		throw cde::ClothDiagnostic(Code::IMMUTABLE_BINDING, std::format("Cannot reassign {} '{}'", s_kind, target.get_lexeme()),
 		                           { { b_local->name->get_span(), s_kind + " declared here" }, { target.get_span(), "reassigned here" } });
@@ -730,7 +730,7 @@ bool BodyChecker::writeStorage (const Statement &statement, const ExpressionPtr 
 		return false;
 	}
 	checkFieldWrite(ei_target, target->get_span());
-	const ResolvedType &rt = ei_target.types.front();
+	const ResolvedType &rt        = ei_target.types.front();
 	const bool          b_element = dynamic_cast<const ElementAssignmentStatement *>(&statement) != nullptr;
 	// An indexed store diagnoses an incompatible value before checking the mutability of its root.
 	const bool b_plainElement = b_element && rhs && !compound;
@@ -743,8 +743,8 @@ bool BodyChecker::writeStorage (const Statement &statement, const ExpressionPtr 
 		}
 	}
 	if (compound || rhs) {
-		const ResolvedType             &rt_storage = tp_target ? tp_target->type : rt;
-		const Expression               &e_value    = compound ? *compound : *rhs;
+		const ResolvedType               &rt_storage = tp_target ? tp_target->type : rt;
+		const Expression                 &e_value    = compound ? *compound : *rhs;
 		const std::optional<ResolvedType> opt_value  = scalar(e_value, &rt_storage);
 		if (opt_value) {
 			requireStoredValue(rt_storage, *opt_value, rhs->get_span(), b_element ? Code::INVALID_ARRAY : Code::INVALID_STRUCT_FIELD);

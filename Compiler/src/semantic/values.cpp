@@ -180,8 +180,8 @@ void BodyChecker::enumValue (const EnumFieldDeclaration &field, const Expression
 ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node) {
 	std::optional<Receiver> opt_receiver = receiver(*node.receiver);
 	if (!opt_receiver || !opt_receiver->fallsThrough) return ExpressionInfo::never();
-	const std::string  &s_name     = node.name.get_lexeme();
-	const ResolvedType &type       = opt_receiver->type;
+	const std::string  &s_name = node.name.get_lexeme();
+	const ResolvedType &type   = opt_receiver->type;
 	if (type == ResolvedType(kNull))
 		throw IntrinsicDiagnostic(Code::EXPLICIT_NULLABLE_TYPE, "A provider needs a typed receiver",
 		                          { { node.receiver->get_span(), "no payload type" } });

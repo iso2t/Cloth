@@ -892,7 +892,7 @@ void Analyzer::checkPublicSurface (const Symbol &symbol, const Symbol *exporting
 		if (sym_scope->visibility != Visibility::Public) return;
 	}
 	const DeclarationInfo &di_info = specialization ? *specialization : declarations.at(&symbol);
-	std::set<ResolvedType>                                                                    s_exposed;
+	std::set<ResolvedType> s_exposed;
 	const std::function<void(const ResolvedType &, const TypeReference *, const TokenSpan &)> expose =
 	        [&] (const ResolvedType &type, const TypeReference *reference, const TokenSpan &where) {
 		        if (!s_exposed.insert(type).second) return;

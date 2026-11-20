@@ -100,7 +100,7 @@ void BodyChecker::finishStatement (const Statement &node, bool b_normal, const E
 
 std::optional<BodyChecker::TypedPlace> BodyChecker::locate (const Expression &expression) const {
 	std::optional<TypedPlace> tp_receiver;
-	const Token              *t_field = nullptr;
+	const Token              *t_field  = nullptr;
 	const IndexExpression    *ie_index = dynamic_cast<const IndexExpression *>(&expression);
 	if (const auto *ne_name = dynamic_cast<const NameExpression *>(&expression)) {
 		if (const Binding *b_local = local(ne_name->name.get_lexeme())) {

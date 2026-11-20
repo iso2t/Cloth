@@ -97,31 +97,31 @@ void checkClassApplications (const Analyzer &analyzer, const Candidates &types, 
 	Applications                 m_types;
 	std::size_t                  st_open = 0, st_closed = 0;
 	const Intern                 intern = [&] (ResolvedType type, const TypeReference *clause, const ClassApplication *via) {
-		if (clause) {
-			// Written argument applications are dependencies of the same owner and are resolved before the enclosing base.
-			const std::vector<TypeReference> &v_written = clause->get_type_arguments();
-			for (std::size_t st_arg = 0; st_arg < v_written.size(); ++st_arg) {
-				if (v_written[st_arg].get_application() && type.arguments()[st_arg].declaration)
-					intern(type.arguments()[st_arg], &v_written[st_arg], via);
-			}
-			type.suffixes.clear();
-		}
-		const std::pair<Applications::iterator, bool> it_type = m_types.try_emplace(std::move(type));
-		if (it_type.second) {
-			const ResolvedType &rt_type  = it_type.first->first;
-			const TokenSpan     ts_use   = clause ? clause->get_span() : rt_type.declaration->name.get_span();
-			std::size_t         st_depth = 0;
-			if (!rt_type.arguments().empty()) {
-				st_depth              = (via ? via->depth : 0) + 1;
-				std::size_t &st_count = rt_type.dependent() ? st_open : st_closed;
-				if (const std::optional<GenericLimit> opt_limit =
-				            genericLimit(rt_type.argumentDepth(), st_depth, st_count, rt_type.dependent()))
-					classApplicationLimit(*opt_limit, *rt_type.declaration, ts_use, via);
-				++st_count;
-			}
-			it_type.first->second = &q_applications.emplace_back(rt_type, via, ts_use, st_depth);
-		}
-		return it_type.first->second;
+                if (clause) {
+                        // Written argument applications are dependencies of the same owner and are resolved before the enclosing base.
+                        const std::vector<TypeReference> &v_written = clause->get_type_arguments();
+                        for (std::size_t st_arg = 0; st_arg < v_written.size(); ++st_arg) {
+                                if (v_written[st_arg].get_application() && type.arguments()[st_arg].declaration)
+                                        intern(type.arguments()[st_arg], &v_written[st_arg], via);
+                        }
+                        type.suffixes.clear();
+                }
+                const std::pair<Applications::iterator, bool> it_type = m_types.try_emplace(std::move(type));
+                if (it_type.second) {
+                        const ResolvedType &rt_type  = it_type.first->first;
+                        const TokenSpan     ts_use   = clause ? clause->get_span() : rt_type.declaration->name.get_span();
+                        std::size_t         st_depth = 0;
+                        if (!rt_type.arguments().empty()) {
+                                st_depth              = (via ? via->depth : 0) + 1;
+                                std::size_t &st_count = rt_type.dependent() ? st_open : st_closed;
+                                if (const std::optional<GenericLimit> opt_limit =
+                                            genericLimit(rt_type.argumentDepth(), st_depth, st_count, rt_type.dependent()))
+                                        classApplicationLimit(*opt_limit, *rt_type.declaration, ts_use, via);
+                                ++st_count;
+                        }
+                        it_type.first->second = &q_applications.emplace_back(rt_type, via, ts_use, st_depth);
+                }
+                return it_type.first->second;
 	};
 	for (const bool b_generic : { false, true }) {
 		for (const Symbol *sym : types) {
