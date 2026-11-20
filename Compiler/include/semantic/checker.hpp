@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 #include <ast/decl/class_declaration.hpp>
@@ -131,6 +132,10 @@ class Analyzer {
 	[[nodiscard]] bool                            accessible (const Symbol &symbol, const Symbol &context) const;
 	void                                          requireAccess (const Symbol &symbol, const Symbol &context, const TokenSpan &use) const;
 	[[nodiscard]] bool                            accepts (const ResolvedType &expected, const ResolvedType &actual) const;
+
+	[[nodiscard]] bool hasReferenceDeclarations () const {
+		return b_hasReferenceDeclarations;
+	}
 	[[nodiscard]] bool                            numeric (const ResolvedType &type) const;
 	[[nodiscard]] ResolvedType                    boundShape (const ResolvedType &type) const;
 	[[nodiscard]] ResultTypes                     typeBounds (const ResolvedType &parameter) const;
@@ -175,6 +180,7 @@ class Analyzer {
 	const GenericInstance      *guaranteeOwner (const Symbol &guarantee, const Substitutions &arguments, const Symbol &context, const TokenSpan &where);
 
     private:
+	bool                                             b_hasReferenceDeclarations = false;
 	const Symbol                                    *sym_number     = nullptr;
 	const Symbol                                    *sym_owningList = nullptr;
 	std::set<std::string, std::less<>>               s_operatorNames;
@@ -319,11 +325,17 @@ class Analyzer {
 
 enum class PlaceFact { Presence, CurrentShape, RetainedShape, RepresentedType };
 
+// An integer literal has at least one magnitude word. An empty index matches any element on a write.
+using PlaceSegment = std::variant<const Symbol *, IntegerValue>;
+
 struct StoragePlace {
 	const Token                *root;
-	std::vector<const Symbol *> fields                                  = {};
+	std::vector<PlaceSegment>   path                                    = {};
 	PlaceFact                   fact                                    = PlaceFact::Presence;
 	std::strong_ordering        operator<=>(const StoragePlace &) const = default;
+	[[nodiscard]] bool          stable () const;
+	[[nodiscard]] bool          indexed () const;
+	[[nodiscard]] bool          covers (const StoragePlace &proof, bool descendantsOnly = false) const;
 };
 
 struct WriteEffects {
@@ -409,7 +421,14 @@ class BodyChecker {
 	unsigned                                    u_operatorWidth;
 	ResultTypes                                 returns;
 	std::vector<std::map<std::string, Binding>> scopes{ 1 };
-	using Narrowing = std::map<StoragePlace, ResolvedType>;
+
+	struct FlowFact {
+		ResolvedType type;
+		ResultTypes  nominalTests                       = {};
+		bool         operator==(const FlowFact &) const = default;
+	};
+
+	using Narrowing = std::map<StoragePlace, FlowFact>;
 	using JumpPaths = std::map<const LoopTarget *, Narrowing>;
 
 	struct Exits {
@@ -451,6 +470,8 @@ class BodyChecker {
 	static void                             join (std::optional<Narrowing> &facts, const Narrowing &other);
 	static void                             mergeExits (Exits &target, const Exits &source);
 	void                                    invalidate (const StoragePlace &place, bool descendantsOnly = false);
+	[[nodiscard]] bool                      sharedPlace (const StoragePlace &place) const;
+	void                                    forgetShared (bool indexedOnly = false);
 	void                                    mutatingReceiver (const Expression &receiver, const ResolvedType &type);
 	void                                    invalidateShared ();
 	void                                    forgetMutableMetadata (Narrowing &facts) const;
@@ -459,7 +480,9 @@ class BodyChecker {
 	void                                    checkInferredBinding (const ResolvedType &type, const TokenSpan &span) const;
 	void                                    setPresence (const StoragePlace &place, const ResolvedType &declared, const std::optional<ResolvedType> &value);
 	void                                    assumePresent (const Expression &source);
+	static void                             forgetPresence (Narrowing &facts, const StoragePlace &place);
 	[[nodiscard]] std::optional<TypedPlace> locate (const Expression &expression) const;
+	[[nodiscard]] ResolvedType              readType (const StoragePlace &place, const ResolvedType &declared) const;
 
 	struct ReceiverProof {
 		StoragePlace place;

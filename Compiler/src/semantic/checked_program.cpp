@@ -8,6 +8,7 @@
 #include <utility>
 
 #include <ast/decl/class_declaration.hpp>
+#include <ast/expr/expressions.hpp>
 #include <lexer/lexer.hpp>
 #include <parser/parser.hpp>
 #include <semantic/checker.hpp>
@@ -145,6 +146,18 @@ ExpressionInfo ExpressionInfo::never () {
 	return { .types = {}, .fallsThrough = false };
 }
 
+bool BodyFacts::isDirectReceiver (const Expression &expression) const {
+	const Expression *e_root = &expression;
+	while (const CastExpression *ce_cast = dynamic_cast<const CastExpression *>(e_root)) {
+		const ExpressionFacts::const_iterator it_cast = expressions.find(ce_cast);
+		// A conversion operator can return a different instance. A state transition has no result.
+		if (it_cast == expressions.end() || it_cast->second.argumentContract || it_cast->second.types.empty()) return false;
+		e_root = ce_cast->operand.get();
+	}
+	const NameExpression *ne_name = dynamic_cast<const NameExpression *>(e_root);
+	return ne_name && ne_name->name.get_lexeme() == to_string(kSelf);
+}
+
 CheckedProgram::CheckedProgram (SymbolTable entry, TargetLayout layout, std::filesystem::path standardLibraryRoot, ProgramKind kind) :
         layout(layout),
         standardLibraryRoot(std::move(standardLibraryRoot)),
@@ -212,6 +225,7 @@ const TypeParameterList *typeParameters (const Symbol &symbol) {
 Analyzer::Analyzer (CheckedProgram &program) : program(program), declarations(program.declarations) {
 	declarations.emplace(&objectRoot(), DeclarationInfo{ 0, nullptr });
 	loadImports();
+	b_hasReferenceDeclarations = std::ranges::any_of(v_order, [] (const Symbol *symbol) { return asClass(symbol) || asInterface(symbol); });
 	registerIntrinsics();
 	for (const Symbol *sym : v_order) checkParameterNames(*sym);
 	for (const Symbol *sym : v_order) {

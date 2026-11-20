@@ -45,6 +45,12 @@ ResolvedType formatElement (ResolvedType type) {
 	return type;
 }
 
+bool hasStorageSize (const Analyzer &analyzer, const ResolvedType &type) {
+	const ResolvedType rt_payload = type.nullable() ? type.element() : type;
+	return rt_payload.integer() || rt_payload.floating() || rt_payload == ResolvedType(kBoolean) || rt_payload == ResolvedType(kCharacter) ||
+	       (type.nullable() && (analyzer.referenceType(rt_payload) || enumeration(rt_payload) || rt_payload == ResolvedType(kTypeinfo)));
+}
+
 [[noreturn]] void invalidDefaultFormatter (const TokenSpan &receiver, const Token &parameter) {
 	fail(Code::INVALID_PARAMETER_DEFAULT, receiver, "A default cannot call a formatter through a read-only receiver", &parameter);
 }
@@ -172,14 +178,13 @@ void BodyChecker::enumValue (const EnumFieldDeclaration &field, const Expression
 }
 
 ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node) {
-	const std::optional<Receiver> opt_receiver = receiver(*node.receiver);
+	std::optional<Receiver> opt_receiver = receiver(*node.receiver);
 	if (!opt_receiver || !opt_receiver->fallsThrough) return ExpressionInfo::never();
+	const std::string  &s_name     = node.name.get_lexeme();
 	const ResolvedType &type       = opt_receiver->type;
 	if (type == ResolvedType(kNull))
 		throw IntrinsicDiagnostic(Code::EXPLICIT_NULLABLE_TYPE, "A provider needs a typed receiver",
 		                          { { node.receiver->get_span(), "no payload type" } });
-	const ResolvedType  payload    = type.nullable() ? type.element() : type;
-	const std::string  &s_name     = node.name.get_lexeme();
 	const std::function rejectForm = [&] {
 		fail(Code::INVALID_PROVIDER_RECEIVER, node.name.get_span(), "Provider '" + s_name + "' is unavailable on this receiver form");
 	};
@@ -202,6 +207,16 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 		mutatingReceiver(*node.receiver, type);
 		return result;
 	}
+	// Built-in metadata and storage size describe the declared storage even on a narrowed path.
+	if (!opt_receiver->isType && (s_name == provider::S_TYPE || s_name == provider::S_SIZE)) {
+		const std::optional<TypedPlace> tp_place = locate(*node.receiver);
+		if (tp_place && tp_place->type != type &&
+		    (s_name == provider::S_TYPE || (tp_place->type.nullable() && hasStorageSize(analyzer, tp_place->type)))) {
+			opt_receiver->type = tp_place->type;
+			if (record) bf_facts.expressions.at(node.receiver.get()).types.front() = tp_place->type;
+		}
+	}
+	const ResolvedType payload = type.nullable() ? type.element() : type;
 	if (s_name == provider::S_TYPE) {
 		ExpressionInfo result  = selection(ProviderKind::Type, ResolvedType(kTypeinfo));
 		result.representedType = type;
@@ -230,8 +245,7 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 			if (opt_receiver->isType) rejectForm();
 			return selection(ProviderKind::StringSize, ResolvedType(kUsize));
 		}
-		if (payload.integer() || payload.floating() || payload == ResolvedType(kBoolean) || payload == ResolvedType(kCharacter) ||
-		    (type.nullable() && (analyzer.referenceType(payload) || enumeration(payload) || payload == ResolvedType(kTypeinfo)))) {
+		if (hasStorageSize(analyzer, type)) {
 			ExpressionInfo result = selection(ProviderKind::StorageSize, ResolvedType(kUsize));
 			const unsigned width  = payload == ResolvedType(kBoolean)   ? 8 :
 			                        payload == ResolvedType(kCharacter) ? 32 :

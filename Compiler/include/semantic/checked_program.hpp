@@ -332,6 +332,9 @@ struct BodyFacts {
 	std::unordered_map<const TypeCheckExpression *, std::shared_ptr<const BinaryExpression>> valueTests;
 	std::unordered_map<const Statement *, ExpressionInfo>                                    writes;
 	std::unordered_map<const Token *, const Token *>                                         references;
+
+	// Immediate uses of self retain receiver access through built-in casts.
+	[[nodiscard]] bool isDirectReceiver (const Expression &expression) const;
 };
 
 struct InstanceKey {

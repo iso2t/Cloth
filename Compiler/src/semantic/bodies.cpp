@@ -534,7 +534,7 @@ void BodyChecker::assign (const Token &target, const std::optional<ResolvedType>
 	if (b_local) {
 		if (value && b_local->type) require({ *value }, { *b_local->type }, target.get_span());
 		invalidate({ b_local->name });
-		if (represented) fs_flow.narrowed.insert_or_assign({ b_local->name, {}, PlaceFact::RepresentedType }, *represented);
+		if (represented) fs_flow.narrowed.insert_or_assign({ b_local->name, {}, PlaceFact::RepresentedType }, FlowFact{ *represented });
 		if (b_local->type) {
 			setPresence({ b_local->name }, *b_local->type, value);
 			if (value && source) receiveShape(*b_local->name, *b_local->type, shapeOf(*source, *value, slot), source->get_span());
@@ -543,7 +543,6 @@ void BodyChecker::assign (const Token &target, const std::optional<ResolvedType>
 		if (const std::optional<TypedPlace> tp_target = locate(NameExpression(target))) {
 			require({ *value }, { tp_target->type }, target.get_span());
 			invalidate(tp_target->place);
-			setPresence(tp_target->place, tp_target->type, value);
 		}
 	}
 }
@@ -614,7 +613,7 @@ bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Ex
 			bind(target, required ? *required : actual, mutableBinding);
 			receiveShape(target, required ? *required : actual, shapeOf(producer, actual, broadcast ? 0 : i), producer.get_span());
 			if (const std::optional<ResolvedType> opt_meta = result.representedAt(broadcast ? 0 : i))
-				fs_flow.narrowed.insert_or_assign({ &target, {}, PlaceFact::RepresentedType }, *opt_meta);
+				fs_flow.narrowed.insert_or_assign({ &target, {}, PlaceFact::RepresentedType }, FlowFact{ *opt_meta });
 			if (required) setPresence({ .root = &target }, *required, actual);
 		} else
 			assign(target, actual, &producer, broadcast ? 0 : i, result.representedAt(broadcast ? 0 : i));
@@ -713,26 +712,17 @@ bool BodyChecker::writeStorage (const Statement &statement, const ExpressionPtr 
 	checkFieldWrite(ei_target, target->get_span());
 	const ResolvedType &rt = ei_target.types.front();
 	writable(*target);
+	const std::optional<TypedPlace> tp_target = locate(*target);
 	if (compound || !rhs) {
 		if (const std::optional<ExpressionInfo> opt_call = updateOperator(statement, rt, op, rhs)) {
-			if (opt_call->fallsThrough) mutatingReceiver(*target, rt);
+			if (opt_call->fallsThrough && tp_target) invalidate(tp_target->place);
 			return opt_call->fallsThrough;
 		}
 	}
 	if (compound || rhs) {
-		const std::optional<TypedPlace> tp_target  = locate(*target);
 		const ResolvedType             &rt_storage = tp_target ? tp_target->type : rt;
 		const Expression               &e_value    = compound ? *compound : *rhs;
-		WriteEffects                    we_rhs;
-		BodyChecker                     bc_value    = *this;
-		bc_value.we_capture                         = &we_rhs;
-		const std::optional<ResolvedType> opt_value = bc_value.scalar(e_value, &rt_storage);
-		fs_flow                                     = std::move(bc_value.fs_flow);
-		if (we_capture) {
-			we_capture->places.insert(we_rhs.places.begin(), we_rhs.places.end());
-			we_capture->receivers.insert(we_rhs.receivers.begin(), we_rhs.receivers.end());
-			we_capture->sharedFields |= we_rhs.sharedFields;
-		}
+		const std::optional<ResolvedType> opt_value  = scalar(e_value, &rt_storage);
 		if (opt_value) {
 			require({ *opt_value }, { rt_storage }, e_value.get_span());
 			const ResolvedType shape = shapeOf(e_value, *opt_value);
@@ -740,16 +730,18 @@ bool BodyChecker::writeStorage (const Statement &statement, const ExpressionPtr 
 			if (!ei_target.arrayShapes.empty()) refineShape(ei_target.arrayShapes.front(), shape, &span);
 			rowShape(*target, e_value, shape);
 		}
-		if (tp_target) {
+		if (tp_target)
 			invalidate(tp_target->place);
-			// The RHS may have redirected the path since its receiver was captured.
-			if (we_rhs.places.empty() && we_rhs.receivers.empty() && !we_rhs.sharedFields) setPresence(tp_target->place, rt_storage, opt_value);
-		} else
+		else
 			invalidateShared();
 		return opt_value.has_value();
 	} else if (!analyzer.numeric(rt)) {
 		fail(Code::UNARY_OPERAND, op.get_span(), "Update needs a numeric target");
 	}
+	if (tp_target)
+		invalidate(tp_target->place);
+	else
+		invalidateShared();
 	return true;
 }
 
@@ -795,7 +787,8 @@ bool BodyChecker::checkStatement (const Statement &node) {
 		bind(s->name, annotation ? annotation : opt_actual, s->isMutable);
 		if (opt_actual)
 			receiveShape(s->name, annotation ? *annotation : *opt_actual, shapeOf(*s->initializer, *opt_actual), s->initializer->get_span());
-		if (ei_value.representedType) fs_flow.narrowed.insert_or_assign({ &s->name, {}, PlaceFact::RepresentedType }, *ei_value.representedType);
+		if (ei_value.representedType)
+			fs_flow.narrowed.insert_or_assign({ &s->name, {}, PlaceFact::RepresentedType }, FlowFact{ *ei_value.representedType });
 		if (annotation) setPresence({ &s->name }, *annotation, opt_actual);
 		return opt_actual.has_value();
 	}

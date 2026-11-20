@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <ast/decl/class_declaration.hpp>
+#include <ast/expr/member_call_expression.hpp>
 #include <ast/stmt/do_while_statement.hpp>
 #include <ast/stmt/while_statement.hpp>
 
@@ -19,9 +20,18 @@ const std::string S_PLAYER = R"(typedef<class> Player {
 fn<int> restore(Player p) { p -> Ready; return 4 }
 )";
 
+const BlockBody &body (const Symbol &symbol) {
+	return std::get<BlockBody>(std::get<const CallableSignature *>(symbol.declaration)->executableBody()->value);
+}
+
 const BlockBody &body (const CheckedProgram &program, const char *name) {
-	const Symbol &sym_function = program.units.front()->get_globals().at(name).front();
-	return std::get<BlockBody>(std::get<const CallableSignature *>(sym_function.declaration)->executableBody()->value);
+	return body(program.units.front()->get_globals().at(name).front());
+}
+
+const MemberCallExpression &firstDestructorCall (const Symbol &type) {
+	const Symbol              &sym_destructor = type.members.at(std::string(to_string(oTilde)) + type.name.get_lexeme()).front();
+	const ExpressionStatement &es_first       = dynamic_cast<const ExpressionStatement &>(*body(sym_destructor).statements.front());
+	return dynamic_cast<const MemberCallExpression &>(*es_first.expression);
 }
 
 const Expression &returned (const StatementPtr &stmt) {
@@ -119,6 +129,74 @@ TEST (SemanticFlow, UsesBindingAndFieldIdentityAndInvalidatesResolvedWrites) {
 	                            "fn<int> test(Base? value) { if (value is Child) return value.read(); return 0 }"));
 }
 
+TEST (SemanticFlow, JoinsInterfaceContractsAndKeepsTheDeclaredMetadataType) {
+	const std::string    s_views    = R"(typedef<interface> Read<T> { pub mt<T> read() }
+typedef<interface> Left : Read<int> {}
+typedef<interface> Right : Read<int> {}
+typedef<interface> Tag { pub mt<int> tag() }
+)";
+	const CheckedProgram cp_program = checkSource(s_views + R"(fn<int> test(Object? x) {
+    if (x is Left || x is Right) {
+        def descriptor = x::type
+        return x.read()
+    }
+    return 0
+})");
+	const IfExpression  &ie_branch =
+	        dynamic_cast<const IfExpression &>(*dynamic_cast<const ExpressionStatement &>(*body(cp_program, "test").statements.front()).expression);
+	const std::vector<StatementPtr> &v_statements = ie_branch.branches.front().statements;
+	const BindingDeclaration        &bd_metadata  = dynamic_cast<const BindingDeclaration &>(*v_statements.front());
+	const SymbolScope               &ss_globals   = cp_program.units.front()->get_globals();
+	const ResolvedType              &rt_declared  = cp_program.declarations.at(&ss_globals.at("test").front()).parameters.front();
+	EXPECT_EQ(cp_program.expressions.at(bd_metadata.initializer.get()).representedType, rt_declared);
+	const ExpressionInfo &ei_read = cp_program.expressions.at(&returned(v_statements.back()));
+	ASSERT_TRUE(ei_read.dispatch);
+	EXPECT_EQ(ei_read.dispatch->kind, DispatchKind::Interface);
+	EXPECT_EQ(ei_read.dispatch->receiver.declaration, &ss_globals.at("Read").front());
+	EXPECT_EQ(ei_read.dispatch->receiver.arguments(), ResultTypes{ ResolvedType(kInteger) });
+	expectError(s_views + "fn f(Object? x) { if (x is Left || x is Tag) x.read() }", Code::UNKNOWN_MEMBER);
+	expectError(s_views + "fn f(Object? x, Object? other) { if (x is Left || x is Right) { x = other; x.read() } }", Code::NULLABLE_PAYLOAD_ACCESS);
+	EXPECT_NO_THROW(checkSource("typedef<class> C { pub operator ::type() -> int = 3 }\nfn<int> f(Object? x) { if (x is C) return x::type; return 0 }"));
+	EXPECT_NO_THROW(checkSource(s_views + R"(typedef<class> Holder {
+    pub state<int> ::run()
+    default: pub state<void> Idle { mt<int> run() = 0 }
+    pub state<Object?> Active { mt<int> run() { if (state is Left || state is Right) return state.read(); return 0 } }
+})"));
+}
+
+TEST (SemanticFlow, KeepsIndexedFieldProofsOnlyForStableStorage) {
+	const std::string s_cell  = "typedef<struct> Cell { pub int[]? rows, pub bool flag }\n";
+	const std::string s_start = s_cell + "fn f(Cell[][] a, Cell cell, usize i) { if (a[0][0].rows != null) { ";
+	const std::string s_read  = "; a[0][0].rows.append(1) } }";
+	for (const char *s_write : { "a[0][1] = cell", "a[i][1] = cell", "a[0][i].flag = false", "a.reserve(8)" })
+		EXPECT_NO_THROW(checkSource(s_start + s_write + s_read)) << s_write;
+	for (const char *s_write : { "a[0][0] = cell", "a[i][0] = cell", "a[0][i].rows = null", "a.clear()" })
+		expectError(s_start + s_write + s_read, Code::NULLABLE_PAYLOAD_ACCESS);
+	expectError(s_cell + "fn f(Cell[] a, usize i) { if (a[i].rows != null) a[i].rows.append(1) }", Code::NULLABLE_PAYLOAD_ACCESS);
+	expectError(s_cell + "fn f(Cell[] a) { a[0].rows = [1]; a[0].rows.append(1) }", Code::NULLABLE_PAYLOAD_ACCESS);
+	expectError("fn f(int[]?[] a) { if (a[0] != null) a[0].append(1) }", Code::NULLABLE_PAYLOAD_ACCESS);
+}
+
+TEST (SemanticFlow, RevalidatesIndexedReceiversAcrossCallsAndResizes) {
+	const std::string s_cell   = "typedef<struct> Cell { pub int[]? rows }\n";
+	const std::string s_shared = s_cell + "typedef<class> Box(pub def<Cell[]> cells) {}\nfn f(Box a, Box b) { if (a.cells[0].rows != null) { ";
+	const std::string s_read   = "; a.cells[0].rows.append(1) } }";
+	EXPECT_NO_THROW(checkSource(s_shared + "b.cells.reserve(8)" + s_read));
+	expectError(s_shared + "b.cells.clear()" + s_read, Code::NULLABLE_PAYLOAD_ACCESS);
+	const std::string s_deferred = s_cell + "fn f(Cell[] a, Cell replacement, usize i) { def<int> change = { ";
+	const std::string s_argument = " = replacement; return 1 }; if (a[0].rows != null) a[0].rows.append(change) }";
+	EXPECT_NO_THROW(checkSource(s_deferred + "a[1]" + s_argument));
+	expectError(s_deferred + "a[i]" + s_argument, Code::NULLABLE_PAYLOAD_ACCESS);
+	const std::string s_getter = s_cell + "typedef<class> Bag { pub operator [](usize index) -> Cell = { null } }\n";
+	expectError(s_getter + "fn f(Bag bag) { if (bag[0].rows != null) bag[0].rows.append(1) }", Code::NULLABLE_PAYLOAD_ACCESS);
+	const std::string s_struct = s_cell + R"(fn ping() {}
+typedef<struct> Bag { pub Cell[] cells;
+    mt run() { if (cells[0].rows != null) { ping(); cells[0].rows.append(1) } }
+})";
+	EXPECT_NO_THROW(checkSource(s_struct));
+	expectError(s_struct + "\ntypedef<class> Box {}", Code::NULLABLE_PAYLOAD_ACCESS);
+}
+
 TEST (SemanticFlow, CarriesPresenceThroughGuardsAndExitingFallbacks) {
 	const std::string s_reader = "typedef<class> Reader (pub def<int> n) { pub mt<int> take(int x) = x }\n";
 	EXPECT_NO_THROW(checkSource(s_reader + "fn<int?> f(Reader? r) = r?.take(r.n)"));
@@ -188,6 +266,54 @@ TEST (SemanticFlow, CapturesReceiversAndRestrictsDestructorPrivileges) {
 	expectError("typedef<class> C { ~C { self::delete } }", Code::DELETED_CLASS_ACCESS);
 	expectError("typedef<class> C (pub def<int> n) { ~C { def alias = self; def copy = alias.n } }", Code::DELETED_CLASS_ACCESS);
 	EXPECT_NO_THROW(checkSource("fn f() { def<C?> empty = null; empty::delete; empty::delete }\ntypedef<class> C {}"));
+}
+
+TEST (SemanticFlow, KeepsDestructorReceiverAccessThroughImmediateInterfaceCasts) {
+	const std::string           s_views    = R"(typedef<interface> Read {
+    pub mt<int> read()
+    pub mt<int> report() = default (self.read())
+}
+typedef<interface> More : Read {}
+fn<int> throughAlias(Read view) = view.report()
+typedef<class> Item : More {
+    override: pub mt<int> read() = 7
+    ~Item { )";
+	const CheckedProgram        cp_program = checkSource(s_views + "((self -> More) -> Read).report(); throughAlias(self) } }");
+	const SymbolScope          &ss_globals = cp_program.units.front()->get_globals();
+	const Symbol               &sym_report = ss_globals.at("Read").front().members.at("report").front();
+	const MemberCallExpression &mc_call    = firstDestructorCall(ss_globals.at("Item").front());
+	const ExpressionInfo       &ei_call    = cp_program.expressions.at(&mc_call);
+	ASSERT_TRUE(ei_call.dispatch);
+	EXPECT_EQ(ei_call.dispatch->kind, DispatchKind::Interface);
+	EXPECT_EQ(ei_call.dispatch->contract.symbol, &sym_report);
+	EXPECT_TRUE(cp_program.isDirectReceiver(*mc_call.receiver));
+	EXPECT_FALSE(ei_call.receiverChecks.beforeArguments);
+	EXPECT_FALSE(ei_call.receiverChecks.atAccess);
+
+	const MemberCallExpression &mc_default = dynamic_cast<const MemberCallExpression &>(bodyExpression(sym_report));
+	EXPECT_TRUE(cp_program.isDirectReceiver(*mc_default.receiver));
+	const MemberCallExpression &mc_alias = dynamic_cast<const MemberCallExpression &>(bodyExpression(ss_globals.at("throughAlias").front()));
+	EXPECT_FALSE(cp_program.isDirectReceiver(*mc_alias.receiver));
+	EXPECT_TRUE(cp_program.expressions.at(&mc_alias).receiverChecks.beforeArguments);
+	EXPECT_TRUE(cp_program.expressions.at(&mc_alias).receiverChecks.atAccess);
+
+	for (const char *s_use : { "def alias = self -> More; (alias -> Read).report()", "(self -> Read)::delete", "def alias = self -> Read; println(alias)" })
+		expectError(s_views + s_use + " } }", Code::DELETED_CLASS_ACCESS);
+	EXPECT_NO_THROW(checkSource(s_views + "println((self -> Read)::str) } }"));
+}
+
+TEST (SemanticFlow, ChecksTheObjectReturnedByACastOperatorDuringDestruction) {
+	const CheckedProgram        cp_program = checkSource(R"(typedef<interface> Read { pub mt<int> read() }
+typedef<class> Proxy(pub def<Read> target) {
+    pub operator<Read> ->() = target
+    ~Proxy { (self -> Read).read() }
+})");
+	const MemberCallExpression &mc_call    = firstDestructorCall(cp_program.units.front()->get_globals().at("Proxy").front());
+	ASSERT_NE(cp_program.expressions.at(mc_call.receiver.get()).argumentContract, nullptr);
+	EXPECT_FALSE(cp_program.isDirectReceiver(*mc_call.receiver));
+	const ReceiverChecks &rc_result = cp_program.expressions.at(&mc_call).receiverChecks;
+	EXPECT_TRUE(rc_result.beforeArguments);
+	EXPECT_TRUE(rc_result.atAccess);
 }
 
 TEST (SemanticFlow, PreservesIndependentStorageAndChecksTheCapturedOwner) {

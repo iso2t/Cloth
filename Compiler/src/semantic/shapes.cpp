@@ -83,12 +83,12 @@ void BodyChecker::receiveShape (const Token &binding, const ResolvedType &declar
 	if (!hasArrayShape(declared)) return;
 	const StoragePlace              sp_retained{ &binding, {}, PlaceFact::RetainedShape }, sp_current{ &binding, {}, PlaceFact::CurrentShape };
 	const Narrowing::const_iterator it_shape = fs_flow.narrowed.find(sp_retained);
-	const ResolvedType rt_current  = refineShape(it_shape == fs_flow.narrowed.end() ? declared : it_shape->second, shape, record ? &use : nullptr);
+	const ResolvedType rt_current  = refineShape(it_shape == fs_flow.narrowed.end() ? declared : it_shape->second.type, shape, record ? &use : nullptr);
 	ResolvedType       rt_retained = rt_current;
 	const std::size_t  st_outer    = dimensions(declared).front();
 	rt_retained.suffixes[st_outer] = declared.suffixes[st_outer];
-	fs_flow.narrowed.insert_or_assign(sp_retained, rt_retained);
-	fs_flow.narrowed.insert_or_assign(sp_current, rt_current);
+	fs_flow.narrowed.insert_or_assign(sp_retained, FlowFact{ rt_retained });
+	fs_flow.narrowed.insert_or_assign(sp_current, FlowFact{ rt_current });
 	// A dynamic inner extent is captured at initialization and compared on subsequent stores at runtime.
 	if (record) bf_facts.arrayConstraints.try_emplace(&binding, rt_retained);
 }
@@ -107,7 +107,7 @@ void BodyChecker::rowShape (const Expression &target, const Expression &value, c
 	if (st_depth >= v_axes.size()) return;
 	const StoragePlace              sp_key     = StoragePlace{ binding->name, {}, PlaceFact::CurrentShape };
 	const Narrowing::const_iterator it_current = fs_flow.narrowed.find(sp_key);
-	ResolvedType                    shape      = it_current == fs_flow.narrowed.end() ? *binding->type : it_current->second;
+	ResolvedType                    shape      = it_current == fs_flow.narrowed.end() ? *binding->type : it_current->second.type;
 	const std::vector<std::size_t>  v_rowAxes  = dimensions(incoming);
 	if (st_depth + v_rowAxes.size() != v_axes.size()) return;
 	for (std::size_t st_dimension = 0; st_dimension < v_rowAxes.size(); ++st_dimension)
@@ -172,11 +172,12 @@ ExpressionInfo BodyChecker::mutateArray (const MemberCallExpression &call, const
 		const std::optional<TypedPlace> opt_place = locate(*call.receiver);
 		if (opt_place) {
 			invalidate(opt_place->place, true);
-			if (opt_place->place.fields.empty()) {
-				if (we_capture) we_capture->places.insert(opt_place->place);
+			if (opt_place->place.path.empty()) {
+				if (we_capture) we_capture->places.insert({ opt_place->place.root, {}, PlaceFact::CurrentShape });
 				receiveShape(*opt_place->place.root, rt_array, rt_shape, call.get_span());
 			}
 		}
+		if (!opt_place || sharedPlace(opt_place->place)) forgetShared(true);
 	}
 	return ei_result;
 }

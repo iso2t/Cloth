@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <functional>
-#include <iterator>
 #include <ranges>
+#include <span>
 #include <utility>
 
 #include <ast/stmt/do_while_statement.hpp>
@@ -12,15 +12,51 @@
 #include <semantic/checker.hpp>
 
 namespace cloth::semantic {
+namespace {
+unsigned classDepth (const Analyzer &analyzer, const Symbol *type) {
+	unsigned u_depth = 0;
+	while (type) {
+		++u_depth;
+		const ResultTypes                &v_parents = analyzer.declarations.at(type).parents;
+		const ResultTypes::const_iterator it_base =
+		        std::ranges::find_if(v_parents, [] (const ResolvedType &parent) { return asClass(parent.declaration); });
+		type = it_base == v_parents.end() ? nullptr : it_base->declaration;
+	}
+	return u_depth;
+}
+}
+
+bool StoragePlace::stable () const {
+	if (path.empty()) return true;
+	return std::holds_alternative<const Symbol *>(path.back()) && std::ranges::none_of(path, [] (const PlaceSegment &segment) {
+		       const IntegerValue *iv_index = std::get_if<IntegerValue>(&segment);
+		       return iv_index && iv_index->empty();
+	       });
+}
+
+bool StoragePlace::indexed () const {
+	return std::ranges::any_of(path, [] (const PlaceSegment &segment) { return std::holds_alternative<IntegerValue>(segment); });
+}
+
+bool StoragePlace::covers (const StoragePlace &proof, bool descendantsOnly) const {
+	if (root != proof.root || path.size() > proof.path.size() || (descendantsOnly && path.size() == proof.path.size())) return false;
+	return std::equal(path.begin(), path.end(), proof.path.begin(), [] (const PlaceSegment &write, const PlaceSegment &read) {
+		const IntegerValue *iv_index = std::get_if<IntegerValue>(&write);
+		return write == read || (iv_index && iv_index->empty() && std::holds_alternative<IntegerValue>(read));
+	});
+}
 
 void BodyChecker::intersect (Narrowing &facts, const Narrowing &other) {
 	for (Narrowing::iterator it = facts.begin(); it != facts.end();) {
 		const Narrowing::const_iterator peer    = other.find(it->first);
 		const bool                      b_shape = it->first.fact == PlaceFact::CurrentShape || it->first.fact == PlaceFact::RetainedShape;
-		if (peer == other.end() || (!b_shape && it->second != peer->second))
+		if (peer == other.end() || (!b_shape && it->second.type != peer->second.type))
 			it = facts.erase(it);
 		else {
-			if (b_shape) it->second = commonShape(it->second, peer->second);
+			if (b_shape) it->second.type = commonShape(it->second.type, peer->second.type);
+			std::erase_if(it->second.nominalTests, [&] (const ResolvedType &type) {
+				return std::ranges::find(peer->second.nominalTests, type) == peer->second.nominalTests.end();
+			});
 			++it;
 		}
 	}
@@ -65,26 +101,38 @@ void BodyChecker::finishStatement (const Statement &node, bool b_normal, const E
 std::optional<BodyChecker::TypedPlace> BodyChecker::locate (const Expression &expression) const {
 	std::optional<TypedPlace> tp_receiver;
 	const Token              *t_field = nullptr;
+	const IndexExpression    *ie_index = dynamic_cast<const IndexExpression *>(&expression);
 	if (const auto *ne_name = dynamic_cast<const NameExpression *>(&expression)) {
 		if (const Binding *b_local = local(ne_name->name.get_lexeme())) {
 			if (!b_local->type || b_local->deferred) return std::nullopt;
 			return TypedPlace{ { b_local->name }, *b_local->type };
 		}
 		if (!hasInstance()) return std::nullopt;
+		if (ne_name->name.get_lexeme() == to_string(kState) && owner && owner->kind == SymbolKind::State)
+			return TypedPlace{ { &owner->name }, analyzer.substitute(*analyzer.declarations.at(owner).value, m_arguments) };
 		tp_receiver = TypedPlace{ { &context.name }, selfType() };
 		if (ne_name->name.get_lexeme() == to_string(kSelf)) return tp_receiver;
 		t_field = &ne_name->name;
 	} else if (const auto *fa_field = dynamic_cast<const FieldAccessExpression *>(&expression)) {
 		tp_receiver = locate(*fa_field->receiver);
 		t_field     = &fa_field->name;
+	} else if (ie_index) {
+		tp_receiver = locate(*ie_index->array);
 	}
 	if (!tp_receiver) return std::nullopt;
-	const auto                   it_proof    = fs_flow.narrowed.find(tp_receiver->place);
-	const ResolvedType          &rt_receiver = it_proof == fs_flow.narrowed.end() ? tp_receiver->type : it_proof->second;
-	const std::vector<Candidate> v_fields    = analyzer.members(rt_receiver, t_field->get_lexeme(), SymbolKind::Field);
+	const ResolvedType rt_receiver = readType(tp_receiver->place, tp_receiver->type);
+	if (ie_index) {
+		// An overloaded getter produces a value rather than an address into array storage.
+		if (!rt_receiver.array()) return std::nullopt;
+		const IntegerLiteral *il_index = dynamic_cast<const IntegerLiteral *>(ie_index->index.get());
+		tp_receiver->place.path.emplace_back(il_index ? il_index->value : IntegerValue{});
+		tp_receiver->type = rt_receiver.element();
+		return tp_receiver;
+	}
+	const std::vector<Candidate> v_fields = analyzer.members(rt_receiver, t_field->get_lexeme(), SymbolKind::Field);
 	if (v_fields.empty()) return std::nullopt;
 	const Candidate &c_field = v_fields.front();
-	tp_receiver->place.fields.push_back(c_field.symbol);
+	tp_receiver->place.path.emplace_back(c_field.symbol);
 	tp_receiver->type = analyzer.substitute(*analyzer.declarations.at(c_field.symbol).value, c_field.arguments);
 	return tp_receiver;
 }
@@ -113,36 +161,78 @@ void BodyChecker::requireReceiverProofs (const ReceiverProofs &proofs) const {
 }
 
 void BodyChecker::setPresence (const StoragePlace &place, const ResolvedType &declared, const std::optional<ResolvedType> &value) {
-	if (declared.nullable() && value && !analyzer.mayBeAbsent(*value)) fs_flow.narrowed.insert_or_assign(place, declared.element());
+	if (declared.nullable() && value && !analyzer.mayBeAbsent(*value)) fs_flow.narrowed.insert_or_assign(place, FlowFact{ declared.element() });
 }
 
 void BodyChecker::assumePresent (const Expression &source) {
 	const std::optional<TypedPlace> tp_source = locate(source);
-	if (tp_source && tp_source->type.nullable()) fs_flow.narrowed.try_emplace(tp_source->place, tp_source->type.element());
+	if (tp_source && tp_source->place.stable() && tp_source->type.nullable()) fs_flow.narrowed.try_emplace(tp_source->place, tp_source->type.element());
+}
+
+ResolvedType BodyChecker::readType (const StoragePlace &place, const ResolvedType &declared) const {
+	const Narrowing::const_iterator it_fact = fs_flow.narrowed.find(place);
+	if (it_fact == fs_flow.narrowed.end()) return declared;
+	const FlowFact &ff_proof = it_fact->second;
+	if (ff_proof.nominalTests.empty()) return ff_proof.type;
+	ResolvedType rt_view = ff_proof.type;
+	if (rt_view.parameter) {
+		const ResultTypes                 v_bounds = analyzer.typeBounds(rt_view);
+		const ResultTypes::const_iterator it_class =
+		        std::ranges::find_if(v_bounds, [] (const ResolvedType &bound) { return asClass(bound.declaration); });
+		if (!v_bounds.empty()) rt_view = it_class == v_bounds.end() ? v_bounds.front() : *it_class;
+	}
+	const bool                        b_class  = asClass(rt_view.declaration);
+	const ResolvedType               *rt_class = nullptr;
+	std::vector<const ResolvedType *> v_interfaces;
+	for (const ResolvedType &rt_test : ff_proof.nominalTests) {
+		const bool b_interface = asInterface(rt_test.declaration);
+		if (!(b_class && b_interface) && analyzer.accepts(rt_test, ff_proof.type)) continue;
+		if (b_interface)
+			v_interfaces.push_back(&rt_test);
+		else if ((!b_class || analyzer.accepts(rt_view, rt_test)) &&
+		         (!rt_class || classDepth(analyzer, rt_test.declaration) > classDepth(analyzer, rt_class->declaration)))
+			rt_class = &rt_test;
+	}
+	if (rt_class) return *rt_class;
+	// An interface view must satisfy every surviving interface contract and be the unique such view.
+	const ResolvedType *rt_interface = nullptr;
+	for (const ResolvedType *rt_candidate : v_interfaces) {
+		if (!std::ranges::all_of(v_interfaces, [&] (const ResolvedType *view) { return analyzer.accepts(*view, *rt_candidate); })) continue;
+		if (rt_interface) return ff_proof.type;
+		rt_interface = rt_candidate;
+	}
+	return rt_interface ? *rt_interface : ff_proof.type;
 }
 
 void BodyChecker::narrowRead (ExpressionInfo &value, const StoragePlace &place) const {
-	const auto it_proof = fs_flow.narrowed.find(place);
-	if (it_proof != fs_flow.narrowed.end()) value.types.front() = it_proof->second;
+	value.types.front() = readType(place, value.types.front());
+}
+
+void BodyChecker::forgetPresence (Narrowing &facts, const StoragePlace &place) {
+	std::erase_if(facts, [&] (const Narrowing::value_type &entry) { return entry.first.fact == PlaceFact::Presence && place.covers(entry.first); });
+}
+
+bool BodyChecker::sharedPlace (const StoragePlace &place) const {
+	if (place.path.empty() || !analyzer.hasReferenceDeclarations()) return false;
+	if (place.root == &context.name || (owner && owner->kind == SymbolKind::State && place.root == &owner->name)) return true;
+	return std::ranges::any_of(place.path, [&] (const PlaceSegment &segment) {
+		const Symbol *const *sym_field = std::get_if<const Symbol *>(&segment);
+		return sym_field && asClass(analyzer.declarations.at(*sym_field).owner);
+	});
 }
 
 void BodyChecker::invalidate (const StoragePlace &place, bool descendantsOnly) {
 	if (we_capture) (descendantsOnly ? we_capture->receivers : we_capture->places).insert(place);
+	if (place.fact != PlaceFact::Presence) {
+		fs_flow.narrowed.erase(place);
+		return;
+	}
+	const bool b_sharedWrite = !descendantsOnly && sharedPlace(place);
 	std::erase_if(fs_flow.narrowed, [&] (const Narrowing::value_type &entry) {
 		const StoragePlace &sp_proof = entry.first;
 		if (sp_proof.fact == PlaceFact::RetainedShape) return false;
-		if (descendantsOnly && sp_proof.fields.empty()) return false;
-		if (sp_proof.root == place.root && (!descendantsOnly || sp_proof.fields.size() > place.fields.size()) &&
-		    sp_proof.fields.size() >= place.fields.size() && std::equal(place.fields.begin(), place.fields.end(), sp_proof.fields.begin()))
-			return true;
-		// A write through a second handle can name the same class field.
-		// Struct fields on independent value bindings occupy different storage. A shared class field
-		// can itself contain a value struct, so match the suffix starting at the last class field.
-		const auto it_shared = std::find_if(place.fields.rbegin(), place.fields.rend(),
-		                                    [&] (const Symbol *field) { return asClass(analyzer.declarations.at(field).owner) != nullptr; });
-		const auto it_end    = sp_proof.fields.end() - (descendantsOnly ? 1 : 0);
-		return it_shared != place.fields.rend() &&
-		       std::search(sp_proof.fields.begin(), it_end, std::prev(it_shared.base()), place.fields.end()) != it_end;
+		if (place.covers(sp_proof, descendantsOnly)) return true;
+		return b_sharedWrite && sharedPlace(sp_proof);
 	});
 }
 
@@ -155,11 +245,12 @@ void BodyChecker::mutatingReceiver (const Expression &receiver, const ResolvedTy
 
 void BodyChecker::invalidateShared () {
 	if (we_capture) we_capture->sharedFields = true;
-	std::erase_if(fs_flow.narrowed, [&] (const Narrowing::value_type &entry) {
-		return !entry.first.fields.empty() && (entry.first.root == &context.name || std::ranges::any_of(entry.first.fields, [&] (const Symbol *field) {
-			                                       return asClass(analyzer.declarations.at(field).owner) != nullptr;
-		                                       }));
-	});
+	forgetShared();
+}
+
+void BodyChecker::forgetShared (bool indexedOnly) {
+	std::erase_if(fs_flow.narrowed,
+	              [&] (const Narrowing::value_type &entry) { return (!indexedOnly || entry.first.indexed()) && sharedPlace(entry.first); });
 }
 
 void BodyChecker::forgetMutableMetadata (Narrowing &facts) const {
@@ -173,7 +264,8 @@ void BodyChecker::applyWrites (const Binding &binding) {
 	if (!binding.effects) return;
 	for (const StoragePlace &sp_place : binding.effects->places) invalidate(sp_place);
 	for (const StoragePlace &sp_receiver : binding.effects->receivers) invalidate(sp_receiver, true);
-	if (binding.effects->sharedFields) invalidateShared();
+	if (binding.effects->sharedFields && we_capture) we_capture->sharedFields = true;
+	forgetShared();
 }
 
 BodyChecker::TestPaths BodyChecker::splitTest (const Expression &node, const ExpressionInfo &result) {
@@ -189,17 +281,24 @@ BodyChecker::TestPaths BodyChecker::splitTest (const Expression &node, const Exp
 		                                            dynamic_cast<const NullLiteral *>(be_test->right.get()) ? be_test->left.get() :
 		                                                                                                      nullptr;
 		const std::optional<TypedPlace> tp_place  = e_operand ? locate(*e_operand) : std::nullopt;
-		if (tp_place && tp_place->type.nullable())
+		if (tp_place && tp_place->place.stable() && tp_place->type.nullable()) {
 			(o_op == oNotEqual ? *tp_paths.yes : *tp_paths.no).try_emplace(tp_place->place, tp_place->type.element());
+			forgetPresence(o_op == oNotEqual ? *tp_paths.no : *tp_paths.yes, tp_place->place);
+		}
 	} else if (const auto *tc_test = dynamic_cast<const TypeCheckExpression *>(&node); tc_test && result.testedType && result.testedType->declaration) {
 		const std::optional<TypedPlace> tp_place  = locate(*tc_test->operand);
 		const ResolvedType             &rt_target = *result.testedType;
-		if (tp_place && analyzer.referenceType(rt_target) &&
-		    analyzer.referenceType(tp_place->type.nullable() ? tp_place->type.element() : tp_place->type)) {
-			const auto          it_known   = fs_flow.narrowed.find(tp_place->place);
-			const ResolvedType &rt_source  = it_known != fs_flow.narrowed.end() ? it_known->second : tp_place->type;
-			const ResolvedType  rt_present = rt_source.nullable() ? rt_source.element() : rt_source;
-			tp_paths.yes->insert_or_assign(tp_place->place, analyzer.accepts(rt_target, rt_present) ? rt_present : rt_target);
+		if (tp_place && tp_place->place.stable() && analyzer.referenceType(rt_target)) {
+			FlowFact &ff_proof =
+			        tp_paths.yes->try_emplace(tp_place->place, tp_place->type.nullable() ? tp_place->type.element() : tp_place->type).first->second;
+			// Fields prove presence. Only a binding can expose the tested class or interface contract.
+			if (tp_place->place.path.empty() && tp_place->place.root != &context.name && analyzer.referenceType(ff_proof.type)) {
+				const std::span<const ResolvedType> sp_tests =
+				        asInterface(rt_target.declaration) ? std::span(analyzer.dispatchFor(rt_target).interfaces) : std::span(&rt_target, 1);
+				for (const ResolvedType &rt_test : sp_tests)
+					if (std::ranges::find(ff_proof.nominalTests, rt_test) == ff_proof.nominalTests.end())
+						ff_proof.nominalTests.push_back(rt_test);
+			}
 		}
 	}
 	return tp_paths;

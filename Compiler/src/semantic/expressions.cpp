@@ -193,9 +193,9 @@ ExpressionInfo BodyChecker::name (const Token &token, bool assignment) {
 		narrowRead(ei_read, { binding->name });
 		const Narrowing::const_iterator it_metadata = fs_flow.narrowed.find({ binding->name, {}, PlaceFact::RepresentedType });
 		// Flow-derived metadata is checked on the selected path after overload resolution.
-		if (record && it_metadata != fs_flow.narrowed.end()) ei_read.representedType = it_metadata->second;
+		if (record && it_metadata != fs_flow.narrowed.end()) ei_read.representedType = it_metadata->second.type;
 		const Narrowing::const_iterator current = fs_flow.narrowed.find({ binding->name, {}, PlaceFact::CurrentShape });
-		if (current != fs_flow.narrowed.end()) ei_read.arrayShapes = { refineShape(ei_read.types.front(), current->second) };
+		if (current != fs_flow.narrowed.end()) ei_read.arrayShapes = { refineShape(ei_read.types.front(), current->second.type) };
 		return ei_read;
 	}
 	checkDefaultName(token);
@@ -217,7 +217,7 @@ ExpressionInfo BodyChecker::name (const Token &token, bool assignment) {
 		const ResolvedType rt_payload = analyzer.substitute(*analyzer.declarations.at(owner).value, m_arguments);
 		if (rt_payload == ResolvedType(kVoid)) fail(Code::UNKNOWN_NAME, token.get_span(), "This state has no payload to read", &owner->name);
 		remember(token, owner->name);
-		return value(rt_payload, owner);
+		return value(readType({ &owner->name }, rt_payload), owner);
 	}
 	const bool b_builtinName = builtinFunctionNamed(spelling);
 	if (hasInstance() && !b_builtinName) {
@@ -547,10 +547,8 @@ ExpressionInfo BodyChecker::elvis (const ElvisExpression &node, const ResultType
 		return ExpressionInfo::never();
 	}
 	ResolvedType rt = ei_left.types.front();
-	if (!rt.nullable()) {
-		const std::optional<TypedPlace> tp_left = locate(*node.left);
-		if (tp_left && tp_left->type.nullable()) rt = tp_left->type;
-	}
+	const std::optional<TypedPlace> tp_left = locate(*node.left);
+	if (!rt.nullable() && tp_left && tp_left->type.nullable()) rt = tp_left->type;
 	if (!rt.nullable()) {
 		fail(Code::INVALID_ELVIS, node.op.get_span(), std::format("Left operand of {} must be nullable", to_string(oElvis)));
 	}
@@ -558,6 +556,7 @@ ExpressionInfo BodyChecker::elvis (const ElvisExpression &node, const ResultType
 	if (rt_element.floating()) floats = { true, rt_element.width };
 	BodyChecker bc_missing   = *this;
 	bc_missing.fs_flow.exits = {};
+	if (tp_left && tp_left->place.stable()) forgetPresence(bc_missing.fs_flow.narrowed, tp_left->place);
 	if (!ei_left.types.front().nullable()) bc_missing.we_capture = nullptr;
 	const ExpressionInfo ei_fallback = bc_missing.scalarInfo(*node.fallback, rt_expected && rt_expected->nullable() ? &rt : &rt_element, floats);
 	if (b_nullLiteral) {
