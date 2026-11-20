@@ -65,7 +65,7 @@ void BodyChecker::checkBindingName (const Token &name) const {
 	if (it_bound != scopes.back().end()) duplicateBinding(name, *it_bound->second.name);
 }
 
-void BodyChecker::bind (const Token &name, std::optional<ResolvedType> type, const bool mutableBinding, const bool deferred) {
+Binding &BodyChecker::bind (const Token &name, std::optional<ResolvedType> type, const bool mutableBinding, const bool deferred) {
 	if (type && type->parameter) type = analyzer.boundShape(*type);
 	const auto [fst, snd] = scopes.back().emplace(
 	        name.get_lexeme(), Binding{ .type = std::move(type), .name = &name, .mutableBinding = mutableBinding, .deferred = deferred });
@@ -73,6 +73,15 @@ void BodyChecker::bind (const Token &name, std::optional<ResolvedType> type, con
 		duplicateBinding(name, *fst->second.name);
 	}
 	if (record && fst->second.type) bf_facts.localTypes[&name] = *fst->second.type;
+	return fst->second;
+}
+
+void BodyChecker::bindDeferred (const Token &name, std::optional<ResolvedType> type, bool mutableBinding, DeferredBinding result,
+                                const std::shared_ptr<const WriteEffects> &presenceWrites) {
+	Binding &b_binding       = bind(name, std::move(type), mutableBinding, true);
+	b_binding.effects        = we_deferred;
+	b_binding.presenceWrites = presenceWrites;
+	if (record) bf_facts.deferredBindings.insert_or_assign(&name, result);
 }
 
 void BodyChecker::checkDefaultName (const Token &name) const {
@@ -619,13 +628,17 @@ bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Ex
 	if (!broadcast && result.types.size() != targets.size()) fail(Code::RECEPTION_ARITY, producer.get_span(), "Target count does not match result count");
 	if (annotations && !expected.empty() && ((broadcast && expected.size() > 1) || (!broadcast && expected.size() == 1)))
 		fail(Code::RECEPTION_ANNOTATIONS, producer.get_span(), "Use one shared annotation for a scalar or one annotation per result");
+	const FunctionBlockExpression            *fb_block    = annotations ? dynamic_cast<const FunctionBlockExpression *>(&producer) : nullptr;
+	const std::shared_ptr<const WriteEffects> we_presence = fb_block ? deferredPresenceWrites(*fb_block) : nullptr;
 	for (std::size_t i = 0; i < targets.size(); ++i) {
 		const ResolvedType &actual   = result.types[broadcast ? 0 : i];
 		const ResolvedType *required = expected.empty() ? nullptr : &expected[expected.size() == 1 ? 0 : i];
 		if (required && !required->name.empty()) require({ actual }, { *required }, producer.get_span());
 		if (std::holds_alternative<ReceivingTarget::Discard>(targets[i].value)) continue;
 		const Token &target = targets[i].get_token();
-		if (annotations) {
+		if (fb_block) {
+			bindDeferred(target, required ? *required : actual, mutableBinding, { fb_block, broadcast ? 0 : i }, we_presence);
+		} else if (annotations) {
 			if (!required) {
 				const auto *rl_values = dynamic_cast<const ResultListExpression *>(&producer);
 				checkInferredBinding(actual, rl_values && !broadcast ? rl_values->values[i]->get_span() : producer.get_span());
@@ -801,11 +814,7 @@ bool BodyChecker::checkStatement (const Statement &node) {
 		}
 		if (const FunctionBlockExpression *fb_block = dynamic_cast<const FunctionBlockExpression *>(s->initializer.get())) {
 			expression(*s->initializer);
-			const std::shared_ptr<const WriteEffects> we_presence = deferredPresenceWrites(*fb_block);
-			bind(s->name, annotation, s->isMutable, true);
-			Binding &b_block       = scopes.back().at(s->name.get_lexeme());
-			b_block.effects        = we_deferred;
-			b_block.presenceWrites = we_presence;
+			bindDeferred(s->name, annotation, s->isMutable, { fb_block, 0 }, deferredPresenceWrites(*fb_block));
 			return true;
 		}
 		if (annotation == ResolvedType(kVoid)) fail(Code::VOID_TYPE, s->type->get_span(), "A binding requires a value type");

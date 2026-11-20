@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub typedef<struct> Account {
+    pub int id, int balance;
+    pub mt<Account> withBalance(int amount) = {self.id, amount}
+}
+
+pub typedef<struct> Pair { pub int private, pub int priv }

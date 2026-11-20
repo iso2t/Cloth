@@ -359,6 +359,56 @@ TEST (SemanticChecking, AppliesDeferredWritesOnlyWhenTheBindingIsRead) {
 	expectError(s_delete + "destroy; return item.value }", cde::DiagnosticCode::DELETED_CLASS_ACCESS);
 }
 
+TEST (SemanticChecking, RecordsEachNamedDeferredResultByPosition) {
+	const CheckedProgram           cp_program  = checkSource("fn<bool,int> f(){def<int,string,bool> n,_,ok={return 1,\"value\",true};return ok,n}");
+	const CallableSignature       &cs_function = *std::get<const CallableSignature *>(cp_program.units.front()->get_globals().at("f").front().declaration);
+	const BlockBody               &bb_body     = std::get<BlockBody>(cs_function.executableBody()->value);
+	const BindingGroupDeclaration &bg_group    = dynamic_cast<const BindingGroupDeclaration &>(*bb_body.statements.at(0));
+	const FunctionBlockExpression &fb_block    = dynamic_cast<const FunctionBlockExpression &>(*bg_group.initializer);
+	const Token                   &t_number = bg_group.targets.at(0).get_token(), &t_flag = bg_group.targets.at(2).get_token();
+	ASSERT_EQ(cp_program.deferredBindings.size(), 2u);
+	EXPECT_EQ(cp_program.deferredBindings.at(&t_number).block, &fb_block);
+	EXPECT_EQ(cp_program.deferredBindings.at(&t_flag).block, &fb_block);
+	EXPECT_EQ(cp_program.deferredBindings.at(&t_number).resultIndex, 0u);
+	EXPECT_EQ(cp_program.deferredBindings.at(&t_flag).resultIndex, 2u);
+	const ReturnStatement      &rs_return  = dynamic_cast<const ReturnStatement &>(*bb_body.statements.at(1));
+	const ResultListExpression &rl_results = dynamic_cast<const ResultListExpression &>(*rs_return.value);
+	EXPECT_EQ(cp_program.expressions.at(rl_results.values.at(0).get()).binding, &t_flag);
+	EXPECT_EQ(cp_program.expressions.at(rl_results.values.at(1).get()).binding, &t_number);
+	EXPECT_EQ(cp_program.localTypes.at(&t_number), ResolvedType(kInteger));
+	EXPECT_EQ(cp_program.localTypes.at(&t_flag), ResolvedType(kBoolean));
+	using Code = cde::DiagnosticCode;
+	expectError("fn f(){def<int,bool> a,b={return 1,true};b=false}", Code::BLOCK_ASSIGNMENT);
+	expectError("fn f(){def<int,bool> a,b={return true,1}}", Code::RETURN_TYPE);
+	EXPECT_NO_THROW(checkSource("fn f(){def<int,bool> a,b=1,true;b=false}"));
+}
+
+TEST (SemanticChecking, AppliesGroupedDeferredWritesOnEveryRead) {
+	using Code                 = cde::DiagnosticCode;
+	const std::string s_source = "fn<usize> use(string? text){if(text==null)return 0\ndef<int,bool> a,b={text=null;return 1,true}\n";
+	EXPECT_NO_THROW(checkSource(s_source + "return text::size}"));
+	for (const std::string s_reads : { "a", "b", "a;text=\"restored\";a", "a;text=\"restored\";b" })
+		expectError(s_source + s_reads + ";return text::size}", Code::NULLABLE_PAYLOAD_ACCESS);
+	expectError(s_source + "def<void> nested={b};nested;return text::size}", Code::NULLABLE_PAYLOAD_ACCESS);
+	const std::string s_loop = "fn<usize> use(string? text,bool again){if(text==null)return 0\nwhile(again){def<int,bool> _,b={text=null;return 1,true}\n";
+	EXPECT_NO_THROW(checkSource(s_loop + "}\nreturn text::size}"));
+	expectError(s_loop + "b}\nreturn text::size}", Code::NULLABLE_PAYLOAD_ACCESS);
+}
+
+TEST (SemanticChecking, TracksOwnershipOfTheSelectedDeferredResult) {
+	using Code                   = cde::DiagnosticCode;
+	const std::string s_function = "typedef<class> Item {pub def<int> value=1}\nfn<int> use(Item x,Item y){";
+	const std::string s_pair     = s_function + "def<Item,Item> a,b={return x,y};";
+	expectError(s_pair + "b::delete;return y.value}", Code::DELETED_CLASS_ACCESS);
+	EXPECT_NO_THROW(checkSource(s_pair + "b::delete;return x.value}"));
+	expectError(s_pair + "b;y=x;b::delete;return x.value}", Code::DELETED_CLASS_ACCESS);
+	const std::string s_delete = s_function + "def<int,bool> a,b={x::delete;return 1,true};";
+	EXPECT_NO_THROW(checkSource(s_delete + "return x.value}"));
+	expectError(s_delete + "b;return x.value}", Code::DELETED_CLASS_ACCESS);
+	expectError(s_function + "def<int> destroy={x::delete;return 1};def<int,bool> _,ok={return destroy,true};ok;return x.value}",
+	            Code::DELETED_CLASS_ACCESS);
+}
+
 TEST (SemanticChecking, EnforcesMemberVisibilityAndSpecializesReceiverTypes) {
 	EXPECT_NO_THROW(checkSource(R"(pub typedef<class> Box<T>(def<T> item) {
     pub mt<T> get() = self.item
@@ -372,6 +422,23 @@ fn<int> use(Box<int> box) = box.get()
 	expectError("pub typedef<enum> E { pub A, B }\nfn<E> leak() = E.B", Code::PRIVATE_CLASS_MEMBER);
 	expectError("pub typedef<class> C { typedef<struct> Hidden {} }\nfn use(C.Hidden h) {}", Code::PRIVATE_NESTED_TYPE);
 	expectError("typedef<class> C { pub mt<int> pick(bool x) = 1\nmt<int> pick(int x) = x }\nfn<int> leak(C c) = c.pick(2)", Code::PRIVATE_CLASS_MEMBER);
+}
+
+TEST (SemanticChecking, ChecksPositionalFieldVisibilityInsideAndOutsideTheDeclaringStruct) {
+	const std::string    s_account   = R"(pub typedef<struct> Account {
+    pub int id, int balance;
+    pub mt<Account> withBalance(int amount) = {self.id, amount}
+}
+)";
+	const CheckedProgram cp_program  = checkSource(s_account);
+	const Symbol        &sym_account = cp_program.units.front()->get_globals().at("Account").front();
+	const Expression    &e_literal   = bodyExpression(sym_account.members.at("withBalance").front());
+	const ResultTypes   &v_types     = cp_program.expressions.at(&e_literal).types;
+	ASSERT_EQ(v_types.size(), 1u);
+	EXPECT_EQ(v_types.front().declaration, &sym_account);
+
+	expectDiagnosticLabels(s_account + "fn<Account> make() = {7, 100}", cde::DiagnosticCode::PRIVATE_CLASS_MEMBER, "'balance' is private",
+	                       { { "5:26-5:29", "'balance' is private" }, { "2:21-2:28", "declared here" } });
 }
 
 TEST (SemanticChecking, ChecksFieldWritesNullableGuardsLoopsAndMultiResultAssignments) {
@@ -468,6 +535,29 @@ TEST (SemanticChecking, LabelsTheClosingInterfaceParentAndOnlyTheEdgesOnItsCycle
 	        { { "2:27-2:31", "parent closes this cycle" }, { "1:20-1:21", "interface declared here" }, { "1:27-1:33", "parent on the cycle" } });
 	EXPECT_NO_THROW(
 	        checkSource("typedef<interface> Top {}\ntypedef<interface> L : Top {}\ntypedef<interface> R : Top {}\ntypedef<interface> Bottom : L, R {}"));
+}
+
+TEST (SemanticChecking, DistinguishesPrivateInterfaceOverridesFromInheritedPrivateMethods) {
+	using Code                          = cde::DiagnosticCode;
+	const std::string s_interface       = "typedef<interface> Readable { pub mt<int> read() }\n";
+	const std::string s_privateOverride = s_interface + R"(typedef<class> Base(int n) : Readable {
+    pub Base() : (0) {}
+    override: mt<int> read() = 1
+}
+)";
+	const std::string s_child           = "typedef<interface> Other { pub mt<int> read() }\ntypedef<class> Child : Base(), Other {}";
+	const std::string s_invalid         = "Interface implementation requires pub and matching ordered result types";
+	for (const std::string &s_source : { s_privateOverride, s_privateOverride + s_child }) {
+		expectDiagnosticLabels(s_source, Code::INVALID_INTERFACE_OVERRIDE, s_invalid, { { "4:23-4:27", s_invalid }, { "1:43-1:47", "declared here" } });
+	}
+
+	const std::string s_missing = "Missing implementation of 'read'";
+	expectDiagnosticLabels(s_interface + R"(typedef<class> Base(int n) {
+    pub Base() : (0) {}
+    mt<int> read() = 1
+}
+typedef<class> Child : Base(), Readable {})",
+	                       Code::MISSING_INTERFACE_IMPLEMENTATION, s_missing, { { "6:16-6:21", s_missing }, { "1:43-1:47", "declared here" } });
 }
 
 TEST (SemanticChecking, ChecksInheritedOverloadsAndGenericBounds) {

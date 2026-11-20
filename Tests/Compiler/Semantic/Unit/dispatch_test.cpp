@@ -107,6 +107,44 @@ typedef<interface> B { pub mt<int> pick() = default (2) }
 	expectError("typedef<interface> A<T> {}\ntypedef<interface> B : A<int> {}\ntypedef<class> C : B, A<bool> {}", Code::CONFLICTING_INTERFACE_APPLICATION);
 }
 
+TEST (SemanticDispatch, SelectsPublicInterfaceImplementationsDeclaredOrInheritedByTheClass) {
+	const CheckedProgram cp_program   = checkSource(R"(typedef<interface> Readable { pub mt<int> read() }
+typedef<class> Direct : Readable { override: pub mt<int> read() = 1 }
+typedef<class> Base(int n) {
+    pub Base() : (0) {}
+    pub mt<int> read() = 2
+}
+typedef<class> Child : Base(), Readable {}
+fn<int> direct(Direct item) = item.read()
+fn<int> inherited(Child item) = item.read()
+)");
+	const Symbol        &sym_contract = global(cp_program, "Readable").members.at("read").front();
+	const TypeDispatch  &td_direct    = tableFor(cp_program, "direct");
+	const TypeDispatch  &td_child     = tableFor(cp_program, "inherited");
+	ASSERT_EQ(td_direct.interfaceTargets.size(), 1u);
+	ASSERT_EQ(td_child.interfaceTargets.size(), 1u);
+	EXPECT_EQ(td_direct.interfaceTargets.front().contract.symbol, &sym_contract);
+	EXPECT_EQ(td_child.interfaceTargets.front().contract.symbol, &sym_contract);
+	EXPECT_EQ(td_direct.interfaceTargets.front().implementation.symbol, &global(cp_program, "Direct").members.at("read").front());
+	EXPECT_EQ(td_child.interfaceTargets.front().implementation.symbol, &global(cp_program, "Base").members.at("read").front());
+}
+
+TEST (SemanticDispatch, UsesAnInterfaceDefaultWhenTheInheritedMethodIsPrivate) {
+	const CheckedProgram cp_fallback = checkSource(R"(typedef<interface> Readable { pub mt<int> read() = default (7) }
+typedef<class> Base(int n) {
+    pub Base() : (0) {}
+    mt<int> read() = 1
+}
+typedef<class> Child : Base(), Readable {}
+fn<int> readChild(Child item) = item.read()
+)");
+	const TypeDispatch  &td_child    = tableFor(cp_fallback, "readChild");
+	ASSERT_EQ(td_child.interfaceTargets.size(), 1u);
+	const InterfaceTarget &it_read = td_child.interfaceTargets.front();
+	EXPECT_EQ(it_read.contract.symbol, &global(cp_fallback, "Readable").members.at("read").front());
+	EXPECT_EQ(it_read.implementation, it_read.contract);
+}
+
 TEST (SemanticDispatch, PreservesPrivateHelpersAndChecksSharedConstructorContracts) {
 	EXPECT_NO_THROW(checkSource(R"(typedef<interface> I {
     mt<int> secret() = default (2)

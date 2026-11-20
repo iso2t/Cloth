@@ -7,3 +7,9 @@
 # RUN: %expect_exit --empty-stdout 1 %cloth --src "%/S/Inputs/modules/wildcard.co" 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=WILDCARD --input-file "%t.err"
 # WILDCARD: [C3020] Error: Unknown name 'helper'
+# RUN: %expect_exit --empty-stdout 1 %cloth --src "%/S/Inputs/modules/private_field_literal.co" 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=FIELD --input-file "%t.err"
+# FIELD: [C3089] Error: 'balance' is private
+# FIELD: private_field_literal.co:5:26
+# FIELD: accounts.co:4:21
+# FIELD: declared here

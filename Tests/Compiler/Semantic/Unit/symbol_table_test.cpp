@@ -54,6 +54,19 @@ typedef<struct> Later { int private }
 	EXPECT_EQ(cs_callable->parameters[0].type.get_spelling(), "Later");
 }
 
+TEST (SemanticSymbols, AcceptsPrivateAndPrivAsFieldTypeNames) {
+	const SymbolTable  st_table   = collect(R"(typedef<struct> private {}
+pub typedef<struct> priv {}
+typedef<struct> Pair { private left, priv right }
+)");
+	const SymbolScope &ss_globals = st_table.get_globals();
+	expectSymbol(ss_globals, "private", SymbolKind::Type);
+	expectSymbol(ss_globals, "priv", SymbolKind::Type, Visibility::Public);
+	const SymbolScope &ss_pair = ss_globals.at("Pair").front().members;
+	expectSymbol(ss_pair, "left", SymbolKind::Field);
+	expectSymbol(ss_pair, "right", SymbolKind::Field);
+}
+
 TEST (SemanticSymbols, KeepsClassAndStateMembersInTheirOwningScopes) {
 	const SymbolTable  st_table   = collect(R"(pub typedef<class> Lamp(pub def<int> light, int setting) {
     def<int> power = unknown()

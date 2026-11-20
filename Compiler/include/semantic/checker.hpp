@@ -243,10 +243,10 @@ class Analyzer {
 
 	struct InstanceWork {
 		const InstanceKey  &key;
-		GenericInstance    *instance;
-		const InstanceWork *parent;
+		GenericInstance    *instance{};
+		const InstanceWork *parent{};
 		TokenSpan           where;
-		std::size_t         depth;
+		std::size_t         depth{};
 	};
 
 	std::unordered_map<const Symbol *, std::vector<InstanceUse>> m_uses;
@@ -406,9 +406,9 @@ class BodyChecker {
 	};
 
 	struct CapturedOperand {
-		const Expression      *node;
+		const Expression      *node{};
 		ExpressionInfo         value;
-		const CapturedOperand *previous;
+		const CapturedOperand *previous{};
 	};
 
 	const CapturedOperand *captured      = nullptr;
@@ -566,7 +566,9 @@ class BodyChecker {
 
 	[[nodiscard]] const Binding *local (const std::string &name) const;
 	[[nodiscard]] const Binding *assignmentBinding (const Token &target) const;
-	void                         bind (const Token &name, std::optional<ResolvedType> type, bool mutableBinding, bool deferred = false);
+	Binding                     &bind (const Token &name, std::optional<ResolvedType> type, bool mutableBinding, bool deferred = false);
+	void                         bindDeferred (const Token &name, std::optional<ResolvedType> type, bool mutableBinding, DeferredBinding result,
+	                                           const std::shared_ptr<const WriteEffects> &presenceWrites);
 	void                         checkBindingName (const Token &name) const;
 	void                         checkDefaultName (const Token &name) const;
 	bool                         readOnlyDefaultRoot (const Expression &node) const;

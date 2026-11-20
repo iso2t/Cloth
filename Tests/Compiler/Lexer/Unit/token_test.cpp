@@ -40,6 +40,17 @@ TEST (LexerKeywords, PubAndBoolInFunctionSignature) {
 	expectToken(v_tokens[10], TokenType::EndOfFile, "", 28, 28);
 }
 
+TEST (LexerKeywords, PrivateAndPrivAreOrdinaryIdentifiers) {
+	Lexer                    l_lexer("pub private priv");
+	const std::vector<Token> v_tokens = l_lexer.scanTokens();
+
+	ASSERT_EQ(v_tokens.size(), 4u);
+	expectToken(v_tokens[0], TokenType::Keyword, "pub", 1, 4);
+	expectToken(v_tokens[1], TokenType::Identifier, "private", 5, 12);
+	expectToken(v_tokens[2], TokenType::Identifier, "priv", 13, 17);
+	expectToken(v_tokens[3], TokenType::EndOfFile, "", 17, 17);
+}
+
 TEST (LexerSpans, Utf8StringUsesByteColumns) {
 	Lexer                    l_lexer("\"\xC3\xA9\" x");
 	const std::vector<Token> v_tokens = l_lexer.scanTokens();

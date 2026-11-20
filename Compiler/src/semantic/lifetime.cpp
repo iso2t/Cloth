@@ -197,7 +197,6 @@ class LifetimeChecker {
 	BodyFacts                                               &bf_facts;
 	const OwningListMethods                                 &olm_list;
 	std::map<const LoopTarget *, LoopPaths>                  m_jumps;
-	std::map<const Token *, const FunctionBlockExpression *> m_deferred;
 	std::map<const GuardedReceiver *, Handle>                m_guarded;
 	// Only enclosing writes observe projected class receivers. Capture them before evaluating the RHS.
 	std::map<const Expression *, Handle> m_observed;
@@ -233,6 +232,7 @@ class LifetimeChecker {
 	void                         destroyOwned (Identity list, const Token &site, Path &path) const;
 	void                         store (const Token &name, Handle handle, Path &path);
 	Values                       runDeferred (const FunctionBlockExpression &block, Path &path);
+	void                              checkDeferred (const FunctionBlockExpression &block, Path path);
 	[[nodiscard]] const Token   *binding (const Token &name) const;
 	[[nodiscard]] StorageOwner   storageOwner (const Expression &target) const;
 	void   write (const Statement &node, const Expression &target, const ExpressionPtr &value, const ExpressionPtr &compound, Path &path);
@@ -802,8 +802,11 @@ Values LifetimeChecker::expression (const Expression &node, Path &path) {
 	ReceiverChecks  rc_checks;
 	Values          v_result;
 	if (const NameExpression *ne_name = dynamic_cast<const NameExpression *>(&node)) {
-		if (ei_info.binding && m_deferred.contains(ei_info.binding)) {
-			v_result = runDeferred(*m_deferred.at(ei_info.binding), path);
+		const std::unordered_map<const Token *, DeferredBinding>::const_iterator it_deferred = bf_facts.deferredBindings.find(ei_info.binding);
+		if (it_deferred != bf_facts.deferredBindings.end()) {
+			const DeferredBinding &db_binding = it_deferred->second;
+			const Values           v_values   = runDeferred(*db_binding.block, path);
+			if (!ei_info.types.empty() && !v_values.empty()) v_result.push_back(v_values.at(db_binding.resultIndex));
 		} else if (ei_info.binding || bf_facts.isDirectReceiver(node)) {
 			const Token                                          *t_key      = ei_info.binding ? ei_info.binding : &lb_job.context->name;
 			const std::map<const Token *, Handle>::const_iterator it_binding = path.bindings.find(t_key);
@@ -1064,6 +1067,15 @@ Values LifetimeChecker::runDeferred (const FunctionBlockExpression &block, Path 
 	return std::move(path.values);
 }
 
+void LifetimeChecker::checkDeferred (const FunctionBlockExpression &block, Path path) {
+	unknownEffect(path);
+	for (std::map<const Token *, Handle>::value_type &entry : path.bindings) {
+		const std::unordered_map<const Token *, ResolvedType>::const_iterator it_type = bf_facts.localTypes.find(entry.first);
+		if (it_type != bf_facts.localTypes.end()) entry.second = fresh(it_type->second);
+	}
+	runDeferred(block, path);
+}
+
 void LifetimeChecker::statement (const Statement &node, Path &path) {
 	path.values.clear();
 	if (const ExpressionStatement *es_expression = dynamic_cast<const ExpressionStatement *>(&node)) {
@@ -1074,14 +1086,7 @@ void LifetimeChecker::statement (const Statement &node, Path &path) {
 		path.reachable = false;
 	} else if (const BindingDeclaration *bd_binding = dynamic_cast<const BindingDeclaration *>(&node)) {
 		if (const FunctionBlockExpression *fb_body = dynamic_cast<const FunctionBlockExpression *>(bd_binding->initializer.get())) {
-			m_deferred[&bd_binding->name] = fb_body;
-			Path p_deferred               = path;
-			unknownEffect(p_deferred);
-			for (std::map<const Token *, Handle>::value_type &entry : p_deferred.bindings) {
-				const decltype(bf_facts.localTypes)::const_iterator it_type = bf_facts.localTypes.find(entry.first);
-				if (it_type != bf_facts.localTypes.end()) entry.second = fresh(it_type->second);
-			}
-			runDeferred(*fb_body, p_deferred);
+			checkDeferred(*fb_body, path);
 		} else
 			store(bd_binding->name, scalar(*bd_binding->initializer, path), path);
 	} else if (const AssignmentStatement *as_assignment = dynamic_cast<const AssignmentStatement *>(&node)) {
@@ -1108,6 +1113,10 @@ void LifetimeChecker::statement (const Statement &node, Path &path) {
 			rc_write.atAccess |= checks.atAccess;
 		}
 	} else if (const BindingGroupDeclaration *bg_group = dynamic_cast<const BindingGroupDeclaration *>(&node)) {
+		if (const FunctionBlockExpression *fb_block = dynamic_cast<const FunctionBlockExpression *>(bg_group->initializer.get())) {
+			checkDeferred(*fb_block, path);
+			return;
+		}
 		const Values values = expression(*bg_group->initializer, path);
 		for (std::size_t st_index = 0; path.reachable && st_index < bg_group->targets.size(); ++st_index)
 			if (std::holds_alternative<ReceivingTarget::Named>(bg_group->targets[st_index].value))

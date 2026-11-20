@@ -129,10 +129,12 @@ BodyChecker::SourceFlow BodyChecker::collectWrites (const std::vector<StatementP
 				shadow(scopes.back(), bd_local->name);
 			}
 		} else if (const BindingGroupDeclaration *bg_group = dynamic_cast<const BindingGroupDeclaration *>(sp_statement.get())) {
-			sf_result = sf_result.then(collectWrites(*bg_group->initializer, writes));
+			const FunctionBlockExpression            *fb_block = dynamic_cast<const FunctionBlockExpression *>(bg_group->initializer.get());
+			const std::shared_ptr<const WriteEffects> we_block = fb_block ? deferredPresenceWrites(*fb_block) : nullptr;
+			if (!fb_block) sf_result = sf_result.then(collectWrites(*bg_group->initializer, writes));
 			for (const ReceivingTarget &rt_slot : bg_group->targets)
 				if (const ReceivingTarget::Named *nt_name = std::get_if<ReceivingTarget::Named>(&rt_slot.value))
-					shadow(scopes.back(), nt_name->token);
+					shadow(scopes.back(), nt_name->token, we_block);
 		} else if (const AssignmentStatement *as_write = dynamic_cast<const AssignmentStatement *>(sp_statement.get())) {
 			fn_write(NameExpression(as_write->name));
 			sf_result = sf_result.then(collectWrites(*as_write->value, writes));

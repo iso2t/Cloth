@@ -28,6 +28,7 @@ namespace cloth {
 
 struct BinaryExpression;
 struct ClassParentClause;
+struct FunctionBlockExpression;
 struct GenericInstance;
 struct ForStatement;
 struct LoopTarget;
@@ -316,6 +317,12 @@ struct Iteration {
 
 using ExpressionFacts = std::unordered_map<const Expression *, ExpressionInfo>;
 
+// Each read evaluates the whole block and selects this binding's result.
+struct DeferredBinding {
+	const FunctionBlockExpression *block;
+	std::size_t                    resultIndex;
+};
+
 struct BodyFacts {
 	std::unordered_map<const Expression *, ProviderSelection>           textConversions;
 	std::unordered_map<const ForStatement *, Iteration>                 iterations;
@@ -328,6 +335,7 @@ struct BodyFacts {
 	ExpressionFacts                                                     expressions;
 	std::unordered_map<const ClassParentClause *, ExpressionInfo>       parentConstructors;
 	std::unordered_map<const Token *, ResolvedType>                     localTypes;
+	std::unordered_map<const Token *, DeferredBinding>                  deferredBindings;
 	// An "is" target can resolve to a value after parsing. Keep that expression alive with its bindings.
 	std::unordered_map<const TypeCheckExpression *, std::shared_ptr<const BinaryExpression>> valueTests;
 	std::unordered_map<const Statement *, ExpressionInfo>                                    writes;

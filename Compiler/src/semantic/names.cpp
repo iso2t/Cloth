@@ -109,9 +109,10 @@ void BodyChecker::resolveNames (const Statement &node) {
 		for (const TypeReference &tr_slot : bg_group->types)
 			if (!tr_slot.is_placeholder()) analyzer.useWidthAnnotation(tr_slot, context);
 		resolveNames(*bg_group->initializer);
+		const bool b_deferred = dynamic_cast<const FunctionBlockExpression *>(bg_group->initializer.get()) != nullptr;
 		for (const ReceivingTarget &rt_target : bg_group->targets)
 			if (const ReceivingTarget::Named *nt_name = std::get_if<ReceivingTarget::Named>(&rt_target.value))
-				bind(nt_name->token, {}, bg_group->isMutable);
+				bind(nt_name->token, {}, bg_group->isMutable, b_deferred);
 	} else if (const ExpressionStatement *es_value = dynamic_cast<const ExpressionStatement *>(&node)) {
 		resolveNames(*es_value->expression);
 	} else if (const ReturnStatement *rs_return = dynamic_cast<const ReturnStatement *>(&node)) {

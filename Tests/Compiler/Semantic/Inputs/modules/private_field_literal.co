@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using accounts: Account
+
+fn<Account> make() = {7, 100}
