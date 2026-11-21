@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from pathlib import Path
+import platform
 import shlex
 import sys
 
@@ -29,9 +30,15 @@ if "case" in params:
         lit_config.fatal(f"Select a .co, .clib, or .test fixture. Received {case}.")
 
 config.test_exec_root = params["exec_root"]
+config.available_features.add(sys.platform)
+if platform.machine().lower() in {"amd64", "x86_64", "x86", "i386", "i486", "i586", "i686"}:
+    config.available_features.add("x86")
 config.substitutions.extend([
     ("%python", tool_path(sys.executable)),
     ("%cloth", tool_path(params["cloth"])),
     ("%filecheck", tool_path(params["filecheck"])),
+    ("%llvm_readobj", tool_path(params.get("readobj", "llvm-readobj"))),
+    ("%cc", params.get("cc", "gcc" if sys.platform == "win32" else "cc")),
+    ("%host_os", sys.platform),
     ("%expect_exit", tool_path(sys.executable) + " " + tool_path(suite / "Support" / "expect_exit.py")),
 ])

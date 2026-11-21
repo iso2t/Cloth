@@ -1,9 +1,9 @@
 Shuttle
 =======
 
-Shuttle is the Rust CLI for the Cloth build system. Object emission is
-unavailable in this checkout. The ``shuttle build`` command reports this
-on stderr and exits with a failure status.
+Shuttle is the Rust CLI for the Cloth build system. The ``shuttle build``
+command reports that object emission is unavailable through Shuttle
+and exits with a failure status.
 
 To validate the standard library, run ``make run`` from the Cloth
 repository root, or ``mingw32-make run`` on Windows with MinGW. This

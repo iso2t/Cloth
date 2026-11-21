@@ -3,6 +3,7 @@
 import argparse
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,8 @@ def main():
     parser.add_argument("--single", action="store_true")
     parser.add_argument("compiler", type=Path)
     parser.add_argument("selection", type=Path)
+    parser.add_argument("--readobj", default="llvm-readobj")
+    parser.add_argument("--cc", nargs=argparse.REMAINDER, help="C driver and flags used to link native objects")
     args = parser.parse_args()
 
     suite = Path(__file__).resolve().parents[1]
@@ -33,6 +36,8 @@ def main():
 
     lit = find_tool("LIT", "llvm-lit", "lit")
     filecheck = find_tool("FILECHECK", "FileCheck")
+    cc = args.cc or ["gcc" if os.name == "nt" else "cc"]
+    cc_path = Path(shutil.which(cc[0]) or cc[0]).as_posix()
     compiler = args.compiler.resolve()
     output = compiler.parent / "Tests"
     output.mkdir(exist_ok=True)
@@ -41,6 +46,8 @@ def main():
         lit, "-v",
         "-D", f"cloth={compiler}",
         "-D", f"filecheck={filecheck}",
+        "-D", f"readobj={args.readobj}",
+        "-D", f"cc={shlex.join([cc_path, *cc[1:]])}",
         "-D", f"exec_root={run_dir}",
     ]
     if args.single:

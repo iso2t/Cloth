@@ -39,6 +39,7 @@ class CompilerOptions {
 	void build_defaults ();
 
 	std::optional<std::filesystem::path> p_sourcePath;
+	std::optional<std::filesystem::path> p_objectPath;
 	TargetLayout                         targetLayout;
 	std::filesystem::path                standardLibraryRoot;
 	ProgramKind                          kind = ProgramKind::Library;

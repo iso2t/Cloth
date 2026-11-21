@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <backend/backend.hpp>
-
 #include <exception>
 #include <iostream>
 #include <ostream>
@@ -13,6 +11,7 @@
 #include <cde/cloth_diagnostic.hpp>
 #include <cde/diagnostic_reporter.hpp>
 #include <errors/cloth_errors.hpp>
+#include <file/object_file.hpp>
 #include <file/source_file.hpp>
 #include <lexer/lexer.hpp>
 #include <parser/parser.hpp>
@@ -53,10 +52,10 @@ int main (const int argc, char *argv[]) try {
 		return PRINT_LEXED_ONLY;
 	}
 
-	cloth::Parser      p_parser{ l_lexer };
-	cloth::SymbolTable st_symbols{ p_parser.parse() };
-	std::ignore = backend::BackendObject{ cloth::CheckedProgram{ std::move(st_symbols), co_options.targetLayout, co_options.standardLibraryRoot,
-		                                                     co_options.kind } };
+	cloth::Parser               p_parser{ l_lexer };
+	cloth::SymbolTable          st_symbols{ p_parser.parse() };
+	const cloth::CheckedProgram cp_program{ std::move(st_symbols), co_options.targetLayout, co_options.standardLibraryRoot, co_options.kind };
+	if (co_options.p_objectPath) cloth::emitObjectFile(cp_program, *co_options.p_objectPath);
 
 	return SUCCESS;
 } catch (const cde::ClothDiagnostic &error) {

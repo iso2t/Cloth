@@ -3,8 +3,20 @@
 How To Build
 ============
 
-The native compiler uses GNU Make, a C++20 compiler and a C compiler for
-its bundled libraries. Run these commands from the Cloth repository root.
+The native compiler uses GNU Make, a C++20 compiler, a C compiler for its
+bundled libraries, and the LLVM development headers and libraries with
+native target support. Make queries ``llvm-config`` from ``PATH``.
+Set ``LLVM_CONFIG`` to select another installation. On Ubuntu 24.04,
+install ``llvm-18-dev`` and export ``LLVM_CONFIG=llvm-config-18``.
+Use a separate ``BUILD_DIR`` for each LLVM installation when switching
+between them.
+
+On Windows, the MSYS2 UCRT64 package ``mingw-w64-ucrt-x86_64-llvm``
+supplies the development files. MinGW also supports an MSVC-built LLVM
+SDK with ``LLVM-C.lib``. Keep the selected LLVM installation's binary
+directory on ``PATH`` so Windows can load its DLL.
+
+Run these commands from the Cloth repository root.
 
 On Linux and macOS, use GNU Make.
 

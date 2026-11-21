@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# RUN: mkdir -p "%t"
+# RUN: cd "%t" && echo "pub fn<int> main () { return 42 }" > entry.co
+# RUN: cd "%t" && %expect_exit --empty-stdout --empty-stderr 0 %cloth --src entry.co
+# RUN: cd "%t" && %expect_exit --empty-stdout --empty-stderr 0 %cloth --src entry.co --kind executable
+# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object answer.o 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=BLOCK --input-file "%t.err"
+# BLOCK: [C4040] Error: LLVM lowering requires an entry point with an expression body
+# BLOCK: entry.co:1:21
+# BLOCK: pub fn<int> main () { return 42 }
+# BLOCK: unsupported function body
+# RUN: cd "%t" && %python -c "from pathlib import Path; assert list(Path('.').iterdir()) == [Path('entry.co')]"
+
+# RUN: echo "previous object" > "%t.saved"
+# RUN: echo "previous object" > "%t/answer.o"
+# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object answer.o 2> "%t.err"
+# RUN: diff "%t.saved" "%t/answer.o"
+# RUN: echo "pub fn<int> helper () = 7" > "%t/helper.co"
+# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src helper.co --emit-object answer.o 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=FRONTEND --input-file "%t.err"
+# FRONTEND: [C3034] Error: Executable program requires a main function
+# RUN: diff "%t.saved" "%t/answer.o"
+
+# RUN: echo "using helper: helper" > "%t/entry.co"
+# RUN: echo "pub fn<int> main () = 42" >> "%t/entry.co"
+# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object ./entry.co 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=SOURCE --input-file "%t.err"
+# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object helper.co 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=SOURCE --input-file "%t.err"
+# RUN: cd "%t" && %python -c "import os; os.link('entry.co', 'alias.o')"
+# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object alias.o 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=SOURCE --input-file "%t.err"
+# SOURCE: [C0014] Error: Object output {{.*}} would overwrite source file
+# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object missing/answer.o 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=IO --input-file "%t.err"
+# IO: [C0013] Error: Could not write object file 'missing{{[/\\]}}answer.o'
+
+# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --src entry.co --emit-object answer.o 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=KIND --input-file "%t.err"
+# KIND: [C0017] Error: --emit-object requires --kind executable
+# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth -L --kind executable --src entry.co --emit-object answer.o 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=LEX --input-file "%t.err"
+# LEX: [C0017] Error: --emit-object is incompatible with lexer-only mode
+# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --emit-object answer.o 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=NO-SOURCE --input-file "%t.err"
+# NO-SOURCE: [C0017] Error: --emit-object requires --src PATH
+# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=NO-PATH --input-file "%t.err"
+# NO-PATH: --emit-object requires a file path
+# RUN: diff "%t.saved" "%t/answer.o"
+# RUN: %python "%S/Inputs/fail_object_write.py" %cloth "%t/entry.co" "%t/answer.o"

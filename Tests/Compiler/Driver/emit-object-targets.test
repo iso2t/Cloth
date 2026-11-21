@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: echo "pub fn<int> main () = 42" > "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %llvm_readobj --file-headers --symbols "%t.32.o" | %filecheck "%/s" --check-prefixes=OBJ32,OBJ32-%host_os
+# RUN: %cloth --kind executable --src "%t.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %llvm_readobj --file-headers --symbols "%t.64.o" | %filecheck "%/s" --check-prefixes=OBJ64,OBJ64-%host_os
+
+# OBJ32-win32: Format: COFF-i386
+# OBJ32-linux: Format: elf32-i386
+# OBJ32: AddressSize: 32bit
+# OBJ32-win32: Machine: IMAGE_FILE_MACHINE_I386
+# OBJ32-linux: Machine: EM_386
+# OBJ32-win32: Name: _main{{$}}
+# OBJ32-linux: Name: main (
+# OBJ32-DAG: Section: .text (
+# OBJ32-win32-DAG: StorageClass: External
+# OBJ32-linux-DAG: Binding: Global
+
+# OBJ64-win32: Format: COFF-x86-64
+# OBJ64-linux: Format: elf64-x86-64
+# OBJ64: AddressSize: 64bit
+# OBJ64-win32: Machine: IMAGE_FILE_MACHINE_AMD64
+# OBJ64-linux: Machine: EM_X86_64
+# OBJ64-win32: Name: main{{$}}
+# OBJ64-linux: Name: main (
+# OBJ64-DAG: Section: .text (
+# OBJ64-win32-DAG: StorageClass: External
+# OBJ64-linux-DAG: Binding: Global

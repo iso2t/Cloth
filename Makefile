@@ -42,7 +42,7 @@ run: $(program)
 	"$(run_path)" --kind library --stdlib Stdlib --src Stdlib/cloth/Library.co
 
 $(program): $(objects) Makefile Compiler/Kbuild Diagnostics/Kbuild Backend/Kbuild
-	$(CXX) $(LDFLAGS) $(driver_ldflags) $(objects) $(LDLIBS) -o "$@"
+	$(CXX) $(LDFLAGS) $(driver_ldflags) $(objects) $(backend_ldlibs) $(LDLIBS) -o "$@"
 
 $(BUILD_DIR)/obj/%.o: Compiler/src/%.cpp Makefile compile_flags.txt
 	@$(make_dir)
@@ -55,9 +55,9 @@ $(BUILD_DIR)/obj/Diagnostics/%.o: Diagnostics/src/%.cpp Makefile compile_flags.t
 	@$(make_dir)
 	$(CXX) @compile_flags.txt $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c "$<" -o "$@"
 
-$(BUILD_DIR)/obj/Backend/%.o: Backend/src/%.cpp Makefile compile_flags.txt
+$(BUILD_DIR)/obj/Backend/%.o: Backend/src/%.cpp Makefile Backend/Kbuild compile_flags.txt
 	@$(make_dir)
-	$(CXX) @compile_flags.txt $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c "$<" -o "$@"
+	$(CXX) @compile_flags.txt $(CPPFLAGS) $(backend_cppflags) $(CXXFLAGS) -MMD -MP -c "$<" -o "$@"
 
 $(musubi_object): ThirdParty/musubi/src/musubi_impl.c Makefile
 	@$(make_dir)

@@ -225,6 +225,7 @@ enum class DiagnosticCode : std::uint16_t {
 	// C4037 retired after generic bound satisfaction checking.
 	// C4038 retired after ordinary generic method specialization.
 	// C4039 retired after native stored range storage and comparisons.
+	UNSUPPORTED_LOWERING = 4040,
 
 	INTERNAL   = 9000,
 	INVALID_IR = 9001,

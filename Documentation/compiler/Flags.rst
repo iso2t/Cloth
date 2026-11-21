@@ -25,6 +25,26 @@ An intrinsic body must come from its registered module imported through
 ``--stdlib``. The frontend checks the declaration and its full signature
 before recording the operation for later compilation stages.
 
+Object emission
+---------------
+
+With ``--kind executable``, add ``--emit-object PATH`` to write a relocatable
+object after the frontend checks succeed. The emitter supports a parameterless
+``main`` returning a signed 32-bit ``int`` from an integer literal. On x86,
+``--target-bits`` selects a 32- or 64-bit object. The output directory must
+already exist. A successful write replaces the named file. Source files used
+by the compilation are protected from replacement.
+
+For a file containing ``pub fn<int> main () = 42``, compile the object and
+link it with the platform C driver. The resulting program exits with status 42.
+
+.. code-block:: console
+
+   cloth --kind executable --src answer.co --emit-object answer.o
+   cc answer.o -o answer
+
+With MinGW, link with ``gcc answer.o -o answer.exe``.
+
 Integer storage layout
 ----------------------
 

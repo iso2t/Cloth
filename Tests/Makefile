@@ -13,7 +13,9 @@ gtest_deps := $(BUILD_DIR)/Tests/deps
 gtest_dir := $(gtest_deps)/googletest-$(gtest_version)/googletest
 gtest_source := $(gtest_dir)/src/gtest-all.cc
 
-unit_sources := Compiler/Lexer/Unit/token_test.cpp \
+unit_sources := Backend/Unit/llvm_link_test.cpp \
+                Backend/Unit/lowering_test.cpp \
+                Compiler/Lexer/Unit/token_test.cpp \
                 Compiler/Parser/Unit/precedence_test.cpp \
                 Compiler/Semantic/Unit/symbol_table_test.cpp \
                 Compiler/Semantic/Unit/checked_program_test.cpp \
@@ -29,6 +31,7 @@ unit_sources := Compiler/Lexer/Unit/token_test.cpp \
                 Diagnostics/Unit/import_test.cpp
 unit_obj_dir := $(BUILD_DIR)/obj/Tests
 unit_objects := $(addprefix $(unit_obj_dir)/,$(unit_sources:.cpp=.o))
+backend_unit_objects := $(filter $(unit_obj_dir)/Backend/%,$(unit_objects))
 gtest_objects := $(addprefix $(unit_obj_dir)/googletest/,gtest-all.o gtest_main.o)
 unit_cloth_objects := $(filter-out $(BUILD_DIR)/obj/cloth.o,$(objects))
 unit_program := $(BUILD_DIR)/Tests/cloth-unit$(exe_suffix)
@@ -41,13 +44,16 @@ $(gtest_objects): $(unit_obj_dir)/googletest/%.o: $(gtest_source) Makefile Tests
 	@$(make_dir)
 	$(CXX) $(unit_cxxflags) -I"$(gtest_dir)" -MMD -MP -c "$(gtest_dir)/src/$*.cc" -o "$@"
 
+$(backend_unit_objects): private override CPPFLAGS += $(backend_cppflags)
+$(backend_unit_objects): Backend/Kbuild
+
 $(unit_objects): $(unit_obj_dir)/%.o: Tests/%.cpp Makefile Tests/Makefile compile_flags.txt | $(gtest_source)
 	@$(make_dir)
 	$(CXX) $(unit_cxxflags) -MMD -MP -c "$<" -o "$@"
 
 $(unit_program): $(unit_objects) $(gtest_objects) $(unit_cloth_objects) Makefile Tests/Makefile Compiler/Kbuild Diagnostics/Kbuild Backend/Kbuild
 	@$(make_dir)
-	$(CXX) $(LDFLAGS) $(unit_objects) $(gtest_objects) $(unit_cloth_objects) $(gtest_thread_flags) $(LDLIBS) -o "$@"
+	$(CXX) $(LDFLAGS) $(unit_objects) $(gtest_objects) $(unit_cloth_objects) $(gtest_thread_flags) $(backend_ldlibs) $(LDLIBS) -o "$@"
 
 -include $(unit_objects:.o=.d) $(gtest_objects:.o=.d)
 
@@ -67,7 +73,7 @@ test-file: test_input = $(CASE)
 test-file: test_file_flag := --single
 
 lit-all lit-lexer lit-diagnostics test-driver test-file: $(program)
-	@"$(PYTHON)" Tests/Support/run_lit.py $(test_file_flag) "$(program)" "$(test_input)"
+	@"$(PYTHON)" Tests/Support/run_lit.py $(test_file_flag) "$(program)" "$(test_input)" --readobj "$(call llvm_query,--bindir)/llvm-readobj$(exe_suffix)" --cc $(CC)
 
 unit-all: unit_filter := *
 unit-lexer: unit_filter := Lexer*.*

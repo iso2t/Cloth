@@ -35,6 +35,14 @@ CompilerOptions::CompilerOptions (const int argc, const char *const argv[]) {
 			std::get<std::function<void()>>(bi_flag->v_action)();
 		}
 	}
+	if (p_objectPath) {
+		if (kind != ProgramKind::Executable)
+			throw cde::ClothDiagnostic(cde::DiagnosticCode::INVALID_COMPILATION_REQUEST, "--emit-object requires --kind executable");
+		if (i_lexer != 0)
+			throw cde::ClothDiagnostic(cde::DiagnosticCode::INVALID_COMPILATION_REQUEST,
+			                           "--emit-object is incompatible with lexer-only mode (-l or -L)");
+		if (!p_sourcePath) throw cde::ClothDiagnostic(cde::DiagnosticCode::INVALID_COMPILATION_REQUEST, "--emit-object requires --src PATH");
+	}
 }
 
 void CompilerOptions::add_flag (const CompilerFlag &flag) {
@@ -68,6 +76,8 @@ void CompilerOptions::build_defaults () {
 	add_flag({ .s_flag = "--src", .v_action = CompilerFlag::Value{ .s_description = "a file path", .f_func = [this] (std::string_view path) {
 		                                                              p_sourcePath.emplace(std::u8string(path.begin(), path.end()));
 	                                                              } } });
+	add_flag({ "--emit-object",
+	           CompilerFlag::Value{ "a file path", [this] (std::string_view path) { p_objectPath.emplace(std::u8string(path.begin(), path.end())); } } });
 }
 
 bool CompilerOptions::is_empty () const {

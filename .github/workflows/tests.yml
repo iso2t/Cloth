@@ -16,11 +16,13 @@ jobs:
             make: make
             shell: bash
             filecheck: /usr/lib/llvm-18/bin/FileCheck
+            llvm_config: llvm-config-18
           - os: windows-2025
             make: mingw32-make
             # Preserve the UCRT64 DLL search path for the linker and test binaries.
             shell: pwsh
             filecheck: FileCheck.exe
+            llvm_config: llvm-config
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     defaults:
@@ -28,14 +30,17 @@ jobs:
         shell: ${{ matrix.shell }}
     env:
       FILECHECK: ${{ matrix.filecheck }}
+      LLVM_CONFIG: ${{ matrix.llvm_config }}
       LIT: lit
       PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install LLVM FileCheck
+      - name: Install LLVM development files and FileCheck
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y llvm-18-tools=1:18.1.3-1ubuntu1
-      - name: Install MinGW and LLVM FileCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-18-dev=1:18.1.3-1ubuntu1 llvm-18-tools=1:18.1.3-1ubuntu1
+      - name: Install MinGW and LLVM
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         id: msys2

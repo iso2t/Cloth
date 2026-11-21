@@ -1,3 +1,30 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 backend-obj-y := backend/backend.o
+
+LLVM_CONFIG ?= llvm-config
+llvm_query = $(shell "$(LLVM_CONFIG)" $(1))
+llvm_includedir := $(call llvm_query,--includedir)
+ifeq ($(llvm_includedir),)
+$(error Unable to query LLVM headers with "$(LLVM_CONFIG)". Set LLVM_CONFIG to the llvm-config executable from your LLVM development installation)
+endif
+llvm_libdir := $(call llvm_query,--libdir)
+# A source-tree build keeps generated target headers under its build prefix.
+backend_cppflags := -I"$(llvm_includedir)" -I"$(call llvm_query,--prefix)/include"
+# The LLVM SDK and the compiler used to build Cloth can have different target ABIs.
+cloth_toolchain_triple := $(shell $(CXX) $(CPPFLAGS) $(CXXFLAGS) -dumpmachine)
+ifeq ($(cloth_toolchain_triple),)
+$(error Unable to determine the Cloth toolchain target with "$(CXX) -dumpmachine")
+endif
+backend_cppflags += -DCLOTH_TOOLCHAIN_TRIPLE=\"$(cloth_toolchain_triple)\"
+
+ifneq ($(findstring -msvc,$(call llvm_query,--host-target)),)
+# MinGW can link the C import library from an MSVC-built LLVM SDK.
+backend_ldlibs := "$(llvm_libdir)/LLVM-C.lib"
+else
+llvm_libs := $(call llvm_query,--libs --system-libs core analysis native object)
+ifeq ($(llvm_libs),)
+$(error "$(LLVM_CONFIG)" could not find LLVM libraries for the native target)
+endif
+backend_ldlibs := -L"$(llvm_libdir)" $(llvm_libs)
+endif
