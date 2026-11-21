@@ -98,7 +98,7 @@ TEST (SemanticGenerics, ChecksInterfaceAndStateContractsWhenTheirOwnerCloses) {
 	const std::string s_state = R"(typedef<class> Host<T> {
     pub state<int> ::echo<U>(T left, U right)
     pub state<int> ::echo<U>(int head, U other)
-    default: pub state<void> Ready { mt<int> echo<V>(T x, V y) = 1 }
+    pub default state<void> Ready { mt<int> echo<V>(T x, V y) = 1 }
 }
 )";
 	EXPECT_NO_THROW(checkSource(s_state + "fn<int> use(Host<bool> h) = h::echo(true, true)"));
@@ -347,7 +347,7 @@ fn<int> use(Child item) = read(item)
 	ASSERT_NE(gi_read, nullptr);
 	EXPECT_EQ(gi_read->body.expressions.at(&e_pick).symbol, &ss_globals.at("Base").front().members.at("pick").front());
 	EXPECT_EQ(gi_read->body.expressions.at(&e_pick).argumentContract, cp_program.expressions.at(&e_pick).argumentContract);
-	expectError(R"(fn<int> pick(int x) = x
+	expectError(R"(fn<string> pick(int x) = "integer"
 fn<bool> pick<T>(T x) = true
 fn<bool> read<T>(T value) = pick(value)
 fn<bool> use() = read(1))",

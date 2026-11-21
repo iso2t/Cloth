@@ -94,7 +94,8 @@ TEST (BuiltinCalls, LexicalDeclarationsShadowTheWholeBuiltinGroup) {
 	EXPECT_NO_THROW(checkSource("typedef<class> C(pub def<int> print) { pub mt<int> f() { print(self.print); return self.print } }"));
 	EXPECT_NO_THROW(checkSource("typedef<class> C { pub mt<int> print(int n) = n\npub mt<int> f() { print(\"x\"); return self.print(1) } }"));
 	expectError("fn f(int print) { print(1) }", Code::NOT_CALLABLE);
-	expectError("fn println(bool b) {}\nfn f() { println(3) }", Code::NO_MATCHING_CALL);
+	EXPECT_NO_THROW(checkSource("fn println(bool b) {}\nfn f() { println(3) }"));
+	expectError("fn println(bool b) {}\nfn f() { println(3.0) }", Code::NO_MATCHING_CALL);
 	expectError("fn println(bool b) {}\nfn f() { println() }", Code::CALL_ARITY);
 	expectError("fn f() { def x = print }", Code::FUNCTION_VALUE);
 	expectError("fn f() { print = 1 }", Code::EXPECTED_BINDING);

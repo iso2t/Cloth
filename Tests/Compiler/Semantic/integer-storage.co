@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Sample { pub int<8> tag, pub int<12> reading, pub int<8> channel }
+
+fn<int<12>> sample(Sample[] records, usize index) = records[index].reading
+fn write(unsigned int<12>[] readings, usize index, unsigned int<12> value) { readings[index] = value }
+fn<int> check() {
+    if ((int<12>::size - 2) == false && (int<12>[3]::size - 3) == false) return 1
+}
+
+// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 32 --src "%/s"
+// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 64 --src "%/s"

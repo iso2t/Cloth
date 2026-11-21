@@ -47,6 +47,17 @@ Use a target selector for a conversion or a type test. For example,
 Default equality
 ----------------
 
+A ``bool`` occupies one byte. Converting an integer to ``bool`` produces
+``false`` (0) for zero and ``true`` (1) for every positive or negative
+nonzero value. A boolean binding, parameter, or return value accepts this
+conversion. For example, ``bool ready = 0`` stores ``false``. A cast such as
+``count -> bool`` makes the conversion explicit in a condition.
+
+Built-in ``==`` and ``!=`` between a boolean and an integer convert the
+integer to ``bool`` on either side. Thus ``false == 1`` is false,
+``true == -2`` is true, and ``0 == false`` is true. A nullable value
+preserves its absence through conversion.
+
 Class and interface references support logical comparison and identity.
 Struct values require an applicable equality operator. Enums have a built-in
 equality operation. For ``!=``, an explicit inequality overload takes

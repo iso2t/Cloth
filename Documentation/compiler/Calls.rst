@@ -7,6 +7,11 @@ Overload resolution uses argument labels, parameter types, generic arguments
 and optional parameters. Exact matches take priority over assignable matches
 and contextual literal conversions.
 
+An integer argument can supply a ``bool`` parameter when no overload
+matches without that conversion. Given ``pick(int)`` and ``pick(bool)``,
+``pick(0)`` selects the integer overload and ``pick(false)`` selects the
+boolean overload.
+
 Explicit arguments are evaluated in written order, including named
 arguments. Omitted defaults follow in parameter order and use names from
 their declaring callable. A default can read earlier parameters.

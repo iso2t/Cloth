@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --src "%/S/Inputs/dispatch/client.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 32 --src "%/S/Inputs/dispatch/client.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 64 --src "%/S/Inputs/dispatch/client.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --src "%/S/Inputs/dispatch/private_nested.co" 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=NESTED --input-file "%t.err"
 # NESTED: [C3132] Error: 'Secret' is private
@@ -24,6 +25,10 @@
 # PAYLOAD: wrong_payload.co:4:39
 # PAYLOAD: 3 | typedef<class> Machine
 # PAYLOAD: declared here
+# RUN: echo 'typedef<class> Machine { state<void> Ready {} }' > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=INITIAL --input-file "%t.err"
+# INITIAL: [C3126] Error: Class 'Machine' must select an initial state with 'default'
 # RUN: %expect_exit --empty-stdout 1 %cloth --src "%/S/Inputs/dispatch/wrong_override.co" 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=OVERRIDE --input-file "%t.err"
 # OVERRIDE: [C3133] Error: Override of 'pair' has different ordered result types

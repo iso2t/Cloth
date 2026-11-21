@@ -5,6 +5,7 @@
 
 #include <ast/decl/enum_declaration.hpp>
 #include <ast/stmt/for_statement.hpp>
+#include <ast/stmt/statements.hpp>
 
 #include "checked_program_test.hpp"
 
@@ -14,6 +15,106 @@ using Code = cde::DiagnosticCode;
 
 const ExpressionInfo &returned (const CheckedProgram &program, const std::string &name = "value") {
 	return program.expressions.at(&bodyExpression(program.units.front()->get_globals().at(name).front()));
+}
+
+TEST (SemanticValues, NormalizesIntegerBooleanValuesOnBothTargets) {
+	for (unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const CheckedProgram cp_program = checkSource(R"(fn<bool> zero() = 0 == false
+fn<bool> falseOne() = false == 1
+fn<bool> nonzero() = true == 2
+fn<bool> negative() = -2 == true
+fn<bool> different() = false != isize::min
+fn<bool> same() = usize::max != true
+fn<bool> highWord() = int<96>::min -> bool
+fn<bool> castZero() = (2 - 2) -> bool
+fn<bool> castAndCompare() = (-5 -> bool) == true
+fn<bool> wrapped() = ((255 -> unsigned int<8>) + 1) == false
+fn<bool> dynamic(bool flag, int n) = n == flag
+fn<bool> lifted(bool? flag, int? n) = flag != n
+fn<bool?> nullable(int? n) = n
+fn<bool> defaulted(opt<bool> value ?: -3) = value
+fn<bool> inputs(int n, unsigned int<12> u, isize s, usize z) {
+    bool x = 0
+    x = n
+    bool[3] a = [u, s, z]
+    a[1] = n
+    return x
+}
+fn<int> branch() { if (true == -9) return 7 }
+fn<int> skipped() { if (false == 1) {} else return 7 }
+fn<int> loop() { do { return 7 } while (false == 1) }
+)",
+		                                              { u_bits });
+		for (const char *s_name : { "zero", "nonzero", "negative", "different", "highWord", "castAndCompare", "wrapped" }) {
+			SCOPED_TRACE(s_name);
+			EXPECT_EQ(returned(cp_program, s_name).numericConstant, NumericConstant(IntegerConstant{ { 1 } }));
+		}
+		for (const char *s_name : { "falseOne", "same", "castZero" }) {
+			SCOPED_TRACE(s_name);
+			EXPECT_EQ(returned(cp_program, s_name).numericConstant, NumericConstant(IntegerConstant{ { 0 } }));
+		}
+		for (const char *s_name : { "dynamic", "lifted" }) {
+			EXPECT_TRUE(returned(cp_program, s_name).booleanEquality);
+			EXPECT_FALSE(returned(cp_program, s_name).integerTruth().has_value());
+		}
+		const SymbolScope  &ss_globals  = cp_program.units.front()->get_globals();
+		const ResolvedType &rt_nullable = cp_program.declarations.at(&ss_globals.at("nullable").front()).returns.front();
+		EXPECT_TRUE(rt_nullable.convertsIntegerToBool(returned(cp_program, "nullable").types.front()));
+		const CallableSignature  &cs_inputs = *std::get<const CallableSignature *>(ss_globals.at("inputs").front().declaration);
+		const BindingDeclaration &bd_binding =
+		        dynamic_cast<const BindingDeclaration &>(*std::get<BlockBody>(cs_inputs.executableBody()->value).statements.front());
+		const ExpressionInfo &ei_initializer = cp_program.expressions.at(bd_binding.initializer.get());
+		EXPECT_EQ(cp_program.localTypes.at(&bd_binding.name), ResolvedType(kBoolean));
+		EXPECT_EQ(ei_initializer.types.front(), ResolvedType(kInteger));
+		EXPECT_EQ(ei_initializer.integerTruth(), false);
+	}
+	expectError("fn<bool> f(float x) = x", Code::RETURN_TYPE);
+	expectError("fn<bool> f(int? x) = x", Code::RETURN_TYPE);
+	expectError("fn<bool> f(float x) = false == x", Code::INCOMPARABLE_TYPES);
+	expectError("fn<bool> f(int x) = false === x", Code::INCOMPARABLE_TYPES);
+	expectError("fn<bool> f(int[] x, bool[] flags) = x == flags", Code::INCOMPARABLE_TYPES);
+	expectError("fn<bool> f(int n) = !n", Code::UNARY_OPERAND);
+	expectError("fn<int> f() { if (false == 1) return 1 }", Code::MISSING_RETURN);
+}
+
+TEST (SemanticValues, PrefersIntegerOverloadsBeforeBooleanConversion) {
+	const CheckedProgram cp_program = checkSource(R"(fn<int> pick(int n) = n
+fn<bool> pick(bool b) = b
+fn<int<8>> narrow(int<8> n) = n
+fn<bool> narrow(bool b) = b
+fn<bool> accept(bool b) = b
+fn<bool> choose(bool b) = b
+fn<T> choose<T>(T n) = n
+fn<int> integer() = pick(0)
+fn<bool> boolean() = pick(false)
+fn<int<8>> contextual() = narrow(1)
+fn<int> inferred() = choose(1)
+fn<bool> converted(int n) = accept(n)
+fn<int> arrayPick(int<8>[] values) = 1
+fn<bool> arrayPick(bool[] flags) = true
+fn<int> arrayLiteral() = arrayPick([1, 2])
+typedef<struct> Flag {
+    pub operator ==(bool b) = b
+    pub operator ==(int<8> n) = false
+}
+fn<bool> operatorLiteral(Flag f) = f == 2
+fn<bool> operatorFlag(Flag f) = f == true
+fn<bool> operatorConverted(Flag f, usize n) = f == n
+)");
+	const SymbolScope   &ss_globals = cp_program.units.front()->get_globals();
+	EXPECT_EQ(returned(cp_program, "integer").argumentContract, &ss_globals.at("pick")[0]);
+	EXPECT_EQ(returned(cp_program, "boolean").argumentContract, &ss_globals.at("pick")[1]);
+	EXPECT_EQ(returned(cp_program, "contextual").argumentContract, &ss_globals.at("narrow")[0]);
+	EXPECT_EQ(returned(cp_program, "inferred").argumentContract, &ss_globals.at("choose")[1]);
+	EXPECT_EQ(returned(cp_program, "converted").argumentContract, &ss_globals.at("accept")[0]);
+	EXPECT_EQ(returned(cp_program, "arrayLiteral").argumentContract, &ss_globals.at("arrayPick")[0]);
+	const ExpressionInfo &ei_flag = returned(cp_program, "operatorFlag");
+	ASSERT_NE(ei_flag.argumentContract, nullptr);
+	EXPECT_NE(returned(cp_program, "operatorLiteral").argumentContract, ei_flag.argumentContract);
+	EXPECT_EQ(returned(cp_program, "operatorConverted").argumentContract, ei_flag.argumentContract);
+	EXPECT_FALSE(returned(cp_program, "operatorConverted").booleanEquality);
+	expectError("typedef<struct> F { pub operator ==(bool b) = b\n operator ==(int n) = true }\nfn<bool> check(F f) = f == 1", Code::PRIVATE_CLASS_MEMBER);
 }
 
 TEST (SemanticValues, TargetWidthsApplyToLiteralsCastsAndExtents) {
@@ -411,7 +512,7 @@ fn<typeinfo> metadata() = Ready.Data::type
 fn<bool> matches(Object value) = value is Ready.Data
 fn<typeinfo> shadow(Fields Ready) = Ready.Data::type
 fn<bool> compare(Choice choice, Fields Ready) = choice is Ready.Data
-pub typedef<class> Host { default: state Ready }
+pub typedef<class> Host { default state Ready }
 typedef<state<void>> pub Ready for Host { pub typedef<struct> Data {} }
 typedef<class> Choice { pub operator is(Choice other) = true }
 typedef<struct> Fields { pub Choice Data })");
@@ -434,7 +535,7 @@ typedef<struct> Fields { pub Choice Data })");
 }
 
 TEST (SemanticValues, StateTypePathsRespectLexicalVisibilityAndNominalTypePrecedence) {
-	const std::string s_state = R"(pub typedef<class> Host { default: state Ready }
+	const std::string s_state = R"(pub typedef<class> Host { default state Ready }
 typedef<state<void>> pub Ready for Host {
     typedef<class> Hidden { pub typedef<struct> Leaf {} }
     pub typedef<struct> Data {}
@@ -472,9 +573,10 @@ fn<usize> inspect(typeinfo descriptor) = descriptor::width
 	expectError("fn f() { void?::type }", Code::INVALID_NULLABLE_TYPE);
 	expectError("fn f() { null::type }", Code::EXPLICIT_NULLABLE_TYPE);
 	expectError("fn f<T>() { T::type::width }", Code::INVALID_METADATA_ACCESS);
-	const std::string s_overloads = "fn pick(string s) {}\nfn pick(bool b) {}\n";
+	const std::string s_overloads = "fn pick(string s) {}\nfn pick(char ch) {}\n";
 	expectError(s_overloads + "fn f() { pick((bool::type -> typeinfo)::width) }", Code::INVALID_METADATA_ACCESS);
 	expectError(s_overloads + "fn f() { def d = bool::type; pick(d::width) }", Code::NO_MATCHING_CALL);
+	expectError("fn pick(bool b) {}\nfn f() { def d = bool::type; pick(d::width) }", Code::INVALID_METADATA_ACCESS);
 }
 
 TEST (SemanticValues, MetadataTracksContinuingPathsAndDeferredReads) {

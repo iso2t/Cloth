@@ -731,6 +731,7 @@ bool Analyzer::accepts (const ResolvedType &expected, const ResolvedType &actual
 	if (actual.nullable()) {
 		return false;
 	}
+	if (expected.convertsIntegerToBool(actual)) return true;
 	if (sym_number && expected.declaration == sym_number && expected.suffixes.empty() && numeric(actual)) return true;
 	if (expected.array() && actual.array()) {
 		if (expected.suffixes.back() != arraySuffix() && actual.suffixes.back() != arraySuffix() &&

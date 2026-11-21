@@ -26,6 +26,12 @@ field must be accessible where the literal appears. A struct's own method
 can initialize its private fields. A free function in the same file can
 use a positional literal only if all the fields are public.
 
+A class selects its initial state with ``default`` before ``state``.
+Write ``pub default state<void> Ready {}`` for a public initial state.
+Supply an initial payload in parentheses, as in
+``pub default(1) state<int> Busy {}``. The same syntax applies to a
+separately declared state attached to the class with ``pub default(1) state Busy``.
+
 A class method that implements a public interface requirement must itself
 be declared ``pub``. If the interface declares the method without a body,
 the class can supply the first body with either ``pub mt`` or

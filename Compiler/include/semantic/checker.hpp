@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <exception>
 #include <map>
 #include <optional>
@@ -63,6 +64,7 @@ bool                         builtinFunctionNamed (std::string_view name);
 bool                         builtinNeverReturns (std::string_view name);
 bool                         checksNumericMethod (std::string_view name);
 bool                         hasArrayShape (const ResolvedType &type);
+bool                         usesBooleanArgumentConversion (const ResolvedType &parameter, const ResolvedType &argument);
 const ResolvedType          *rangeEndpoint (const ResolvedType &type);
 void                         requireRangeMember (const Expression &member, const ResolvedType &actual, const ResolvedType &endpoint);
 ResolvedType                 comparisonShape (ResolvedType type, const ArrayLiteral *literal = nullptr);
@@ -137,6 +139,7 @@ class Analyzer {
 	[[nodiscard]] bool                     hasOperator (std::string_view name) const;
 	void                                   checkCollectionOperator (const Symbol &operation) const;
 	[[nodiscard]] std::optional<Iteration> snapshotLayout (const ResolvedType &type) const;
+	void                                   useArrayLiteral (const ResolvedType &type, const ArrayLiteral &literal);
 
 	[[nodiscard]] ResolvedType type (const TypeReference &reference, const Symbol &context, unsigned depth = 0, bool allowOpen = false) const;
 	[[nodiscard]] ResolvedType checkedType (const TypeReference &reference, const Symbol &context, const Substitutions &arguments = {},
@@ -265,15 +268,16 @@ class Analyzer {
 	std::deque<InstanceWork> q_templates, q_instances;
 	const InstanceWork      *iw_active        = nullptr;
 	std::size_t              st_openTemplates = 0, st_closedTemplates = 0, st_instances = 0;
-	using StorageEdges = std::vector<std::pair<ResolvedType, const Symbol *>>;
+	using StorageFields = std::vector<std::pair<ResolvedType, const Symbol *>>;
 
-	struct StorageVisit {
-		const ResolvedType &type;
-		const StorageEdges &fields;
-		std::size_t         next = 0;
+	struct ArrayAllocation {
+		ResolvedType  type;
+		std::uint64_t count;
+		TokenSpan     where;
 	};
 
-	std::map<ResolvedType, StorageEdges> m_storage;
+	std::vector<ArrayAllocation>          v_arrayLiterals;
+	std::map<ResolvedType, StorageFields> m_storage;
 	[[nodiscard]] const Symbol          *instanceOwner (const Symbol &symbol) const;
 	[[nodiscard]] bool                   isTemplate (const Symbol &symbol) const;
 	[[nodiscard]] Substitutions          instanceArguments (const InstanceKey &key) const;
@@ -281,6 +285,7 @@ class Analyzer {
 	void                                 checkInstances ();
 	void                                 completeInstance (const InstanceWork &work);
 	void                                 checkStorage () const;
+	void                                  layoutStruct (const ResolvedType &type, const StorageFields &fields) const;
 	void                                 collectSignature (const Symbol &symbol);
 	void                                 useDeclaredBounds (const Symbol &symbol, const Substitutions &arguments);
 	void                                 visitTypeMembers (const ResolvedType &type, const Substitutions &arguments, GenericInstance *instance);
@@ -542,6 +547,7 @@ class BodyChecker {
 	void                         requireReceiverProofs (const ReceiverProofs &proofs) const;
 	void                         narrowRead (ExpressionInfo &value, const StoragePlace &place) const;
 	TestPaths                    test (const Expression &node);
+	ExpressionInfo               testOperand (const Expression &node);
 	TestPaths                    splitTest (const Expression &node, const ExpressionInfo &result);
 	bool                         checkStatement (const Statement &node);
 	void                         finishStatement (const Statement &node, bool fallsThrough, const Exits &incoming);

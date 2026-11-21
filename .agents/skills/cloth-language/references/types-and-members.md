@@ -57,7 +57,7 @@ pub final typedef<class> Counter(pub def<int> value) : Sized {
 ~~~cloth
 typedef<class> Lamp {
     state<void> ::toggle()
-    default: state<void> Off {
+    default state<void> Off {
         mt toggle() { self -> On() }
     }
     state On
@@ -69,7 +69,7 @@ typedef<state<void>> pub On for Lamp {
 ~~~
 
 Within a class, `state<void> ::toggle()` declares a state-method signature. `state<Type> Name { ... }` declares a nested
-state, and `state Name` attaches a separately declared state. A `default:` prefix marks an initial state and can carry a
-parenthesized payload. A top-level state places its optional `pub` after `typedef<state<Type>>` and names its host
+state, and `state Name` attaches a separately declared state. Place `default` after any `pub` and before `state` to select the initial state.
+Use `pub default(1) state<int> Busy {}` to supply an initial payload. A top-level state places its optional `pub` after `typedef<state<Type>>` and names its host
 with `for`. State bodies accept `init` blocks and `mt` methods. In a state method, `state` can appear as a payload
 expression. [State grammar](../../../../Compiler/src/parser/subs/class_parser.cpp) · [State nodes](../../../../Compiler/include/ast/decl/state_declaration.hpp) · [State expressions](../../../../Compiler/src/parser/subs/expression_parser.cpp)

@@ -462,7 +462,7 @@ void Analyzer::buildStates (const ResolvedType &receiver, TypeDispatch &table) c
 	}
 	if (!sym_initial && table.states.size() != st_inheritedStates)
 		fail(Code::INVALID_STATE_DECLARATION, sym_host.name.get_span(),
-		     std::format("Class '{}' must select an initial state with '{}{}'", sym_host.name.get_lexeme(), to_string(kDefault), to_string(oColon)));
+		     std::format("Class '{}' must select an initial state with '{}'", sym_host.name.get_lexeme(), to_string(kDefault)));
 }
 
 bool Analyzer::hasStateName (const Symbol &context, std::string_view name) const {

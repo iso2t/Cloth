@@ -84,6 +84,12 @@ bool ResolvedType::floating () const {
 	return suffixes.empty() && name == to_string(kFloat);
 }
 
+bool ResolvedType::convertsIntegerToBool (const ResolvedType &source) const {
+	if (name != to_string(kBoolean)) return false;
+	if (suffixes.empty()) return source.integer();
+	return suffixes.size() == 1 && nullable() && (source.nullable() ? source.element().integer() : source.integer());
+}
+
 ResolvedType ResolvedType::element () const {
 	ResolvedType rt_element = *this;
 	rt_element.suffixes.pop_back();
@@ -145,6 +151,12 @@ std::optional<ResolvedType> ExpressionInfo::representedAt (std::size_t slot) con
 	return slot == 0 ? representedType : std::nullopt;
 }
 
+std::optional<bool> ExpressionInfo::integerTruth () const {
+	const IntegerConstant *ic_value = std::get_if<IntegerConstant>(&numericConstant);
+	if (!ic_value) return std::nullopt;
+	return std::ranges::any_of(ic_value->magnitude, [] (std::uint32_t word) { return word != 0; });
+}
+
 ResultKind ExpressionInfo::resultKind () const {
 	if (!fallsThrough) return ResultKind::Never;
 	if (types.empty()) return ResultKind::Empty;
@@ -172,6 +184,7 @@ CheckedProgram::CheckedProgram (SymbolTable entry, TargetLayout layout, std::fil
         standardLibraryRoot(std::move(standardLibraryRoot)),
         kind(kind) {
 	if (layout.sizeBits != 32 && layout.sizeBits != 64) throw std::invalid_argument("A Cloth target requires a 32- or 64-bit size type");
+	if (layout.scalar64Alignment32 != 4 && layout.scalar64Alignment32 != 8) throw std::invalid_argument("Invalid 32-bit target scalar alignment");
 	units.emplace_back(std::make_unique<SymbolTable>(std::move(entry)));
 	semantic::Analyzer analyzer(*this);
 	analyzer.checkBodies();

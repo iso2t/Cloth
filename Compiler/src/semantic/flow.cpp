@@ -272,8 +272,8 @@ BodyChecker::TestPaths BodyChecker::splitTest (const Expression &node, const Exp
 	if (result.fallsThrough && e_test == &node) return tp_test;
 	TestPaths tp_paths{ .yes = { fs_flow.narrowed, result.fallsThrough }, .no = { fs_flow.narrowed, result.fallsThrough } };
 	if (!result.fallsThrough) return tp_paths;
-	if (const auto *bl_test = dynamic_cast<const BooleanLiteral *>(&node)) {
-		(bl_test->value ? tp_paths.no : tp_paths.yes).reachable = false;
+	if (const std::optional<bool> opt_truth = result.integerTruth()) {
+		(*opt_truth ? tp_paths.no : tp_paths.yes).reachable = false;
 	} else if (const auto *be_test = dynamic_cast<const BinaryExpression *>(&node); be_test && !result.argumentContract) {
 		const Operator o_op = be_test->op.get_operator();
 		if (o_op != oEqual && o_op != oNotEqual && o_op != oIdentity) return tp_paths;
@@ -305,8 +305,25 @@ BodyChecker::TestPaths BodyChecker::splitTest (const Expression &node, const Exp
 	return tp_paths;
 }
 
+ExpressionInfo BodyChecker::testOperand (const Expression &node) {
+	if (record || ef_probeConstants) return scalarInfo(node);
+	// Loop and overload trials must see the same constant truth values as the committed body.
+	ExpressionFacts ef_constants;
+
+	struct ResetFacts {
+		ExpressionFacts *&facts;
+
+		~ResetFacts () {
+			facts = nullptr;
+		}
+	} rf_scope{ ef_probeConstants };
+
+	ef_probeConstants = &ef_constants;
+	return scalarInfo(node);
+}
+
 BodyChecker::TestPaths BodyChecker::test (const Expression &node) {
-	const ExpressionInfo ei_test = scalarInfo(node);
+	const ExpressionInfo ei_test = testOperand(node);
 	if (ei_test.fallsThrough && ei_test.types.front() != ResolvedType(kBoolean))
 		fail(Code::NON_BOOLEAN_CONDITION, node.get_span(), "A condition must have type " + std::string(to_string(kBoolean)));
 	return splitTest(node, ei_test);

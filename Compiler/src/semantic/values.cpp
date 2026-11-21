@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <algorithm>
-#include <bit>
 #include <format>
 
 #include <semantic/checker.hpp>
@@ -247,11 +246,7 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 		}
 		if (hasStorageSize(analyzer, type)) {
 			ExpressionInfo result = selection(ProviderKind::StorageSize, ResolvedType(kUsize));
-			const unsigned width  = payload == ResolvedType(kBoolean)   ? 8 :
-			                        payload == ResolvedType(kCharacter) ? 32 :
-			                        payload.width                       ? payload.width :
-			                                                              analyzer.program.layout.sizeBits;
-			if (!type.nullable() && width >= 8 && width <= 64 && std::has_single_bit(width)) result.numericConstant = countConstant(width / 8);
+			if (!type.nullable()) result.numericConstant = countConstant(analyzer.program.storageLayout(type).value().size);
 			return result;
 		}
 	}

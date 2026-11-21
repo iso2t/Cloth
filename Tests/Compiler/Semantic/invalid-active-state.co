@@ -2,7 +2,7 @@
 
 typedef<class> Player {
     pub state<int> ::read(int value)
-    default: pub state<void> Ready { mt<int> read(int value) = value }
+    pub default state<void> Ready { mt<int> read(int value) = value }
     pub state<void> Stopped {}
 }
 fn<int> test(Player player) {

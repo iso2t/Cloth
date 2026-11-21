@@ -15,10 +15,17 @@ struct OperatorMatch {
 	unsigned                    rank;
 };
 
-std::optional<Candidate> bestOperator (const Analyzer &analyzer, const Symbol &context, const Token &op, const TokenSpan &span,
-                                       const std::vector<OperatorMatch> &matches, const Symbol *inaccessible) {
+struct OperatorMatches {
+	std::vector<OperatorMatch> candidates;
+	const Symbol              *inaccessible = nullptr;
+};
+
+std::optional<Candidate> bestOperator (const Analyzer &analyzer, const Symbol &context, const Token &op, const TokenSpan &span, const OperatorMatches &ordinary,
+                                       const OperatorMatches &booleanConversions) {
+	const OperatorMatches            &group   = ordinary.candidates.empty() && !ordinary.inaccessible ? booleanConversions : ordinary;
+	const std::vector<OperatorMatch> &matches = group.candidates;
 	if (matches.empty()) {
-		if (inaccessible) analyzer.requireAccess(*inaccessible, context, span);
+		if (group.inaccessible) analyzer.requireAccess(*group.inaccessible, context, span);
 		return {};
 	}
 	const unsigned      u_best       = std::ranges::min_element(matches, {}, &OperatorMatch::rank)->rank;
@@ -166,8 +173,7 @@ void Analyzer::resolveOperator (const Symbol &operation, const MethodDeclaration
 
 std::optional<Candidate> BodyChecker::selectOperator (const Token &op, const TokenSpan &span, const ResolvedType &left, const ResolvedType &right,
                                                       bool &rightReceiver, const BinaryExpression *operands, const Symbol **unmatched) const {
-	std::vector<OperatorMatch> v_matches;
-	const Symbol              *sym_private = nullptr;
+	OperatorMatches om_ordinary, om_booleanConversions;
 	for (bool b_right : { false, true }) {
 		const ResolvedType &rt_receiver = b_right ? right : left, &rt_peer = b_right ? left : right;
 		for (const Candidate &c_candidate : analyzer.members(rt_receiver, op.get_name_key(), SymbolKind::Operator)) {
@@ -197,21 +203,21 @@ std::optional<Candidate> BodyChecker::selectOperator (const Token &op, const Tok
 				}
 				u_rank = 2;
 			}
+			OperatorMatches &om_group = usesBooleanArgumentConversion(rt_parameter, rt_peer) ? om_booleanConversions : om_ordinary;
 			if (!analyzer.accessible(c_candidate, context)) {
-				sym_private = c_candidate.symbol;
+				om_group.inaccessible = c_candidate.symbol;
 				continue;
 			}
-			v_matches.push_back({ c_candidate, { b_right ? rt_parameter : rt_owner, b_right ? rt_owner : rt_parameter }, u_rank });
+			om_group.candidates.push_back({ c_candidate, { b_right ? rt_parameter : rt_owner, b_right ? rt_owner : rt_parameter }, u_rank });
 		}
 	}
-	std::optional<Candidate> opt_match = bestOperator(analyzer, context, op, span, v_matches, sym_private);
+	std::optional<Candidate> opt_match = bestOperator(analyzer, context, op, span, om_ordinary, om_booleanConversions);
 	if (opt_match) rightReceiver = form(*opt_match).rightReceiver;
 	return opt_match;
 }
 
 std::optional<Candidate> BodyChecker::selectContext (const Token &op, const ResolvedType &receiver, const ResolvedType &peer, bool typeTarget) const {
-	std::vector<OperatorMatch> v_matches;
-	const Symbol              *sym_private = nullptr;
+	OperatorMatches om_ordinary, om_booleanConversions;
 	for (const Candidate &c_context : analyzer.members(receiver, op.get_name_key(), SymbolKind::Operator)) {
 		const OperatorMember &om_form = form(c_context);
 		if (!om_form.selector) continue;
@@ -220,15 +226,16 @@ std::optional<Candidate> BodyChecker::selectContext (const Token &op, const Reso
 		const bool             b_width      = om_form.selector->capturesWidth();
 		if (b_width) rt_selector.width = peer.width;
 		if (typeTarget ? rt_selector != peer : !analyzer.accepts(rt_selector, peer)) continue;
+		OperatorMatches &om_group = rt_selector.convertsIntegerToBool(peer) ? om_booleanConversions : om_ordinary;
 		if (!analyzer.accessible(c_context, context)) {
-			sym_private = c_context.symbol;
+			om_group.inaccessible = c_context.symbol;
 			continue;
 		}
 		const unsigned u_rank = rt_selector == peer ? (b_width ? 1 : 0) : 2;
-		v_matches.push_back(
+		om_group.candidates.push_back(
 		        { c_context, { analyzer.substitute(analyzer.ownerType(*di_signature.owner), c_context.arguments), std::move(rt_selector) }, u_rank });
 	}
-	std::optional<Candidate> opt_selected = bestOperator(analyzer, context, op, op.get_span(), v_matches, sym_private);
+	std::optional<Candidate> opt_selected = bestOperator(analyzer, context, op, op.get_span(), om_ordinary, om_booleanConversions);
 	if (opt_selected && widthSelector(*opt_selected->symbol)) opt_selected->operatorWidth = peer.width;
 	return opt_selected;
 }
@@ -412,6 +419,10 @@ ExpressionInfo BodyChecker::equality (const BinaryExpression &node, const Resolv
 			const decltype(bf_open.expressions)::const_iterator it_open = bf_open.expressions.find(&node);
 			if (it_open != bf_open.expressions.end()) ei_result.checkedIdentity |= it_open->second.checkedIdentity;
 		}
+		return ei_result;
+	}
+	if ((rt_left == ResolvedType(kBoolean) && rt_left == rt_right) || rt_left.convertsIntegerToBool(rt_right) || rt_right.convertsIntegerToBool(rt_left)) {
+		ei_result.booleanEquality = true;
 		return ei_result;
 	}
 	if (rt_left.array() || rt_right.array()) {

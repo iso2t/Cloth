@@ -9,7 +9,7 @@ pub typedef<class> Catalog {
 pub typedef<interface> Query { pub mt<int> read(opt<int> n ?: seed()) = default (n) }
 pub typedef<class> Reader : Query {
     pub state<int> ::amount(opt<int> n ?: seed())
-    default: (seed()) pub state<int> Loaded { mt<int> amount(int renamed) = state + renamed }
+    pub default(seed()) state<int> Loaded { mt<int> amount(int renamed) = state + renamed }
 }
 pub fn<T> keep<T>(T value) = value
 typedef<state<void>> pub Open for Catalog { pub typedef<struct> Entry {} }

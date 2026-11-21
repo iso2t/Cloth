@@ -43,6 +43,7 @@ obj-y := cloth.o \
          semantic/names.o \
          semantic/operators.o \
          semantic/shapes.o \
+         semantic/storage_layout.o \
          semantic/symbol_table.o \
          semantic/types.o \
          system/compiler_options.o \

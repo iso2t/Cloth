@@ -16,7 +16,7 @@ using Code                 = cde::DiagnosticCode;
 const std::string S_ITEM   = "pub typedef<class> Item (pub def<int> value) { pub Item() : (1) {} }\n";
 const std::string S_PLAYER = R"(typedef<class> Player {
     pub state<int> ::run(opt<int> n ?: 1)
-    default: pub state<void> Ready { mt<int> run(int n) = n }
+    pub default state<void> Ready { mt<int> run(int n) = n }
     pub state<void> Stopped {}
 }
 fn<int> restore(Player p) { p -> Ready; return 4 }
@@ -41,12 +41,12 @@ const Expression &returned (const StatementPtr &stmt) {
 }
 
 TEST (SemanticFlow, TracksDeletionThroughAliasesAndContinuingBranches) {
-	for (const char *s_body :
-	     { "def alias = item; item::delete; return alias.value", "if (flag) { item::delete } else { item::delete }; return item.value",
-	       "if (flag) return 0; item::delete; return item.value", "Item? alias = item; item::delete; alias::delete; return 0",
-	       "def a, b = item; a::delete; return b.value", "def a, b = item, other; a, b = b, a; item::delete; return b.value",
-	       "if (flag) { item::delete } else { item = other; item::delete }; return item.value",
-	       "do { item::delete; break } while (true); return item.value", "do { item::delete; continue } while (false); return item.value" }) {
+	for (const char *s_body : { "def alias = item; item::delete; return alias.value", "if (flag) { item::delete } else { item::delete }; return item.value",
+	                            "if (flag) return 0; item::delete; return item.value", "Item? alias = item; item::delete; alias::delete; return 0",
+	                            "def a, b = item; a::delete; return b.value", "def a, b = item, other; a, b = b, a; item::delete; return b.value",
+	                            "if (flag) { item::delete } else { item = other; item::delete }; return item.value",
+	                            "do { item::delete; break } while (true); return item.value",
+	                            "do { item::delete; continue } while (false); return item.value", "if (true == -9) item::delete; return item.value" }) {
 		expectError(S_ITEM + "fn<int> test(Item item, Item other, bool flag) { " + s_body + " }", Code::DELETED_CLASS_ACCESS);
 	}
 	const CheckedProgram cp_program = checkSource(S_ITEM + R"(fn<int> split(Item item, bool flag) {
@@ -55,6 +55,11 @@ TEST (SemanticFlow, TracksDeletionThroughAliasesAndContinuingBranches) {
 }
 fn<int> fresh() {
     def item = Item::new()
+    return item.value
+}
+fn<int> skippedDelete() {
+    def item = Item::new()
+    if (false == 1) item::delete
     return item.value
 }
 fn<int> replace(Item item, Item other) {
@@ -66,6 +71,7 @@ fn<int> replace(Item item, Item other) {
 )");
 	EXPECT_TRUE(cp_program.expressions.at(&returned(body(cp_program, "split").statements.back())).receiverChecks.atAccess);
 	EXPECT_FALSE(cp_program.expressions.at(&returned(body(cp_program, "fresh").statements.back())).receiverChecks.atAccess);
+	EXPECT_FALSE(cp_program.expressions.at(&returned(body(cp_program, "skippedDelete").statements.back())).receiverChecks.atAccess);
 	EXPECT_TRUE(cp_program.expressions.at(&returned(body(cp_program, "replace").statements.back())).receiverChecks.atAccess);
 }
 
@@ -241,7 +247,7 @@ typedef<interface> Tag { pub mt<int> tag() }
 	EXPECT_NO_THROW(checkSource("typedef<class> C { pub operator ::type() -> int = 3 }\nfn<int> f(Object? x) { if (x is C) return x::type; return 0 }"));
 	EXPECT_NO_THROW(checkSource(s_views + R"(typedef<class> Holder {
     pub state<int> ::run()
-    default: pub state<void> Idle { mt<int> run() = 0 }
+    pub default state<void> Idle { mt<int> run() = 0 }
     pub state<Object?> Active { mt<int> run() { if (state is Left || state is Right) return state.read(); return 0 } }
 })"));
 }
@@ -327,7 +333,7 @@ fn<int> unknown(Player p) {
 	EXPECT_TRUE(ei_unknown.receiverChecks.atAccess);
 	EXPECT_NO_THROW(checkSource(R"(typedef<class> C {
     pub state<int> ::run(C item, opt<int> n ?: restore(item))
-    default: pub state<void> Ready { mt<int> run(C item, int n) = n }
+    pub default state<void> Ready { mt<int> run(C item, int n) = n }
     pub state<void> Other {}
 }
 fn<int> restore(C c) { c -> Ready; return 1 }

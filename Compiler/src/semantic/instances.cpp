@@ -4,6 +4,7 @@
 #include <compare>
 #include <format>
 #include <functional>
+#include <stdexcept>
 #include <tuple>
 #include <unordered_map>
 
@@ -271,11 +272,11 @@ void Analyzer::useDeclaredBounds (const Symbol &symbol, const Substitutions &arg
 }
 
 void Analyzer::visitTypeMembers (const ResolvedType &type, const Substitutions &arguments, GenericInstance *instance) {
-	const Symbol &sym_type = *type.declaration;
-	StorageEdges *v_edges  = nullptr;
+	const Symbol  &sym_type = *type.declaration;
+	StorageFields *v_fields = nullptr;
 	if (asStruct(&sym_type)) {
-		const std::pair<std::map<ResolvedType, StorageEdges>::iterator, bool> it_layout = m_storage.try_emplace(type);
-		if (it_layout.second) v_edges = &it_layout.first->second;
+		const std::pair<std::map<ResolvedType, StorageFields>::iterator, bool> it_layout = m_storage.try_emplace(type);
+		if (it_layout.second) v_fields = &it_layout.first->second;
 	}
 	for (const SymbolScope::value_type &entry : sym_type.members) {
 		for (const Symbol &sym_member : entry.second) {
@@ -288,19 +289,16 @@ void Analyzer::visitTypeMembers (const ResolvedType &type, const Substitutions &
 					instance->fields.emplace(&sym_member, rt_field);
 					BodyChecker(*this, sym_member, instance->body, arguments, di_field).check();
 				}
-				if (v_edges && asStruct(rt_field.declaration)) {
-					rt_field.suffixes.clear();
-					v_edges->emplace_back(std::move(rt_field), &sym_member);
-				}
+				if (v_fields) v_fields->emplace_back(std::move(rt_field), &sym_member);
 			} else if (iw_active && !typeParameters(sym_member) &&
 			           (callable(sym_member) || sym_member.kind == SymbolKind::State || sym_member.kind == SymbolKind::StateAttachment)) {
 				useCallable(sym_member, arguments, sym_member, sym_member.name.get_span());
 			}
 		}
 	}
-	if (v_edges) {
-		std::ranges::sort(*v_edges, {}, [] (const StorageEdges::value_type &edge) {
-			const TokenSpan ts_field = edge.second->name.get_span();
+	if (v_fields) {
+		std::ranges::sort(*v_fields, {}, [] (const StorageFields::value_type &field) {
+			const TokenSpan ts_field = field.second->name.get_span();
 			return std::pair{ ts_field.startLine, ts_field.startCol };
 		});
 	}
@@ -410,39 +408,57 @@ void Analyzer::completeInstance (const InstanceWork &work) {
 }
 
 void Analyzer::checkStorage () const {
-	using Layout = decltype(m_storage)::value_type;
-	std::vector<const Layout *> v_roots;
+	using Layout = std::map<ResolvedType, StorageFields>::value_type;
+
+	struct StorageVisit {
+		const Layout *node;
+		std::size_t   next = 0;
+	};
+
+	std::vector<const Layout *> v_roots, v_postorder;
 	v_roots.reserve(m_storage.size());
-	for (const Layout &layout : m_storage) {
-		if (!layout.second.empty()) v_roots.push_back(&layout);
-	}
+	for (const Layout &layout : m_storage) v_roots.push_back(&layout);
 	const StorageTypeOrder compare{ declarations, m_genericOwners };
 	std::ranges::sort(v_roots, [&] (const Layout *left, const Layout *right) { return compare(left->first, right->first) < 0; });
 
 	// Only a type already on the current field path makes the layout recursive.
-	std::set<ResolvedType>    s_active, s_done;
+	std::set<const Layout *>  s_active, s_done;
 	std::vector<StorageVisit> v_path;
 	for (const Layout *root : v_roots) {
-		if (s_done.contains(root->first)) continue;
-		s_active.insert(root->first);
-		v_path.push_back({ root->first, root->second });
+		if (s_done.contains(root)) continue;
+		s_active.insert(root);
+		v_path.push_back({ root });
 		while (!v_path.empty()) {
-			StorageVisit &v_current = v_path.back();
-			if (v_current.next == v_current.fields.size()) {
-				s_active.erase(v_current.type);
-				s_done.insert(v_current.type);
+			StorageVisit &sv_current = v_path.back();
+			const Layout *sl_node    = sv_current.node;
+			if (sv_current.next == sl_node->second.size()) {
+				if (!sl_node->first.dependent()) v_postorder.push_back(sl_node);
+				s_active.erase(sl_node);
+				s_done.insert(sl_node);
 				v_path.pop_back();
 				continue;
 			}
-			const std::pair<ResolvedType, const Symbol *> &edge = v_current.fields[v_current.next++];
-			if (s_done.contains(edge.first)) continue;
-			if (!s_active.insert(edge.first).second) {
-				const Token &t_name = edge.first.declaration->name;
-				fail(Code::RECURSIVE_STRUCT, edge.second->name.get_span(),
+			const StorageFields::value_type &field = sl_node->second[sv_current.next++];
+			if (!asStruct(field.first.declaration)) continue;
+			ResolvedType rt_nested = field.first;
+			rt_nested.suffixes.clear();
+			const std::map<ResolvedType, StorageFields>::const_iterator it_child = m_storage.find(rt_nested);
+			if (it_child == m_storage.end()) throw std::logic_error("Missing struct field specialization");
+			const Layout *sl_child = &*it_child;
+			if (s_done.contains(sl_child)) continue;
+			if (!s_active.insert(sl_child).second) {
+				const Token &t_name = rt_nested.declaration->name;
+				fail(Code::RECURSIVE_STRUCT, field.second->name.get_span(),
 				     std::format("Recursive storage in {} '{}'", to_string(kStruct), t_name.get_lexeme()), &t_name);
 			}
-			v_path.push_back({ edge.first, m_storage.at(edge.first) });
+			v_path.push_back({ sl_child });
 		}
+	}
+	for (const Layout *sl_struct : v_postorder) layoutStruct(sl_struct->first, sl_struct->second);
+	for (const ArrayAllocation &aa_literal : v_arrayLiterals) {
+		if (!program.arrayDataLayout(aa_literal.type, aa_literal.count))
+			fail(Code::INVALID_ARRAY, aa_literal.where,
+			     std::format("Array element storage exceeds {} on a {}-bit target", to_string(kUsize), program.layout.sizeBits));
 	}
 }
 
@@ -476,5 +492,4 @@ void Analyzer::checkInstances () {
 	iw_active = nullptr;
 	checkStorage();
 }
-
 }

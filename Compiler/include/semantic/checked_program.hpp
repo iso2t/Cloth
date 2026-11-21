@@ -4,6 +4,7 @@
 
 #include <compare>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <filesystem>
 #include <functional>
@@ -59,6 +60,8 @@ struct ResolvedType {
 	[[nodiscard]] bool                             array () const;
 	[[nodiscard]] bool                             integer () const;
 	[[nodiscard]] bool                             floating () const;
+	// A typed destination normalizes a present integer to zero or one. Nullable destinations preserve absence.
+	[[nodiscard]] bool                             convertsIntegerToBool (const ResolvedType &source) const;
 	[[nodiscard]] ResolvedType                     element () const;
 	[[nodiscard]] std::string                      spelling () const;
 };
@@ -283,6 +286,8 @@ struct ExpressionInfo {
 	bool                             callsClassEquality = false;
 	bool                             negateEquality     = false;
 	bool                             liftedEquality     = false;
+	// Built-in boolean equality compares present payloads by truth value (zero or nonzero).
+	bool                             booleanEquality = false;
 	std::optional<OperatorSelection> leftContext = {}, rightContext = {};
 	NumericConstant                  numericConstant    = {};
 	bool                             invalidNumericCast = false;
@@ -296,6 +301,7 @@ struct ExpressionInfo {
 	std::vector<std::optional<ResolvedType>>  representedResults = {};
 	[[nodiscard]] std::optional<ResolvedType> representedAt (std::size_t slot) const;
 
+	[[nodiscard]] std::optional<bool> integerTruth () const;
 	[[nodiscard]] ResultKind resultKind () const;
 	static ExpressionInfo    never ();
 };
@@ -360,6 +366,11 @@ struct GenericInstance {
 	std::map<const Symbol *, ResolvedType> fields;
 };
 
+struct StructLayout {
+	StorageLayout                           storage;
+	std::map<const Symbol *, std::uint64_t> fieldOffsets;
+};
+
 struct CheckedProgram : BodyFacts {
 	explicit CheckedProgram (SymbolTable entry, TargetLayout layout = {}, std::filesystem::path standardLibraryRoot = {},
 	                         ProgramKind kind = ProgramKind::Library);
@@ -374,6 +385,10 @@ struct CheckedProgram : BodyFacts {
 	std::unordered_map<const Symbol *, DeclarationInfo> declarations;
 	std::map<InstanceKey, GenericInstance>              instances;
 	std::map<ResolvedType, TypeDispatch>                dispatchTables;
+	std::map<ResolvedType, StructLayout>                structLayouts;
+	[[nodiscard]] std::optional<StorageLayout>          storageLayout (const ResolvedType &type) const;
+	// Contiguous element storage, excluding the array descriptor. One element gives the stride.
+	[[nodiscard]] std::optional<StorageLayout> arrayDataLayout (const ResolvedType &array, std::uint64_t count) const;
 	// A standalone state keeps its lexical scope. State selections in its body belong to each attaching class.
 	std::map<ResolvedType, BodyFacts> attachmentBodies;
 };

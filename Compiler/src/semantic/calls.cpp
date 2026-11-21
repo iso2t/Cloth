@@ -268,11 +268,21 @@ struct Match {
 	std::optional<CallDispatch> dispatch;
 	unsigned                    operatorWidth;
 	MatchRank                   rank;
+	bool                        convertsIntegerToBool = false;
 
 	[[nodiscard]] std::size_t omittedCount () const {
 		return placement.omitted.size();
 	}
 };
+}
+
+bool usesBooleanArgumentConversion (const ResolvedType &parameter, const ResolvedType &argument) {
+	if (parameter.convertsIntegerToBool(argument)) return true;
+	// A contextual array literal can convert each element. The normal argument check still validates the full array shape.
+	if (parameter.name != to_string(kBoolean) || !hasArrayShape(parameter) || !hasArrayShape(argument)) return false;
+	ResolvedType rt_leaf = argument;
+	rt_leaf.suffixes.clear();
+	return rt_leaf.integer();
 }
 
 bool BodyChecker::checkArguments (const std::vector<CallArgument> &arguments, const ResultTypes &parameters, const std::vector<ArgumentProbe> &probes,
@@ -420,8 +430,15 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 		}
 		v_probes.push_back(std::move(ap_probe));
 	}
-	std::vector<Match>                            matches;
-	const Symbol                                 *inaccessible = nullptr;
+	std::vector<Match>  matches, v_booleanConversions;
+	std::size_t         st_ordinaryConversions = 0;
+	const Symbol       *inaccessible = nullptr, *sym_privateConversion = nullptr;
+	const std::function fn_addMatch = [&] (Match &match, const Symbol *hidden) {
+		if (hidden)
+			(match.convertsIntegerToBool ? sym_privateConversion : inaccessible) = hidden;
+		else
+			(match.convertsIntegerToBool ? v_booleanConversions : matches).push_back(std::move(match));
+	};
 	std::optional<cde::ClothDiagnostic>           opt_boundFailure;
 	bool                                          b_inferred = false;
 	std::vector<std::pair<Match, const Symbol *>> v_contextual;
@@ -443,18 +460,16 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
                                         if (contextualFailure(error)) continue;
                                         throw;
                                 }
-                                if (entry.second)
-                                        inaccessible = entry.second;
-                                else
-                                        matches.push_back(std::move(match));
-                        }
-                }
-                v_contextual.clear();
+				fn_addMatch(match, entry.second);
+			}
+		}
+		v_contextual.clear();
 	};
 	for (std::vector<PlacedCandidate>::iterator it_placed = v_placed.begin(); it_placed != v_placed.end(); ++it_placed) {
 		if (it_placed == it_firstGeneric) {
 			tryContextual();
 			if (!matches.empty()) break;
+			st_ordinaryConversions = v_booleanConversions.size();
 		}
 		PlacedCandidate       &pc_placed     = *it_placed;
 		const Candidate       &candidate     = *pc_placed.candidate;
@@ -481,8 +496,10 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 			const ResolvedType parameter = analyzer.substitute(info.parameters[match.placement.destinations[i]], substitutions);
 			match.parameters.push_back(parameter);
 			const std::optional<ExpressionInfo> &opt_result = v_probes[i].result;
-			if (opt_result && opt_result->fallsThrough && opt_result->types.front() == parameter) {
-				continue;
+			if (opt_result && opt_result->fallsThrough) {
+				const ResolvedType &rt_actual = opt_result->types.front();
+				if (rt_actual == parameter) continue;
+				match.convertsIntegerToBool |= usesBooleanArgumentConversion(parameter, rt_actual);
 			}
 			if (opt_result && (!opt_result->fallsThrough || analyzer.accepts(parameter, opt_result->types.front()))) {
 				match.rank = std::max(match.rank, MatchRank::Assignable);
@@ -498,16 +515,18 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 		match.substitutions = std::move(substitutions);
 		if (match.rank == MatchRank::Contextual)
 			v_contextual.emplace_back(std::move(match), sym_private);
-		else if (sym_private)
-			inaccessible = sym_private;
 		else
-			matches.push_back(std::move(match));
+			fn_addMatch(match, sym_private);
 	}
 	tryContextual();
 	if (matches.empty()) {
-		if (inaccessible) {
-			analyzer.requireAccess(*inaccessible, context, span);
-		}
+		// Conversion is a fallback after ordinary and generic matches, including their visibility checks.
+		if (inaccessible) analyzer.requireAccess(*inaccessible, context, span);
+		if (st_ordinaryConversions) v_booleanConversions.erase(v_booleanConversions.begin() + st_ordinaryConversions, v_booleanConversions.end());
+		matches = std::move(v_booleanConversions);
+	}
+	if (matches.empty()) {
+		if (sym_privateConversion) analyzer.requireAccess(*sym_privateConversion, context, span);
 		if (!b_inferred && opt_boundFailure) throw *opt_boundFailure;
 		fail(Code::NO_MATCHING_CALL, span, "No overload of '" + spelling + "' accepts these arguments", &group.front().symbol->name);
 	}

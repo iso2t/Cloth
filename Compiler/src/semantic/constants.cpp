@@ -267,6 +267,20 @@ void checkNumeric (const Expression &node, ExpressionInfo &result, const Express
 	if (result.symbol || result.leftContext || result.rightContext || result.types.size() != 1 || !result.fallsThrough) return;
 	const ResolvedType &rt_declared = result.types.front();
 	const ResolvedType  type        = rt_declared.nullable() ? rt_declared.element() : rt_declared;
+	if (type == ResolvedType(kBoolean)) {
+		std::optional<bool> opt_truth;
+		if (const BinaryExpression *be_test = dynamic_cast<const BinaryExpression *>(&node); be_test && result.booleanEquality) {
+			const std::optional<bool> opt_left  = facts.at(be_test->left.get()).integerTruth(),
+			                          opt_right = facts.at(be_test->right.get()).integerTruth();
+			if (opt_left && opt_right) opt_truth = be_test->op.get_operator() == oEqual ? *opt_left == *opt_right : *opt_left != *opt_right;
+		} else if (const CastExpression *ce_cast = dynamic_cast<const CastExpression *>(&node)) {
+			opt_truth = facts.at(ce_cast->operand.get()).integerTruth();
+		} else if (const UnaryExpression *ue_not = dynamic_cast<const UnaryExpression *>(&node); ue_not && ue_not->op.get_operator() == oNot) {
+			if (const std::optional<bool> opt_operand = facts.at(ue_not->operand.get()).integerTruth()) opt_truth = !*opt_operand;
+		}
+		if (opt_truth) result.numericConstant = IntegerConstant{ { *opt_truth } };
+		return;
+	}
 	if (!type.integer() && !type.floating()) return;
 	const unsigned width      = type.width ? type.width : layout.sizeBits;
 	const bool     b_unsigned = unsignedType(type);

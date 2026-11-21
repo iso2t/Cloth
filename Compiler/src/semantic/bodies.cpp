@@ -489,7 +489,9 @@ ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTyp
 			const ResolvedType *rt_slot = broadcast && v_next.size() == 1        ? broadcast :
 			                              expected && st_slot < expected->size() ? &(*expected)[st_slot] :
 			                                                                       nullptr;
-			if (rt_slot && (rt_slot->nullable() || rt_slot->array() || asClass(rt_slot->declaration) || asInterface(rt_slot->declaration)) &&
+			if (rt_slot &&
+			    (rt_slot->nullable() || rt_slot->array() || *rt_slot == ResolvedType(kBoolean) || asClass(rt_slot->declaration) ||
+			     asInterface(rt_slot->declaration)) &&
 			    analyzer.accepts(*rt_slot, rt_common) && analyzer.accepts(*rt_slot, v_next[st_slot])) {
 				rt_common = *rt_slot;
 			} else {

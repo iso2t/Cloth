@@ -844,7 +844,7 @@ ExpressionInfo BodyChecker::builtinBinary (const BinaryExpression &node, const R
 		return elvis({ node.left, node.op, node.right }, expected ? &v_hint : nullptr, floats);
 	}
 	if (o_operation == oAnd || o_operation == oOr) {
-		const ExpressionInfo ei_left     = scalarInfo(*node.left);
+		const ExpressionInfo ei_left     = testOperand(*node.left);
 		TestPaths            tp_left     = splitTest(*node.left, ei_left);
 		const bool           b_and       = o_operation == oAnd;
 		TestPath            &tp_evaluate = b_and ? tp_left.yes : tp_left.no;
@@ -852,7 +852,7 @@ ExpressionInfo BodyChecker::builtinBinary (const BinaryExpression &node, const R
 		BodyChecker          bc_right    = *this;
 		bc_right.fs_flow                 = { tp_evaluate.facts, {} };
 		if (!tp_evaluate.reachable) bc_right.we_capture = nullptr;
-		const ExpressionInfo ei_right = bc_right.scalarInfo(*node.right);
+		const ExpressionInfo ei_right = bc_right.testOperand(*node.right);
 		TestPaths            tp_right = bc_right.splitTest(*node.right, ei_right);
 		if (ei_left.fallsThrough) requirePresentOperand(ei_left.types.front(), node.left->get_span());
 		if (ei_right.fallsThrough) requirePresentOperand(ei_right.types.front(), node.right->get_span());
@@ -1182,8 +1182,8 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		}
 		return value(rt);
 	}
-	if (dynamic_cast<const BooleanLiteral *>(&node)) {
-		return value(ResolvedType(kBoolean));
+	if (const BooleanLiteral *bl_literal = dynamic_cast<const BooleanLiteral *>(&node)) {
+		return { .types = { ResolvedType(kBoolean) }, .numericConstant = IntegerConstant{ { bl_literal->value } } };
 	}
 	if (dynamic_cast<const CharacterLiteral *>(&node)) {
 		return value(ResolvedType(kCharacter));
@@ -1268,6 +1268,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 		const std::string outer = arraySuffix(std::to_string(n->elements.size()));
 		elem->suffixes.push_back(outer);
 		shape->suffixes.push_back(outer);
+		if (record && !elem->dependent()) analyzer.useArrayLiteral(*elem, *n);
 		return { .types = { *elem }, .arrayShapes = { *shape } };
 	}
 	if (const auto *n = dynamic_cast<const StructLiteral *>(&node)) {
@@ -1332,7 +1333,7 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 			}
 			return result;
 		}
-		const ExpressionInfo ei_operand = o_operation == oNot ? scalarInfo(*n->operand) : scalarInfo(*n->operand, hint, floats);
+		const ExpressionInfo ei_operand = o_operation == oNot ? testOperand(*n->operand) : scalarInfo(*n->operand, hint, floats);
 		if (!ei_operand.fallsThrough) return ExpressionInfo::never();
 		const ResolvedType    &operand = ei_operand.types.front();
 		std::vector<Candidate> group   = analyzer.members(operand, n->op.get_name_key(), SymbolKind::Operator);

@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <gtest/gtest.h>
+#include <string>
 #include <variant>
 
 #include <ast/decl/class_declaration.hpp>
 #include <ast/decl/declarations.hpp>
 #include <ast/decl/function_declaration.hpp>
+#include <ast/decl/state_declaration.hpp>
 #include <ast/expr/expressions.hpp>
 #include <ast/source_unit.hpp>
 #include <ast/stmt/statements.hpp>
+#include <cde/diagnostic_code.hpp>
 #include <cde/syntax_exception.hpp>
 #include <lexer/lexer.hpp>
 #include <parser/parser.hpp>
@@ -68,6 +71,21 @@ TEST (ParserDeclarations, RejectsBracketedLocalTypesAndMisplacedOverrideModifier
 	}
 }
 
+TEST (ParserDeclarations, ReportsMissingInitializerForUnambiguousTypedLocals) {
+	for (const char *s_declaration : { "Wibble x", "Outer.Item? value", "int<12> n", "Item[2] items", "Box<T> box, bool ok" }) {
+		SCOPED_TRACE(s_declaration);
+		Lexer  l_lexer(std::string("fn f() { ") + s_declaration + "; }");
+		Parser p_parser(l_lexer);
+		try {
+			p_parser.parse();
+			FAIL() << "Expected a missing initializer";
+		} catch (const cde::SyntaxException &error) {
+			EXPECT_EQ(error.get_code(), cde::DiagnosticCode::EXPECTED_TOKEN);
+			EXPECT_EQ(error.get_message(), "Expected '=' or ':=', found ';'");
+		}
+	}
+}
+
 TEST (ParserDeclarations, PlacesVirtualBetweenVisibilityAndTheMethodKeyword) {
 	Lexer                    l_lexer("typedef<class> C {\n    pub virtual mt f() {}\n}");
 	Parser                   p_parser(l_lexer);
@@ -85,6 +103,45 @@ TEST (ParserDeclarations, PlacesVirtualBetweenVisibilityAndTheMethodKeyword) {
 		Lexer  l_invalid(s_source);
 		Parser p_invalid(l_invalid);
 		EXPECT_THROW(p_invalid.parse(), cde::SyntaxException);
+	}
+}
+
+TEST (ParserDeclarations, RecordsInitialStateModifiersOnDeclarationsAndAttachments) {
+	Lexer                         l_lexer(R"(typedef<class> Lamp {
+    pub default state<void> Ready {}
+}
+typedef<class> Meter {
+    pub default(1) state Busy
+}
+typedef<state<int>> pub Busy for Meter {}
+)");
+	Parser                        p_parser(l_lexer);
+	const SourceUnit              su_unit  = p_parser.parse();
+	const ClassDeclaration       &cd_lamp  = dynamic_cast<const ClassDeclaration &>(*su_unit.declarations.at(0));
+	const NestedStateDeclaration &ns_ready = dynamic_cast<const NestedStateDeclaration &>(*std::get<StateClassMemberPtr>(cd_lamp.members.at(0).value));
+	ASSERT_TRUE(ns_ready.initial);
+	EXPECT_FALSE(ns_ready.initial->payload);
+	EXPECT_EQ(ns_ready.initial->span.to_string(), "2:9-2:16");
+	EXPECT_EQ(ns_ready.get_span().to_string(), "2:5-2:37");
+
+	const ClassDeclaration           &cd_meter = dynamic_cast<const ClassDeclaration &>(*su_unit.declarations.at(1));
+	const StateAttachmentDeclaration &sa_busy =
+	        dynamic_cast<const StateAttachmentDeclaration &>(*std::get<StateClassMemberPtr>(cd_meter.members.at(0).value));
+	ASSERT_TRUE(sa_busy.initial);
+	ASSERT_TRUE(sa_busy.initial->payload);
+	EXPECT_EQ(sa_busy.initial->payload->get_span().to_string(), "5:17-5:18");
+	EXPECT_EQ(sa_busy.initial->span.to_string(), "5:9-5:19");
+	EXPECT_EQ(sa_busy.get_span().to_string(), "5:5-5:30");
+}
+
+TEST (ParserDeclarations, RejectsMisplacedInitialStateModifiers) {
+	for (const char *s_member :
+	     { "default: state<void> Ready {}", "default: (1) pub state Busy", "pub default: state<void> Ready {}", "default pub state<void> Ready {}",
+	       "default(1) pub state Busy", "pub default mt read() {}", "pub default state<int> ::read()" }) {
+		SCOPED_TRACE(s_member);
+		Lexer  l_lexer(std::string("typedef<class> C { ") + s_member + " }");
+		Parser p_parser(l_lexer);
+		EXPECT_THROW(p_parser.parse(), cde::SyntaxException);
 	}
 }
 }

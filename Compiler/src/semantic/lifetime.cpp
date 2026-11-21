@@ -696,8 +696,9 @@ Branches LifetimeChecker::condition (const Expression &node, Path &path) {
 	}
 	expression(node, path);
 	if (!path.reachable) return {};
-	if (const BooleanLiteral *bl_literal = dynamic_cast<const BooleanLiteral *>(&node))
-		return bl_literal->value ? Branches{ path, {} } : Branches{ {}, path };
+	if (it_info != bf_facts.expressions.end()) {
+		if (const std::optional<bool> opt_truth = it_info->second.integerTruth()) return *opt_truth ? Branches{ path, {} } : Branches{ {}, path };
+	}
 	return { path, path };
 }
 

@@ -31,23 +31,26 @@ bool BindingsParser::startsBinding () const {
 	if (p_parser.atKeyword(kDef)) {
 		return true;
 	}
-	// A comparison can also start with a name followed by angle brackets.
-	const std::optional<int> opt_first = p_parser.p_typeParser.typedTargetEnd();
-	if (!opt_first) {
+	int                i_start      = 0;
+	std::optional<int> opt_typedEnd = p_parser.p_typeParser.typedTargetEnd();
+	if (!opt_typedEnd) {
 		return false;
 	}
-	int i_end = *opt_first;
-	while (p_parser.at(oComma, i_end)) {
-		const int i_next = p_parser.afterNewLines(i_end + 1);
-		if (const std::optional<int> opt_typed = p_parser.p_typeParser.typedTargetEnd(i_next)) {
-			i_end = *opt_typed;
-		} else if (Parser::isReceivingTarget(p_parser.peek(i_next))) {
-			i_end = i_next + 1;
-		} else {
+	while (true) {
+		const int i_end = opt_typedEnd.value_or(i_start + 1);
+		// Only a named type with '>' immediately before the target can also be a comparison.
+		if (opt_typedEnd && (p_parser.peek(i_start).get_type() != TokenType::Identifier || !p_parser.at(oGreater, i_end - 2))) {
+			return true;
+		}
+		if (!p_parser.at(oComma, i_end)) {
+			return p_parser.at(oAssign, i_end) || p_parser.at(oFinalAssign, i_end);
+		}
+		i_start      = p_parser.afterNewLines(i_end + 1);
+		opt_typedEnd = p_parser.p_typeParser.typedTargetEnd(i_start);
+		if (!opt_typedEnd && !Parser::isReceivingTarget(p_parser.peek(i_start))) {
 			return false;
 		}
 	}
-	return p_parser.at(oAssign, i_end) || p_parser.at(oFinalAssign, i_end);
 }
 
 std::optional<TypeReference> BindingsParser::parseBindingType () const {

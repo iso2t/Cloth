@@ -23,6 +23,7 @@ unit_sources := Compiler/Lexer/Unit/token_test.cpp \
                 Compiler/Semantic/Unit/flow_test.cpp \
                 Compiler/Semantic/Unit/ownership_test.cpp \
                 Compiler/Semantic/Unit/operator_test.cpp \
+                Compiler/Semantic/Unit/storage_layout_test.cpp \
                 Compiler/Semantic/Unit/value_semantics_test.cpp \
                 Compiler/Semantic/Unit/program_boundaries_test.cpp \
                 Diagnostics/Unit/import_test.cpp

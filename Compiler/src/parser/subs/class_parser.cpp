@@ -144,14 +144,14 @@ std::vector<ClassMember> ClassParser::parseMembers (const Token &owner, std::vec
 }
 
 ClassMember ClassParser::parseMember (const Token &owner) const {
+	std::optional<Token>              opt_visibility = p_parser.parseVisibility();
 	std::optional<InitialStatePrefix> opt_initial;
 	if (p_parser.atKeyword(kDefault)) {
 		opt_initial = parseInitialState();
-	}
-	std::optional<Token> opt_visibility = p_parser.parseVisibility();
-	if (opt_initial && !p_parser.atKeyword(kState)) {
-		throw cde::SyntaxErrors::expected(std::format("a state declaration or attachment after '{}{}'", to_string(kDefault), to_string(oColon)),
-		                                  p_parser.peek());
+		if (!p_parser.atKeyword(kState)) {
+			throw cde::SyntaxErrors::expected(std::format("a '{}' declaration or attachment after '{}'", to_string(kState), to_string(kDefault)),
+			                                  p_parser.peek());
+		}
 	}
 	std::optional<TokenSpan> opt_virtual, opt_override;
 	if (p_parser.atKeyword(kVirtual)) {
@@ -189,7 +189,6 @@ ClassMember ClassParser::parseMember (const Token &owner) const {
 
 InitialStatePrefix ClassParser::parseInitialState () const {
 	const Token t_keyword = p_parser.advance();
-	const Token t_colon   = p_parser.expect(oColon);
 	p_parser.skipNewLines();
 	ExpressionPtr ep_payload;
 	if (at(oParenOpen)) {
@@ -202,7 +201,7 @@ InitialStatePrefix ClassParser::parseInitialState () const {
 			});
 		});
 	}
-	const Token t_end = ep_payload ? p_parser.previous() : t_colon;
+	const Token t_end = ep_payload ? p_parser.previous() : t_keyword;
 	p_parser.skipNewLines();
 	return { .keyword = t_keyword, .payload = std::move(ep_payload), .span = TokenSpan::span_through(t_keyword.get_span(), t_end.get_span()) };
 }
@@ -210,7 +209,7 @@ InitialStatePrefix ClassParser::parseInitialState () const {
 StateClassMemberPtr ClassParser::parseState (std::optional<Token> visibility, std::optional<InitialStatePrefix> initial) const {
 	const Token     t_keyword   = p_parser.advance();
 	const Token     t_typeStart = p_parser.peek();
-	const TokenSpan ts_start    = initial ? initial->span : (visibility ? *visibility : t_keyword).get_span();
+	const TokenSpan ts_start    = visibility ? visibility->get_span() : (initial ? initial->span : t_keyword.get_span());
 	if (t_typeStart.get_type() == TokenType::Identifier) {
 		const Token t_name = p_parser.advance();
 		return std::make_shared<StateAttachmentDeclaration>(t_keyword, t_name, std::move(initial), TokenSpan::span_through(ts_start, t_name.get_span()),

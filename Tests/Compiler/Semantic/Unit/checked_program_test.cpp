@@ -216,8 +216,10 @@ TEST (SemanticChecking, ChecksArityAndEveryResultSlotEvenAfterAnExit) {
 	using Code = cde::DiagnosticCode;
 	expectError("fn<int, bool> f() = 1", Code::RESULT_ARITY);
 	expectError("fn<int, bool> f(bool b) = if (b) { 1, true } else { 2 }", Code::BRANCH_RESULT_ARITY);
-	expectError("fn<int, bool> f() = if (true) { 1, true } else { 2, 3 }", Code::BRANCH_TYPE_MISMATCH);
-	expectError("fn<int, bool> f() { return 1, 2 }", Code::RETURN_TYPE);
+	EXPECT_NO_THROW(checkSource("fn<int, bool> f(bool b) = if (b) { 1, true } else { 2, 3 }"));
+	EXPECT_NO_THROW(checkSource("fn<int, bool> f() { return 1, 2 }"));
+	expectError("fn<int, bool> f() = if (true) { 1, true } else { 2, 3.0 }", Code::BRANCH_TYPE_MISMATCH);
+	expectError("fn<int, bool> f() { return 1, 2.0 }", Code::RETURN_TYPE);
 	expectError("fn<int, int<8>> f() = if (true) { return 1, 2 } else { return 3, 4 }, 128", Code::INTEGER_RANGE);
 	expectError("fn f(bool b) = if (b) { 1, true } else { 2, false }", Code::VALUE_IN_VOID);
 	expectError("fn noop() {}\nfn f() { def a, b = noop() }", Code::VOID_VALUE);
@@ -620,7 +622,7 @@ TEST (SemanticChecking, ChecksOperatorsConstructorsAndStatePayloads) {
     pub operator +(int delta) = self.n + delta
     operator []?(int i) = true
     pub operator []=(int i, int value) { self.n = value }
-    default: (0) pub state On
+    pub default(0) state On
     pub state<void> ::clear()
 }
 typedef<state<int>> On for Counter { pub mt clear() { self -> On(1) } }
@@ -635,7 +637,7 @@ fn<int> work() {
 	using Code = cde::DiagnosticCode;
 	expectError("typedef<class> Box(int x)\nfn<Box> leak() = Box::new(1)", Code::PRIVATE_CLASS_MEMBER);
 	expectError("typedef<class> Lamp { state Missing }", Code::INVALID_STATE_ATTACHMENT);
-	expectError("typedef<class> C { default: (0) pub state<int> On {} }\nfn bad(C c) { c -> On() }", Code::INVALID_STATE_PAYLOAD);
+	expectError("typedef<class> C { pub default(0) state<int> On {} }\nfn bad(C c) { c -> On() }", Code::INVALID_STATE_PAYLOAD);
 }
 
 TEST (SemanticChecking, DelegatesToThePrimaryAndKeepsOrdinaryConstructorOverloads) {
@@ -709,7 +711,7 @@ TEST (SemanticChecking, RestrictsUsesOfTheInstanceDuringFieldInitialization) {
 	expectError("typedef<struct> S { pub mt<int> read() = 1 }\ntypedef<class> C(def<S> s) { def<int> x = self.s.read() }", Code::PARTIAL_CLASS_INSTANCE);
 	expectError("typedef<class> C { def<int> x = if (true) { return } else { 0 } }", Code::PARTIAL_CLASS_INSTANCE);
 	EXPECT_NO_THROW(checkSource(R"(typedef<class> C {
-    default: state<void> Ready {}
+    default state<void> Ready {}
     def<bool> ready = self is Ready
     def<int> first = if (true) { int local := { return 1 }; local } else { 0 }
 }
@@ -720,7 +722,7 @@ TEST (SemanticChecking, ResolvesUpdatesAndDistinguishesStateTypeAndValueTests) {
 	const CheckedProgram checked = checkSource(R"(typedef<class> Meter(def<int> n) {
     pub operator +=(int amount) { self.n += amount }
     pub operator ++() { self.n++ }
-    default: pub state<void> Ready {}
+    pub default state<void> Ready {}
 }
 fn<bool> test(Meter m) {
     m += 3
@@ -733,7 +735,7 @@ fn<bool> test(Meter m) {
 	EXPECT_EQ(checked.writes.size(), 2u);
 	EXPECT_EQ(checked.valueTests.size(), 1u);
 	using Code = cde::DiagnosticCode;
-	expectError("typedef<class> C { default: state<void> Hidden {} }\nfn<bool> bad(C c) = c is Hidden", Code::PRIVATE_CLASS_MEMBER);
+	expectError("typedef<class> C { default state<void> Hidden {} }\nfn<bool> bad(C c) = c is Hidden", Code::PRIVATE_CLASS_MEMBER);
 	expectError("fn<bool> bad(int n) = 3 is n", Code::INVALID_RANGE_MEMBERSHIP);
 	expectError("fn<int> bad(int? n) = n -> int", Code::NULLABLE_PAYLOAD_ACCESS);
 }
