@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: echo "pub fn<int> main () = invert(-43)" > "%t.co"
+# RUN: echo "fn<int> invert(int value) = ~value" >> "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --kind executable --src "%t.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+# RUN: echo "pub fn<int> main () = invert(2147483647) / -2147483648" > "%t.co"
+# RUN: echo "fn<int> invert(int value) = ~value" >> "%t.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 1 "%t.exe"
+
+# RUN: echo "pub fn<int> main () = ~1.0" > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=OPERAND --input-file "%t.err"
+# OPERAND: [C3006] Error: Operator '~' requires an integer operand

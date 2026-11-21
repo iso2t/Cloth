@@ -114,10 +114,6 @@ Words divide (const Words &left, const Words &right, bool remainder) {
 	return v_quotient;
 }
 
-bool unsignedType (const ResolvedType &type) {
-	return type.name == unsignedIntegerSpelling() || type.name == to_string(kUsize);
-}
-
 Words powerOfTwo (unsigned exponent) {
 	Words v_result(1 + exponent / 32);
 	v_result.back() = 1u << (exponent % 32);
@@ -199,7 +195,10 @@ template <typename T> T parseFloat (std::string_view text) {
 
 // The language diagnoses a literal divisor or an integer provider, optionally signed.
 bool literalOperand (const Expression &node) {
-	if (const UnaryExpression *ue_unary = dynamic_cast<const UnaryExpression *>(&node)) return literalOperand(*ue_unary->operand);
+	if (const UnaryExpression *ue_unary = dynamic_cast<const UnaryExpression *>(&node)) {
+		const Operator o_op = ue_unary->op.get_operator();
+		return (o_op == oPlus || o_op == oMinus) && literalOperand(*ue_unary->operand);
+	}
 	return dynamic_cast<const IntegerLiteral *>(&node) || dynamic_cast<const ProviderAccessExpression *>(&node);
 }
 
@@ -249,7 +248,7 @@ NumericConstant numericLimit (const ResolvedType &type, TargetLayout layout, boo
 		const double d_limit = type.width == 16 ? 65504. : type.width == 32 ? std::numeric_limits<float>::max() : std::numeric_limits<double>::max();
 		return maximum ? d_limit : -d_limit;
 	}
-	const bool b_unsigned = unsignedType(type);
+	const bool b_unsigned = type.unsignedInteger();
 	if (!maximum && b_unsigned) return IntegerConstant{ { 0 } };
 	Words magnitude = powerOfTwo((type.width ? type.width : layout.sizeBits) - !b_unsigned);
 	if (maximum) subtract(magnitude, { 1 });
@@ -283,19 +282,23 @@ void checkNumeric (const Expression &node, ExpressionInfo &result, const Express
 	}
 	if (!type.integer() && !type.floating()) return;
 	const unsigned width      = type.width ? type.width : layout.sizeBits;
-	const bool     b_unsigned = unsignedType(type);
+	const bool     b_unsigned = type.unsignedInteger();
 	if (const IntegerLiteral *literal = dynamic_cast<const IntegerLiteral *>(&node)) {
 		const IntegerConstant value{ literal->value };
 		result.numericConstant = type.floating() ? NumericConstant{ roundedFloat(asFloat(value, width), width) } : NumericConstant{ value };
 	} else if (const FloatingPointLiteral *literal = dynamic_cast<const FloatingPointLiteral *>(&node)) {
 		result.numericConstant = floatingLiteral(literal->value, width);
 	} else if (const UnaryExpression *ue_unary = dynamic_cast<const UnaryExpression *>(&node)) {
-		const NumericConstant &operand  = facts.at(ue_unary->operand.get()).numericConstant;
-		const bool             b_negate = ue_unary->op.get_operator() == oMinus;
-		if (const IntegerConstant *i = std::get_if<IntegerConstant>(&operand))
-			result.numericConstant = wrap({ i->magnitude, i->negative != b_negate }, width, b_unsigned);
-		else if (const double *f = std::get_if<double>(&operand))
-			result.numericConstant = b_negate ? -*f : *f;
+		const NumericConstant &operand = facts.at(ue_unary->operand.get()).numericConstant;
+		const Operator         o_op    = ue_unary->op.get_operator();
+		if (const IntegerConstant *i = std::get_if<IntegerConstant>(&operand)) {
+			IntegerConstant ic_value = *i;
+			if (o_op == oMinus || o_op == oTilde) ic_value.negative = !ic_value.negative;
+			// In two's complement, flipping every bit gives -x - 1 at the operand's width.
+			if (o_op == oTilde) ic_value = plus(std::move(ic_value), { { 1 }, true });
+			result.numericConstant = wrap(std::move(ic_value), width, b_unsigned);
+		} else if (const double *f = std::get_if<double>(&operand))
+			result.numericConstant = o_op == oMinus ? -*f : *f;
 	} else if (const CastExpression *ce_cast = dynamic_cast<const CastExpression *>(&node)) {
 		const NumericConstant &operand = facts.at(ce_cast->operand.get()).numericConstant;
 		if (std::holds_alternative<std::monostate>(operand)) return;

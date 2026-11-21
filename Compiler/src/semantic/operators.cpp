@@ -122,7 +122,7 @@ void Analyzer::resolveOperator (const Symbol &operation, const MethodDeclaration
 	const OperatorMember &om_form      = *method.operatorMember;
 	const Operator        o_op         = method.name.get_operator();
 	const bool            b_is         = method.name.get_lexeme() == to_string(kIs);
-	const bool            b_unary      = o_op == oPlus || o_op == oMinus || o_op == oNot;
+	const bool            b_unary      = isNumericPrefix(o_op) || o_op == oNot;
 	const bool            b_cast       = o_op == oPointerRight;
 	const bool            b_binary     = ExpressionParser::binaryOperators.contains(o_op) || o_op == oRange || o_op == oRangeInclusive || b_is;
 	const bool            b_index      = o_op == oIndexRead || o_op == oIndexWrite || o_op == oIndexValidate;
@@ -462,6 +462,10 @@ ExpressionInfo BodyChecker::equality (const BinaryExpression &node, const Resolv
 	     !(!left.nullable() && !right.nullable() && (left.integer() || left.floating()) && (right.integer() || right.floating()) &&
 	       (left.floating() || right.floating()))))
 		incomparable();
+	if ((left.integer() || left.floating()) && (right.integer() || right.floating()))
+		ei_result.comparisonType = numericOperationType(left, right);
+	else if (left == ResolvedType(kCharacter) && left == right)
+		ei_result.comparisonType = left;
 	return ei_result;
 }
 }

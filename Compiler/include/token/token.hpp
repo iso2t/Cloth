@@ -190,6 +190,7 @@ std::string_view        to_string (Operator op);
 std::string_view        operator_name (Operator op);
 std::optional<Operator> fromCharacter (std::string_view spelling);
 bool                    isTokenized (Operator op);
+bool                    isNumericPrefix (Operator op);
 bool                    isUpdate (Operator op);
 bool                    isEquality (Operator op);
 bool                    isComparison (Operator op);

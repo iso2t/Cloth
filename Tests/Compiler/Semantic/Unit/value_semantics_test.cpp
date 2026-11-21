@@ -135,6 +135,34 @@ TEST (SemanticValues, TargetWidthsApplyToLiteralsCastsAndExtents) {
 	}
 }
 
+TEST (SemanticValues, ComplementsIntegerConstantsAtTheOperandWidth) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const CheckedProgram cp_program = checkSource(R"(fn<int> value() = ~-43
+fn<int> product() = ~2 * 3
+fn<int<8>> minimum() = ~127
+fn<int<8>> maximum() = ~-128
+fn<unsigned int<12>> narrow() = ~0
+fn<unsigned int<65>> wide() = ~1
+fn<usize> sized() = ~0
+fn<int> computedDivisor() = 1 / ~-1
+)",
+		                                              { u_bits });
+		EXPECT_EQ(returned(cp_program).numericConstant, NumericConstant(IntegerConstant{ { 42 } }));
+		EXPECT_EQ(returned(cp_program, "product").numericConstant, NumericConstant(IntegerConstant{ { 9 }, true }));
+		EXPECT_EQ(returned(cp_program, "minimum").numericConstant, NumericConstant(IntegerConstant{ { 128 }, true }));
+		EXPECT_EQ(returned(cp_program, "maximum").numericConstant, NumericConstant(IntegerConstant{ { 127 } }));
+		EXPECT_EQ(returned(cp_program, "narrow").numericConstant, NumericConstant(IntegerConstant{ { 4095 } }));
+		EXPECT_EQ(returned(cp_program, "wide").numericConstant, NumericConstant(IntegerConstant{ { UINT32_MAX - 1, UINT32_MAX, 1 } }));
+		EXPECT_EQ(returned(cp_program, "sized").numericConstant, NumericConstant(IntegerConstant{ IntegerValue(u_bits / 32, UINT32_MAX) }));
+		EXPECT_TRUE(std::holds_alternative<std::monostate>(returned(cp_program, "computedDivisor").numericConstant));
+	}
+	expectError("fn<float> f(float x) = ~x", Code::UNARY_OPERAND);
+	expectError("fn<bool> f(bool x) = ~x", Code::UNARY_OPERAND);
+	expectError("fn<int> f() = ~2147483648", Code::INTEGER_RANGE);
+	expectError("typedef<class> C { operator ~(int x) = x }", Code::INVALID_OPERATOR_DECLARATION);
+}
+
 TEST (SemanticValues, NumericConstantsPreserveWidthRoundingAndInvalidCasts) {
 	const CheckedProgram program = checkSource(R"(fn<int<16>> value() = -1 -> unsigned int<8> -> int<16>
 fn<unsigned int<65>> wide() = -1 -> unsigned int<64> -> float<64> -> unsigned int<65>

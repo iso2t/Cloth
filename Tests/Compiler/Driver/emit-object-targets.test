@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # REQUIRES: x86 && (linux || win32)
 
-# RUN: echo "pub fn<int> main () = 42" > "%t.co"
+# RUN: echo "pub fn<int> main () { int answer = 42; answer = 7; return answer }" > "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --target-bits 32 --emit-object "%t.32.o"
 # RUN: %llvm_readobj --file-headers --symbols "%t.32.o" | %filecheck "%/s" --check-prefixes=OBJ32,OBJ32-%host_os
 # RUN: %cloth --kind executable --src "%t.co" --target-bits 64 --emit-object "%t.64.o"

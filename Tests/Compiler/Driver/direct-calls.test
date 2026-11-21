@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: echo "pub fn<int> main () = identity(42)" > "%t.co"
+# RUN: echo "fn<int> identity(int value) = value" >> "%t.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+# RUN: %cloth --kind executable --target-bits 32 --src "%t.co" --emit-object "%t.32.o"
+# RUN: %llvm_readobj --symbols "%t.32.o" | %filecheck "%/s" --check-prefix=HELPER-%host_os
+# RUN: %cloth --kind executable --target-bits 64 --src "%t.co" --emit-object "%t.64.o"
+# RUN: %llvm_readobj --symbols "%t.64.o" | %filecheck "%/s" --check-prefix=HELPER-%host_os
+# HELPER-win32: Name: {{_?}}cloth.identity{{$}}
+# HELPER-win32-NOT: }
+# HELPER-win32: StorageClass: Static
+# HELPER-linux: Name: cloth.identity (
+# HELPER-linux-NOT: }
+# HELPER-linux: Binding: Local
+
+# RUN: echo "pub fn<int> main () { int answer = 42; answer = choose(last = 42, first = replace(answer)); return answer }" > "%t.co"
+# RUN: echo "fn<int> choose(final int first, int last) = first" >> "%t.co"
+# RUN: echo "fn<int> replace(int value) { value = 7; return value }" >> "%t.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 7 "%t.exe"
+
+# RUN: echo "pub fn<int> main () { int value = 42; def copy := replace(value); return value }" > "%t.co"
+# RUN: echo "fn<int> replace(int value) { value = 7; return value }" >> "%t.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+# RUN: echo "pub fn<int> main () { def unused := identity(42); return 7 }" > "%t.co"
+# RUN: echo "fn<int> identity(int value) {" >> "%t.co"
+# RUN: echo "    println(value)" >> "%t.co"
+# RUN: echo "    return value" >> "%t.co"
+# RUN: echo "}" >> "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=BODY --input-file "%t.err"
+# BODY: [C4040] Error:
+# BODY: .co:3:5
+# BODY: println(value)
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"

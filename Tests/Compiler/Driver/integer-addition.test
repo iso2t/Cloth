@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: echo "pub fn<int> main () = add(40, 2)" > "%t.co"
+# RUN: echo "fn<int> add(int left, int right) = left + right" >> "%t.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+# RUN: %cloth --kind executable --target-bits 32 --src "%t.co" --emit-object "%t.32.o"
+# RUN: %llvm_readobj --file-headers "%t.32.o" | %filecheck "%/s" --check-prefix=OBJ32
+# OBJ32: AddressSize: 32bit
+# RUN: %cloth --kind executable --target-bits 64 --src "%t.co" --emit-object "%t.64.o"
+# RUN: %llvm_readobj --file-headers "%t.64.o" | %filecheck "%/s" --check-prefix=OBJ64
+# OBJ64: AddressSize: 64bit
+
+# RUN: echo "pub fn<int> main () { int sum = add(2147483647, 1); sum = sum + 2147483647; return sum + 43 }" > "%t.co"
+# RUN: echo "fn<int> add(int left, int right) = left + right" >> "%t.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"

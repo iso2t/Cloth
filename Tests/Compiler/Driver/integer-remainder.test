@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: echo "pub fn<int> main () = remainder(142, 100)" > "%t.co"
+# RUN: echo "fn<int> remainder(int left, int right) = left % right" >> "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --kind executable --src "%t.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+# RUN: echo "pub fn<int> main () {" > "%t.co"
+# RUN: echo "    int negative := remainder(0 - 142, 100)" >> "%t.co"
+# RUN: echo "    int positive := remainder(142, 0 - 100)" >> "%t.co"
+# RUN: echo "    return positive - negative" >> "%t.co"
+# RUN: echo "}" >> "%t.co"
+# RUN: echo "fn<int> remainder(int left, int right) { int result := left % right; return result }" >> "%t.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 84 "%t.exe"
+
+# RUN: echo "pub fn<int> main () { remainder(142, 0); return 42 }" > "%t.co"
+# RUN: echo "fn<int> remainder(int left, int right) = left % right" >> "%t.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr SIGILL "%t.exe"
+
+# RUN: echo "pub fn<int> main () = remainder(2147483647 + 1, 0 - 1)" > "%t.co"
+# RUN: echo "fn<int> remainder(int left, int right) = left % right" >> "%t.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr SIGILL "%t.exe"
+
+# RUN: echo "pub fn<int> main () = (2147483647 + 1) % (0 - 1)" > "%t.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr SIGILL "%t.exe"
+
+# RUN: echo "pub fn<int> main () = 142 % 0" > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=ZERO --input-file "%t.err"
+# ZERO: [C3050] Error: Integer divisor is zero
+# RUN: echo "pub fn<int> main () = int::min % -1" > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=OVERFLOW --input-file "%t.err"
+# OVERFLOW: [C3051] Error: Signed division exceeds the result type

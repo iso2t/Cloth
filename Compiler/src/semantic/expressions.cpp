@@ -26,7 +26,7 @@ ExpressionInfo value (ResolvedType type, const Symbol *symbol = nullptr, Receive
 ResolvedType literalInteger (const IntegerLiteral &literal, const ResolvedType *expected, bool negative, TargetLayout layout, bool inferenceDefault) {
 	const ResolvedType rt = expected && expected->integer() ? *expected : ResolvedType(kInteger);
 	if (inferenceDefault) return rt;
-	const bool          isUnsigned = rt.name == unsignedIntegerSpelling() || rt.name == to_string(kUsize);
+	const bool          isUnsigned = rt.unsignedInteger();
 	const unsigned      width      = rt.width ? rt.width : layout.sizeBits;
 	const IntegerValue &words      = literal.value;
 	const std::size_t   bits       = (words.size() - 1) * 32 + std::bit_width(words.back());
@@ -43,7 +43,7 @@ bool numericLiteral (const Expression &expr) {
 		return true;
 	}
 	const auto *u = dynamic_cast<const UnaryExpression *>(&expr);
-	return u && (u->op.get_operator() == oPlus || u->op.get_operator() == oMinus) && numericLiteral(*u->operand);
+	return u && isNumericPrefix(u->op.get_operator()) && numericLiteral(*u->operand);
 }
 
 bool suppliesFloatingContext (const ResolvedType &type) {
@@ -65,7 +65,7 @@ bool hasEqualityHint (const Expression &node) {
 
 bool takesNumericContext (const Expression &operand) {
 	if (const UnaryExpression *ue_value = dynamic_cast<const UnaryExpression *>(&operand))
-		return ue_value->op.get_operator() != oNot && takesNumericContext(*ue_value->operand);
+		return isNumericPrefix(ue_value->op.get_operator()) && takesNumericContext(*ue_value->operand);
 	if (const BinaryExpression *be_value = dynamic_cast<const BinaryExpression *>(&operand))
 		return arithmetic(be_value->op.get_operator()) && (takesNumericContext(*be_value->left) || takesNumericContext(*be_value->right));
 	return dynamic_cast<const NumberLiteral *>(&operand) || dynamic_cast<const IfExpression *>(&operand) || dynamic_cast<const ElvisExpression *>(&operand);
@@ -83,6 +83,13 @@ void mergeElementHint (std::optional<ResolvedType> &common, const std::optional<
 }
 }
 
+ResolvedType numericOperationType (const ResolvedType &left, const ResolvedType &right) {
+	if (!left.floating() && !right.floating()) return left;
+	ResolvedType rt_result(kFloat);
+	rt_result.width = std::max(left.floating() ? left.width : rt_result.width, right.floating() ? right.width : rt_result.width);
+	return rt_result;
+}
+
 const ResolvedType *rangeEndpoint (const ResolvedType &type) {
 	if (type.name != to_string(kRange) || type.declaration || type.arguments().size() != 1) return nullptr;
 	if (!type.suffixes.empty() && !(type.suffixes.size() == 1 && type.nullable())) return nullptr;
@@ -97,7 +104,7 @@ ElementEvidence elementEvidence (const Expression &operand) {
 	}
 	if (dynamic_cast<const NullLiteral *>(&operand) || dynamic_cast<const StructLiteral *>(&operand)) return ElementEvidence::None;
 	if (const UnaryExpression *ue_unary = dynamic_cast<const UnaryExpression *>(&operand)) {
-		if (ue_unary->op.get_operator() == oPlus || ue_unary->op.get_operator() == oMinus) return elementEvidence(*ue_unary->operand);
+		if (isNumericPrefix(ue_unary->op.get_operator())) return elementEvidence(*ue_unary->operand);
 	}
 	if (const BinaryExpression *be_binary = dynamic_cast<const BinaryExpression *>(&operand)) {
 		const Operator o_operation = be_binary->op.get_operator();
@@ -502,7 +509,7 @@ std::optional<ResolvedType> BodyChecker::elementHint (const Expression &node, Fl
 		analyzer.applyArguments(rt_range, { *opt_endpoint });
 		return scalar(node, &rt_range, floats);
 	}
-	if (const UnaryExpression *ue_op = dynamic_cast<const UnaryExpression *>(&node); ue_op && ue_op->op.get_operator() != oNot) {
+	if (const UnaryExpression *ue_op = dynamic_cast<const UnaryExpression *>(&node); ue_op && isNumericPrefix(ue_op->op.get_operator())) {
 		opt_hint = elementHint(*ue_op->operand, floats);
 		if (!opt_hint) return {};
 	} else if (const BinaryExpression *be_op = dynamic_cast<const BinaryExpression *>(&node); be_op && arithmetic(be_op->op.get_operator())) {
@@ -800,7 +807,7 @@ void BodyChecker::numericPeers (const Expression &node, NumericPeers &peers, boo
 				return;
 			}
 		} else if (const UnaryExpression *ue_op = dynamic_cast<const UnaryExpression *>(&node)) {
-			if (ue_op->op.get_operator() == oNot) return;
+			if (!isNumericPrefix(ue_op->op.get_operator())) return;
 			if (analyzer.hasOperator(ue_op->op.get_name_key()) && elementEvidence(*ue_op->operand) == ElementEvidence::Typed) {
 				const ExpressionInfo ei_result = scalarInfo(node);
 				if (ei_result.symbol && ei_result.types.size() == 1) opt_type = ei_result.types.front();
@@ -955,15 +962,9 @@ ExpressionInfo BodyChecker::builtinBinary (const BinaryExpression &node, const R
 	if (left.integer() && right.integer() && left != right) {
 		fail(Code::MIXED_INTEGERS, node.op.get_span(), "Integer operand types must match");
 	}
-	if (compare) {
-		return value(ResolvedType(kBoolean));
-	}
-	if (left.floating() || right.floating()) {
-		ResolvedType result(kFloat);
-		result.width = std::max(left.floating() ? left.width : result.width, right.floating() ? right.width : result.width);
-		return value(result);
-	}
-	return value(left);
+	const ResolvedType rt_common = numericOperationType(left, right);
+	if (compare) return { .types = { ResolvedType(kBoolean) }, .comparisonType = rt_common };
+	return value(rt_common);
 }
 
 std::vector<Candidate> BodyChecker::callCandidates (const CallExpression &node) {
@@ -1345,6 +1346,11 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 			return callOperator(group.front(), *n->operand, operand, n->op, node.get_span());
 		}
 		requirePresentOperand(operand, n->operand->get_span());
+		if (o_operation == oTilde) {
+			if (!operand.integer())
+				fail(Code::UNARY_OPERAND, node.get_span(), std::format("Operator '{}' requires an integer operand", n->op.get_lexeme()));
+			return value(operand);
+		}
 		if ((o_operation == oNot && operand != ResolvedType(kBoolean)) || (o_operation != oNot && !analyzer.numeric(operand))) {
 			fail(Code::UNARY_OPERAND, node.get_span(), "Invalid unary operand");
 		}

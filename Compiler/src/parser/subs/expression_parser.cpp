@@ -214,13 +214,12 @@ ExpressionPtr ExpressionParser::parseArrowTarget (ExpressionPtr receiver, const 
 }
 
 ExpressionPtr ExpressionParser::parseUnary (const bool stopAtRange, const bool allowWhileTrailer) {
-	const Token        t_token  = p_parser.peek();
-	const std::string &s_lexeme = t_token.get_lexeme();
-	if (const bool b_not = s_lexeme == to_string(oNot);
-	    t_token.get_type() == TokenType::Operator && (b_not || s_lexeme == to_string(oPlus) || s_lexeme == to_string(oMinus))) {
+	const Token    t_token = p_parser.peek();
+	const Operator o_op    = t_token.get_operator();
+	if (o_op == oNot || isNumericPrefix(o_op)) {
 		p_parser.advance();
-		ExpressionPtr ep_operand = b_not ? parseUnary(stopAtRange, allowWhileTrailer) :
-		                                   parseExpression(POWER_PRECEDENCE, /*stopAtAssignment=*/false, stopAtRange, allowWhileTrailer);
+		ExpressionPtr ep_operand = o_op == oNot ? parseUnary(stopAtRange, allowWhileTrailer) :
+		                                          parseExpression(POWER_PRECEDENCE, /*stopAtAssignment=*/false, stopAtRange, allowWhileTrailer);
 		return std::make_shared<UnaryExpression>(t_token, std::move(ep_operand));
 	}
 	return parsePostfix(parsePrimary(allowWhileTrailer));

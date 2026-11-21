@@ -348,6 +348,10 @@ bool isTokenized (const Operator op) {
 	return operator_info(op).tokenized;
 }
 
+bool isNumericPrefix (Operator op) {
+	return op == oPlus || op == oMinus || op == oTilde;
+}
+
 bool isUpdate (Operator op) {
 	return op == oPlusPlus || op == oMinusMinus ||
 	       std::ranges::any_of(COMPOUND_ASSIGNMENTS, [op] (const std::pair<Operator, Operator> &assignment) { return assignment.first == op; });

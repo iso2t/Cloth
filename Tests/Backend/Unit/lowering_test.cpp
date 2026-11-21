@@ -3,11 +3,13 @@
 #include <backend/backend.hpp>
 #include <backend/lowered_module.hpp>
 
+#include <climits>
 #include <cstddef>
 #include <cstring>
 #include <future>
 #include <gtest/gtest.h>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -19,6 +21,7 @@
 #include <llvm-c/Analysis.h>
 #include <llvm-c/Core.h>
 #include <llvm-c/Object.h>
+#include <llvm-c/Target.h>
 #include <parser/parser.hpp>
 #include <semantic/checked_program.hpp>
 
@@ -61,6 +64,7 @@ TEST (BackendLowering, ReturnsTheLiteralFromTheSelectedEntryOnBothTargetWidths) 
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		expectReturn(checkProgram("pub fn<int> main () = 42", { u_bits }), 42);
+		expectReturn(checkProgram("pub fn<int> main () {\n    return 42\n}", { u_bits }), 42);
 		expectReturn(checkProgram("fn<int> helper() { return 99 }\nfn<int<32>> main() = 0x7", { u_bits }), 7);
 		expectReturn(checkProgram("fn<int> main() = 0", { u_bits }), 0);
 		expectReturn(checkProgram("fn<int> main() = 2147483647", { u_bits }), 2147483647);
@@ -68,13 +72,538 @@ TEST (BackendLowering, ReturnsTheLiteralFromTheSelectedEntryOnBothTargetWidths) 
 }
 
 TEST (BackendLowering, ReadsTheLiteralValueFromCheckedFacts) {
-	cloth::CheckedProgram cp_program = checkProgram("pub fn<int> main () = 42");
-	ASSERT_EQ(cp_program.expressions.size(), 1u);
-	cp_program.expressions.begin()->second.numericConstant = cloth::IntegerConstant{ { 7 } };
+	for (const char *s_source : { "pub fn<int> main () = 42", "pub fn<int> main () { return 42 }" }) {
+		SCOPED_TRACE(s_source);
+		cloth::CheckedProgram cp_program = checkProgram(s_source);
+		ASSERT_EQ(cp_program.expressions.size(), 1u);
+		cp_program.expressions.begin()->second.numericConstant = cloth::IntegerConstant{ { 7 } };
+		expectReturn(cp_program, 7);
+	}
+}
+
+TEST (BackendLowering, ReturnsImmutableIntegerLocalsOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		expectReturn(checkProgram("pub fn<int> main() { int answer := 42; return answer }", { u_bits }), 42);
+		expectReturn(checkProgram("pub fn<int> main() { def answer := 7; return answer }", { u_bits }), 7);
+		expectReturn(checkProgram("fn<int> main() { int<32> source := 42; def copy := source; int other := 7; return copy }", { u_bits }), 42);
+		expectReturn(checkProgram("fn<int> main() { int caf\u00e9 := 7; return cafe\u0301 }", { u_bits }), 7);
+	}
+}
+
+TEST (BackendLowering, ReadsTheLocalSelectedByCheckedFacts) {
+	cloth::CheckedProgram cp_program = checkProgram("fn<int> main() { int first := 42; int second := 7; return first }");
+	const cloth::Token   *t_second   = nullptr;
+	for (const decltype(cp_program.localTypes)::value_type &lt_local : cp_program.localTypes) {
+		if (lt_local.first->get_lexeme() == "second") t_second = lt_local.first;
+	}
+	ASSERT_NE(t_second, nullptr);
+	for (cloth::ExpressionFacts::value_type &ef_value : cp_program.expressions) {
+		if (ef_value.second.binding) ef_value.second.binding = t_second;
+	}
 	expectReturn(cp_program, 7);
 }
 
-void expectUnsupported (const std::string &source, Code code, std::string_view markedText) {
+TEST (BackendLowering, WritesAndReadsOneIntegerSlotOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram("pub fn<int> main() { int answer = 42; answer = 7; return answer }", { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const LLVMTargetDataRef td_layout = LLVMGetModuleDataLayout(lm_module.get());
+		EXPECT_EQ(LLVMPointerSize(td_layout) * CHAR_BIT, u_bits);
+		const LLVMTypeRef  ty_integer  = LLVMInt32TypeInContext(LLVMGetModuleContext(lm_module.get()));
+		const unsigned     u_alignment = LLVMABIAlignmentOfType(td_layout, ty_integer);
+		const LLVMValueRef fn_main     = LLVMGetNamedFunction(lm_module.get(), "main");
+		ASSERT_NE(fn_main, nullptr);
+		const LLVMBasicBlockRef   bb_entry = LLVMGetEntryBasicBlock(fn_main);
+		std::vector<LLVMValueRef> v_instructions;
+		for (LLVMValueRef ir_instruction = LLVMGetFirstInstruction(bb_entry); ir_instruction; ir_instruction = LLVMGetNextInstruction(ir_instruction)) {
+			v_instructions.push_back(ir_instruction);
+		}
+		ASSERT_EQ(v_instructions.size(), 5u);
+		const LLVMValueRef ir_slot = v_instructions[0];
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_slot), LLVMAlloca);
+		EXPECT_EQ(LLVMGetAllocatedType(ir_slot), ty_integer);
+		EXPECT_EQ(LLVMGetAlignment(ir_slot), LLVMPreferredAlignmentOfType(td_layout, ty_integer));
+		for (const std::size_t st_index : { 1u, 2u }) {
+			const LLVMValueRef ir_store = v_instructions[st_index];
+			ASSERT_EQ(LLVMGetInstructionOpcode(ir_store), LLVMStore);
+			EXPECT_EQ(LLVMGetAlignment(ir_store), u_alignment);
+			EXPECT_EQ(LLVMGetOperand(ir_store, 1), ir_slot);
+			const LLVMValueRef ir_value = LLVMGetOperand(ir_store, 0);
+			ASSERT_NE(LLVMIsAConstantInt(ir_value), nullptr);
+			EXPECT_EQ(LLVMConstIntGetZExtValue(ir_value), st_index == 1 ? 42u : 7u);
+		}
+		const LLVMValueRef ir_load = v_instructions[3];
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_load), LLVMLoad);
+		EXPECT_EQ(LLVMGetAlignment(ir_load), u_alignment);
+		EXPECT_EQ(LLVMGetOperand(ir_load, 0), ir_slot);
+		const LLVMValueRef ir_ret = v_instructions[4];
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_ret), LLVMRet);
+		EXPECT_EQ(LLVMGetOperand(ir_ret, 0), ir_load);
+	}
+}
+
+TEST (BackendLowering, WritesTheLocalSelectedByCheckedFacts) {
+	cloth::CheckedProgram cp_program = checkProgram("fn<int> main() { int first = 42; def second = 0; first = 7; return second }");
+	const cloth::Token   *t_second   = nullptr;
+	for (const decltype(cp_program.localTypes)::value_type &lt_local : cp_program.localTypes) {
+		if (lt_local.first->get_lexeme() == "second") t_second = lt_local.first;
+	}
+	ASSERT_NE(t_second, nullptr);
+	for (decltype(cp_program.references)::value_type &ref_use : cp_program.references) {
+		if (ref_use.first->get_lexeme() == "first") ref_use.second = t_second;
+	}
+	const backend::LoweredModule lm_module(cp_program);
+	ASSERT_NO_THROW(lm_module.verify());
+	const LLVMValueRef fn_main = LLVMGetNamedFunction(lm_module.get(), "main");
+	ASSERT_NE(fn_main, nullptr);
+	const LLVMValueRef ir_ret = LLVMGetBasicBlockTerminator(LLVMGetEntryBasicBlock(fn_main));
+	ASSERT_NE(ir_ret, nullptr);
+	const LLVMValueRef ir_read = LLVMGetOperand(ir_ret, 0);
+	ASSERT_NE(LLVMIsALoadInst(ir_read), nullptr);
+	const LLVMValueRef ir_write = LLVMGetPreviousInstruction(ir_read);
+	ASSERT_NE(ir_write, nullptr);
+	ASSERT_EQ(LLVMGetInstructionOpcode(ir_write), LLVMStore);
+	EXPECT_EQ(LLVMGetOperand(ir_write, 1), LLVMGetOperand(ir_read, 0));
+}
+
+TEST (BackendLowering, CallsALaterPrivateFunctionOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() { return identity(42) }
+fn<int> identity(bool value) { println(1); return 7 }
+fn<int> identity(int value) = value
+)",
+		                                                    { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const LLVMValueRef fn_main = LLVMGetNamedFunction(lm_module.get(), "main");
+		ASSERT_NE(fn_main, nullptr);
+		const LLVMValueRef fn_identity = LLVMGetNextFunction(fn_main);
+		ASSERT_NE(fn_identity, nullptr);
+		EXPECT_EQ(LLVMGetNextFunction(fn_identity), nullptr);
+		EXPECT_EQ(LLVMGetLinkage(fn_identity), LLVMInternalLinkage);
+		ASSERT_EQ(LLVMCountParams(fn_identity), 1u);
+		const LLVMTypeRef ty_integer = LLVMInt32TypeInContext(LLVMGetModuleContext(lm_module.get()));
+		EXPECT_EQ(LLVMTypeOf(LLVMGetParam(fn_identity, 0)), ty_integer);
+		EXPECT_EQ(LLVMGetReturnType(LLVMGlobalGetValueType(fn_identity)), ty_integer);
+		const LLVMValueRef ir_ret = LLVMGetBasicBlockTerminator(LLVMGetEntryBasicBlock(fn_main));
+		ASSERT_NE(ir_ret, nullptr);
+		const LLVMValueRef ir_call = LLVMGetOperand(ir_ret, 0);
+		ASSERT_NE(LLVMIsACallInst(ir_call), nullptr);
+		EXPECT_EQ(LLVMGetCalledValue(ir_call), fn_identity);
+		ASSERT_EQ(LLVMGetNumArgOperands(ir_call), 1u);
+		const LLVMValueRef ir_argument = LLVMGetOperand(ir_call, 0);
+		ASSERT_NE(LLVMIsAConstantInt(ir_argument), nullptr);
+		EXPECT_EQ(LLVMConstIntGetZExtValue(ir_argument), 42u);
+	}
+}
+
+TEST (BackendLowering, CallsAPrivateVoidHelperBeforeReturningOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram("pub fn<int> main() { touch(); return 42 }\nfn<void> touch() {}", { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const LLVMValueRef fn_main = LLVMGetNamedFunction(lm_module.get(), "main");
+		ASSERT_NE(fn_main, nullptr);
+		const LLVMBasicBlockRef bb_main = LLVMGetEntryBasicBlock(fn_main);
+		const LLVMValueRef      ir_call = LLVMGetFirstInstruction(bb_main);
+		ASSERT_NE(LLVMIsACallInst(ir_call), nullptr);
+		EXPECT_EQ(LLVMGetNumArgOperands(ir_call), 0u);
+		const LLVMValueRef ir_ret = LLVMGetBasicBlockTerminator(bb_main);
+		ASSERT_NE(ir_ret, nullptr);
+		EXPECT_EQ(LLVMGetNextInstruction(ir_call), ir_ret);
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_ret), LLVMRet);
+		ASSERT_EQ(LLVMGetNumOperands(ir_ret), 1);
+		const LLVMValueRef ir_answer = LLVMGetOperand(ir_ret, 0);
+		ASSERT_NE(LLVMIsAConstantInt(ir_answer), nullptr);
+		EXPECT_EQ(LLVMConstIntGetZExtValue(ir_answer), 42u);
+
+		const LLVMValueRef fn_touch = LLVMGetCalledValue(ir_call);
+		EXPECT_EQ(LLVMGetLinkage(fn_touch), LLVMInternalLinkage);
+		const LLVMTypeRef ty_void = LLVMVoidTypeInContext(LLVMGetModuleContext(lm_module.get()));
+		EXPECT_EQ(LLVMTypeOf(ir_call), ty_void);
+		EXPECT_EQ(LLVMGetReturnType(LLVMGlobalGetValueType(fn_touch)), ty_void);
+		ASSERT_EQ(LLVMCountBasicBlocks(fn_touch), 1u);
+		const LLVMBasicBlockRef bb_helper  = LLVMGetEntryBasicBlock(fn_touch);
+		const LLVMValueRef      ir_voidRet = LLVMGetBasicBlockTerminator(bb_helper);
+		ASSERT_NE(ir_voidRet, nullptr);
+		EXPECT_EQ(LLVMGetFirstInstruction(bb_helper), ir_voidRet);
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_voidRet), LLVMRet);
+		EXPECT_EQ(LLVMGetNumOperands(ir_voidRet), 0);
+	}
+}
+
+void expectWrappingParameterOperation (const cloth::CheckedProgram &program, const char *functionName, LLVMOpcode opcode) {
+	const backend::LoweredModule lm_module(program);
+	ASSERT_NO_THROW(lm_module.verify());
+	const LLVMValueRef fn_helper = LLVMGetNamedFunction(lm_module.get(), functionName);
+	ASSERT_NE(fn_helper, nullptr);
+	ASSERT_EQ(LLVMCountParams(fn_helper), 2u);
+	const LLVMValueRef ir_return = LLVMGetBasicBlockTerminator(LLVMGetEntryBasicBlock(fn_helper));
+	const LLVMValueRef ir_result = LLVMGetOperand(ir_return, 0);
+	ASSERT_NE(LLVMIsABinaryOperator(ir_result), nullptr);
+	ASSERT_EQ(LLVMGetInstructionOpcode(ir_result), opcode);
+	EXPECT_EQ(LLVMTypeOf(ir_result), LLVMInt32TypeInContext(LLVMGetModuleContext(lm_module.get())));
+	EXPECT_EQ(LLVMGetOperand(ir_result, 0), LLVMGetParam(fn_helper, 0));
+	EXPECT_EQ(LLVMGetOperand(ir_result, 1), LLVMGetParam(fn_helper, 1));
+	EXPECT_FALSE(LLVMGetNSW(ir_result));
+	EXPECT_FALSE(LLVMGetNUW(ir_result));
+}
+
+TEST (BackendLowering, AddsTwoIntegerParametersWithWrappingSemanticsOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		expectWrappingParameterOperation(checkProgram("pub fn<int> main() = add(40, 2)\nfn<int> add(final int left, final int right) = left + right",
+		                                              { u_bits }),
+		                                 "cloth.add", LLVMAdd);
+		expectReturn(checkProgram("fn<int> main() = 2147483647 + 1", { u_bits }), 0x80000000u);
+	}
+}
+
+TEST (BackendLowering, SubtractsTwoIntegerParametersWithWrappingSemanticsOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		expectWrappingParameterOperation(
+		        checkProgram("pub fn<int> main() = subtract(44, 2)\nfn<int> subtract(final int left, final int right) = left - right", { u_bits }),
+		        "cloth.subtract", LLVMSub);
+		expectReturn(checkProgram("fn<int> main() = (0 - 2147483647 - 1) - 1", { u_bits }), 2147483647u);
+	}
+}
+
+TEST (BackendLowering, MultipliesTwoIntegerParametersWithWrappingSemanticsOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		expectWrappingParameterOperation(
+		        checkProgram("pub fn<int> main() = multiply(6, 7)\nfn<int> multiply(final int left, final int right) = left * right", { u_bits }),
+		        "cloth.multiply", LLVMMul);
+		expectReturn(checkProgram("fn<int> main() = 2147483647 * 2", { u_bits }), 0xfffffffeu);
+		expectReturn(checkProgram("fn<int> main() = 65536 * 65536", { u_bits }), 0u);
+	}
+}
+
+TEST (BackendLowering, NegatesAnIntegerOperandOnceWithWrappingSemanticsOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = negate(-42)
+fn<int> negate(final int value) = -operand(value)
+fn<int> operand(final int value) = value
+)",
+		                                                    { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const LLVMValueRef fn_negate = LLVMGetNamedFunction(lm_module.get(), "cloth.negate");
+		ASSERT_NE(fn_negate, nullptr);
+		const LLVMBasicBlockRef bb_entry = LLVMGetEntryBasicBlock(fn_negate);
+		const LLVMValueRef      ir_call  = LLVMGetFirstInstruction(bb_entry);
+		ASSERT_NE(LLVMIsACallInst(ir_call), nullptr);
+		EXPECT_EQ(LLVMGetCalledValue(ir_call), LLVMGetNamedFunction(lm_module.get(), "cloth.operand"));
+		EXPECT_EQ(LLVMGetOperand(ir_call, 0), LLVMGetParam(fn_negate, 0));
+
+		const LLVMValueRef ir_negation = LLVMGetNextInstruction(ir_call);
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_negation), LLVMSub);
+		EXPECT_EQ(LLVMTypeOf(ir_negation), LLVMInt32TypeInContext(LLVMGetModuleContext(lm_module.get())));
+		EXPECT_TRUE(LLVMIsNull(LLVMGetOperand(ir_negation, 0)));
+		EXPECT_EQ(LLVMGetOperand(ir_negation, 1), ir_call);
+		EXPECT_FALSE(LLVMGetNSW(ir_negation));
+		EXPECT_FALSE(LLVMGetNUW(ir_negation));
+		const LLVMValueRef ir_return = LLVMGetBasicBlockTerminator(bb_entry);
+		ASSERT_EQ(LLVMGetNextInstruction(ir_negation), ir_return);
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_return), LLVMRet);
+		EXPECT_EQ(LLVMGetOperand(ir_return, 0), ir_negation);
+	}
+}
+
+TEST (BackendLowering, NegatesIntegerLiteralsIncludingTheSignedMinimumOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		expectReturn(checkProgram("fn<int> main() = -42", { u_bits }), 0xffffffd6u);
+		expectReturn(checkProgram("fn<int> main() = -(-42)", { u_bits }), 42u);
+		expectReturn(checkProgram("fn<int> main() = -0", { u_bits }), 0u);
+		expectReturn(checkProgram("fn<int> main() = -2147483648", { u_bits }), 0x80000000u);
+		expectReturn(checkProgram("fn<int> main() = -(-2147483648)", { u_bits }), 0x80000000u);
+	}
+}
+
+TEST (BackendLowering, UnaryPlusReturnsItsOperandDirectlyOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(
+		        checkProgram("pub fn<int> main() = +positive(42)\nfn<int> positive(final int value) = +value", { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const LLVMValueRef fn_positive = LLVMGetNamedFunction(lm_module.get(), "cloth.positive");
+		ASSERT_NE(fn_positive, nullptr);
+		const LLVMBasicBlockRef bb_positive    = LLVMGetEntryBasicBlock(fn_positive);
+		const LLVMValueRef      ir_valueReturn = LLVMGetBasicBlockTerminator(bb_positive);
+		ASSERT_EQ(LLVMGetFirstInstruction(bb_positive), ir_valueReturn);
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_valueReturn), LLVMRet);
+		EXPECT_EQ(LLVMGetOperand(ir_valueReturn, 0), LLVMGetParam(fn_positive, 0));
+
+		const LLVMValueRef fn_main = LLVMGetNamedFunction(lm_module.get(), "main");
+		ASSERT_NE(fn_main, nullptr);
+		const LLVMBasicBlockRef bb_main = LLVMGetEntryBasicBlock(fn_main);
+		const LLVMValueRef      ir_call = LLVMGetFirstInstruction(bb_main);
+		ASSERT_NE(LLVMIsACallInst(ir_call), nullptr);
+		EXPECT_EQ(LLVMGetCalledValue(ir_call), fn_positive);
+		const LLVMValueRef ir_callReturn = LLVMGetBasicBlockTerminator(bb_main);
+		ASSERT_EQ(LLVMGetNextInstruction(ir_call), ir_callReturn);
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_callReturn), LLVMRet);
+		EXPECT_EQ(LLVMGetOperand(ir_callReturn, 0), ir_call);
+	}
+}
+
+TEST (BackendLowering, UnaryPlusPreservesSignedIntegerLiteralsOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		expectReturn(checkProgram("fn<int> main() = +42", { u_bits }), 42u);
+		expectReturn(checkProgram("fn<int> main() = +(-42)", { u_bits }), 0xffffffd6u);
+		expectReturn(checkProgram("fn<int> main() = +0", { u_bits }), 0u);
+		expectReturn(checkProgram("fn<int> main() = +2147483647", { u_bits }), 0x7fffffffu);
+		expectReturn(checkProgram("fn<int> main() = +(-2147483648)", { u_bits }), 0x80000000u);
+	}
+}
+
+TEST (BackendLowering, ComplementsAnIntegerOperandOnceOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = invert(-43)
+fn<int> invert(final int value) = ~operand(value)
+fn<int> operand(final int value) = value
+)",
+		                                                    { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const LLVMValueRef fn_invert = LLVMGetNamedFunction(lm_module.get(), "cloth.invert");
+		ASSERT_NE(fn_invert, nullptr);
+		const LLVMBasicBlockRef bb_entry = LLVMGetEntryBasicBlock(fn_invert);
+		const LLVMValueRef      ir_call  = LLVMGetFirstInstruction(bb_entry);
+		ASSERT_NE(LLVMIsACallInst(ir_call), nullptr);
+		EXPECT_EQ(LLVMGetCalledValue(ir_call), LLVMGetNamedFunction(lm_module.get(), "cloth.operand"));
+		EXPECT_EQ(LLVMGetOperand(ir_call, 0), LLVMGetParam(fn_invert, 0));
+
+		const LLVMValueRef ir_complement = LLVMGetNextInstruction(ir_call);
+		ASSERT_NE(ir_complement, nullptr);
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_complement), LLVMXor);
+		const LLVMTypeRef ty_integer = LLVMInt32TypeInContext(LLVMGetModuleContext(lm_module.get()));
+		EXPECT_EQ(LLVMTypeOf(ir_complement), ty_integer);
+		EXPECT_EQ(LLVMGetOperand(ir_complement, 0), ir_call);
+		EXPECT_EQ(LLVMGetOperand(ir_complement, 1), LLVMConstAllOnes(ty_integer));
+		const LLVMValueRef ir_return = LLVMGetBasicBlockTerminator(bb_entry);
+		ASSERT_EQ(LLVMGetNextInstruction(ir_complement), ir_return);
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_return), LLVMRet);
+		EXPECT_EQ(LLVMGetOperand(ir_return, 0), ir_complement);
+	}
+}
+
+TEST (BackendLowering, ComplementsIntegerLiteralsOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		expectReturn(checkProgram("fn<int> main() = ~0", { u_bits }), 0xffffffffu);
+		expectReturn(checkProgram("fn<int> main() = ~(-1)", { u_bits }), 0u);
+		expectReturn(checkProgram("fn<int> main() = ~2147483647", { u_bits }), 0x80000000u);
+		expectReturn(checkProgram("fn<int> main() = ~(-2147483648)", { u_bits }), 0x7fffffffu);
+		expectReturn(checkProgram("fn<int> main() = ~~42", { u_bits }), 42u);
+	}
+}
+
+void expectGuardedDivisionOperation (LLVMModuleRef module, const char *functionName, LLVMOpcode opcode) {
+	SCOPED_TRACE(functionName);
+	const LLVMValueRef fn_operation = LLVMGetNamedFunction(module, functionName);
+	const LLVMValueRef fn_operand   = LLVMGetNamedFunction(module, "cloth.operand");
+	ASSERT_NE(fn_operation, nullptr);
+	ASSERT_NE(fn_operand, nullptr);
+	const LLVMBasicBlockRef bb_entry = LLVMGetEntryBasicBlock(fn_operation);
+	const LLVMValueRef      ir_left  = LLVMGetFirstInstruction(bb_entry);
+	ASSERT_NE(LLVMIsACallInst(ir_left), nullptr);
+	EXPECT_EQ(LLVMGetCalledValue(ir_left), fn_operand);
+	EXPECT_EQ(LLVMGetOperand(ir_left, 0), LLVMGetParam(fn_operation, 0));
+	const LLVMValueRef ir_right = LLVMGetNextInstruction(ir_left);
+	ASSERT_NE(LLVMIsACallInst(ir_right), nullptr);
+	EXPECT_EQ(LLVMGetCalledValue(ir_right), fn_operand);
+	EXPECT_EQ(LLVMGetOperand(ir_right, 0), LLVMGetParam(fn_operation, 1));
+
+	const LLVMValueRef ir_branch = LLVMGetBasicBlockTerminator(bb_entry);
+	ASSERT_EQ(LLVMGetInstructionOpcode(ir_branch), LLVMBr);
+	ASSERT_EQ(LLVMGetNumSuccessors(ir_branch), 2u);
+	const LLVMBasicBlockRef bb_trap = LLVMGetSuccessor(ir_branch, 0);
+	const LLVMValueRef      ir_trap = LLVMGetFirstInstruction(bb_trap);
+	ASSERT_NE(LLVMIsACallInst(ir_trap), nullptr);
+	EXPECT_EQ(LLVMGetCalledValue(ir_trap), LLVMGetNamedFunction(module, "llvm.trap"));
+	EXPECT_EQ(LLVMGetInstructionOpcode(LLVMGetBasicBlockTerminator(bb_trap)), LLVMUnreachable);
+
+	const LLVMBasicBlockRef bb_valid  = LLVMGetSuccessor(ir_branch, 1);
+	const LLVMValueRef      ir_return = LLVMGetBasicBlockTerminator(bb_valid);
+	ASSERT_EQ(LLVMGetInstructionOpcode(ir_return), LLVMRet);
+	const LLVMValueRef ir_result = LLVMGetOperand(ir_return, 0);
+	ASSERT_NE(LLVMIsABinaryOperator(ir_result), nullptr);
+	ASSERT_EQ(LLVMGetInstructionOpcode(ir_result), opcode);
+	EXPECT_EQ(LLVMGetInstructionParent(ir_result), bb_valid);
+	EXPECT_EQ(LLVMTypeOf(ir_result), LLVMInt32TypeInContext(LLVMGetModuleContext(module)));
+	EXPECT_EQ(LLVMGetOperand(ir_result, 0), ir_left);
+	EXPECT_EQ(LLVMGetOperand(ir_result, 1), ir_right);
+	if (opcode == LLVMSDiv) {
+		EXPECT_FALSE(LLVMGetExact(ir_result));
+	}
+}
+
+TEST (BackendLowering, GuardsSignedDivisionAndRemainderAfterEvaluatingBothOperandsOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = remainder(divide(284, 2), 100)
+fn<int> divide(final int left, final int right) = operand(left) / operand(right)
+fn<int> remainder(final int left, final int right) = operand(left) % operand(right)
+fn<int> operand(final int value) = value
+)",
+		                                                    { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		expectGuardedDivisionOperation(lm_module.get(), "cloth.divide", LLVMSDiv);
+		expectGuardedDivisionOperation(lm_module.get(), "cloth.remainder", LLVMSRem);
+	}
+}
+
+TEST (BackendLowering, TruncatesSignedQuotientsTowardZeroOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		expectReturn(checkProgram("fn<int> main() = 85 / 2", { u_bits }), 42u);
+		expectReturn(checkProgram("fn<int> main() = (0 - 85) / 2", { u_bits }), 0xffffffd6u);
+		expectReturn(checkProgram("fn<int> main() = 85 / (0 - 2)", { u_bits }), 0xffffffd6u);
+		expectReturn(checkProgram("fn<int> main() = (0 - 85) / (0 - 2)", { u_bits }), 42u);
+		expectReturn(checkProgram("fn<int> main() = (2147483647 + 1) / 1", { u_bits }), 0x80000000u);
+	}
+}
+
+TEST (BackendLowering, SignedRemaindersHaveTheSignOfTheDividendOnBothTargetWidths) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		expectReturn(checkProgram("fn<int> main() = 142 % 100", { u_bits }), 42u);
+		expectReturn(checkProgram("fn<int> main() = (0 - 142) % 100", { u_bits }), 0xffffffd6u);
+		expectReturn(checkProgram("fn<int> main() = 142 % (0 - 100)", { u_bits }), 42u);
+		expectReturn(checkProgram("fn<int> main() = (0 - 142) % (0 - 100)", { u_bits }), 0xffffffd6u);
+		expectReturn(checkProgram("fn<int> main() = 142 % (0 - 1)", { u_bits }), 0u);
+		expectReturn(checkProgram("fn<int> main() = (2147483647 + 1) % 3", { u_bits }), 0xfffffffeu);
+	}
+}
+
+void expectBinaryCallOrder (const std::string &entry, LLVMOpcode opcode) {
+	SCOPED_TRACE(entry);
+	const backend::LoweredModule lm_module(checkProgram(entry + "\nfn<int> first() = 44\nfn<int> second() = 2"));
+	ASSERT_NO_THROW(lm_module.verify());
+	const LLVMValueRef      fn_main  = LLVMGetNamedFunction(lm_module.get(), "main");
+	const LLVMBasicBlockRef bb_entry = LLVMGetEntryBasicBlock(fn_main);
+	const LLVMValueRef      ir_left  = LLVMGetFirstInstruction(bb_entry);
+	ASSERT_NE(LLVMIsACallInst(ir_left), nullptr);
+	EXPECT_EQ(LLVMGetCalledValue(ir_left), LLVMGetNamedFunction(lm_module.get(), "cloth.first"));
+	const LLVMValueRef ir_right = LLVMGetNextInstruction(ir_left);
+	ASSERT_NE(LLVMIsACallInst(ir_right), nullptr);
+	EXPECT_EQ(LLVMGetCalledValue(ir_right), LLVMGetNamedFunction(lm_module.get(), "cloth.second"));
+	const LLVMValueRef ir_result = LLVMGetNextInstruction(ir_right);
+	ASSERT_NE(LLVMIsABinaryOperator(ir_result), nullptr);
+	ASSERT_EQ(LLVMGetInstructionOpcode(ir_result), opcode);
+	EXPECT_EQ(LLVMGetOperand(ir_result, 0), ir_left);
+	EXPECT_EQ(LLVMGetOperand(ir_result, 1), ir_right);
+	const LLVMValueRef ir_return = LLVMGetBasicBlockTerminator(bb_entry);
+	EXPECT_EQ(LLVMGetNextInstruction(ir_result), ir_return);
+	EXPECT_EQ(LLVMGetOperand(ir_return, 0), ir_result);
+}
+
+TEST (BackendLowering, EvaluatesArithmeticOperandsOnceInSourceOrder) {
+	expectBinaryCallOrder("fn<int> main() = first() + second()", LLVMAdd);
+	expectBinaryCallOrder("fn<int> main() = first() - second()", LLVMSub);
+	expectBinaryCallOrder("fn<int> main() = first() * second()", LLVMMul);
+}
+
+TEST (BackendLowering, EvaluatesForwardedVoidCallsAndDiscardedIntegerCalls) {
+	const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() { relay(7); return 42 }
+fn<void> relay(final int n) = middle(n)
+fn middle(final int n) { return finish(n) }
+fn<void> finish(final int n) { identity(n); return }
+fn<int> identity(final int n) = n
+)"));
+	ASSERT_NO_THROW(lm_module.verify());
+	const LLVMValueRef fn_main = LLVMGetNamedFunction(lm_module.get(), "main");
+	ASSERT_NE(fn_main, nullptr);
+	const LLVMValueRef ir_entryCall = LLVMGetFirstInstruction(LLVMGetEntryBasicBlock(fn_main));
+	ASSERT_NE(LLVMIsACallInst(ir_entryCall), nullptr);
+	LLVMValueRef fn_helper = LLVMGetCalledValue(ir_entryCall);
+	for (const char *s_name : { "cloth.relay", "cloth.middle", "cloth.finish" }) {
+		SCOPED_TRACE(s_name);
+		ASSERT_EQ(fn_helper, LLVMGetNamedFunction(lm_module.get(), s_name));
+		const LLVMBasicBlockRef bb_helper = LLVMGetEntryBasicBlock(fn_helper);
+		const LLVMValueRef      ir_call   = LLVMGetFirstInstruction(bb_helper);
+		ASSERT_NE(LLVMIsACallInst(ir_call), nullptr);
+		ASSERT_EQ(LLVMGetNumArgOperands(ir_call), 1u);
+		EXPECT_EQ(LLVMGetOperand(ir_call, 0), LLVMGetParam(fn_helper, 0));
+		const LLVMValueRef ir_ret = LLVMGetBasicBlockTerminator(bb_helper);
+		ASSERT_NE(ir_ret, nullptr);
+		EXPECT_EQ(LLVMGetNextInstruction(ir_call), ir_ret);
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_ret), LLVMRet);
+		EXPECT_EQ(LLVMGetNumOperands(ir_ret), 0);
+		fn_helper = LLVMGetCalledValue(ir_call);
+	}
+	EXPECT_EQ(fn_helper, LLVMGetNamedFunction(lm_module.get(), "cloth.identity"));
+}
+
+TEST (BackendLowering, UsesTheCalleeSelectedByTheFrontend) {
+	cloth::CheckedProgram cp_program =
+	        checkProgram("fn<int> main() = written(42)\nfn<int> written(int x) { println(1); return x }\nfn<int> selected(int x) = 7");
+	const cloth::SymbolScope &ss_globals   = cp_program.units.front()->get_globals();
+	const cloth::Symbol      &sym_written  = ss_globals.at("written").front();
+	const cloth::Symbol      &sym_selected = ss_globals.at("selected").front();
+	for (cloth::ExpressionFacts::value_type &ef_expression : cp_program.expressions) {
+		if (ef_expression.second.symbol == &sym_written) ef_expression.second.symbol = &sym_selected;
+	}
+	const backend::LoweredModule lm_module(cp_program);
+	ASSERT_NO_THROW(lm_module.verify());
+	const LLVMValueRef fn_main   = LLVMGetNamedFunction(lm_module.get(), "main");
+	const LLVMValueRef ir_return = LLVMGetBasicBlockTerminator(LLVMGetEntryBasicBlock(fn_main));
+	const LLVMValueRef ir_call   = LLVMGetOperand(ir_return, 0);
+	ASSERT_NE(LLVMIsACallInst(ir_call), nullptr);
+	const LLVMValueRef fn_selected = LLVMGetCalledValue(ir_call);
+	const LLVMValueRef ir_value    = LLVMGetOperand(LLVMGetBasicBlockTerminator(LLVMGetEntryBasicBlock(fn_selected)), 0);
+	ASSERT_NE(LLVMIsAConstantInt(ir_value), nullptr);
+	EXPECT_EQ(LLVMConstIntGetZExtValue(ir_value), 7u);
+}
+
+TEST (BackendLowering, EvaluatesNamedArgumentsInSourceOrderAndPassesThemInParameterOrder) {
+	const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = choose(last = identity(7), first = identity(42))
+fn<int> choose(int first, int last) = first
+fn<int> identity(int value) = value
+)"));
+	ASSERT_NO_THROW(lm_module.verify());
+	const LLVMValueRef      fn_main  = LLVMGetNamedFunction(lm_module.get(), "main");
+	const LLVMBasicBlockRef bb_entry = LLVMGetEntryBasicBlock(fn_main);
+	const LLVMValueRef      ir_first = LLVMGetFirstInstruction(bb_entry);
+	ASSERT_NE(LLVMIsACallInst(ir_first), nullptr);
+	const LLVMValueRef ir_second = LLVMGetNextInstruction(ir_first);
+	ASSERT_NE(LLVMIsACallInst(ir_second), nullptr);
+	EXPECT_EQ(LLVMGetCalledValue(ir_first), LLVMGetCalledValue(ir_second));
+	const LLVMValueRef ir_seven    = LLVMGetOperand(ir_first, 0);
+	const LLVMValueRef ir_fortyTwo = LLVMGetOperand(ir_second, 0);
+	ASSERT_NE(LLVMIsAConstantInt(ir_seven), nullptr);
+	ASSERT_NE(LLVMIsAConstantInt(ir_fortyTwo), nullptr);
+	EXPECT_EQ(LLVMConstIntGetZExtValue(ir_seven), 7u);
+	EXPECT_EQ(LLVMConstIntGetZExtValue(ir_fortyTwo), 42u);
+	const LLVMValueRef ir_choose = LLVMGetOperand(LLVMGetBasicBlockTerminator(bb_entry), 0);
+	ASSERT_NE(LLVMIsACallInst(ir_choose), nullptr);
+	ASSERT_EQ(LLVMGetNumArgOperands(ir_choose), 2u);
+	EXPECT_EQ(LLVMGetOperand(ir_choose, 0), ir_second);
+	EXPECT_EQ(LLVMGetOperand(ir_choose, 1), ir_first);
+}
+
+TEST (BackendLowering, ReusesDeclarationsAcrossMutualRecursion) {
+	const backend::LoweredModule lm_module(checkProgram("fn<int> main() = first(42)\nfn<int> first(int n) = second(n)\nfn<int> second(int n) = first(n)"));
+	ASSERT_NO_THROW(lm_module.verify());
+	const LLVMValueRef fn_main  = LLVMGetNamedFunction(lm_module.get(), "main");
+	const LLVMValueRef fn_first = LLVMGetNextFunction(fn_main);
+	ASSERT_NE(fn_first, nullptr);
+	const LLVMValueRef fn_second = LLVMGetNextFunction(fn_first);
+	ASSERT_NE(fn_second, nullptr);
+	EXPECT_EQ(LLVMGetNextFunction(fn_second), nullptr);
+	const LLVMValueRef ir_return = LLVMGetBasicBlockTerminator(LLVMGetEntryBasicBlock(fn_second));
+	const LLVMValueRef ir_call   = LLVMGetOperand(ir_return, 0);
+	ASSERT_NE(LLVMIsACallInst(ir_call), nullptr);
+	EXPECT_EQ(LLVMGetCalledValue(ir_call), fn_first);
+}
+
+void expectUnsupported (const std::string &source, Code code, std::string_view markedText, std::size_t line = 1) {
 	SCOPED_TRACE(source);
 	const cloth::CheckedProgram cp_program = checkProgram(source);
 	try {
@@ -86,17 +615,132 @@ void expectUnsupported (const std::string &source, Code code, std::string_view m
 		const cloth::TokenSpan &ts_span = error.get_source_labels().front().span;
 		ASSERT_NE(ts_span.source, nullptr);
 		EXPECT_EQ(ts_span.source->get_path(), "entry.co");
-		ASSERT_EQ(ts_span.startLine, 1u);
-		ASSERT_EQ(ts_span.endLine, 1u);
-		EXPECT_EQ(source.substr(ts_span.startCol - 1, ts_span.endCol - ts_span.startCol), markedText);
+		ASSERT_EQ(ts_span.startLine, line);
+		ASSERT_EQ(ts_span.endLine, line);
+		std::istringstream iss_source(source);
+		std::string        s_line;
+		for (std::size_t st_index = 0; st_index < line; ++st_index) ASSERT_TRUE(std::getline(iss_source, s_line));
+		EXPECT_EQ(s_line.substr(ts_span.startCol - 1, ts_span.endCol - ts_span.startCol), markedText);
 	}
 }
 
-TEST (BackendLowering, LabelsUnsupportedBodiesAndExpressions) {
-	expectUnsupported("pub fn<int> main() { return 42 }", Code::UNSUPPORTED_LOWERING, "{ return 42 }");
-	expectUnsupported("pub fn<int> main() = 40 + 2", Code::UNSUPPORTED_LOWERING, "40 + 2");
-	expectUnsupported("pub fn<int> main() = -42", Code::UNSUPPORTED_LOWERING, "-42");
-	expectUnsupported("pub fn<int> main() = sideEffect()\nfn<int> sideEffect() { println(1)\nreturn 42 }", Code::UNSUPPORTED_LOWERING, "sideEffect()");
+TEST (BackendLowering, UsesTheCheckedSignednessAndEmitsWrappingArithmetic) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(
+		        R"(pub fn<int> main() = signedLess(-1, 1).toInt() + unsignedLess(4095, 1).toInt() + (sum(4095, 2) -> int) + (product(-2, 3) -> int)
+fn<bool> signedLess(final int<12> left, final int<12> right) = left < right
+fn<bool> unsignedLess(final unsigned int<12> left, final unsigned int<12> right) = left < right
+fn<unsigned int<12>> sum(final unsigned int<12> left, final unsigned int<12> right) = left + right
+fn<int<97>> product(final int<97> left, final int<97> right) = left * right
+)",
+		        { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		for (const std::pair<const char *, LLVMIntPredicate> &comparison :
+		     { std::pair{ "cloth.signedLess", LLVMIntSLT }, std::pair{ "cloth.unsignedLess", LLVMIntULT } }) {
+			const LLVMValueRef fn_compare = LLVMGetNamedFunction(lm_module.get(), comparison.first);
+			ASSERT_NE(fn_compare, nullptr);
+			const LLVMValueRef ir_compare = LLVMGetFirstInstruction(LLVMGetEntryBasicBlock(fn_compare));
+			ASSERT_EQ(LLVMGetInstructionOpcode(ir_compare), LLVMICmp);
+			EXPECT_EQ(LLVMGetICmpPredicate(ir_compare), comparison.second);
+			EXPECT_EQ(LLVMGetIntTypeWidth(LLVMTypeOf(LLVMGetOperand(ir_compare, 0))), 12u);
+		}
+		for (const std::pair<const char *, LLVMOpcode> &operation : { std::pair{ "cloth.sum", LLVMAdd }, std::pair{ "cloth.product", LLVMMul } }) {
+			const LLVMValueRef fn_operation = LLVMGetNamedFunction(lm_module.get(), operation.first);
+			ASSERT_NE(fn_operation, nullptr);
+			const LLVMValueRef ir_result = LLVMGetFirstInstruction(LLVMGetEntryBasicBlock(fn_operation));
+			ASSERT_EQ(LLVMGetInstructionOpcode(ir_result), operation.second);
+			EXPECT_FALSE(LLVMGetNSW(ir_result));
+			EXPECT_FALSE(LLVMGetNUW(ir_result));
+		}
+	}
+}
+
+TEST (BackendLowering, PreservesPrimitiveWidthsAndTruthAtTheBoundaries) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		expectReturn(checkProgram("fn<int> main() { bool b := 0; return b.toInt() }", { u_bits }), 0);
+		expectReturn(checkProgram("fn<int> main() = (false == 1).toInt()", { u_bits }), 0);
+		expectReturn(checkProgram("fn<int> main() = (true == -2).toInt()", { u_bits }), 1);
+		expectReturn(checkProgram("fn<int> main() = (int<65536>::max + 1 == int<65536>::min).toInt()", { u_bits }), 1);
+		expectReturn(checkProgram("fn<int> main() = (unsigned int<1>::max + 1 == 0).toInt()", { u_bits }), 1);
+		expectReturn(checkProgram("fn<int> main() = isize::size -> int", { u_bits }), u_bits / 8);
+		expectReturn(checkProgram("fn<int> main() = ((-1 -> int<12>) -> int<40>) -> int", { u_bits }), 0xffffffffu);
+		expectReturn(checkProgram("fn<int> main() = ((-1 -> unsigned int<12>) -> int<40>) -> int", { u_bits }), 4095);
+	}
+}
+
+TEST (BackendLowering, LabelsUnsupportedStatementsInSourceOrder) {
+	expectUnsupported("pub fn<int> main() { println(1); return 42 }", Code::UNSUPPORTED_LOWERING, "println(1)");
+	expectUnsupported("pub fn<int> main() { return 42; println(1) }", Code::UNSUPPORTED_LOWERING, "println(1)");
+	expectUnsupported("pub fn<int> main() { return 42; return 7 }", Code::UNSUPPORTED_LOWERING, "return 7");
+	expectUnsupported("fn<int> main() { int a := 42; println(1); return a }", Code::UNSUPPORTED_LOWERING, "println(1)");
+	expectUnsupported("fn<int> main() { return 42; int a := 7 }", Code::UNSUPPORTED_LOWERING, "int a := 7");
+	expectUnsupported("fn<int> main() { int a = 42; return a; a = 7 }", Code::UNSUPPORTED_LOWERING, "a = 7");
+	expectUnsupported("fn<int> main() { touch(); return 42 }\nfn<void> touch() { return; other() }\nfn other() {}", Code::UNSUPPORTED_LOWERING, "other()",
+	                  2);
+}
+
+TEST (BackendLowering, LabelsUnsupportedLocalBindingsAndInitializers) {
+	expectUnsupported("fn<int> main() { int? a = 7; return 42 }", Code::UNSUPPORTED_LOWERING, "int?");
+	expectUnsupported("fn<int> main() { int[] a := [7]; return 42 }", Code::UNSUPPORTED_LOWERING, "int[]");
+	expectUnsupported("fn<int> main() { int unused := [40, 2][0]; return 42 }", Code::UNSUPPORTED_LOWERING, "[40, 2][0]");
+	expectUnsupported("fn<int> main() { int unused := helper([40, 2][0]); return 42 }\nfn<int> helper(int ignored) = 7", Code::UNSUPPORTED_LOWERING,
+	                  "[40, 2][0]");
+	expectUnsupported("fn<int> main() { int later := { return 7 }; return later }", Code::UNSUPPORTED_LOWERING, "{ return 7 }");
+	expectUnsupported("fn<int> main() { def stop := exit(7); return 42 }", Code::UNSUPPORTED_LOWERING, "exit(7)");
+}
+
+TEST (BackendLowering, LabelsUnsupportedAssignments) {
+	expectUnsupported("fn<int> main() { int a = 42; a += [7][0]; return a }", Code::UNSUPPORTED_LOWERING, "[7][0]");
+	expectUnsupported("fn<int> main() { int a = 42; a = [7][0]; a = 7; return a }", Code::UNSUPPORTED_LOWERING, "[7][0]");
+}
+
+TEST (BackendLowering, LabelsUnsupportedExpressions) {
+	expectUnsupported("pub fn<int> main() = 40 - [2][0]", Code::UNSUPPORTED_LOWERING, "[2][0]");
+	expectUnsupported("pub fn<int> main() = +[2][0]", Code::UNSUPPORTED_LOWERING, "[2][0]");
+	expectUnsupported("pub fn<int> main() = ~[2][0] ** 2", Code::UNSUPPORTED_LOWERING, "[2][0]");
+	expectUnsupported("pub fn<int> main() = sideEffect()\nfn<int> sideEffect() { println(1)\nreturn 42 }", Code::UNSUPPORTED_LOWERING, "println(1)", 2);
+}
+
+TEST (BackendLowering, LabelsArithmeticThatRequiresAUserDefinedOperator) {
+	const std::string s_declarations = R"(
+typedef<class> Item(int seed) {
+    pub Item() : (0) {}
+    pub operator +() -> int = 7
+    pub operator -() -> int = 7
+    pub operator ~() -> int = 7
+    pub operator<int> ->() = 7
+    pub operator ==(Item other) = true
+    pub operator +(int n) -> int = n
+    pub operator -(int n) -> int = n
+    pub operator *(int n) -> int = n
+    pub operator /(int n) -> int = n
+    pub operator %(int n) -> int = n
+}
+typedef<class> Gauge(int seed) {
+    pub Gauge() : (0) {}
+    pub operator<int<auto>> +() -> int<auto> = 2
+    pub operator<int<auto>> -() -> int<auto> = 2
+    pub operator<int<auto>> *() -> int<auto> = 2
+    pub operator<int<auto>> /() -> int<auto> = 2
+    pub operator<int<auto>> %() -> int<auto> = 2
+})";
+	for (const std::string s_expression :
+	     { "+Item::new()", "-Item::new()", "~Item::new()", "Item::new() + 2", "Item::new() - 2", "Item::new() * 2", "Item::new() / 2", "Item::new() % 2",
+	       "40 + Gauge::new()", "Gauge::new() - 2", "6 * Gauge::new()", "84 / Gauge::new()", "142 % Gauge::new()" }) {
+		expectUnsupported("fn<int> main() = " + s_expression + s_declarations, Code::UNSUPPORTED_LOWERING, s_expression);
+	}
+	expectUnsupported("fn<int> main() = Item::new() -> int" + s_declarations, Code::UNSUPPORTED_LOWERING, "Item::new() -> int");
+	expectUnsupported("fn<int> main() = (Item::new() == Item::new()).toInt()" + s_declarations, Code::UNSUPPORTED_LOWERING, "Item::new() == Item::new()");
+}
+
+TEST (BackendLowering, LabelsUnsupportedCallFormsAndHelperSignatures) {
+	expectUnsupported("fn<int> main() = helper()\nfn<int> helper(opt<int> n ?: 7) = n", Code::UNSUPPORTED_LOWERING, "helper()");
+	expectUnsupported("fn<int> main() = identity(42)\nfn<T> identity<T>(T value) = value", Code::UNSUPPORTED_LOWERING, "identity(42)");
+	expectUnsupported("fn<int> main() = helper([42])\nfn<int> helper(int[] values) = 7", Code::UNSUPPORTED_FUNCTION_ABI, "helper", 2);
+	expectUnsupported("fn<int> main() { helper([42]); return 42 }\nfn<void> helper(int[] values) {}", Code::UNSUPPORTED_FUNCTION_ABI, "helper", 2);
+	expectUnsupported("fn<int> main() { pair(); return 42 }\nfn<int, int> pair() = 1, 2", Code::UNSUPPORTED_FUNCTION_ABI, "pair", 2);
 }
 
 TEST (BackendLowering, LabelsUnsupportedEntrySignatures) {
@@ -195,7 +839,7 @@ TEST (BackendObjectEmission, EmitsCoffAndElfForBothX86Widths) {
 		                         { "x86_64-unknown-linux-gnu", { 64, 4 }, LLVMBinaryTypeELF64L, "main" } };
 	for (const TargetCase &tc_target : v_targets) {
 		SCOPED_TRACE(tc_target.triple);
-		const cloth::CheckedProgram cp_program = checkProgram("pub fn<int> main () = 42", tc_target.layout);
+		const cloth::CheckedProgram cp_program = checkProgram("pub fn<int> main() { int answer = 42; answer = 7; return answer }", tc_target.layout);
 		expectObject(backend::emitObject(cp_program, tc_target.triple), tc_target.format, tc_target.symbol);
 #if defined(_WIN32)
 		if (tc_target.format == LLVMBinaryTypeCOFF) expectObject(backend::emitObject(cp_program), tc_target.format, tc_target.symbol);

@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    bool half := halfSum(2048.0, 1.0) == 2048.0
+    bool rounding := asHalf(1.00048828125) == 1.0 && asHalf(1.0004882812500002) == 1.0009765625
+    bool subnormal := asHalf(0.000000059604644775390625) > 0.0 && asHalf(0.0000000298023223876953125) == 0.0
+    bool overflow := asHalf(65520.0) > asHalf(65504.0) && asHalf(-65520.0) < asHalf(-65504.0)
+    bool signedZero := reciprocal(negateHalf(0.0)) < 0.0 && reciprocal(asHalf(0.0)) > 0.0
+    bool arithmetic := power(2.0, 5.0) == 32.0 && remainder(-7.5, 2.0) == -1.5
+    bool comparisons := compare(0.5, 1) && !compare(2.0, 1) && unordered(0.0)
+    bool casts := narrow(-128.75) == -128 && narrow(127.75) == 127 && unsignedNarrow(-0.5) == 0
+    bool wide := floatWide(18446744073709551616) == 18446744073709551616.0 && intWide(18446744073709551616.0) == 18446744073709551616
+    bool chars := character('🙂') == '🙂' && character('🙂').toInt() == 128578
+    return 42 * (half && rounding && subnormal && overflow && signedZero && arithmetic && comparisons && casts && wide && chars).toInt()
+}
+
+fn<float<16>> halfSum(float<16> x, float<16> y) = x + y
+fn<float<16>> asHalf(float<64> x) = x -> float<16>
+fn<float<16>> negateHalf(float<16> x) = -x
+fn<float<64>> reciprocal(float<16> x) = 1.0 / (x -> float<64>)
+fn<float<64>> power(float<64> x, float<64> y) = x ** y
+fn<float> remainder(float x, float y) = x % y
+fn<bool> compare(float<64> x, int y) = x <= y
+fn<bool> unordered(float zero) {
+    float nan := zero / zero
+    return nan != nan && !(nan == nan) && !(nan >= zero) && !(nan < zero)
+}
+fn<int<8>> narrow(float<64> x) = x -> int<8>
+fn<unsigned int<8>> unsignedNarrow(float x) = x -> unsigned int<8>
+fn<float<64>> floatWide(unsigned int<97> x) = x -> float<64>
+fn<int<97>> intWide(float<64> x) = x -> int<97>
+fn<char> character(char value) = value

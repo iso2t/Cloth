@@ -59,6 +59,7 @@ struct ResolvedType {
 	[[nodiscard]] bool                             nullable () const;
 	[[nodiscard]] bool                             array () const;
 	[[nodiscard]] bool                             integer () const;
+	[[nodiscard]] bool                             unsignedInteger () const;
 	[[nodiscard]] bool                             floating () const;
 	// A typed destination normalizes a present integer to zero or one. Nullable destinations preserve absence.
 	[[nodiscard]] bool                             convertsIntegerToBool (const ResolvedType &source) const;
@@ -287,7 +288,9 @@ struct ExpressionInfo {
 	bool                             negateEquality     = false;
 	bool                             liftedEquality     = false;
 	// Built-in boolean equality compares present payloads by truth value (zero or nonzero).
-	bool                             booleanEquality = false;
+	bool booleanEquality = false;
+	// Built-in numeric and character comparisons use this operand type after contextual typing.
+	std::optional<ResolvedType>      comparisonType = {};
 	std::optional<OperatorSelection> leftContext = {}, rightContext = {};
 	NumericConstant                  numericConstant    = {};
 	bool                             invalidNumericCast = false;

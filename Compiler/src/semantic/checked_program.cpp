@@ -84,6 +84,10 @@ bool ResolvedType::floating () const {
 	return suffixes.empty() && name == to_string(kFloat);
 }
 
+bool ResolvedType::unsignedInteger () const {
+	return suffixes.empty() && (name == semantic::unsignedIntegerSpelling() || name == to_string(kUsize));
+}
+
 bool ResolvedType::convertsIntegerToBool (const ResolvedType &source) const {
 	if (name != to_string(kBoolean)) return false;
 	if (suffixes.empty()) return source.integer();

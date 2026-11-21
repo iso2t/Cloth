@@ -38,6 +38,7 @@ inline constexpr std::string_view S_ISARRAY = "isarray", S_HASEXTENT = "hasexten
 }
 
 std::string_view unsignedIntegerSpelling ();
+ResolvedType     numericOperationType (const ResolvedType &left, const ResolvedType &right);
 double           floatingLiteral (std::string_view text, unsigned width);
 NumericConstant  numericLimit (const ResolvedType &type, TargetLayout layout, bool maximum);
 int              compareIntegers (const IntegerConstant &left, const IntegerConstant &right);

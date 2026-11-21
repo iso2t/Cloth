@@ -30,13 +30,60 @@ Object emission
 
 With ``--kind executable``, add ``--emit-object PATH`` to write a relocatable
 object after the frontend checks succeed. The emitter supports a parameterless
-``main`` returning a signed 32-bit ``int`` from an integer literal. On x86,
+``main`` returning a signed 32-bit ``int``. Its body can be an expression
+or a block that ends with a single ``return``. Locals and non-generic helper
+functions can use signed and unsigned integers of any Cloth width, ``isize``,
+``usize``, ``bool``, ``char`` and 16-, 32- or 64-bit floats. A mutable local
+supports assignment, compound arithmetic assignment, increment and decrement.
+A local declared with ``:=`` keeps its initial value. A ``def`` binding infers
+its type from the initializer.
+
+Integer arithmetic, including ``**``, wraps at the operand width. On both
+targets ``int<12>`` wraps from 2047 to -2048. The width of ``isize`` and
+``usize`` follows ``--target-bits``. Unary ``~`` flips every bit at that width.
+Signed division truncates toward zero, and a nonzero remainder has the sign
+of the dividend. Division and remainder trap on a zero divisor or on the
+signed minimum divided by minus one. Integer exponentiation traps on a
+negative exponent. The frontend diagnoses literal zero divisors and literal
+signed division overflow with ``C3050`` and ``C3051``.
+
+Comparisons use the checked operand type. Integer-to-boolean conversion
+maps zero to false and every nonzero value to true, including at parameter
+and return boundaries. Booleans occupy one byte. Built-in ``&&`` and ``||``
+evaluate their right operand only when needed. A character holds one Unicode
+scalar value. The ``toInt()`` method returns its code point or a boolean's
+normalized integer value.
+
+Numeric casts use the destination width. Floating-to-integer casts truncate
+toward zero and trap when the truncated value is out of range or the source
+is non-finite. Floating comparison follows IEEE rules, including unordered
+inequality for NaN. Floating remainder and exponentiation can require the
+platform math library. On Unix, link these objects with ``-lm``.
+
+A call can reach a function in the same file or a ``pub`` function imported
+with ``using``. Helpers take primitive arguments by value and return a
+primitive value or ``void``. Supply every argument at the call site. A call can
+stand alone as a statement. A ``void`` helper returns at the end of its
+block or at a bare ``return``. On x86,
 ``--target-bits`` selects a 32- or 64-bit object. The output directory must
 already exist. A successful write replaces the named file. Source files used
 by the compilation are protected from replacement.
 
-For a file containing ``pub fn<int> main () = 42``, compile the object and
-link it with the platform C driver. The resulting program exits with status 42.
+Save the following program as ``answer.co``.
+
+.. code-block:: text
+
+   pub fn<int> main () {
+       int answer = 42
+       answer = 7
+       touch()
+       return answer
+   }
+
+   fn<void> touch() {}
+
+Compile the object and link it with the platform C driver. The resulting
+program exits with status 7.
 
 .. code-block:: console
 
@@ -44,6 +91,30 @@ link it with the platform C driver. The resulting program exits with status 42.
    cc answer.o -o answer
 
 With MinGW, link with ``gcc answer.o -o answer.exe``.
+
+To call a function in another file, place ``main.co`` and ``helpers.co`` in
+the same directory. Import the function in ``main.co``.
+
+.. code-block:: text
+
+   using helpers: identity
+
+   pub fn<int> main () = identity(42)
+
+Declare the function public in ``helpers.co``.
+
+.. code-block:: text
+
+   pub fn<int> identity(int value) = value
+
+Compile the entry file to emit ``main`` and the functions it calls into one
+object. In this executable object, ``main`` has external linkage and the
+imported helper has local linkage. The linked program exits with status 42.
+
+.. code-block:: console
+
+   cloth --kind executable --src main.co --emit-object main.o
+   cc main.o -o main
 
 Integer storage layout
 ----------------------
