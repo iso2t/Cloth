@@ -22,7 +22,8 @@ class ScalarLowering {
 	LLVMValueRef               binary (cloth::Operator op, LLVMValueRef left, LLVMValueRef right, const cloth::ResolvedType &operandType) const;
 
     private:
-	void         trapIf (LLVMValueRef condition) const;
+	using FailureDeclaration = LLVMValueRef (*)(LLVMModuleRef module);
+	void         failIf (LLVMValueRef condition, FailureDeclaration declareFailure) const;
 	void         guardDivisor (LLVMValueRef dividend, LLVMValueRef divisor, bool isUnsigned) const;
 	LLVMValueRef integerPower (LLVMValueRef base, LLVMValueRef exponent, bool isUnsigned) const;
 	LLVMValueRef floatToInteger (LLVMValueRef value, LLVMTypeRef target, bool isUnsigned) const;

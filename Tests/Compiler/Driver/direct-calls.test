@@ -36,10 +36,6 @@
 # RUN: echo "    println(value)" >> "%t.co"
 # RUN: echo "    return value" >> "%t.co"
 # RUN: echo "}" >> "%t.co"
-# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" 2> "%t.err"
-# RUN: %filecheck "%/s" --check-prefix=BODY --input-file "%t.err"
-# BODY: [C4040] Error:
-# BODY: .co:3:5
-# BODY: println(value)
-# RUN: %cc "%t.o" -o "%t.exe"
-# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 42 --empty-stderr 7 "%t.exe"

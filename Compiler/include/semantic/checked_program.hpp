@@ -62,9 +62,9 @@ struct ResolvedType {
 	[[nodiscard]] bool                             unsignedInteger () const;
 	[[nodiscard]] bool                             floating () const;
 	// A typed destination normalizes a present integer to zero or one. Nullable destinations preserve absence.
-	[[nodiscard]] bool                             convertsIntegerToBool (const ResolvedType &source) const;
-	[[nodiscard]] ResolvedType                     element () const;
-	[[nodiscard]] std::string                      spelling () const;
+	[[nodiscard]] bool         convertsIntegerToBool (const ResolvedType &source) const;
+	[[nodiscard]] ResolvedType element () const;
+	[[nodiscard]] std::string  spelling () const;
 };
 
 using ResultTypes   = std::vector<ResolvedType>;
@@ -305,8 +305,8 @@ struct ExpressionInfo {
 	[[nodiscard]] std::optional<ResolvedType> representedAt (std::size_t slot) const;
 
 	[[nodiscard]] std::optional<bool> integerTruth () const;
-	[[nodiscard]] ResultKind resultKind () const;
-	static ExpressionInfo    never ();
+	[[nodiscard]] ResultKind          resultKind () const;
+	static ExpressionInfo             never ();
 };
 
 struct DefaultEffects {

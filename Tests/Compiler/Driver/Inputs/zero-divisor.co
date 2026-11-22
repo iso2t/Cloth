@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    int quotient := trace(84) / (trace(2) - 2)
+    println(99)
+    return quotient
+}
+
+fn<int> trace(final int value) {
+    println(value)
+    return value
+}

@@ -46,6 +46,7 @@ run prints that directory and keeps its files. Successful runs clean it up.
 The object-emission fixtures link native programs with Make's ``CC`` and
 inspect target objects with ``llvm-readobj`` from the configured LLVM installation.
 Use ``%cc`` and ``%llvm_readobj`` for these tools in lit directives.
+Add ``%runtime`` to the link command for programs that call Cloth runtime helpers.
 
 The first native test build uses Python to fetch GoogleTest 1.18.0,
 verifies its SHA-256 digest, and caches the source under

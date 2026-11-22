@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-backend-obj-y := backend/backend.o backend/scalar_lowering.o
+backend-obj-y := backend/backend.o backend/runtime.o backend/scalar_lowering.o
 
 LLVM_CONFIG ?= llvm-config
 llvm_query = $(shell "$(LLVM_CONFIG)" $(1))

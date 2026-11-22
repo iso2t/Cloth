@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    return if (once() != 1) 1
+        else if (visits(0) != 1 || visits(1) != 1 || visits(6) != 6) 2
+        else if (early(true, 0) != 42 || early(false, 1) != 1) 3
+        else if (finish(true) != 7 || finish(false) != 42) 4
+        else 42
+}
+
+fn<int> once() {
+    int count = 0
+    do { count++ } while (false)
+    return count
+}
+
+fn<int> visits(final int limit) {
+    int bodies = 0
+    int tests = 0
+    do bodies++ while (if (true) { tests++; bodies < limit } else false)
+    return if (tests == bodies) bodies else -1
+}
+
+fn<int> early(final bool stop, final int divisor) {
+    int count = 0
+    do {
+        if (stop) { return 42 } else { count++ }
+    } while (1 / divisor < 0)
+    return count
+}
+
+fn<int> finish(final bool flag) {
+    int count = 0
+    do { count++ } while (if (flag) { return 7 * count } else { return 42 * count })
+}

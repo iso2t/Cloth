@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <backend/runtime.hpp>
 #include <backend/scalar_lowering.hpp>
 
 #include <cmath>
@@ -55,6 +56,10 @@ LLVMRealPredicate floatPredicate (cloth::Operator op) {
 
 LLVMValueRef intrinsic (LLVMModuleRef module, std::string_view name, LLVMTypeRef *types = nullptr, unsigned count = 0) {
 	return LLVMGetIntrinsicDeclaration(module, LLVMLookupIntrinsicID(name.data(), name.size()), types, count);
+}
+
+LLVMValueRef declareTrap (LLVMModuleRef module) {
+	return intrinsic(module, "llvm.trap");
 }
 }
 
@@ -186,33 +191,29 @@ LLVMValueRef ScalarLowering::roundHalf (LLVMValueRef value) const {
 	return LLVMBuildBitCast(ir_builder, ir_halfBits, LLVMHalfTypeInContext(ctx_context), "");
 }
 
-void ScalarLowering::trapIf (LLVMValueRef condition) const {
+void ScalarLowering::failIf (LLVMValueRef condition, FailureDeclaration declareFailure) const {
 	if (LLVMIsNull(condition)) return;
 	const LLVMContextRef    ctx_context = LLVMGetModuleContext(mod_module);
 	const LLVMValueRef      fn_function = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ir_builder));
-	const LLVMBasicBlockRef bb_trap     = LLVMAppendBasicBlockInContext(ctx_context, fn_function, "trap");
+	const LLVMBasicBlockRef bb_failure  = LLVMAppendBasicBlockInContext(ctx_context, fn_function, "failure");
 	const LLVMBasicBlockRef bb_valid    = LLVMAppendBasicBlockInContext(ctx_context, fn_function, "valid");
-	LLVMBuildCondBr(ir_builder, condition, bb_trap, bb_valid);
-	LLVMPositionBuilderAtEnd(ir_builder, bb_trap);
-	const LLVMValueRef fn_trap = intrinsic(mod_module, "llvm.trap");
-	LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(fn_trap), fn_trap, nullptr, 0, "");
+	LLVMBuildCondBr(ir_builder, condition, bb_failure, bb_valid);
+	LLVMPositionBuilderAtEnd(ir_builder, bb_failure);
+	const LLVMValueRef fn_failure = declareFailure(mod_module);
+	LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(fn_failure), fn_failure, nullptr, 0, "");
 	LLVMBuildUnreachable(ir_builder);
 	LLVMPositionBuilderAtEnd(ir_builder, bb_valid);
 }
 
 void ScalarLowering::guardDivisor (LLVMValueRef dividend, LLVMValueRef divisor, bool isUnsigned) const {
-	const LLVMTypeRef ty_integer = LLVMTypeOf(dividend);
-	LLVMValueRef      ir_invalid = LLVMBuildICmp(ir_builder, LLVMIntEQ, divisor, LLVMConstNull(ty_integer), "");
-	if (!isUnsigned) {
-		const LLVMValueRef ir_minusOne = LLVMBuildICmp(ir_builder, LLVMIntEQ, divisor, LLVMConstAllOnes(ty_integer), "");
-		if (!LLVMIsNull(ir_minusOne)) {
-			const LLVMValueRef ir_shift    = LLVMConstInt(ty_integer, LLVMGetIntTypeWidth(ty_integer) - 1, false);
-			const LLVMValueRef ir_min      = LLVMBuildShl(ir_builder, LLVMConstInt(ty_integer, 1, false), ir_shift, "");
-			const LLVMValueRef ir_overflow = LLVMBuildAnd(ir_builder, ir_minusOne, LLVMBuildICmp(ir_builder, LLVMIntEQ, dividend, ir_min, ""), "");
-			ir_invalid                     = LLVMBuildOr(ir_builder, ir_invalid, ir_overflow, "");
-		}
-	}
-	trapIf(ir_invalid);
+	const LLVMTypeRef ty_integer = LLVMTypeOf(divisor);
+	failIf(LLVMBuildICmp(ir_builder, LLVMIntEQ, divisor, LLVMConstNull(ty_integer), ""), declareDivideByZero);
+	if (isUnsigned) return;
+	const LLVMValueRef ir_minusOne = LLVMBuildICmp(ir_builder, LLVMIntEQ, divisor, LLVMConstAllOnes(ty_integer), "");
+	if (LLVMIsNull(ir_minusOne)) return;
+	const LLVMValueRef ir_shift = LLVMConstInt(ty_integer, LLVMGetIntTypeWidth(ty_integer) - 1, false);
+	const LLVMValueRef ir_min   = LLVMBuildShl(ir_builder, LLVMConstInt(ty_integer, 1, false), ir_shift, "");
+	failIf(LLVMBuildAnd(ir_builder, ir_minusOne, LLVMBuildICmp(ir_builder, LLVMIntEQ, dividend, ir_min, ""), ""), declareTrap);
 }
 
 LLVMValueRef ScalarLowering::floatToInteger (LLVMValueRef value, LLVMTypeRef target, bool isUnsigned) const {
@@ -226,7 +227,7 @@ LLVMValueRef ScalarLowering::floatToInteger (LLVMValueRef value, LLVMTypeRef tar
 	const LLVMRealPredicate p_lower  = d_lower == d_minimum && std::isfinite(d_lower) ? LLVMRealOGE : LLVMRealOGT;
 	const LLVMValueRef      ir_lower = LLVMBuildFCmp(ir_builder, p_lower, ir_wide, LLVMConstReal(ty_double, d_lower), "");
 	const LLVMValueRef      ir_upper = LLVMBuildFCmp(ir_builder, LLVMRealOLT, ir_wide, LLVMConstReal(ty_double, d_upper), "");
-	trapIf(LLVMBuildNot(ir_builder, LLVMBuildAnd(ir_builder, ir_lower, ir_upper, ""), ""));
+	failIf(LLVMBuildNot(ir_builder, LLVMBuildAnd(ir_builder, ir_lower, ir_upper, ""), ""), declareInvalidFloatToInteger);
 	return isUnsigned ? LLVMBuildFPToUI(ir_builder, value, target, "") : LLVMBuildFPToSI(ir_builder, value, target, "");
 }
 
@@ -251,7 +252,7 @@ LLVMValueRef ScalarLowering::convert (LLVMValueRef value, const cloth::ResolvedT
 LLVMValueRef ScalarLowering::checkedCast (LLVMValueRef value, const cloth::ResolvedType &source, const cloth::ExpressionInfo &cast) const {
 	const cloth::ResolvedType &rt_target = cast.types.front();
 	if (cast.invalidNumericCast) {
-		trapIf(LLVMConstAllOnes(LLVMInt1TypeInContext(LLVMGetModuleContext(mod_module))));
+		failIf(LLVMConstAllOnes(LLVMInt1TypeInContext(LLVMGetModuleContext(mod_module))), declareInvalidFloatToInteger);
 		return LLVMConstNull(type(rt_target));
 	}
 	if (!std::holds_alternative<std::monostate>(cast.numericConstant)) return constant(rt_target, cast.numericConstant);
@@ -261,7 +262,7 @@ LLVMValueRef ScalarLowering::checkedCast (LLVMValueRef value, const cloth::Resol
 LLVMValueRef ScalarLowering::integerPower (LLVMValueRef base, LLVMValueRef exponent, bool isUnsigned) const {
 	const LLVMTypeRef  ty_integer = LLVMTypeOf(base);
 	const LLVMValueRef ir_zero = LLVMConstNull(ty_integer), ir_one = LLVMConstInt(ty_integer, 1, false);
-	if (!isUnsigned) trapIf(LLVMBuildICmp(ir_builder, LLVMIntSLT, exponent, ir_zero, ""));
+	if (!isUnsigned) failIf(LLVMBuildICmp(ir_builder, LLVMIntSLT, exponent, ir_zero, ""), declareTrap);
 	const LLVMContextRef ctx_context = LLVMGetModuleContext(mod_module);
 	LLVMBasicBlockRef    bb_start    = LLVMGetInsertBlock(ir_builder);
 	const LLVMValueRef   fn_function = LLVMGetBasicBlockParent(bb_start);

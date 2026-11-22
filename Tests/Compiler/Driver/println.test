@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --kind executable --src "%S/Inputs/println.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/println.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/println.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 1 --empty-stderr 42 "%t.exe"
+
+# RUN: echo "pub fn<int> main() { println(-2147483648); println(value()); return 42 }" > "%t.co"
+# RUN: echo "fn<int> value() { println(0); return 2147483647 }" >> "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line=-2147483648 --stdout-line 0 --stdout-line 2147483647 --empty-stderr 42 "%t.exe"

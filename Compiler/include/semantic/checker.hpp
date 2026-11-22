@@ -279,21 +279,21 @@ class Analyzer {
 
 	std::vector<ArrayAllocation>          v_arrayLiterals;
 	std::map<ResolvedType, StorageFields> m_storage;
-	[[nodiscard]] const Symbol          *instanceOwner (const Symbol &symbol) const;
-	[[nodiscard]] bool                   isTemplate (const Symbol &symbol) const;
-	[[nodiscard]] Substitutions          instanceArguments (const InstanceKey &key) const;
-	[[nodiscard]] bool                   hasConstructorProof (const ResolvedType &type, const ResultTypes &parameters) const;
-	void                                 checkInstances ();
-	void                                 completeInstance (const InstanceWork &work);
-	void                                 checkStorage () const;
+	[[nodiscard]] const Symbol           *instanceOwner (const Symbol &symbol) const;
+	[[nodiscard]] bool                    isTemplate (const Symbol &symbol) const;
+	[[nodiscard]] Substitutions           instanceArguments (const InstanceKey &key) const;
+	[[nodiscard]] bool                    hasConstructorProof (const ResolvedType &type, const ResultTypes &parameters) const;
+	void                                  checkInstances ();
+	void                                  completeInstance (const InstanceWork &work);
+	void                                  checkStorage () const;
 	void                                  layoutStruct (const ResolvedType &type, const StorageFields &fields) const;
-	void                                 collectSignature (const Symbol &symbol);
-	void                                 useDeclaredBounds (const Symbol &symbol, const Substitutions &arguments);
-	void                                 visitTypeMembers (const ResolvedType &type, const Substitutions &arguments, GenericInstance *instance);
-	const GenericInstance               *useInstance (InstanceKey key, const Symbol &context, const TokenSpan &where);
-	const GenericInstance               *enqueue (InstanceKey key, const TokenSpan &where, bool symbolic);
-	std::vector<Names>                   v_names;
-	Candidates                           v_order;
+	void                                  collectSignature (const Symbol &symbol);
+	void                                  useDeclaredBounds (const Symbol &symbol, const Substitutions &arguments);
+	void                                  visitTypeMembers (const ResolvedType &type, const Substitutions &arguments, GenericInstance *instance);
+	const GenericInstance                *useInstance (InstanceKey key, const Symbol &context, const TokenSpan &where);
+	const GenericInstance                *enqueue (InstanceKey key, const TokenSpan &where, bool symbolic);
+	std::vector<Names>                    v_names;
+	Candidates                            v_order;
 	// A unit can be reached through several imports. Only selections from the standard library confer a library path.
 	using LibraryPaths = std::map<std::size_t, std::set<std::string, std::less<>>>;
 	LibraryPaths m_libraryPaths;

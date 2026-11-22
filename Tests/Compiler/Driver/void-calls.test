@@ -24,12 +24,9 @@
 # RUN: echo "fn<void> touch() {" >> "%t.co"
 # RUN: echo "    println(1)" >> "%t.co"
 # RUN: echo "}" >> "%t.co"
-# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" 2> "%t.err"
-# RUN: %filecheck "%/s" --check-prefix=BODY --input-file "%t.err"
-# BODY: [C4040] Error:
-# BODY: .co:3:5
-# BODY: println(1)
-# BODY: unsupported call
+# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 1 --empty-stderr 42 "%t.exe"
 
 # RUN: echo "pub fn<int> main () = touch()" > "%t.co"
 # RUN: echo "fn<void> touch() {}" >> "%t.co"

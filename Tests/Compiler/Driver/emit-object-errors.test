@@ -2,17 +2,17 @@
 
 # RUN: mkdir -p "%t"
 # RUN: echo "pub fn<int> main () {" > "%t/entry.co"
-# RUN: echo "    println(1)" >> "%t/entry.co"
+# RUN: echo "    println(true)" >> "%t/entry.co"
 # RUN: echo "    return 42" >> "%t/entry.co"
 # RUN: echo "}" >> "%t/entry.co"
 # RUN: cd "%t" && %expect_exit --empty-stdout --empty-stderr 0 %cloth --src entry.co
 # RUN: cd "%t" && %expect_exit --empty-stdout --empty-stderr 0 %cloth --src entry.co --kind executable
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --target-bits 32 --src entry.co --emit-object answer.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=STATEMENT --input-file "%t.err"
-# STATEMENT: [C4040] Error: LLVM lowering requires a direct call to a non-generic free function
+# STATEMENT: [C4040] Error: LLVM lowering supports 'println' with one signed 32-bit int argument
 # STATEMENT: entry.co:2:5
-# STATEMENT: println(1)
-# STATEMENT: unsupported call
+# STATEMENT: println(true)
+# STATEMENT: unsupported output call
 # RUN: cd "%t" && %python -c "from pathlib import Path; assert list(Path('.').iterdir()) == [Path('entry.co')]"
 
 # RUN: echo "previous object" > "%t.saved"

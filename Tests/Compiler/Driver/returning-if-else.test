@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: echo "fn<int> choose(bool flag) { if (flag) { return 42 } else { return 7 } }" > "%t.choose"
+# RUN: echo "pub fn<int> main() = choose(true)" > "%t.co"
+# RUN: cat "%t.choose" >> "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --kind executable --src "%t.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+# RUN: echo "pub fn<int> main() = choose(false)" > "%t.co"
+# RUN: cat "%t.choose" >> "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --kind executable --src "%t.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 7 "%t.exe"
+
+# The unselected arm would divide by zero in each call.
+# RUN: echo "pub fn<int> main() = guarded(true, 1, 0) + guarded(false, 0, 1)" > "%t.co"
+# RUN: echo "fn<int> guarded(bool flag, int left, int right) = if (flag) { int n := 42 / left; return n } else { int n := 7 / right; return n }" >> "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 49 "%t.exe"

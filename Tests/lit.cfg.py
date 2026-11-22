@@ -13,6 +13,7 @@ def tool_path(path):
 
 
 suite = Path(__file__).resolve().parent
+runtime = suite.parent / "Runtime" / "src"
 config.name = "Cloth"
 config.test_format = lit.formats.ShTest(execute_external=False)
 config.suffixes = [".co", ".clib", ".test"]
@@ -39,6 +40,7 @@ config.substitutions.extend([
     ("%filecheck", tool_path(params["filecheck"])),
     ("%llvm_readobj", tool_path(params.get("readobj", "llvm-readobj"))),
     ("%cc", params.get("cc", "gcc" if sys.platform == "win32" else "cc")),
+    ("%runtime", " ".join(tool_path(runtime / name) for name in ("errors.c", "println.c"))),
     ("%host_os", sys.platform),
     ("%expect_exit", tool_path(sys.executable) + " " + tool_path(suite / "Support" / "expect_exit.py")),
 ])

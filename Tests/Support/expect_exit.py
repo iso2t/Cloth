@@ -21,10 +21,20 @@ def illegal_instruction_status():
     return -signal.SIGILL
 
 
+def expected_output(empty, lines):
+    if empty:
+        return b""
+    if lines:
+        return "".join(line + os.linesep for line in lines).encode("utf-8")
+    return None
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Check a native exit status and optionally require empty streams.")
-    parser.add_argument("--empty-stdout", action="store_true")
-    parser.add_argument("--empty-stderr", action="store_true")
+    parser = argparse.ArgumentParser(description="Check a native exit status and optional output expectations.")
+    for stream in ("stdout", "stderr"):
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument(f"--empty-{stream}", action="store_true")
+        group.add_argument(f"--{stream}-line", action="append", metavar="TEXT", help=f"Expect one complete {stream} line per occurrence, in order.")
     parser.add_argument(
         "status", type=lambda value: value if value == "SIGILL" else int(value, 0),
         help="Integer exit status or SIGILL for an illegal instruction",
@@ -39,15 +49,17 @@ def main():
     else:
         # POSIX wait status exposes the low eight bits of a normal process exit.
         expected = args.status & 0xff if os.name == "posix" else args.status
+    expected_stdout = expected_output(args.empty_stdout, args.stdout_line)
+    expected_stderr = expected_output(args.empty_stderr, args.stderr_line)
     result = subprocess.run(
         args.command,
-        stdout=subprocess.PIPE if args.empty_stdout else None,
-        stderr=subprocess.PIPE if args.empty_stderr else None,
+        stdout=subprocess.PIPE if expected_stdout is not None else None,
+        stderr=subprocess.PIPE if expected_stderr is not None else None,
     )
-    if result.stdout:
-        sys.exit(f"Expected empty stdout, got {result.stdout!r}")
-    if result.stderr:
-        sys.exit(f"Expected empty stderr, got {result.stderr!r}")
+    if expected_stdout is not None and result.stdout != expected_stdout:
+        sys.exit(f"Expected stdout {expected_stdout!r}, got {result.stdout!r}")
+    if expected_stderr is not None and result.stderr != expected_stderr:
+        sys.exit(f"Expected stderr {expected_stderr!r}, got {result.stderr!r}")
     if result.returncode != expected:
         sys.exit(f"Expected exit status {expected}, got {result.returncode}")
 

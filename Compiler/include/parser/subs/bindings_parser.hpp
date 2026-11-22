@@ -19,7 +19,7 @@ class BindingsParser {
 
 	bool                         startsBinding () const;
 	std::optional<TypeReference> parseBindingType () const;
-	std::vector<StatementPtr> parseBindings (bool allowWhileTrailer = false) const;
+	std::vector<StatementPtr>    parseBindings (bool allowWhileTrailer = false) const;
 
     private:
 	Parser &p_parser;

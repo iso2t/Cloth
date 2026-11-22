@@ -460,10 +460,10 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
                                         if (contextualFailure(error)) continue;
                                         throw;
                                 }
-				fn_addMatch(match, entry.second);
-			}
-		}
-		v_contextual.clear();
+                                fn_addMatch(match, entry.second);
+                        }
+                }
+                v_contextual.clear();
 	};
 	for (std::vector<PlacedCandidate>::iterator it_placed = v_placed.begin(); it_placed != v_placed.end(); ++it_placed) {
 		if (it_placed == it_firstGeneric) {
