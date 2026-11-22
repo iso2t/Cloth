@@ -61,6 +61,8 @@ struct ResolvedType {
 	[[nodiscard]] bool                             integer () const;
 	[[nodiscard]] bool                             unsignedInteger () const;
 	[[nodiscard]] bool                             floating () const;
+	[[nodiscard]] bool                             enumeration () const;
+	[[nodiscard]] bool                             payloadFreeEnum () const;
 	// A typed destination normalizes a present integer to zero or one. Nullable destinations preserve absence.
 	[[nodiscard]] bool         convertsIntegerToBool (const ResolvedType &source) const;
 	[[nodiscard]] ResolvedType element () const;
@@ -289,7 +291,7 @@ struct ExpressionInfo {
 	bool                             liftedEquality     = false;
 	// Built-in boolean equality compares present payloads by truth value (zero or nonzero).
 	bool booleanEquality = false;
-	// Built-in numeric and character comparisons use this operand type after contextual typing.
+	// Built-in comparisons use this operand type after contextual typing. Nullable equality retains its presence tag.
 	std::optional<ResolvedType>      comparisonType = {};
 	std::optional<OperatorSelection> leftContext = {}, rightContext = {};
 	NumericConstant                  numericConstant    = {};
@@ -370,8 +372,15 @@ struct GenericInstance {
 };
 
 struct StructLayout {
+	struct Field {
+		ResolvedType  type;
+		const Symbol *symbol;
+	};
+
 	StorageLayout                           storage;
 	std::map<const Symbol *, std::uint64_t> fieldOffsets;
+	// Positional initializers use declaration order and the concrete field types of this application.
+	std::vector<Field> fields;
 };
 
 struct CheckedProgram : BodyFacts {
@@ -390,6 +399,8 @@ struct CheckedProgram : BodyFacts {
 	std::map<ResolvedType, TypeDispatch>                dispatchTables;
 	std::map<ResolvedType, StructLayout>                structLayouts;
 	[[nodiscard]] std::optional<StorageLayout>          storageLayout (const ResolvedType &type) const;
+	// The selected explicit value or default for this payload field, indexed by case tag.
+	[[nodiscard]] std::vector<const Expression *> enumFieldValues (const Symbol &field) const;
 	// Contiguous element storage, excluding the array descriptor. One element gives the stride.
 	[[nodiscard]] std::optional<StorageLayout> arrayDataLayout (const ResolvedType &array, std::uint64_t count) const;
 	// A standalone state keeps its lexical scope. State selections in its body belong to each attaching class.

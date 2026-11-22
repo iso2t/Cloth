@@ -131,8 +131,10 @@ void SymbolTable::collectType (SymbolScope &scope, const TypeDeclarationPtr &typ
 		for (const EnumFieldDeclaration &efd_field : ed_enum->fields) {
 			declare(ss_members, SymbolKind::Field, efd_field.name, efd_field.visibility, &efd_field);
 		}
-		for (const EnumCaseDeclaration &ecd_case : ed_enum->cases) {
-			declare(ss_members, SymbolKind::EnumCase, ecd_case.name, ecd_case.visibility, &ecd_case);
+		for (std::size_t st_index = 0; st_index < ed_enum->cases.size(); ++st_index) {
+			const EnumCaseDeclaration &ecd_case = ed_enum->cases[st_index];
+			Symbol                    &sym_case = declare(ss_members, SymbolKind::EnumCase, ecd_case.name, ecd_case.visibility, &ecd_case);
+			sym_case.enumCaseOrdinal            = st_index;
 		}
 		for (const MethodDeclaration &md_operator : ed_enum->operators) {
 			collectMethod(ss_members, md_operator);

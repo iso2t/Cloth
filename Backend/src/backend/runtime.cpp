@@ -28,8 +28,21 @@ LLVMValueRef declarePrintlnInt32 (LLVMModuleRef module) {
 	return declareVoidFunction(module, "cloth_rt_println_i32", v_parameters);
 }
 
+LLVMValueRef declareExit (LLVMModuleRef module) {
+	LLVMTypeRef v_parameters[] = { LLVMInt32TypeInContext(LLVMGetModuleContext(module)) };
+	return declareVoidFunction(module, "cloth_rt_exit", v_parameters, /*noReturn=*/true);
+}
+
 LLVMValueRef declareDivideByZero (LLVMModuleRef module) {
 	return declareVoidFunction(module, "cloth_rt_divide_by_zero", {}, /*noReturn=*/true);
+}
+
+LLVMValueRef declareSignedDivisionOverflow (LLVMModuleRef module) {
+	return declareVoidFunction(module, "cloth_rt_signed_division_overflow", {}, /*noReturn=*/true);
+}
+
+LLVMValueRef declareNegativeIntegerExponent (LLVMModuleRef module) {
+	return declareVoidFunction(module, "cloth_rt_negative_integer_exponent", {}, /*noReturn=*/true);
 }
 
 LLVMValueRef declareInvalidFloatToInteger (LLVMModuleRef module) {

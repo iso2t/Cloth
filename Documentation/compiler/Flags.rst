@@ -42,27 +42,92 @@ the condition is true. A return from the body skips the condition.
 to its condition. A jump inside a nested loop's condition targets the
 enclosing loop body. A guard such as ``if (done) break`` may omit ``else``.
 Scalar operators evaluate their operands in source order. If an operand
-executes ``return``, ``break`` or ``continue``, earlier side effects are preserved.
-Execution skips the remaining operands and the enclosing operation.
+executes ``return``, ``break``, ``continue`` or the built-in ``exit``, earlier
+side effects are preserved. Execution skips the remaining operands and the
+enclosing operation.
 
 Locals and non-generic helper functions can use signed and unsigned integers
 of any Cloth width, ``isize``, ``usize``, ``bool``, ``char`` and 16-, 32- or
-64-bit floats. A mutable local supports assignment, compound arithmetic
+64-bit floats. A mutable numeric local supports assignment, compound arithmetic
 assignment, increment and decrement.
 A local declared with ``:=`` keeps its initial value. A ``def`` binding infers
 its type from the initializer.
+
+Nullable integers, booleans, floats and characters use a one-byte presence
+flag followed by the payload at its usual alignment. On both target widths,
+``int?``, ``float?`` and ``char?`` occupy eight bytes. A ``bool?`` occupies two.
+A present character stores its full 32-bit Unicode scalar value, including
+``'\0'``. Comparisons with ``null`` test the flag. Two absent values compare
+equal. Present floats use ordinary floating-point equality at their declared
+precision. Positive and negative zero compare equal, and a present NaN
+compares unequal to itself.
+The ``?:`` operator evaluates its fallback only for an absent value. A present
+``false``, ``0.0`` or ``'\0'`` skips it. This program returns 42.
+
+.. code-block:: text
+
+   pub fn<int> main() {
+       int? value = 0
+       if (value == null || value != 0) return 1
+       value = null
+       return if (value == null) 42 else 2
+   }
+
+An enum stores a four-byte tag on both target widths.
+Tags start at zero and follow declaration order, including private cases.
+The built-in ``==`` and ``!=`` compare tags for values of the same enum.
+Casting a case or a stored enum value to ``int`` gives its tag.
+A payload field is read-only. Reading it selects the case's explicit value
+or the field's declared default. The object emitter supports integers,
+booleans, floats, characters, their nullable forms and structs composed of
+supported fields. In this example ``Mode.Off.code`` uses the default of 7
+and ``main`` returns 42.
+
+.. code-block:: text
+
+   typedef<enum> Mode(pub def<int> code = 7) { pub Off, pub On(42) }
+
+   pub fn<int> main() {
+       Mode mode = Mode.On
+       return mode.code
+   }
+
+Local structs can contain the supported primitives, their nullable forms,
+enums and other structs. A positional literal evaluates its fields once in
+declaration order, including nested literals. If a field transfers control out
+of the initializer, evaluation stops there. Assigning a struct copies all its
+nested fields. Numeric fields of a mutable local also support compound
+assignment, increment and decrement. This program returns 7 on both target
+widths. The earlier copy still holds 42.
+
+.. code-block:: text
+
+   typedef<struct> Inner { pub bool ready, pub int<12> value }
+   typedef<struct> Sample { pub bool tagged, pub Inner inner }
+
+   pub fn<int> main() {
+       Sample sample = {true, {true, 42}}
+       def original := sample
+       sample.inner.value = 7
+       return if (sample.tagged && sample.inner.ready && original.inner.value == 42) sample.inner.value -> int else 1
+   }
+
+``Inner`` occupies 4 bytes with 2-byte alignment. It is stored inline at
+byte 2 of ``Sample``, placing ``sample.inner.value`` at byte 4. ``Sample``
+occupies 6 bytes with 2-byte alignment.
 
 Integer arithmetic, including ``**``, wraps at the operand width. On both
 targets ``int<12>`` wraps from 2047 to -2048. The width of ``isize`` and
 ``usize`` follows ``--target-bits``. Unary ``~`` flips every bit at that width.
 Signed division truncates toward zero, and a nonzero remainder has the sign
-of the dividend. If an integer divisor evaluates to zero, ``/``, ``%``,
-``/=`` and ``%=`` write ``Cloth runtime error: integer division by zero`` to
-standard error and exit with status 1. Both operands run once in source
-order before the check.
-Signed division and remainder trap on the signed minimum divided by minus one.
-Integer exponentiation traps on a negative exponent. The frontend diagnoses
-literal zero divisors and literal signed division overflow with ``C3050`` and ``C3051``.
+of the dividend. Integer ``/``, ``%``, ``/=`` and ``%=`` evaluate both
+operands once, in source order. A zero divisor reports
+``Cloth runtime error: integer division by zero``. A signed minimum dividend
+with divisor -1 reports ``Cloth runtime error: signed integer division overflow``.
+Integer ``**`` with a negative exponent reports
+``Cloth runtime error: negative integer exponent``.
+The frontend diagnoses literal zero divisors (``C3050``), literal signed division
+overflow (``C3051``) and literal negative integer exponents (``C3018``).
 
 Comparisons use the checked operand type. Integer-to-boolean conversion
 maps zero to false and every nonzero value to true, including at parameter
@@ -73,24 +138,29 @@ normalized integer value.
 
 Numeric casts use the destination width. Floating-to-integer casts truncate
 toward zero. If the operand is NaN or infinite, or the truncated integer is
-outside the destination range, the cast writes
-``Cloth runtime error: invalid float-to-integer cast (NaN or out of range)``
-to standard error and exits with status 1. For example, ``-128.75``
-converts to ``-128`` in ``int<8>``, while ``-129.0`` reports the error.
+outside the destination range, the cast reports
+``Cloth runtime error: invalid float-to-integer cast (NaN or out of range)``.
+For example, ``-128.75`` converts to ``-128`` in ``int<8>``, while ``-129.0``
+reports the error.
 
-Both the integer division and float-to-integer runtime errors flush earlier
-standard output before writing the diagnostic. Link objects that use either
-check with ``Runtime/src/errors.c``, for example ``cc main.o Runtime/src/errors.c -o main``.
+Arithmetic and conversion errors flush earlier standard output, write one
+diagnostic to standard error and exit with status 1. Link objects that use
+these checks with ``Runtime/src/errors.c``, for example ``cc main.o Runtime/src/errors.c -o main``.
+
+The built-in ``exit(status)`` evaluates its integer argument once and converts
+it to a signed 32-bit ``int`` on both target widths. It flushes buffered
+output and ends the process. Windows exposes the 32-bit exit status and
+Unix exposes its low eight bits. Link objects that call it with ``Runtime/src/process.c``.
 
 Floating comparison follows IEEE rules, including unordered inequality for
 NaN. Floating remainder and exponentiation can require the platform math
 library. On Unix, link these objects with ``-lm``.
 
 A call can reach a function in the same file or a ``pub`` function imported
-with ``using``. Helpers take primitive arguments by value and return a
-primitive value or ``void``. Supply every argument at the call site. A call can
-stand alone as a statement. A ``void`` helper returns at the end of its
-block or at a bare ``return``. On x86,
+with ``using``. Helpers take the supported primitives, their nullable forms
+and enums by value. They can return one such value or ``void``. Supply every
+argument at the call site. A call can stand alone as a statement. A ``void``
+helper returns at the end of its block or at a bare ``return``. On x86,
 ``--target-bits`` selects a 32- or 64-bit object. The output directory must
 already exist. A successful write replaces the named file. Source files used
 by the compilation are protected from replacement.

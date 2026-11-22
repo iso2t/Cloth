@@ -9,14 +9,15 @@ namespace backend::detail {
 
 // Returns null for types whose representation belongs to another lowering path.
 LLVMTypeRef scalarType (LLVMContextRef context, cloth::TargetLayout layout, const cloth::ResolvedType &type);
+LLVMValueRef scalarConstant (LLVMTypeRef type, const cloth::NumericConstant &value);
 
 class ScalarLowering {
     public:
 	ScalarLowering (LLVMModuleRef module, LLVMBuilderRef builder, cloth::TargetLayout layout);
 	[[nodiscard]] LLVMTypeRef  type (const cloth::ResolvedType &resolved) const;
-	[[nodiscard]] LLVMValueRef constant (const cloth::ResolvedType &resolved, const cloth::NumericConstant &value) const;
 	LLVMValueRef               convert (LLVMValueRef value, const cloth::ResolvedType &source, const cloth::ResolvedType &destination) const;
-	LLVMValueRef               checkedCast (LLVMValueRef value, const cloth::ResolvedType &source, const cloth::ExpressionInfo &cast) const;
+	LLVMValueRef               checkedCast (LLVMValueRef value, const cloth::ResolvedType &source, const cloth::ResolvedType &destination,
+	                                        const cloth::ExpressionInfo &cast) const;
 	LLVMValueRef               predicate (LLVMValueRef integer) const;
 	LLVMValueRef               boolean (LLVMValueRef predicate) const;
 	LLVMValueRef               binary (cloth::Operator op, LLVMValueRef left, LLVMValueRef right, const cloth::ResolvedType &operandType) const;

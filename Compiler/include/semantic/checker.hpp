@@ -269,7 +269,7 @@ class Analyzer {
 	std::deque<InstanceWork> q_templates, q_instances;
 	const InstanceWork      *iw_active        = nullptr;
 	std::size_t              st_openTemplates = 0, st_closedTemplates = 0, st_instances = 0;
-	using StorageFields = std::vector<std::pair<ResolvedType, const Symbol *>>;
+	using StorageFields = std::vector<StructLayout::Field>;
 
 	struct ArrayAllocation {
 		ResolvedType  type;

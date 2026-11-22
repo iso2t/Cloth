@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <ast/decl/class_declaration.hpp>
+#include <ast/decl/enum_declaration.hpp>
 #include <ast/expr/expressions.hpp>
 #include <lexer/lexer.hpp>
 #include <parser/parser.hpp>
@@ -82,6 +83,15 @@ bool ResolvedType::integer () const {
 
 bool ResolvedType::floating () const {
 	return suffixes.empty() && name == to_string(kFloat);
+}
+
+bool ResolvedType::enumeration () const {
+	return semantic::enumeration(*this) != nullptr;
+}
+
+bool ResolvedType::payloadFreeEnum () const {
+	const EnumDeclaration *ed_enum = semantic::enumeration(*this);
+	return ed_enum && ed_enum->fields.empty();
 }
 
 bool ResolvedType::unsignedInteger () const {
@@ -193,6 +203,20 @@ CheckedProgram::CheckedProgram (SymbolTable entry, TargetLayout layout, std::fil
 	semantic::Analyzer analyzer(*this);
 	analyzer.checkBodies();
 	entryPoint = analyzer.entryPoint();
+}
+
+std::vector<const Expression *> CheckedProgram::enumFieldValues (const Symbol &field) const {
+	const Symbol          &sym_owner = *declarations.at(&field).owner;
+	const EnumDeclaration &ed_enum   = static_cast<const EnumDeclaration &>(*std::get<const TypeDeclaration *>(sym_owner.declaration));
+	// Field symbols point into this declaration's field vector. Checked case values use the same order.
+	const std::size_t               st_column = static_cast<std::size_t>(std::get<const EnumFieldDeclaration *>(field.declaration) - ed_enum.fields.data());
+	std::vector<const Expression *> v_values(ed_enum.cases.size());
+	for (const SymbolScope::value_type &group : sym_owner.members) {
+		for (const Symbol &member : group.second) {
+			if (member.kind == SymbolKind::EnumCase) v_values.at(member.enumCaseOrdinal) = enumPayloads.at(&member).at(st_column);
+		}
+	}
+	return v_values;
 }
 }
 

@@ -60,6 +60,8 @@ struct Symbol {
 	SymbolScope       members;
 	// Initialization order within the declaring class, starting with parameter fields.
 	std::optional<std::size_t> classFieldIndex = std::nullopt;
+	// For EnumCase, the zero-based position among all cases of its declaring enum.
+	std::size_t enumCaseOrdinal = 0;
 };
 
 // Owns the syntax backing every declaration reference, including synthesized primary constructors.

@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+#include <backend/nullable_value.hpp>
+#include <backend/scalar_lowering.hpp>
+#include <backend/value_types.hpp>
+
+#include <cstddef>
+#include <cstdint>
+#include <format>
+#include <vector>
+
+#include <cde/cloth_diagnostic.hpp>
+#include <llvm-c/Target.h>
+
+namespace backend::detail {
+
+ValueTypes::ValueTypes (LLVMModuleRef module, const cloth::CheckedProgram &program) : mod_module(module), cp_program(program) {
+}
+
+LLVMTypeRef ValueTypes::directCallType (const cloth::ResolvedType &type) const {
+	const LLVMContextRef ctx_context = LLVMGetModuleContext(mod_module);
+	if (type.nullable()) {
+		const cloth::ResolvedType rt_payload = type.element();
+		return nullable::supportsPayload(rt_payload) ? nullable::type(scalarType(ctx_context, cp_program.layout, rt_payload)) : nullptr;
+	}
+	return scalarType(ctx_context, cp_program.layout, type);
+}
+
+LLVMTypeRef ValueTypes::get (const cloth::ResolvedType &type) {
+	if (const LLVMTypeRef ty_value = directCallType(type)) return ty_value;
+	const LLVMContextRef ctx_context = LLVMGetModuleContext(mod_module);
+	// An untyped null carries no data until a surrounding expression supplies the nullable type.
+	if (type == cloth::ResolvedType(cloth::kNull)) return LLVMStructTypeInContext(ctx_context, nullptr, 0, false);
+	const auto it_layout = cp_program.structLayouts.find(type);
+	if (it_layout == cp_program.structLayouts.end()) return nullptr;
+	const cloth::StructLayout &sl_layout = it_layout->second;
+	if (const auto it_type = m_structs.find(&sl_layout); it_type != m_structs.end()) return it_type->second;
+
+	std::vector<LLVMTypeRef> v_elements;
+	v_elements.reserve(sl_layout.fields.size());
+	// The frontend has checked that inline struct storage is acyclic.
+	for (const cloth::StructLayout::Field &field : sl_layout.fields) {
+		const LLVMTypeRef ty_field = get(field.type);
+		if (!ty_field) return nullptr;
+		v_elements.push_back(ty_field);
+	}
+	// Cloth reserves one byte for an empty struct. LLVM's empty struct occupies zero bytes.
+	if (v_elements.empty()) v_elements.push_back(LLVMInt8TypeInContext(ctx_context));
+	const LLVMTypeRef          ty_struct = LLVMStructTypeInContext(ctx_context, v_elements.data(), static_cast<unsigned>(v_elements.size()), false);
+	const LLVMTargetDataRef    td_target = LLVMGetModuleDataLayout(mod_module);
+	const cloth::StorageLayout sl_actual{ .size = LLVMABISizeOfType(td_target, ty_struct), .alignment = LLVMABIAlignmentOfType(td_target, ty_struct) };
+	if (sl_actual != sl_layout.storage) {
+		throw cde::ClothDiagnostic(cde::DiagnosticCode::ABI_LAYOUT,
+		                           std::format("LLVM gives '{}' size {} and alignment {}. The checked layout requires size {} and alignment {}",
+		                                       type.spelling(), sl_actual.size, sl_actual.alignment, sl_layout.storage.size,
+		                                       sl_layout.storage.alignment),
+		                           { { type.declaration->name.get_span(), "struct layout mismatch" } });
+	}
+	for (std::size_t st_index = 0; st_index < sl_layout.fields.size(); ++st_index) {
+		const cloth::Symbol &sym_field    = *sl_layout.fields[st_index].symbol;
+		const std::uint64_t  u64_actual   = LLVMOffsetOfElement(td_target, ty_struct, static_cast<unsigned>(st_index));
+		const std::uint64_t  u64_expected = sl_layout.fieldOffsets.at(&sym_field);
+		if (u64_actual != u64_expected) {
+			throw cde::ClothDiagnostic(cde::DiagnosticCode::ABI_LAYOUT,
+			                           std::format("LLVM places field '{}' at byte {}. The checked layout requires byte {}",
+			                                       sym_field.name.get_lexeme(), u64_actual, u64_expected),
+			                           { { sym_field.name.get_span(), "field offset mismatch" } });
+		}
+	}
+	m_structs.emplace(&sl_layout, ty_struct);
+	return ty_struct;
+}
+}

@@ -54,17 +54,14 @@ LLVMRealPredicate floatPredicate (cloth::Operator op) {
 	}
 }
 
-LLVMValueRef intrinsic (LLVMModuleRef module, std::string_view name, LLVMTypeRef *types = nullptr, unsigned count = 0) {
+LLVMValueRef intrinsic (LLVMModuleRef module, std::string_view name, LLVMTypeRef *types, unsigned count) {
 	return LLVMGetIntrinsicDeclaration(module, LLVMLookupIntrinsicID(name.data(), name.size()), types, count);
-}
-
-LLVMValueRef declareTrap (LLVMModuleRef module) {
-	return intrinsic(module, "llvm.trap");
 }
 }
 
 LLVMTypeRef scalarType (LLVMContextRef context, cloth::TargetLayout layout, const cloth::ResolvedType &type) {
-	if (type.declaration || type.parameter || !type.suffixes.empty()) return nullptr;
+	if (type.parameter || !type.suffixes.empty()) return nullptr;
+	if (type.declaration) return type.enumeration() ? LLVMInt32TypeInContext(context) : nullptr;
 	if (type.integer()) return LLVMIntTypeInContext(context, type.width ? type.width : layout.sizeBits);
 	if (type == cloth::ResolvedType(cloth::kBoolean)) return LLVMInt8TypeInContext(context);
 	if (type == cloth::ResolvedType(cloth::kCharacter)) return LLVMInt32TypeInContext(context);
@@ -91,15 +88,14 @@ LLVMTypeRef ScalarLowering::type (const cloth::ResolvedType &resolved) const {
 	return scalarType(LLVMGetModuleContext(mod_module), tl_layout, resolved);
 }
 
-LLVMValueRef ScalarLowering::constant (const cloth::ResolvedType &resolved, const cloth::NumericConstant &value) const {
-	const LLVMTypeRef ty_value = type(resolved);
-	if (const double *d_real = std::get_if<double>(&value)) return LLVMConstReal(ty_value, *d_real);
+LLVMValueRef scalarConstant (LLVMTypeRef type, const cloth::NumericConstant &value) {
+	if (const double *d_real = std::get_if<double>(&value)) return LLVMConstReal(type, *d_real);
 	const cloth::IntegerConstant &ic_value = std::get<cloth::IntegerConstant>(value);
 	// Cloth stores little-endian 32-bit magnitude words. LLVM consumes little-endian 64-bit limbs.
 	std::vector<std::uint64_t> v_words((ic_value.magnitude.size() + 1) / 2);
 	for (std::size_t st_index = 0; st_index < ic_value.magnitude.size(); ++st_index)
 		v_words[st_index / 2] |= static_cast<std::uint64_t>(ic_value.magnitude[st_index]) << (32 * (st_index % 2));
-	const LLVMValueRef ir_value = LLVMConstIntOfArbitraryPrecision(ty_value, static_cast<unsigned>(v_words.size()), v_words.data());
+	const LLVMValueRef ir_value = LLVMConstIntOfArbitraryPrecision(type, static_cast<unsigned>(v_words.size()), v_words.data());
 	return ic_value.negative ? LLVMConstNeg(ir_value) : ir_value;
 }
 
@@ -213,7 +209,7 @@ void ScalarLowering::guardDivisor (LLVMValueRef dividend, LLVMValueRef divisor, 
 	if (LLVMIsNull(ir_minusOne)) return;
 	const LLVMValueRef ir_shift = LLVMConstInt(ty_integer, LLVMGetIntTypeWidth(ty_integer) - 1, false);
 	const LLVMValueRef ir_min   = LLVMBuildShl(ir_builder, LLVMConstInt(ty_integer, 1, false), ir_shift, "");
-	failIf(LLVMBuildAnd(ir_builder, ir_minusOne, LLVMBuildICmp(ir_builder, LLVMIntEQ, dividend, ir_min, ""), ""), declareTrap);
+	failIf(LLVMBuildAnd(ir_builder, ir_minusOne, LLVMBuildICmp(ir_builder, LLVMIntEQ, dividend, ir_min, ""), ""), declareSignedDivisionOverflow);
 }
 
 LLVMValueRef ScalarLowering::floatToInteger (LLVMValueRef value, LLVMTypeRef target, bool isUnsigned) const {
@@ -249,20 +245,20 @@ LLVMValueRef ScalarLowering::convert (LLVMValueRef value, const cloth::ResolvedT
 	return LLVMBuildIntCast2(ir_builder, value, ty_target, source.integer() && !source.unsignedInteger(), "");
 }
 
-LLVMValueRef ScalarLowering::checkedCast (LLVMValueRef value, const cloth::ResolvedType &source, const cloth::ExpressionInfo &cast) const {
-	const cloth::ResolvedType &rt_target = cast.types.front();
+LLVMValueRef ScalarLowering::checkedCast (LLVMValueRef value, const cloth::ResolvedType &source, const cloth::ResolvedType &destination,
+                                          const cloth::ExpressionInfo &cast) const {
 	if (cast.invalidNumericCast) {
 		failIf(LLVMConstAllOnes(LLVMInt1TypeInContext(LLVMGetModuleContext(mod_module))), declareInvalidFloatToInteger);
-		return LLVMConstNull(type(rt_target));
+		return LLVMConstNull(type(destination));
 	}
-	if (!std::holds_alternative<std::monostate>(cast.numericConstant)) return constant(rt_target, cast.numericConstant);
-	return convert(value, source, rt_target);
+	if (!std::holds_alternative<std::monostate>(cast.numericConstant)) return scalarConstant(type(destination), cast.numericConstant);
+	return convert(value, source, destination);
 }
 
 LLVMValueRef ScalarLowering::integerPower (LLVMValueRef base, LLVMValueRef exponent, bool isUnsigned) const {
 	const LLVMTypeRef  ty_integer = LLVMTypeOf(base);
 	const LLVMValueRef ir_zero = LLVMConstNull(ty_integer), ir_one = LLVMConstInt(ty_integer, 1, false);
-	if (!isUnsigned) failIf(LLVMBuildICmp(ir_builder, LLVMIntSLT, exponent, ir_zero, ""), declareTrap);
+	if (!isUnsigned) failIf(LLVMBuildICmp(ir_builder, LLVMIntSLT, exponent, ir_zero, ""), declareNegativeIntegerExponent);
 	const LLVMContextRef ctx_context = LLVMGetModuleContext(mod_module);
 	LLVMBasicBlockRef    bb_start    = LLVMGetInsertBlock(ir_builder);
 	const LLVMValueRef   fn_function = LLVMGetBasicBlockParent(bb_start);

@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Leaf<T> { pub bool ready, pub T value }
+typedef<struct> Pair<T> { pub T left, pub T right }
+typedef<struct> Sample<T> { pub bool tagged, pub Pair<Leaf<T>> inner }
+
+pub fn<int> main() {
+    Sample<int<12>> sample = {true, {{true, 42}, {false, 9}}}
+    def original := sample
+    def detached = sample.inner.left
+
+    sample.inner.left.value += (if (sample.tagged) {
+        sample.inner = {{false, 100}, {true, 12}}
+        trace(5) -> int<12>
+    } else 0)
+    if (sample.inner.left.ready || sample.inner.left.value != 47) return 1
+    if (!sample.inner.right.ready || sample.inner.right.value != 12) return 2
+    if (original.inner.left.value != 42 || original.inner.right.value != 9) return 3
+
+    detached.value++
+    sample.inner.right = detached
+    detached.value--
+    def selected := (if (trace(1) == 1) sample else original).inner.right.value
+    if (selected != 43 || detached.value != 42) return 4
+    if (initialize(true) != 42 || initialize(false) != 7) return 5
+    return 7
+}
+
+fn<int> initialize(final bool early) {
+    Sample<int<12>> sample = {true, {{true, (if (early) { return 42 } else 7)}, {false, trace(9) -> int<12>}}}
+    return sample.inner.left.value -> int
+}
+
+fn<int> trace(final int value) {
+    println(value)
+    return value
+}

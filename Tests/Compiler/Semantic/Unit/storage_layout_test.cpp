@@ -62,6 +62,10 @@ fn layout(Sample[3] records, int<12>[] data, unsigned int<12>[3] fixedSamples, B
 		const ResultTypes   &v_types    = cp_program.declarations.at(&ss_globals.at("layout").front()).parameters;
 		const Symbol        &sym_sample = ss_globals.at("Sample").front();
 		const StructLayout  &sl_sample  = cp_program.structLayouts.at(v_types[0].element());
+		ASSERT_EQ(sl_sample.fields.size(), 3u);
+		EXPECT_EQ(sl_sample.fields[0].symbol, &sym_sample.members.at("z").front());
+		EXPECT_EQ(sl_sample.fields[1].symbol, &sym_sample.members.at("a").front());
+		EXPECT_EQ(sl_sample.fields[2].symbol, &sym_sample.members.at("m").front());
 		EXPECT_EQ(sl_sample.fieldOffsets.at(&sym_sample.members.at("z").front()), 0u);
 		EXPECT_EQ(sl_sample.fieldOffsets.at(&sym_sample.members.at("a").front()), 2u);
 		EXPECT_EQ(sl_sample.fieldOffsets.at(&sym_sample.members.at("m").front()), 4u);
@@ -79,6 +83,8 @@ fn layout(Sample[3] records, int<12>[] data, unsigned int<12>[3] fixedSamples, B
 		EXPECT_EQ(cp_program.storageLayout(v_types[4]), (StorageLayout{ 8, 4 }));
 		EXPECT_EQ(cp_program.storageLayout(v_types[5]), (StorageLayout{ 8, 2 }));
 		const Symbol &sym_value = ss_globals.at("Box").front().members.at("value").front();
+		EXPECT_EQ(cp_program.structLayouts.at(v_types[3]).fields.at(1).type.width, 12u);
+		EXPECT_EQ(cp_program.structLayouts.at(v_types[4]).fields.at(1).type.width, 24u);
 		EXPECT_EQ(cp_program.structLayouts.at(v_types[3]).fieldOffsets.at(&sym_value), 2u);
 		EXPECT_EQ(cp_program.structLayouts.at(v_types[4]).fieldOffsets.at(&sym_value), 4u);
 		const std::uint64_t u64_word   = u_bits / 8;

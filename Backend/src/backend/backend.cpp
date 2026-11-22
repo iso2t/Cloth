@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <backend/backend.hpp>
+#include <backend/enum_payloads.hpp>
 #include <backend/lowered_module.hpp>
+#include <backend/nullable_value.hpp>
 #include <backend/runtime.hpp>
 #include <backend/scalar_lowering.hpp>
+#include <backend/value_types.hpp>
 
 #include <algorithm>
 #include <climits>
 #include <cstddef>
 #include <format>
 #include <memory>
+#include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -20,6 +25,7 @@
 #include <ast/expr/expressions.hpp>
 #include <ast/expr/member_call_expression.hpp>
 #include <ast/expr/provider_expressions.hpp>
+#include <ast/expr/struct_expressions.hpp>
 #include <ast/stmt/do_while_statement.hpp>
 #include <ast/stmt/loop_control.hpp>
 #include <ast/stmt/statements.hpp>
@@ -46,6 +52,8 @@ using MemoryBuffer  = std::unique_ptr<LLVMOpaqueMemoryBuffer, decltype(&LLVMDisp
 struct ModuleFunctions {
 	const cloth::CheckedProgram                            &program;
 	LLVMModuleRef                                           module;
+	detail::ValueTypes                                      valueTypes{ module, program };
+	detail::EnumPayloads                                    enumPayloads{ module, program, valueTypes };
 	std::unordered_map<const cloth::Symbol *, LLVMValueRef> declarations = {};
 	std::vector<const cloth::Symbol *>                      pending      = {};
 
@@ -67,13 +75,12 @@ LLVMValueRef ModuleFunctions::declareFunction (const cloth::Symbol &symbol) {
 	}
 	const LLVMContextRef     ctx_context = LLVMGetModuleContext(module);
 	const LLVMTypeRef        ty_result   = b_voidResult                    ? LLVMVoidTypeInContext(ctx_context) :
-	                                       di_function.returns.size() == 1 ? detail::scalarType(ctx_context, program.layout, di_function.returns.front()) :
+	                                       di_function.returns.size() == 1 ? valueTypes.directCallType(di_function.returns.front()) :
 	                                                                         nullptr;
 	std::vector<LLVMTypeRef> v_parameters;
-	for (const cloth::ResolvedType &rt_parameter : di_function.parameters)
-		v_parameters.push_back(detail::scalarType(ctx_context, program.layout, rt_parameter));
+	for (const cloth::ResolvedType &rt_parameter : di_function.parameters) v_parameters.push_back(valueTypes.directCallType(rt_parameter));
 	if (!ty_result || std::ranges::find(v_parameters, nullptr) != v_parameters.end()) {
-		throw cde::ClothDiagnostic(Code::UNSUPPORTED_FUNCTION_ABI, "LLVM lowering requires primitive parameters and at most one primitive result",
+		throw cde::ClothDiagnostic(Code::UNSUPPORTED_FUNCTION_ABI, "LLVM lowering requires supported parameter types and at most one supported result",
 		                           { { .span = symbol.name.get_span(), .text = "unsupported function signature" } });
 	}
 	const LLVMTypeRef  ty_function = LLVMFunctionType(ty_result, v_parameters.data(), static_cast<unsigned>(v_parameters.size()), false);
@@ -87,9 +94,9 @@ LLVMValueRef ModuleFunctions::declareFunction (const cloth::Symbol &symbol) {
 	return fn_function;
 }
 
-struct LocalValue {
+struct LoweredValue {
 	LLVMValueRef               operand;
-	const cloth::ResolvedType *type;
+	const cloth::ResolvedType &type;
 	bool                       isAddress;
 };
 
@@ -104,8 +111,11 @@ class FunctionLowering {
 	void lowerFunction (const cloth::CallableSignature &signature, LLVMValueRef function);
 
     private:
-	const LocalValue *findLocal (const cloth::Token *declaration) const;
-	void              bindLocal (const cloth::Token &name, const cloth::ResolvedType &type, LLVMValueRef value, bool isMutable);
+	const LoweredValue         *findLocal (const cloth::Token *declaration) const;
+	LLVMValueRef                readValue (const LoweredValue &value, const cloth::ResolvedType &view);
+	void                        bindLocal (const cloth::Token &name, const cloth::ResolvedType &type, LLVMValueRef value, bool isMutable);
+	std::optional<LoweredValue> lowerField (const cloth::FieldAccessExpression &field);
+
 	LLVMValueRef      lowerStatements (const std::vector<cloth::StatementPtr> &statements, const cloth::ResolvedType *resultType = nullptr);
 	void              lowerStatement (const cloth::Statement &statement);
 	void              lowerReturn (const cloth::Expression *expression);
@@ -118,22 +128,32 @@ class FunctionLowering {
 	LLVMBasicBlockRef loopExit (const cloth::LoopStatement &loop) const;
 	void              branchOnLoopCondition (LLVMValueRef condition, LLVMBasicBlockRef body, LLVMBasicBlockRef exit);
 	void              branchOrUnreachable (LLVMBasicBlockRef target);
-	LLVMValueRef      lowerExpression (const cloth::Expression &expression);
-	LLVMValueRef      lowerAs (const cloth::Expression &expression, const cloth::ResolvedType &destination);
-	LLVMValueRef      lowerBinary (const cloth::BinaryExpression &binary);
-	LLVMValueRef      lowerLogical (const cloth::BinaryExpression &binary);
-	LLVMValueRef      lowerCall (const cloth::CallExpression &call);
-	LLVMValueRef      lowerPrintln (const cloth::CallExpression &call);
-	void              lowerBinding (const cloth::BindingDeclaration &binding);
-	void              lowerAssignment (const cloth::AssignmentStatement &assignment);
-	void              lowerUpdate (const cloth::UpdateStatement &update);
-	const LocalValue &mutableTarget (const cloth::Statement &write, const cloth::Token &name) const;
+
+	LLVMValueRef lowerExpression (const cloth::Expression &expression);
+	LLVMValueRef lowerStructLiteral (const cloth::StructLiteral &literal, const cloth::ExpressionInfo &info);
+	LLVMValueRef lowerAs (const cloth::Expression &expression, const cloth::ResolvedType &destination);
+	LLVMValueRef convertValue (LLVMValueRef value, const cloth::ResolvedType &source, const cloth::ResolvedType &destination,
+	                           const cloth::ExpressionInfo *cast = nullptr);
+	LLVMValueRef lowerBinary (const cloth::BinaryExpression &binary);
+	LLVMValueRef lowerNullableEquality (const cloth::BinaryExpression &binary, const cloth::ResolvedType &operandType);
+	LLVMValueRef lowerNullableFallback (const cloth::ElvisExpression &expression, const cloth::ResolvedType &result);
+	LLVMValueRef lowerLogical (const cloth::BinaryExpression &binary);
+	LLVMValueRef lowerCall (const cloth::CallExpression &call);
+	LLVMValueRef lowerPrintln (const cloth::CallExpression &call);
+	LLVMValueRef lowerExit (const cloth::CallExpression &call, const cloth::BuiltinCall &builtin);
+
+	void                lowerBinding (const cloth::BindingDeclaration &binding);
+	void                lowerAssignment (const cloth::AssignmentStatement &assignment);
+	void                lowerFieldWrite (const cloth::FieldWriteStatement &write);
+	void                storeExpression (const LoweredValue &target, const cloth::Expression &value);
+	void                lowerUpdate (const LoweredValue &target, const cloth::Expression &read, cloth::Operator op);
+	const LoweredValue &mutableTarget (const cloth::Statement &write, const cloth::Token &name) const;
 
 	ModuleFunctions                                          &mf_functions;
 	LLVMBuilderRef                                            ir_builder;
 	const cloth::DeclarationInfo                             &di_function;
 	detail::ScalarLowering                                    sl_scalars;
-	std::unordered_map<const cloth::Token *, LocalValue>      m_locals;
+	std::unordered_map<const cloth::Token *, LoweredValue>    m_locals;
 	std::unordered_map<const cloth::LoopTarget *, LoopBlocks> m_loopBlocks;
 };
 
@@ -144,9 +164,15 @@ FunctionLowering::FunctionLowering (ModuleFunctions &functions, LLVMBuilderRef b
         sl_scalars(functions.module, builder, functions.program.layout) {
 }
 
-const LocalValue *FunctionLowering::findLocal (const cloth::Token *declaration) const {
+const LoweredValue *FunctionLowering::findLocal (const cloth::Token *declaration) const {
 	const decltype(m_locals)::const_iterator it_local = m_locals.find(declaration);
 	return it_local == m_locals.end() ? nullptr : &it_local->second;
+}
+
+LLVMValueRef FunctionLowering::readValue (const LoweredValue &value, const cloth::ResolvedType &view) {
+	const LLVMValueRef ir_value = value.isAddress ? LLVMBuildLoad2(ir_builder, mf_functions.valueTypes.get(value.type), value.operand, "") : value.operand;
+	// The checked read can see the payload while the local or field still stores the whole nullable.
+	return value.type.nullable() && !view.nullable() ? detail::nullable::payload(ir_builder, ir_value) : ir_value;
 }
 
 bool isBuiltinOperation (const cloth::ExpressionInfo &info) {
@@ -157,7 +183,25 @@ LLVMValueRef FunctionLowering::lowerAs (const cloth::Expression &expression, con
 	const LLVMValueRef           ir_value  = lowerExpression(expression);
 	const cloth::ExpressionInfo &ei_source = mf_functions.program.expressions.at(&expression);
 	if (!ei_source.fallsThrough) return nullptr;
-	return sl_scalars.convert(ir_value, ei_source.types.front(), destination);
+	return convertValue(ir_value, ei_source.types.front(), destination);
+}
+
+LLVMValueRef FunctionLowering::convertValue (LLVMValueRef value, const cloth::ResolvedType &source, const cloth::ResolvedType &destination,
+                                             const cloth::ExpressionInfo *cast) {
+	if (source == destination) return value;
+	if (!destination.nullable()) return cast ? sl_scalars.checkedCast(value, source, destination, *cast) : sl_scalars.convert(value, source, destination);
+	const cloth::ResolvedType rt_payload = destination.element();
+	if (source == cloth::ResolvedType(cloth::kNull)) return LLVMConstNull(detail::nullable::type(sl_scalars.type(rt_payload)));
+	const LLVMValueRef        ir_presence = source.nullable() ? detail::nullable::presence(ir_builder, value) : nullptr;
+	const cloth::ResolvedType rt_from     = source.nullable() ? source.element() : source;
+	if (ir_presence) {
+		value = detail::nullable::payload(ir_builder, value);
+		// An absent payload must pass through a checked float-to-integer cast without raising a runtime error.
+		if (rt_from.floating() && rt_payload.integer())
+			value = LLVMBuildSelect(ir_builder, sl_scalars.predicate(ir_presence), value, LLVMConstNull(LLVMTypeOf(value)), "");
+	}
+	const LLVMValueRef ir_payload = cast ? sl_scalars.checkedCast(value, rt_from, rt_payload, *cast) : sl_scalars.convert(value, rt_from, rt_payload);
+	return detail::nullable::pack(ir_builder, ir_payload, ir_presence);
 }
 
 LLVMValueRef FunctionLowering::lowerExpression (const cloth::Expression &expression) {
@@ -168,16 +212,37 @@ LLVMValueRef FunctionLowering::lowerExpression (const cloth::Expression &express
 	if (const auto *ie_conditional = dynamic_cast<const cloth::IfExpression *>(&expression)) {
 		return lowerIf(*ie_conditional, ei_value);
 	}
+	if (const cloth::ElvisExpression *ee_fallback = dynamic_cast<const cloth::ElvisExpression *>(&expression);
+	    ee_fallback && isBuiltinOperation(ei_value)) {
+		if (!ef_expressions.at(ee_fallback->left.get()).fallsThrough) return lowerExpression(*ee_fallback->left);
+		if (rt_result && detail::nullable::supportsPayload(rt_result->nullable() ? rt_result->element() : *rt_result))
+			return lowerNullableFallback(*ee_fallback, *rt_result);
+		if (!ei_value.fallsThrough && dynamic_cast<const cloth::NullLiteral *>(ee_fallback->left.get())) return lowerExpression(*ee_fallback->fallback);
+	}
+	if (const cloth::StructLiteral *sl_literal = dynamic_cast<const cloth::StructLiteral *>(&expression)) return lowerStructLiteral(*sl_literal, ei_value);
+	if (const cloth::FieldAccessExpression *fa_read = dynamic_cast<const cloth::FieldAccessExpression *>(&expression)) {
+		if (ei_value.symbol && ei_value.symbol->kind == cloth::SymbolKind::EnumCase)
+			return LLVMConstInt(sl_scalars.type(*rt_result), ei_value.symbol->enumCaseOrdinal, false);
+		if (ei_value.symbol && std::holds_alternative<const cloth::EnumFieldDeclaration *>(ei_value.symbol->declaration)) {
+			const LLVMValueRef ir_tag = lowerExpression(*fa_read->receiver);
+			if (!ir_tag) return nullptr;
+			const LLVMValueRef ir_field = mf_functions.enumPayloads.read(ir_builder, *ei_value.symbol, ir_tag, fa_read->get_span());
+			return readValue({ ir_field, *mf_functions.program.declarations.at(ei_value.symbol).value, false }, *rt_result);
+		}
+		const std::optional<LoweredValue> opt_field = lowerField(*fa_read);
+		return opt_field ? readValue(*opt_field, *rt_result) : nullptr;
+	}
+	if (dynamic_cast<const cloth::NullLiteral *>(&expression) && rt_result) {
+		if (const LLVMTypeRef ty_null = mf_functions.valueTypes.get(*rt_result)) return LLVMConstNull(ty_null);
+	}
 	if (dynamic_cast<const cloth::NumberLiteral *>(&expression) || dynamic_cast<const cloth::BooleanLiteral *>(&expression)) {
-		return sl_scalars.constant(*rt_result, ei_value.numericConstant);
+		return detail::scalarConstant(sl_scalars.type(*rt_result), ei_value.numericConstant);
 	}
 	if (const auto *cl_literal = dynamic_cast<const cloth::CharacterLiteral *>(&expression)) {
 		return LLVMConstInt(sl_scalars.type(*rt_result), cl_literal->value, false);
 	}
 	if (dynamic_cast<const cloth::NameExpression *>(&expression)) {
-		if (const LocalValue *lv_local = findLocal(ei_value.binding)) {
-			return lv_local->isAddress ? LLVMBuildLoad2(ir_builder, sl_scalars.type(*lv_local->type), lv_local->operand, "") : lv_local->operand;
-		}
+		if (const LoweredValue *lv_local = findLocal(ei_value.binding)) return readValue(*lv_local, *rt_result);
 	}
 	if (const auto *ce_call = dynamic_cast<const cloth::CallExpression *>(&expression)) {
 		return lowerCall(*ce_call);
@@ -188,8 +253,9 @@ LLVMValueRef FunctionLowering::lowerExpression (const cloth::Expression &express
 			return nullptr;
 		}
 		const cloth::ResultTypes &v_source = ef_expressions.at(ce_cast->operand.get()).types;
-		if (rt_result && sl_scalars.type(*rt_result) && v_source.size() == 1 && sl_scalars.type(v_source.front()))
-			return sl_scalars.checkedCast(lowerExpression(*ce_cast->operand), v_source.front(), ei_value);
+		if (rt_result && mf_functions.valueTypes.directCallType(*rt_result) && v_source.size() == 1 &&
+		    (mf_functions.valueTypes.directCallType(v_source.front()) || v_source.front() == cloth::ResolvedType(cloth::kNull)))
+			return convertValue(lowerExpression(*ce_cast->operand), v_source.front(), *rt_result, &ei_value);
 	}
 	if (const auto *mc_call = dynamic_cast<const cloth::MemberCallExpression *>(&expression);
 	    mc_call && ei_value.builtin && ei_value.builtin->operation == cloth::BuiltinOperation::ToInt) {
@@ -200,7 +266,7 @@ LLVMValueRef FunctionLowering::lowerExpression (const cloth::Expression &express
 		if (!ei_value.fallsThrough && isBuiltinOperation(ei_value)) return lowerExpression(*pa_provider->receiver);
 		if (ei_value.provider && sl_scalars.type(ei_value.provider->receiver) && !std::holds_alternative<std::monostate>(ei_value.numericConstant)) {
 			if (!ei_value.provider->typeReceiver) lowerExpression(*pa_provider->receiver);
-			return sl_scalars.constant(*rt_result, ei_value.numericConstant);
+			return detail::scalarConstant(sl_scalars.type(*rt_result), ei_value.numericConstant);
 		}
 	}
 	if (const cloth::TypeCheckExpression *tc_test = dynamic_cast<const cloth::TypeCheckExpression *>(&expression)) {
@@ -242,6 +308,72 @@ LLVMValueRef FunctionLowering::lowerExpression (const cloth::Expression &express
 	                           { { expression.get_span(), "unsupported expression" } });
 }
 
+LLVMValueRef FunctionLowering::lowerStructLiteral (const cloth::StructLiteral &literal, const cloth::ExpressionInfo &info) {
+	const cloth::CheckedProgram &cp_program = mf_functions.program;
+	if (!info.fallsThrough) {
+		// A field may transfer control before the literal produces a struct value.
+		for (const cloth::ExpressionPtr &field : literal.fields) {
+			lowerExpression(*field);
+			if (!cp_program.expressions.at(field.get()).fallsThrough) break;
+		}
+		return nullptr;
+	}
+	const cloth::ResolvedType &rt_struct = info.types.front();
+	const LLVMTypeRef          ty_struct = mf_functions.valueTypes.get(rt_struct);
+	if (!ty_struct) {
+		throw cde::ClothDiagnostic(Code::UNSUPPORTED_LOWERING, "LLVM lowering requires a supported storage type for every struct field",
+		                           { { literal.get_span(), "unsupported struct literal" } });
+	}
+	const cloth::StructLayout &sl_layout = cp_program.structLayouts.at(rt_struct);
+	LLVMValueRef               ir_struct = LLVMConstNull(ty_struct);
+	for (std::size_t st_index = 0; st_index < literal.fields.size(); ++st_index) {
+		const LLVMValueRef ir_field = lowerAs(*literal.fields[st_index], sl_layout.fields.at(st_index).type);
+		ir_struct                   = LLVMBuildInsertValue(ir_builder, ir_struct, ir_field, static_cast<unsigned>(st_index), "");
+	}
+	return ir_struct;
+}
+
+std::optional<LoweredValue> FunctionLowering::lowerField (const cloth::FieldAccessExpression &field) {
+	struct FieldStep {
+		LLVMTypeRef                owner;
+		unsigned                   index;
+		const cloth::ResolvedType &type;
+	};
+
+	const cloth::CheckedProgram &cp_program = mf_functions.program;
+	const cloth::Expression     *e_root     = &field;
+	std::vector<FieldStep>       v_path;
+	while (const cloth::FieldAccessExpression *fa_step = dynamic_cast<const cloth::FieldAccessExpression *>(e_root)) {
+		e_root                                   = fa_step->receiver.get();
+		const cloth::ExpressionInfo &ei_receiver = cp_program.expressions.at(e_root);
+		if (!ei_receiver.fallsThrough) {
+			lowerExpression(*e_root);
+			return std::nullopt;
+		}
+		const cloth::Symbol *sym_field = cp_program.expressions.at(fa_step).symbol;
+		const LLVMTypeRef ty_struct = ei_receiver.resultKind() == cloth::ResultKind::Single ? mf_functions.valueTypes.get(ei_receiver.types.front()) :
+		                                                                                      nullptr;
+		if (!sym_field || !ty_struct || LLVMGetTypeKind(ty_struct) != LLVMStructTypeKind) {
+			throw cde::ClothDiagnostic(Code::UNSUPPORTED_LOWERING, "LLVM lowering requires a struct field with a supported storage type",
+			                           { { fa_step->get_span(), "unsupported field access" } });
+		}
+		const cloth::StructLayout &sl_layout = cp_program.structLayouts.at(ei_receiver.types.front());
+		const unsigned u_index = LLVMElementAtOffset(LLVMGetModuleDataLayout(mf_functions.module), ty_struct, sl_layout.fieldOffsets.at(sym_field));
+		v_path.push_back({ ty_struct, u_index, sl_layout.fields[u_index].type });
+		if (!ei_receiver.symbol || !std::holds_alternative<const cloth::StructFieldDeclaration *>(ei_receiver.symbol->declaration)) break;
+	}
+
+	const LoweredValue *lv_root    = dynamic_cast<const cloth::NameExpression *>(e_root) ? findLocal(cp_program.expressions.at(e_root).binding) : nullptr;
+	const bool          b_address  = lv_root && lv_root->isAddress;
+	LLVMValueRef        ir_operand = lv_root ? lv_root->operand : lowerExpression(*e_root);
+	// A mutable root keeps the address of its subobject even when the right-hand side replaces a parent.
+	for (const FieldStep &fs_step : std::views::reverse(v_path)) {
+		ir_operand = b_address ? LLVMBuildStructGEP2(ir_builder, fs_step.owner, ir_operand, fs_step.index, "") :
+		                         LLVMBuildExtractValue(ir_builder, ir_operand, fs_step.index, "");
+	}
+	return LoweredValue{ ir_operand, v_path.front().type, b_address };
+}
+
 LLVMValueRef FunctionLowering::lowerLogical (const cloth::BinaryExpression &binary) {
 	const bool   b_and   = binary.op.get_operator() == cloth::oAnd;
 	LLVMValueRef ir_left = lowerExpression(*binary.left);
@@ -267,6 +399,49 @@ LLVMValueRef FunctionLowering::lowerLogical (const cloth::BinaryExpression &bina
 	return ir_result;
 }
 
+LLVMValueRef FunctionLowering::lowerNullableFallback (const cloth::ElvisExpression &expression, const cloth::ResolvedType &result) {
+	if (dynamic_cast<const cloth::NullLiteral *>(expression.left.get())) return lowerAs(*expression.fallback, result);
+	const cloth::ResolvedType &rt_left = mf_functions.program.expressions.at(expression.left.get()).types.front();
+	const LLVMValueRef         ir_left = lowerExpression(*expression.left);
+	if (!rt_left.nullable()) return convertValue(ir_left, rt_left, result);
+	const LLVMValueRef      ir_present = result.nullable() ? ir_left : detail::nullable::payload(ir_builder, ir_left);
+	const LLVMBasicBlockRef bb_left    = LLVMGetInsertBlock(ir_builder);
+	const LLVMBasicBlockRef bb_missing = appendBlock("nullable.fallback");
+	const LLVMBasicBlockRef bb_end     = appendBlock("nullable.end");
+	LLVMBuildCondBr(ir_builder, sl_scalars.predicate(detail::nullable::presence(ir_builder, ir_left)), bb_end, bb_missing);
+	LLVMPositionBuilderAtEnd(ir_builder, bb_missing);
+	LLVMValueRef      ir_fallback = lowerAs(*expression.fallback, result);
+	LLVMBasicBlockRef bb_exit     = LLVMGetInsertBlock(ir_builder);
+	if (ir_fallback) LLVMBuildBr(ir_builder, bb_end);
+	LLVMPositionBuilderAtEnd(ir_builder, bb_end);
+	if (!ir_fallback) return ir_present;
+	const LLVMValueRef ir_result  = LLVMBuildPhi(ir_builder, LLVMTypeOf(ir_present), "");
+	LLVMValueRef       v_values[] = { ir_present, ir_fallback };
+	LLVMBasicBlockRef  v_blocks[] = { bb_left, bb_exit };
+	LLVMAddIncoming(ir_result, v_values, v_blocks, 2);
+	return ir_result;
+}
+
+LLVMValueRef FunctionLowering::lowerNullableEquality (const cloth::BinaryExpression &binary, const cloth::ResolvedType &operandType) {
+	const cloth::Operator o_op       = binary.op.get_operator();
+	const bool            b_leftNull = dynamic_cast<const cloth::NullLiteral *>(binary.left.get()) != nullptr;
+	if (b_leftNull || dynamic_cast<const cloth::NullLiteral *>(binary.right.get())) {
+		const LLVMValueRef ir_peer = lowerAs(b_leftNull ? *binary.right : *binary.left, operandType);
+		const LLVMValueRef ir_flag = detail::nullable::presence(ir_builder, ir_peer);
+		return o_op == cloth::oNotEqual ? ir_flag : sl_scalars.boolean(LLVMBuildIsNull(ir_builder, ir_flag, ""));
+	}
+	const LLVMValueRef ir_left         = lowerAs(*binary.left, operandType);
+	const LLVMValueRef ir_right        = lowerAs(*binary.right, operandType);
+	const LLVMValueRef ir_leftFlag     = detail::nullable::presence(ir_builder, ir_left);
+	const LLVMValueRef ir_rightFlag    = detail::nullable::presence(ir_builder, ir_right);
+	const LLVMValueRef ir_presenceTest = LLVMBuildICmp(ir_builder, o_op == cloth::oEqual ? LLVMIntEQ : LLVMIntNE, ir_leftFlag, ir_rightFlag, "");
+	const LLVMValueRef ir_payloadTest =
+	        sl_scalars.binary(o_op, detail::nullable::payload(ir_builder, ir_left), detail::nullable::payload(ir_builder, ir_right), operandType.element());
+	// When either value is absent, only the presence flags participate in equality.
+	const LLVMValueRef ir_bothPresent = sl_scalars.predicate(LLVMBuildAnd(ir_builder, ir_leftFlag, ir_rightFlag, ""));
+	return LLVMBuildSelect(ir_builder, ir_bothPresent, ir_payloadTest, sl_scalars.boolean(ir_presenceTest), "");
+}
+
 LLVMValueRef FunctionLowering::lowerBinary (const cloth::BinaryExpression &binary) {
 	const cloth::ExpressionFacts &ef_facts  = mf_functions.program.expressions;
 	const cloth::ExpressionInfo  &ei_binary = ef_facts.at(&binary);
@@ -281,6 +456,9 @@ LLVMValueRef FunctionLowering::lowerBinary (const cloth::BinaryExpression &binar
 			return nullptr;
 		}
 		const cloth::ExpressionInfo &ei_right = ef_facts.at(binary.right.get());
+		if (ei_binary.comparisonType && ei_binary.comparisonType->nullable() && (o_op == cloth::oEqual || o_op == cloth::oNotEqual) &&
+		    detail::nullable::supportsPayload(ei_binary.comparisonType->element()))
+			return lowerNullableEquality(binary, *ei_binary.comparisonType);
 		if ((!cloth::isComparison(o_op) || ei_binary.booleanEquality || ei_binary.comparisonType) &&
 		    ei_binary.resultKind() == cloth::ResultKind::Single && ei_left.resultKind() == cloth::ResultKind::Single &&
 		    ei_right.resultKind() == cloth::ResultKind::Single && sl_scalars.type(ei_left.types.front()) && sl_scalars.type(ei_right.types.front())) {
@@ -298,7 +476,16 @@ LLVMValueRef FunctionLowering::lowerBinary (const cloth::BinaryExpression &binar
 
 LLVMValueRef FunctionLowering::lowerCall (const cloth::CallExpression &call) {
 	const cloth::ExpressionInfo &ei_call = mf_functions.program.expressions.at(&call);
-	if (ei_call.builtin && ei_call.builtin->operation == cloth::BuiltinOperation::Println) return lowerPrintln(call);
+	if (ei_call.builtin) {
+		switch (ei_call.builtin->operation) {
+		case cloth::BuiltinOperation::Println:
+			return lowerPrintln(call);
+		case cloth::BuiltinOperation::Exit:
+			return lowerExit(call, *ei_call.builtin);
+		default:
+			break;
+		}
+	}
 	const cloth::Symbol *sym_callee = ei_call.symbol;
 	if (!sym_callee || sym_callee->kind != cloth::SymbolKind::Function || ei_call.instance || ei_call.dispatch) {
 		throw cde::ClothDiagnostic(Code::UNSUPPORTED_LOWERING, "LLVM lowering requires a direct call to a non-generic free function",
@@ -342,18 +529,34 @@ LLVMValueRef FunctionLowering::lowerPrintln (const cloth::CallExpression &call) 
 	                           { { call.get_span(), "unsupported output call" } });
 }
 
+LLVMValueRef FunctionLowering::lowerExit (const cloth::CallExpression &call, const cloth::BuiltinCall &builtin) {
+	LLVMValueRef ir_status = lowerAs(*call.suppliedArguments.front().expression, builtin.parameters.front());
+	if (!ir_status) return nullptr;
+	if (call.suppliedArguments.size() > 1) {
+		const cloth::Expression &e_message = *call.suppliedArguments[1].expression;
+		if (!mf_functions.program.expressions.at(&e_message).fallsThrough) return lowerExpression(e_message);
+		throw cde::ClothDiagnostic(Code::UNSUPPORTED_LOWERING,
+		                           std::format("LLVM lowering does not support the message argument to '{}'", call.name.get_lexeme()),
+		                           { { e_message.get_span(), "unsupported message argument" } });
+	}
+	const LLVMValueRef fn_exit = detail::declareExit(mf_functions.module);
+	LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(fn_exit), fn_exit, &ir_status, 1, "");
+	LLVMBuildUnreachable(ir_builder);
+	return nullptr;
+}
+
 void FunctionLowering::bindLocal (const cloth::Token &name, const cloth::ResolvedType &type, LLVMValueRef value, bool isMutable) {
 	if (isMutable) {
 		// Allocate once per call and initialize each time the declaration executes.
 		const LLVMBasicBlockRef bb_site  = LLVMGetInsertBlock(ir_builder);
 		const LLVMBasicBlockRef bb_entry = LLVMGetEntryBasicBlock(LLVMGetBasicBlockParent(bb_site));
 		if (const LLVMValueRef ir_first = LLVMGetFirstInstruction(bb_entry)) LLVMPositionBuilderBefore(ir_builder, ir_first);
-		const LLVMValueRef ir_slot = LLVMBuildAlloca(ir_builder, sl_scalars.type(type), "");
+		const LLVMValueRef ir_slot = LLVMBuildAlloca(ir_builder, LLVMTypeOf(value), "");
 		LLVMPositionBuilderAtEnd(ir_builder, bb_site);
 		LLVMBuildStore(ir_builder, value, ir_slot);
 		value = ir_slot;
 	}
-	m_locals.emplace(&name, LocalValue{ value, &type, isMutable });
+	m_locals.emplace(&name, LoweredValue{ value, type, isMutable });
 }
 
 void FunctionLowering::lowerBinding (const cloth::BindingDeclaration &binding) {
@@ -364,8 +567,8 @@ void FunctionLowering::lowerBinding (const cloth::BindingDeclaration &binding) {
 		return;
 	}
 	const decltype(bf_facts.localTypes)::const_iterator it_type = bf_facts.localTypes.find(&binding.name);
-	if (it_type == bf_facts.localTypes.end() || !sl_scalars.type(it_type->second)) {
-		throw cde::ClothDiagnostic(Code::UNSUPPORTED_LOWERING, "LLVM lowering requires a primitive local type",
+	if (it_type == bf_facts.localTypes.end() || !mf_functions.valueTypes.get(it_type->second)) {
+		throw cde::ClothDiagnostic(Code::UNSUPPORTED_LOWERING, "LLVM lowering requires a supported storage type for this local",
 		                           { { binding.type ? binding.type->get_span() : binding.initializer->get_span(), "unsupported local type" } });
 	}
 	if (const LLVMValueRef ir_value = lowerAs(*binding.initializer, it_type->second)) {
@@ -373,10 +576,10 @@ void FunctionLowering::lowerBinding (const cloth::BindingDeclaration &binding) {
 	}
 }
 
-const LocalValue &FunctionLowering::mutableTarget (const cloth::Statement &write, const cloth::Token &name) const {
+const LoweredValue &FunctionLowering::mutableTarget (const cloth::Statement &write, const cloth::Token &name) const {
 	const cloth::BodyFacts &bf_facts  = mf_functions.program;
-	const auto              it_target = bf_facts.references.find(&name);
-	const LocalValue       *lv_target = it_target == bf_facts.references.end() ? nullptr : findLocal(it_target->second);
+	const decltype(bf_facts.references)::const_iterator it_target = bf_facts.references.find(&name);
+	const LoweredValue                                 *lv_target = it_target == bf_facts.references.end() ? nullptr : findLocal(it_target->second);
 	if (!lv_target || !lv_target->isAddress || bf_facts.writes.contains(&write)) {
 		throw cde::ClothDiagnostic(Code::UNSUPPORTED_LOWERING, "LLVM lowering requires a built-in update on a mutable local",
 		                           { { name.get_span(), "unsupported assignment target" } });
@@ -385,20 +588,37 @@ const LocalValue &FunctionLowering::mutableTarget (const cloth::Statement &write
 }
 
 void FunctionLowering::lowerAssignment (const cloth::AssignmentStatement &assignment) {
-	const LocalValue &lv_target = mutableTarget(assignment, assignment.name);
 	// The checker records a compound assignment's read and arithmetic on its synthetic binary expression.
-	if (const LLVMValueRef ir_value = lowerAs(*assignment.value, *lv_target.type)) {
-		LLVMBuildStore(ir_builder, ir_value, lv_target.operand);
-	}
+	storeExpression(mutableTarget(assignment, assignment.name), *assignment.value);
 }
 
-void FunctionLowering::lowerUpdate (const cloth::UpdateStatement &update) {
-	const LocalValue     &lv_target = mutableTarget(update, update.name);
-	const LLVMValueRef    ir_old    = lowerExpression(*update.target);
+void FunctionLowering::lowerFieldWrite (const cloth::FieldWriteStatement &write) {
+	const cloth::FieldAccessExpression *fa_field = dynamic_cast<const cloth::FieldAccessExpression *>(write.target.get());
+	if (fa_field && !mf_functions.program.writes.contains(&write)) {
+		const std::optional<LoweredValue> opt_field = lowerField(*fa_field);
+		if (!opt_field) return;
+		if (opt_field->isAddress) {
+			if (write.compound) return storeExpression(*opt_field, *write.compound);
+			if (write.value) return storeExpression(*opt_field, *write.value);
+			return lowerUpdate(*opt_field, *write.target, write.op.get_operator());
+		}
+	}
+	throw cde::ClothDiagnostic(Code::UNSUPPORTED_LOWERING, "LLVM lowering requires a built-in write to a mutable local struct field",
+	                           { { write.target->get_span(), "unsupported field assignment target" } });
+}
+
+void FunctionLowering::storeExpression (const LoweredValue &target, const cloth::Expression &value) {
+	if (const LLVMValueRef ir_value = lowerAs(value, target.type)) LLVMBuildStore(ir_builder, ir_value, target.operand);
+}
+
+void FunctionLowering::lowerUpdate (const LoweredValue &target, const cloth::Expression &read, cloth::Operator op) {
+	const cloth::ResolvedType &rt_read   = mf_functions.program.expressions.at(&read).types.front();
+	const LLVMValueRef         ir_old    = readValue(target, rt_read);
 	const LLVMTypeRef     ty_value  = LLVMTypeOf(ir_old);
-	const LLVMValueRef    ir_one    = lv_target.type->floating() ? LLVMConstReal(ty_value, 1.) : LLVMConstInt(ty_value, 1, false);
-	const cloth::Operator o_op      = update.op.get_operator() == cloth::oPlusPlus ? cloth::oPlus : cloth::oMinus;
-	LLVMBuildStore(ir_builder, sl_scalars.binary(o_op, ir_old, ir_one, *lv_target.type), lv_target.operand);
+	const LLVMValueRef         ir_one    = rt_read.floating() ? LLVMConstReal(ty_value, 1.) : LLVMConstInt(ty_value, 1, false);
+	const cloth::Operator      o_op      = op == cloth::oPlusPlus ? cloth::oPlus : cloth::oMinus;
+	const LLVMValueRef         ir_new    = sl_scalars.binary(o_op, ir_old, ir_one, rt_read);
+	LLVMBuildStore(ir_builder, convertValue(ir_new, rt_read, target.type), target.operand);
 }
 
 void FunctionLowering::lowerReturn (const cloth::Expression *expression) {
@@ -415,9 +635,9 @@ void FunctionLowering::lowerReturn (const cloth::Expression *expression) {
 
 LLVMValueRef FunctionLowering::lowerIf (const cloth::IfExpression &conditional, const cloth::ExpressionInfo &info) {
 	const cloth::ResolvedType *rt_result = info.resultKind() == cloth::ResultKind::Single ? &info.types.front() : nullptr;
-	const LLVMTypeRef          ty_result = rt_result ? sl_scalars.type(*rt_result) : nullptr;
+	const LLVMTypeRef          ty_result = rt_result ? mf_functions.valueTypes.get(*rt_result) : nullptr;
 	if (info.resultKind() == cloth::ResultKind::Multiple || (rt_result && !ty_result)) {
-		throw cde::ClothDiagnostic(Code::UNSUPPORTED_LOWERING, "LLVM lowering requires at most one primitive conditional result",
+		throw cde::ClothDiagnostic(Code::UNSUPPORTED_LOWERING, "LLVM lowering requires at most one supported value from a conditional",
 		                           { { conditional.get_span(), "unsupported conditional result" } });
 	}
 	const LLVMBasicBlockRef bb_start = LLVMGetInsertBlock(ir_builder);
@@ -551,7 +771,9 @@ LLVMValueRef FunctionLowering::lowerStatements (const std::vector<cloth::Stateme
 void FunctionLowering::lowerStatement (const cloth::Statement &statement) {
 	if (const auto *bd_binding = dynamic_cast<const cloth::BindingDeclaration *>(&statement)) return lowerBinding(*bd_binding);
 	if (const auto *as_write = dynamic_cast<const cloth::AssignmentStatement *>(&statement)) return lowerAssignment(*as_write);
-	if (const auto *us_update = dynamic_cast<const cloth::UpdateStatement *>(&statement)) return lowerUpdate(*us_update);
+	if (const cloth::FieldWriteStatement *fw_write = dynamic_cast<const cloth::FieldWriteStatement *>(&statement)) return lowerFieldWrite(*fw_write);
+	if (const cloth::UpdateStatement *us_update = dynamic_cast<const cloth::UpdateStatement *>(&statement))
+		return lowerUpdate(mutableTarget(*us_update, us_update->name), *us_update->target, us_update->op.get_operator());
 	if (const auto *rs_return = dynamic_cast<const cloth::ReturnStatement *>(&statement)) return lowerReturn(rs_return->value.get());
 	if (const auto *ws_loop = dynamic_cast<const cloth::WhileStatement *>(&statement)) return lowerWhile(*ws_loop);
 	if (const auto *ds_loop = dynamic_cast<const cloth::DoWhileStatement *>(&statement)) return lowerDoWhile(*ds_loop);
@@ -640,7 +862,8 @@ TargetMachine createTargetMachine (const std::string_view targetTriple, const un
 	const LLVMBool    b_failed = LLVMGetTargetFromTriple(s_triple.get(), &t_target, &s_error);
 	checkLLVMResult(b_failed, s_error, Code::LLVM_TARGET, "LLVM target lookup failed");
 
-	TargetMachine tm_machine(LLVMCreateTargetMachine(t_target, s_triple.get(), "", "", LLVMCodeGenLevelNone, LLVMRelocDefault, LLVMCodeModelDefault),
+	// References to constant data must also link into position-independent executables.
+	TargetMachine tm_machine(LLVMCreateTargetMachine(t_target, s_triple.get(), "", "", LLVMCodeGenLevelNone, LLVMRelocPIC, LLVMCodeModelDefault),
 	                         LLVMDisposeTargetMachine);
 	if (!tm_machine) throw cde::ClothDiagnostic(Code::LLVM_TARGET, std::format("LLVM could not create a target machine for '{}'", s_triple.get()));
 	return tm_machine;

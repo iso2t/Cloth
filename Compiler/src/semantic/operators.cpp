@@ -407,6 +407,7 @@ ExpressionInfo BodyChecker::equality (const BinaryExpression &node, const Resolv
 			fail(Code::INVALID_NULL_COMPARISON, node.op.get_span(),
 			     std::format("Comparison with {} requires a typed nullable operand", to_string(kNull)));
 		if (o_op == oIdentity && !analyzer.referenceType(payload(rt_declared))) incomparable();
+		if (o_op != oIdentity) ei_result.comparisonType = rt_declared;
 		return ei_result;
 	}
 	const ResolvedType rt_left = payload(left), rt_right = payload(right);
@@ -423,6 +424,10 @@ ExpressionInfo BodyChecker::equality (const BinaryExpression &node, const Resolv
 	}
 	if ((rt_left == ResolvedType(kBoolean) && rt_left == rt_right) || rt_left.convertsIntegerToBool(rt_right) || rt_right.convertsIntegerToBool(rt_left)) {
 		ei_result.booleanEquality = true;
+		if (left.nullable() || right.nullable()) {
+			ei_result.comparisonType.emplace(kBoolean);
+			ei_result.comparisonType->suffixes.emplace_back(to_string(oQuestion));
+		}
 		return ei_result;
 	}
 	if (rt_left.array() || rt_right.array()) {
@@ -462,9 +467,14 @@ ExpressionInfo BodyChecker::equality (const BinaryExpression &node, const Resolv
 	     !(!left.nullable() && !right.nullable() && (left.integer() || left.floating()) && (right.integer() || right.floating()) &&
 	       (left.floating() || right.floating()))))
 		incomparable();
-	if ((left.integer() || left.floating()) && (right.integer() || right.floating()))
-		ei_result.comparisonType = numericOperationType(left, right);
-	else if (left == ResolvedType(kCharacter) && left == right)
+	if ((rt_left.integer() || rt_left.floating()) && (rt_right.integer() || rt_right.floating())) {
+		if (left.nullable() || right.nullable())
+			ei_result.comparisonType = left.nullable() ? left : right;
+		else
+			ei_result.comparisonType = numericOperationType(left, right);
+	} else if (rt_left == ResolvedType(kCharacter) && rt_left == rt_right)
+		ei_result.comparisonType = left.nullable() ? left : right;
+	else if (left == right && enumeration(left))
 		ei_result.comparisonType = left;
 	return ei_result;
 }

@@ -25,16 +25,16 @@
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: integer division by zero" 1 "%t.exe"
 
-# RUN: echo "pub fn<int> main () = remainder(2147483647 + 1, 0 - 1)" > "%t.co"
-# RUN: echo "fn<int> remainder(int left, int right) = left % right" >> "%t.co"
+# RUN: echo "pub fn<int> main () = remainder(int<97>::min, -1) -> int" > "%t.co"
+# RUN: echo "fn<int<97>> remainder(int<97> n, int<97> d) { n %= d; return n }" >> "%t.co"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
-# RUN: %expect_exit --empty-stdout --empty-stderr SIGILL "%t.exe"
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: signed integer division overflow" 1 "%t.exe"
 
 # RUN: echo "pub fn<int> main () = (2147483647 + 1) % (0 - 1)" > "%t.co"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
-# RUN: %cc "%t.o" -o "%t.exe"
-# RUN: %expect_exit --empty-stdout --empty-stderr SIGILL "%t.exe"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: signed integer division overflow" 1 "%t.exe"
 
 # RUN: echo "pub fn<int> main () = 142 % 0" > "%t.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" 2> "%t.err"

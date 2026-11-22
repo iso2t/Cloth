@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    float? sample = 0.0
+    if (sample == null || sample != 0.0) return 1
+    sample = null
+    return if (null == sample) 42 else 2
+}

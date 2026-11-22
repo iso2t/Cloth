@@ -13,6 +13,14 @@ _Noreturn void cloth_rt_divide_by_zero (void) {
 	report_error("integer division by zero");
 }
 
+_Noreturn void cloth_rt_signed_division_overflow (void) {
+	report_error("signed integer division overflow");
+}
+
+_Noreturn void cloth_rt_negative_integer_exponent (void) {
+	report_error("negative integer exponent");
+}
+
 _Noreturn void cloth_rt_invalid_float_to_integer (void) {
 	report_error("invalid float-to-integer cast (NaN or out of range)");
 }

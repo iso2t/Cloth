@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --kind executable --src "%S/Inputs/nullable-float.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/nullable-float.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/nullable-float.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+# RUN: %cloth --kind executable --src "%S/Inputs/nullable-float-values.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 1 --stdout-line 2 --stdout-line 3 --empty-stderr 42 "%t.exe"
+
+# RUN: echo "fn<int?> narrow(final float? value) = value -> int?" > "%t.co"
+# RUN: echo "pub fn<int> main() = narrow(2147483648.0) ?: 42" >> "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: invalid float-to-integer cast (NaN or out of range)" 1 "%t.exe"
+
+# RUN: echo "fn<int> read(final float? value) = value -> int" > "%t.co"
+# RUN: echo "pub fn<int> main() = read(null)" >> "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=UNPROVEN --input-file "%t.err"
+# UNPROVEN: [C3062] Error: A nullable value needs a null check before casting

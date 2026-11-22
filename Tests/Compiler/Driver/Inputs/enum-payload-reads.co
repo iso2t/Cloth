@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Status { pub int<12> code, pub bool ready }
+typedef<enum> Mode(pub def<int> code = 7, pub def<Status> status = {-3, 0}, pub def<char> label = 'A' -> char) {
+    Hidden(90), pub Off, pub On(42, {21, 256}, '*'), pub Alias(42)
+}
+typedef<struct> Setting { pub Mode mode }
+typedef<enum> Channel(pub def<int> code = 9.75 -> int, pub def<float<16>> ratio = -1.5) { pub On }
+
+pub fn<int> main() {
+    Mode mode = traced(1, Mode.Off)
+    Setting saved := {mode}
+    mode = Mode.On
+    if (read(saved.mode) != 7 || read(mode) != 42) return 1
+    if (traced(2, mode).status.code != 21 || !mode.status.ready) return 2
+    if (saved.mode.status.code != -3 || saved.mode.status.ready) return 3
+    if (mode.label.toInt() != 42 || Mode.Alias.label != 'A') return 4
+    if (Mode.Alias == mode || Mode.Alias.code != mode.code) return 5
+    if (Channel.On.code != 9 || Channel.On.ratio != -1.5 || (mode -> int) != 2) return 6
+    return mode.code
+}
+
+fn<int> read(final Mode mode) = mode.code
+
+fn<Mode> traced(final int label, final Mode mode) {
+    println(label)
+    return mode
+}

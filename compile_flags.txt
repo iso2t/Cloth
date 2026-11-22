@@ -2,4 +2,5 @@
 -ICompiler/include
 -IDiagnostics/include
 -IBackend/include
+-IRuntime/include
 -IThirdParty

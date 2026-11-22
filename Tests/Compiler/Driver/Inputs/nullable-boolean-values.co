@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Switch { pub bool? enabled, pub bool locked }
+typedef<enum> Signal(pub def<bool?> flag = null) { pub Missing, pub Off(false), pub On(256 -> int?) }
+
+pub fn<int> main() {
+    bool? missing = fromNumber(null)
+    bool? off = fromNumber(0)
+    bool? on = fromNumber(-256)
+    if (missing != Signal.Missing.flag || off != Signal.Off.flag || on != Signal.On.flag) return 1
+    if (missing == false || null == off || off == on || on != true) return 2
+    if (fromByte(-128) != true || fromWide(0x1000000000000000000000000) != true) return 3
+    if (traced(1, off) == traced(2, missing) || 0 != off || on != 256) return 4
+    if ((off ?: fallback(99)) || !(missing ?: fallback(3))) return 5
+    if (prefer(off, on) != false || prefer(missing, missing) != null) return 6
+
+    Switch setting = {off, true}
+    def saved := setting
+    setting.enabled = null
+    if (setting.enabled != null || saved.enabled == null || saved.enabled || !setting.locked) return 7
+    setting.enabled = on
+    if (setting.enabled == null || !setting.enabled) return 8
+    return 42
+}
+
+fn<bool?> fromNumber(final int? value) = value
+fn<bool?> fromByte(final int<8>? value) = value -> bool?
+fn<bool?> fromWide(final unsigned int<97>? value) = value
+fn<bool?> prefer(final bool? flag, final bool? other) = flag ?: other
+
+fn<bool?> traced(final int label, final bool? flag) {
+    println(label)
+    return flag
+}
+
+fn<bool> fallback(final int label) {
+    println(label)
+    return true
+}

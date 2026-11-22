@@ -22,11 +22,12 @@
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: integer division by zero" 1 "%t.exe"
 
-# RUN: echo "pub fn<int> main () = divide(2147483647 + 1, 0 - 1)" > "%t.co"
+# RUN: echo "pub fn<int> main () = divide(trace(int::min), trace(-1))" > "%t.co"
 # RUN: echo "fn<int> divide(int left, int right) = left / right" >> "%t.co"
+# RUN: echo "fn<int> trace(int n) { println(n); return n }" >> "%t.co"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
-# RUN: %expect_exit --empty-stdout --empty-stderr SIGILL "%t.exe"
+# RUN: %expect_exit --stdout-line=-2147483648 --stdout-line=-1 --stderr-line "Cloth runtime error: signed integer division overflow" 1 "%t.exe"
 
 # RUN: echo "pub fn<int> main () = 84 / (2 - 2)" > "%t.co"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"

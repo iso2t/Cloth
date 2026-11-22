@@ -123,13 +123,13 @@ void Analyzer::layoutStruct (const ResolvedType &type, const StorageFields &fiel
 	StructLayout               sl_result{};
 	std::vector<StorageLayout> v_shapeWitnesses;
 	for (const StorageFields::value_type &field : fields) {
-		const std::optional<StorageLayout> opt_storage = program.storageLayout(field.first);
-		if (!opt_storage) structTooLarge(type, *field.second, program.layout);
+		const std::optional<StorageLayout> opt_storage = program.storageLayout(field.type);
+		if (!opt_storage) structTooLarge(type, *field.symbol, program.layout);
 		const std::optional<std::uint64_t> opt_offset = ss_fields.append(*opt_storage);
-		if (!opt_offset) structTooLarge(type, *field.second, program.layout);
-		sl_result.fieldOffsets.emplace(field.second, *opt_offset);
+		if (!opt_offset) structTooLarge(type, *field.symbol, program.layout);
+		sl_result.fieldOffsets.emplace(field.symbol, *opt_offset);
 		// A nullable array field retains its shape after the value is cleared.
-		if (field.first.nullable() && field.first.element().array()) v_shapeWitnesses.push_back(*opt_storage);
+		if (field.type.nullable() && field.type.element().array()) v_shapeWitnesses.push_back(*opt_storage);
 	}
 	for (StorageLayout sl_witness : v_shapeWitnesses) {
 		if (!ss_fields.append(sl_witness)) structTooLarge(type, *type.declaration, program.layout);
@@ -137,6 +137,7 @@ void Analyzer::layoutStruct (const ResolvedType &type, const StorageFields &fiel
 	const std::optional<StorageLayout> opt_storage = ss_fields.finish();
 	if (!opt_storage) structTooLarge(type, *type.declaration, program.layout);
 	sl_result.storage = *opt_storage;
+	sl_result.fields  = fields;
 	program.structLayouts.emplace(type, std::move(sl_result));
 }
 

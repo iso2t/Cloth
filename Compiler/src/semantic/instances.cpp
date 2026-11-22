@@ -298,7 +298,7 @@ void Analyzer::visitTypeMembers (const ResolvedType &type, const Substitutions &
 	}
 	if (v_fields) {
 		std::ranges::sort(*v_fields, {}, [] (const StorageFields::value_type &field) {
-			const TokenSpan ts_field = field.second->name.get_span();
+			const TokenSpan ts_field = field.symbol->name.get_span();
 			return std::pair{ ts_field.startLine, ts_field.startCol };
 		});
 	}
@@ -439,8 +439,8 @@ void Analyzer::checkStorage () const {
 				continue;
 			}
 			const StorageFields::value_type &field = sl_node->second[sv_current.next++];
-			if (!asStruct(field.first.declaration)) continue;
-			ResolvedType rt_nested = field.first;
+			if (!asStruct(field.type.declaration)) continue;
+			ResolvedType rt_nested = field.type;
 			rt_nested.suffixes.clear();
 			const std::map<ResolvedType, StorageFields>::const_iterator it_child = m_storage.find(rt_nested);
 			if (it_child == m_storage.end()) throw std::logic_error("Missing struct field specialization");
@@ -448,7 +448,7 @@ void Analyzer::checkStorage () const {
 			if (s_done.contains(sl_child)) continue;
 			if (!s_active.insert(sl_child).second) {
 				const Token &t_name = rt_nested.declaration->name;
-				fail(Code::RECURSIVE_STRUCT, field.second->name.get_span(),
+				fail(Code::RECURSIVE_STRUCT, field.symbol->name.get_span(),
 				     std::format("Recursive storage in {} '{}'", to_string(kStruct), t_name.get_lexeme()), &t_name);
 			}
 			v_path.push_back({ sl_child });

@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Sample { pub bool ready, pub int<12> value }
+
+pub fn<int> main() {
+    Sample sample := {true, 42}
+    return if (sample.ready) sample.value -> int else 0
+}

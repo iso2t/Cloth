@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Reading<T> { pub bool valid, pub T amount, pub int<8> code }
+
+pub fn<int> main() {
+    Reading<int<12>> sample := {trace(256), trace(-7) -> int<12>, trace(3) -> int<8>}
+    def copy := sample
+    Reading<usize> sized := {false, usize::max, 1}
+    if (!copy.valid || copy.amount != -7 || copy.code != 3) return 1
+    if (sized.valid || sized.amount != usize::max || sized.code != 1) return 2
+    if (maybeStop(true) != 5 || maybeStop(false) != 7) return 3
+    return select(true) + select(false) + stop(true) + stop(false)
+}
+
+fn<int> trace(final int n) {
+    println(n)
+    return n
+}
+
+fn<int> select(final bool first) {
+    Reading<int<12>> left := {true, 10, 1}
+    Reading<int<12>> right := {false, 20, 2}
+    def selected := if (first) left else right
+    return selected.amount -> int
+}
+
+fn<int> stop(final bool early) {
+    Reading<int<12>> sample := {trace(1), if (early) { return 5 } else { return 7 }, trace(99) -> int<8>}
+}
+
+fn<int> maybeStop(final bool early) {
+    Reading<int<12>> sample := {true, (if (early) { return 5 } else 7), trace(2) -> int<8>}
+    return sample.amount -> int
+}
