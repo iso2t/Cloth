@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --kind executable --src "%S/Inputs/nullable-enum.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/nullable-enum.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/nullable-enum.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+# RUN: %cloth --kind executable --src "%S/Inputs/nullable-enum-values.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 1 --stdout-line 2 --stdout-line 3 --empty-stderr 42 "%t.exe"
+
+# RUN: echo "typedef<enum> Mode { pub Off }" > "%t.co"
+# RUN: echo "typedef<enum> Power { pub Off }" >> "%t.co"
+# RUN: echo "fn<bool> same(final Mode? a, final Power? b) = a == b" >> "%t.co"
+# RUN: echo "pub fn<int> main() = if (same(null, null)) 42 else 7" >> "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=NOMINAL --input-file "%t.err"
+# NOMINAL: [C3009] Error: Cannot compare Mode? with Power?
+
+# RUN: echo "typedef<enum> Mode(pub def<int> code = 7) { pub Off }" > "%t.co"
+# RUN: echo "fn<int> read(final Mode? mode) = mode.code" >> "%t.co"
+# RUN: echo "pub fn<int> main() = read(null)" >> "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=UNPROVEN --input-file "%t.err"
+# UNPROVEN: [C3062] Error: Use ?. to access a nullable receiver

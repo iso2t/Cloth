@@ -180,14 +180,15 @@ fn<usize> read(final Mode mode) = mode.code)",
 	}
 }
 
-TEST (BackendLowering, NullablePrimitivesStoreAPresenceByteAndAnAlignedPayload) {
+TEST (BackendLowering, NullableScalarsStoreAPresenceByteAndAnAlignedPayload) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		for (const std::string s_payload : { "int", "unsigned int<1>", "int<12>", "unsigned int<64>", "int<97>", "usize", "isize", "float<16>", "float",
-		                                     "float<64>", "bool", "char" }) {
+		                                     "float<64>", "bool", "char", "Mode" }) {
 			SCOPED_TRACE(::testing::Message() << s_payload << " on " << u_bits << "-bit target");
 			const std::string            s_type       = s_payload + "?";
-			const cloth::CheckedProgram  cp_program   = checkProgram("fn<int> main() = if (identity(null) == null) 42 else 7\nfn<" + s_type +
-			                                                                 "> identity(final " + s_type + " value) = value",
+			const cloth::CheckedProgram  cp_program   = checkProgram("typedef<enum> Mode { pub Off }\n"
+			                                                         "fn<int> main() = if (identity(null) == null) 42 else 7\nfn<" +
+			                                                                 s_type + "> identity(final " + s_type + " value) = value",
 			                                                         { u_bits });
 			const cloth::Symbol         &sym_identity = cp_program.units.front()->get_globals().at("identity").front();
 			const cloth::ResolvedType   &rt_type      = cp_program.declarations.at(&sym_identity).parameters.front();
@@ -1545,6 +1546,8 @@ TEST (BackendLowering, LabelsUnsupportedPayloadFieldTypesAndUserDefinedEnumEqual
 	const std::string s_override = "typedef<enum> Mode { pub Off, pub On; pub operator ==(Mode other) -> bool = true }\n";
 	expectUnsupported(s_override + "fn<int> main() = if (Mode.On == Mode.Off) 42 else 7", Code::UNSUPPORTED_LOWERING, "Mode.On == Mode.Off", 2);
 	expectUnsupported(s_override + "fn<int> main() = if (Mode.On != Mode.Off) 42 else 7", Code::UNSUPPORTED_LOWERING, "Mode.On != Mode.Off", 2);
+	expectUnsupported(s_override + "fn<int> main() = if (different(Mode.Off, null)) 42 else 7\nfn<bool> different(final Mode? a, final Mode? b) = a != b",
+	                  Code::UNSUPPORTED_LOWERING, "a != b", 3);
 }
 
 TEST (BackendLowering, LabelsUnsupportedPrintlnForms) {

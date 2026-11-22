@@ -215,7 +215,7 @@ LLVMValueRef FunctionLowering::lowerExpression (const cloth::Expression &express
 	if (const cloth::ElvisExpression *ee_fallback = dynamic_cast<const cloth::ElvisExpression *>(&expression);
 	    ee_fallback && isBuiltinOperation(ei_value)) {
 		if (!ef_expressions.at(ee_fallback->left.get()).fallsThrough) return lowerExpression(*ee_fallback->left);
-		if (rt_result && detail::nullable::supportsPayload(rt_result->nullable() ? rt_result->element() : *rt_result))
+		if (rt_result && sl_scalars.type(rt_result->nullable() ? rt_result->element() : *rt_result))
 			return lowerNullableFallback(*ee_fallback, *rt_result);
 		if (!ei_value.fallsThrough && dynamic_cast<const cloth::NullLiteral *>(ee_fallback->left.get())) return lowerExpression(*ee_fallback->fallback);
 	}
@@ -457,7 +457,7 @@ LLVMValueRef FunctionLowering::lowerBinary (const cloth::BinaryExpression &binar
 		}
 		const cloth::ExpressionInfo &ei_right = ef_facts.at(binary.right.get());
 		if (ei_binary.comparisonType && ei_binary.comparisonType->nullable() && (o_op == cloth::oEqual || o_op == cloth::oNotEqual) &&
-		    detail::nullable::supportsPayload(ei_binary.comparisonType->element()))
+		    sl_scalars.type(ei_binary.comparisonType->element()))
 			return lowerNullableEquality(binary, *ei_binary.comparisonType);
 		if ((!cloth::isComparison(o_op) || ei_binary.booleanEquality || ei_binary.comparisonType) &&
 		    ei_binary.resultKind() == cloth::ResultKind::Single && ei_left.resultKind() == cloth::ResultKind::Single &&

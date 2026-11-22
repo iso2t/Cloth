@@ -7,10 +7,6 @@ namespace {
 constexpr unsigned PRESENCE = 0, PAYLOAD = 1;
 }
 
-bool supportsPayload (const cloth::ResolvedType &payload) {
-	return payload.integer() || payload.floating() || payload == cloth::ResolvedType(cloth::kBoolean) || payload == cloth::ResolvedType(cloth::kCharacter);
-}
-
 LLVMTypeRef type (LLVMTypeRef payloadType) {
 	const LLVMContextRef ctx_context = LLVMGetTypeContext(payloadType);
 	LLVMTypeRef          v_fields[]  = { LLVMInt8TypeInContext(ctx_context), payloadType };

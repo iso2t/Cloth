@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<enum> Mode { pub Off, pub On }
+
+pub fn<int> main() {
+    Mode? mode = Mode.Off
+    if (mode == null || mode != Mode.Off) return 1
+    mode = null
+    return if (null == mode) 42 else 2
+}

@@ -53,7 +53,7 @@ assignment, increment and decrement.
 A local declared with ``:=`` keeps its initial value. A ``def`` binding infers
 its type from the initializer.
 
-Nullable integers, booleans, floats and characters use a one-byte presence
+Nullable integers, booleans, floats, characters and enums use a one-byte presence
 flag followed by the payload at its usual alignment. On both target widths,
 ``int?``, ``float?`` and ``char?`` occupy eight bytes. A ``bool?`` occupies two.
 A present character stores its full 32-bit Unicode scalar value, including
@@ -75,13 +75,17 @@ The ``?:`` operator evaluates its fallback only for an absent value. A present
 
 An enum stores a four-byte tag on both target widths.
 Tags start at zero and follow declaration order, including private cases.
-The built-in ``==`` and ``!=`` compare tags for values of the same enum.
-Casting a case or a stored enum value to ``int`` gives its tag.
+A nullable enum occupies eight bytes. Its presence byte is at offset zero
+and its tag is at offset four. The first case is present even though its
+tag is zero, so it skips a ``?:`` fallback.
+The built-in ``==`` and ``!=`` compare the tags of two present values of the
+same enum. Casting a case or a stored enum value to ``int`` gives its tag.
+Casting a nullable enum to ``int?`` preserves absence.
 A payload field is read-only. Reading it selects the case's explicit value
 or the field's declared default. The object emitter supports integers,
 booleans, floats, characters, their nullable forms and structs composed of
-supported fields. In this example ``Mode.Off.code`` uses the default of 7
-and ``main`` returns 42.
+supported fields. A nullable enum field can default to ``null``. In this
+example ``Mode.Off.code`` uses the default of 7 and ``main`` returns 42.
 
 .. code-block:: text
 
@@ -92,8 +96,8 @@ and ``main`` returns 42.
        return mode.code
    }
 
-Local structs can contain the supported primitives, their nullable forms,
-enums and other structs. A positional literal evaluates its fields once in
+Local structs can contain the supported primitives, enums, their nullable
+forms and other structs. A positional literal evaluates its fields once in
 declaration order, including nested literals. If a field transfers control out
 of the initializer, evaluation stops there. Assigning a struct copies all its
 nested fields. Numeric fields of a mutable local also support compound
@@ -157,8 +161,8 @@ NaN. Floating remainder and exponentiation can require the platform math
 library. On Unix, link these objects with ``-lm``.
 
 A call can reach a function in the same file or a ``pub`` function imported
-with ``using``. Helpers take the supported primitives, their nullable forms
-and enums by value. They can return one such value or ``void``. Supply every
+with ``using``. Helpers take the supported primitives, enums and their nullable
+forms by value. They can return one such value or ``void``. Supply every
 argument at the call site. A call can stand alone as a statement. A ``void``
 helper returns at the end of its block or at a bare ``return``. On x86,
 ``--target-bits`` selects a 32- or 64-bit object. The output directory must

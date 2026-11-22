@@ -20,8 +20,8 @@ ValueTypes::ValueTypes (LLVMModuleRef module, const cloth::CheckedProgram &progr
 LLVMTypeRef ValueTypes::directCallType (const cloth::ResolvedType &type) const {
 	const LLVMContextRef ctx_context = LLVMGetModuleContext(mod_module);
 	if (type.nullable()) {
-		const cloth::ResolvedType rt_payload = type.element();
-		return nullable::supportsPayload(rt_payload) ? nullable::type(scalarType(ctx_context, cp_program.layout, rt_payload)) : nullptr;
+		const LLVMTypeRef ty_payload = scalarType(ctx_context, cp_program.layout, type.element());
+		return ty_payload ? nullable::type(ty_payload) : nullptr;
 	}
 	return scalarType(ctx_context, cp_program.layout, type);
 }

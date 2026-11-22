@@ -61,7 +61,7 @@ bool Analyzer::hasOperator (std::string_view name) const {
 
 const TypeReference *widthSelector (const Symbol &symbol) {
 	if (symbol.kind != SymbolKind::Operator) return nullptr;
-	const OperatorMember &om_form = *static_cast<const MethodDeclaration &>(*callable(symbol)).operatorMember;
+	const OperatorMember &om_form = *dynamic_cast<const MethodDeclaration &>(*callable(symbol)).operatorMember;
 	return om_form.selector && om_form.selector->capturesWidth() ? &*om_form.selector : nullptr;
 }
 
@@ -472,10 +472,8 @@ ExpressionInfo BodyChecker::equality (const BinaryExpression &node, const Resolv
 			ei_result.comparisonType = left.nullable() ? left : right;
 		else
 			ei_result.comparisonType = numericOperationType(left, right);
-	} else if (rt_left == ResolvedType(kCharacter) && rt_left == rt_right)
+	} else if (rt_left == rt_right && (rt_left == ResolvedType(kCharacter) || rt_left.enumeration()))
 		ei_result.comparisonType = left.nullable() ? left : right;
-	else if (left == right && enumeration(left))
-		ei_result.comparisonType = left;
 	return ei_result;
 }
 }
