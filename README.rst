@@ -11,7 +11,8 @@ Getting started
 ---------------
 
 * `Build the compiler <Documentation/building/Building.rst>`_
-* `Use the compiler <Documentation/compiler/Flags.rst>`_
+* `Use the compiler <Documentation/compiler/index.rst>`_
+* `Read the language reference <Documentation/language/index.rst>`_
 * `Browse the standard library <Stdlib/cloth/>`_
 
 Contributing

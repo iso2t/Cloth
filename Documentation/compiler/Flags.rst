@@ -1,5 +1,8 @@
 .. SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+Compiler flags
+==============
+
 ==============  =================================================================  ============
 Flag            Behavior                                                           Return code
 ==============  =================================================================  ============
@@ -31,90 +34,14 @@ Object emission
 With ``--kind executable``, add ``--emit-object PATH`` to write a relocatable
 object after the frontend checks succeed. The emitter supports a parameterless
 ``main`` returning a signed 32-bit ``int``. Its body can be an expression
-or a block. An ``if``/``else`` can produce a scalar value, as in
-``return if (flag) 42 else 7``. Only the selected arm executes. Its last
-expression supplies the value unless the arm returns from the function.
-A ``while`` loop tests its condition before each iteration. If the first test
-is false, execution continues after the loop without entering its body.
-A ``do``/``while`` loop runs its body before the first test and repeats while
-the condition is true. A return from the body skips the condition.
-``break`` exits the loop. In a ``while`` or ``do``/``while`` loop,
-``continue`` jumps to the condition. A jump inside a nested loop's
-condition or iteration source targets the enclosing loop body. A guard
-such as ``if (done) break`` may omit ``else``.
+or a block. For conditionals, loops, and jumps, see the
+`control-flow chapter <../language/statements/ControlFlow.rst>`_.
 
-A ``for`` loop over an integer range evaluates both bounds once, from left
-to right. ``start..end`` excludes the end and ``start..=end`` includes it.
-With the default step, reversed bounds give zero iterations in either
-form. The `half-open example <../../Tests/Compiler/Driver/Inputs/integer-range-loop.co>`_
-sums ``13..16`` and the `inclusive example <../../Tests/Compiler/Driver/Inputs/inclusive-integer-range-loop.co>`_
-sums ``13..=15``. Both return 42.
-
-An explicit ``n++`` adds one to the counter. The
-`increment example <../../Tests/Compiler/Driver/Inputs/increment-integer-range-loop.co>`_
-sums ``13..=15`` by visiting 13, 14 and 15. An explicit ``n--`` subtracts one. The
-`descending example <../../Tests/Compiler/Driver/Inputs/decrement-integer-range-loop.co>`_
-sums ``15..=13`` by visiting 15, 14 and 13. With ``15..13`` it would visit
-15 and 14. An explicit step can point away from the written end. With an
-unchanged counter, ``3..=1`` with ``n++`` visits 3 once, and ``1..=3`` with
-``n--`` visits 1 once.
-
-With ``n += step`` or ``n -= step``, the loop reads the counter, evaluates
-``step`` once, then adds or subtracts that amount. The
-`addition example <../../Tests/Compiler/Driver/Inputs/additive-integer-range-loop.co>`_
-visits 12, 14 and 16. The
-`subtraction example <../../Tests/Compiler/Driver/Inputs/subtractive-integer-range-loop.co>`_
-visits 16, 14 and 12. Both return 42. A signed step can change direction
-between iterations. Subtracting a negative step moves the counter upward.
-
-With ``n *= factor``, the loop reads the counter, evaluates ``factor`` once,
-and multiplies the two values. The
-`multiplication example <../../Tests/Compiler/Driver/Inputs/multiplicative-integer-range-loop.co>`_
-visits 6, 12 and 24 and returns 42.
-
-With ``n /= divisor`` or ``n %= divisor``, the loop reads the counter and
-evaluates ``divisor`` once. The division step uses the quotient, truncated
-toward zero. The remainder step uses the remainder, whose sign follows
-the counter when the remainder is nonzero.
-The `division example <../../Tests/Compiler/Driver/Inputs/division-integer-range-loop.co>`_
-visits 24, 12 and 6 and returns 42. The
-`remainder example <../../Tests/Compiler/Driver/Inputs/remainder-integer-range-loop.co>`_
-starts at 35, takes ``n %= 14``, and breaks at 7 with a sum of 42.
-Taking the step again at 7 reports the no-progress error.
-
-Both steps raise the usual integer division error for a zero divisor or
-the minimum signed value with divisor ``-1``. When a multiplication,
-division or remainder step uses a counter wider than the target pointer,
-link the object with ``Runtime/src/integer.c``.
-
-With ``n = expression``, the loop evaluates the expression once and uses
-its value as the next counter. The
-`assignment example <../../Tests/Compiler/Driver/Inputs/assignment-integer-range-loop.co>`_
-uses ``n = n / 4`` to visit 32, 8 and 2 and returns their sum, 42.
-Arithmetic inside the expression follows the ordinary integer rules.
-For example, assigning ``n + 1`` at the signed maximum produces the signed
-minimum. The loop continues if that value is in range.
-
-The step runs after the body or on ``continue``, using the counter value
-the body left behind. An empty range skips the step, as does a ``break``
-or ``return`` from the body.
-The loop exits when the new counter leaves the captured bounds.
-Increment, decrement, addition, subtraction and multiplication also end the
-loop if the result exceeds the counter type's limits.
-An update that leaves an in-range counter unchanged reports
-``Cloth runtime error: range counter update made no progress``.
-For example, a zero factor can move a nonzero counter to zero. If zero
-is in range, the body runs there. Multiplying that zero by any factor
-leaves it unchanged.
-Link objects that use this check with ``Runtime/src/errors.c``.
-With an unchanged counter, the default step and ``n++`` each visit
-``usize::max..=usize::max`` once. A loop with ``n--`` visits
-``usize::min..=usize::min`` once.
-
-Scalar operators evaluate their operands in source order. If an operand
-executes ``return``, ``break``, ``continue`` or the built-in ``exit``, earlier
-side effects are preserved. Execution skips the remaining operands and the
-enclosing operation.
+Link objects that check `range steps
+<../language/statements/ControlFlow.rst#integer-ranges>`_ for progress
+with ``Runtime/src/errors.c``. For multiplication, division, or remainder
+steps with a counter wider than the target pointer, also link
+``Runtime/src/integer.c``.
 
 Locals and non-generic helper functions can use signed and unsigned integers
 of any Cloth width, ``isize``, ``usize``, ``bool``, ``char`` and 16-, 32- or
@@ -203,13 +130,8 @@ bounds before evaluating the right-hand side. Both reads and writes report
 ``Cloth runtime error: array index out of bounds`` for a negative index or one
 at or beyond the length.
 
-A ``for`` loop evaluates its fixed-size array source once and visits the
-captured elements in index order. An empty array skips the body. Each
-iteration gives the binding a writable copy of its element. Changing the
-source array inside the loop leaves the captured values intact.
-``continue`` advances to the next element. The `array iteration example
-<../../Tests/Compiler/Driver/Inputs/fixed-array-iteration.co>`_ reads
-``[4, 2]`` from left to right and returns ``42``.
+For element order and the loop binding, see `Fixed-size array iteration
+<../language/statements/ControlFlow.rst#fixed-size-array-iteration>`_.
 
 Numeric elements support ``+=``, ``-=``, ``*=``, ``/=``, ``%=``, and
 standalone ``++`` and ``--``. A compound assignment reads the selected element

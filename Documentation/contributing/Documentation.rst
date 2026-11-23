@@ -5,7 +5,9 @@ Writing Cloth documentation
 
 Choose a page by the question a reader wants to answer. When a change
 affects what a programmer can write or how someone uses the compiler,
-update the relevant guide in the same pull request.
+update the relevant guide in the same pull request. Group related chapters
+in subject directories and link them from the manual's index. Keep project
+plans and progress notes outside the repository.
 
 Choose a page
 -------------
@@ -51,8 +53,6 @@ Choose the implementation or public header where a contributor would
 change the rule. A chapter can cover several files. Add its pointer when
 the page exists and update it in the same change if the page moves.
 Link back to the source from the manual when it helps explain a contract.
-For the compiler's planned chapters and their owners, see the
-`compiler documentation plan <Compiler%20Documentation%20Plan.rst>`_.
 
 Check an example
 ----------------

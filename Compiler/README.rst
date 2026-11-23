@@ -18,13 +18,11 @@ overloads, checks types, and analyzes control flow.
 The backend receives a ``CheckedProgram`` with resolved declarations, chosen
 overloads, argument bindings and expression result types.
 
-For the proposed manuals, their source files, and the migration of the flags
-reference, see the `compiler documentation plan
-<../Documentation/contributing/Compiler%20Documentation%20Plan.rst>`_.
+For compiler options, object files, and target layout, see the
+`compiler manual <../Documentation/compiler/index.rst>`_.
 
 Language reference
 ------------------
 
-* `Names and visibility <../Documentation/compiler/Visibility.rst>`_
-* `Calls and results <../Documentation/compiler/Calls.rst>`_
-* `Operator overloads and equality <../Documentation/compiler/Operators.rst>`_
+For names, calls, operators, and control flow, see the
+`Cloth language reference <../Documentation/language/index.rst>`_.

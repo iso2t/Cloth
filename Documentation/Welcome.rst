@@ -19,8 +19,11 @@ Cloth also incorporates a first class state system, in which an object can exist
 states or no states, allowing certain parameters to be valid or invalid, moving beyond just
 normal boolean expressions with explicit syntax.
 
-`Operator overloads and equality <compiler/Operators.rst>`_ describes
-how user-defined types participate in expressions and updates.
+Manuals
+-------
+
+* `Cloth language reference <language/index.rst>`_
+* `Cloth compiler manual <compiler/index.rst>`_
 
 Contributing
 ------------
