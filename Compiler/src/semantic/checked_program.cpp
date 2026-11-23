@@ -76,6 +76,11 @@ bool ResolvedType::array () const {
 	return !suffixes.empty() && suffixes.back().starts_with(to_string(oBracketOpen));
 }
 
+std::optional<std::uint64_t> ResolvedType::arrayExtent () const {
+	if (!array() || suffixes.back() == semantic::arraySuffix()) return {};
+	return std::stoull(suffixes.back().substr(to_string(oBracketOpen).size()));
+}
+
 bool ResolvedType::integer () const {
 	return suffixes.empty() &&
 	       (name == to_string(kInteger) || name == semantic::unsignedIntegerSpelling() || name == to_string(kUsize) || name == to_string(kIsize));

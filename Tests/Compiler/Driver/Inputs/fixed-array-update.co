@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    int<65>[2] values = [7, 40]
+    def saved := values
+    values[index()] += 2
+    if (values[0] != 7 || saved[1] != 40) return 1
+    return values[1] -> int
+}
+
+fn<usize> index() {
+    println(1)
+    return 1
+}

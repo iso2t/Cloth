@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --kind executable --src "%S/Inputs/fixed-array.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/fixed-array.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/fixed-array.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+# RUN: %cloth --kind executable --src "%S/Inputs/fixed-array-values.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 1 --stdout-line 2 --stdout-line 3 --stdout-line 4 --empty-stderr 42 "%t.exe"
+
+# RUN: echo "fn<int> at(final int<1> i) { int[2] a := [7, 42]; return a[i] }" > "%t.co"
+# RUN: echo "pub fn<int> main() = at(-1)" >> "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: array index out of bounds" 1 "%t.exe"
+
+# RUN: echo "fn<int> at(final unsigned int<97> i) { int[2] a := [7, 42]; return a[i] }" > "%t.co"
+# RUN: echo "pub fn<int> main() = at(18446744073709551617)" >> "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: array index out of bounds" 1 "%t.exe"
+
+# RUN: echo "pub fn<int> main() { int[2] a := [7, 42]; return a[2] }" > "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: array index out of bounds" 1 "%t.exe"
+
+# RUN: echo "pub fn<int> main() { int[0] a := []; return a[0] }" > "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: array index out of bounds" 1 "%t.exe"

@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <optional>
 #include <vector>
 
 #include <cde/cloth_diagnostic.hpp>
@@ -26,9 +27,31 @@ LLVMTypeRef ValueTypes::directCallType (const cloth::ResolvedType &type) const {
 	return scalarType(ctx_context, cp_program.layout, type);
 }
 
+LLVMTypeRef ValueTypes::localType (const cloth::ResolvedType &type) {
+	if (!type.array()) return get(type);
+	const std::optional<std::uint64_t> opt_count = type.arrayExtent();
+	if (!opt_count) return nullptr;
+	const LLVMTypeRef                         ty_element = get(type.element());
+	const std::optional<cloth::StorageLayout> opt_data   = cp_program.arrayDataLayout(type, *opt_count);
+	if (!ty_element || !opt_data) return nullptr;
+	const LLVMTypeRef          ty_buffer = LLVMArrayType2(ty_element, *opt_count);
+	const LLVMTargetDataRef    td_target = LLVMGetModuleDataLayout(mod_module);
+	const cloth::StorageLayout sl_actual{ LLVMABISizeOfType(td_target, ty_buffer), LLVMABIAlignmentOfType(td_target, ty_buffer) };
+	if (sl_actual != *opt_data)
+		throw cde::ClothDiagnostic(
+		        cde::DiagnosticCode::ABI_LAYOUT,
+		        std::format("LLVM gives the data buffer for '{}' size {} and alignment {}. The checked layout requires size {} and alignment {}",
+		                    type.spelling(), sl_actual.size, sl_actual.alignment, opt_data->size, opt_data->alignment));
+	return ty_buffer;
+}
+
 LLVMTypeRef ValueTypes::get (const cloth::ResolvedType &type) {
-	if (const LLVMTypeRef ty_value = directCallType(type)) return ty_value;
 	const LLVMContextRef ctx_context = LLVMGetModuleContext(mod_module);
+	if (type.nullable()) {
+		const LLVMTypeRef ty_payload = get(type.element());
+		return ty_payload ? nullable::type(ty_payload) : nullptr;
+	}
+	if (const LLVMTypeRef ty_scalar = scalarType(ctx_context, cp_program.layout, type)) return ty_scalar;
 	// An untyped null carries no data until a surrounding expression supplies the nullable type.
 	if (type == cloth::ResolvedType(cloth::kNull)) return LLVMStructTypeInContext(ctx_context, nullptr, 0, false);
 	const auto it_layout = cp_program.structLayouts.find(type);

@@ -15,6 +15,8 @@ class ValueTypes {
 	[[nodiscard]] LLVMTypeRef directCallType (const cloth::ResolvedType &type) const;
 	// Returns null when the checked type has no supported LLVM value representation.
 	[[nodiscard]] LLVMTypeRef get (const cloth::ResolvedType &type);
+	// A fixed array local holds its element buffer by value. Embedded arrays require the descriptor ABI.
+	[[nodiscard]] LLVMTypeRef localType (const cloth::ResolvedType &type);
 
     private:
 	LLVMModuleRef                                      mod_module;

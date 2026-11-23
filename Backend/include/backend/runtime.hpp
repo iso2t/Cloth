@@ -11,4 +11,5 @@ namespace backend::detail {
 [[nodiscard]] LLVMValueRef declareSignedDivisionOverflow (LLVMModuleRef module);
 [[nodiscard]] LLVMValueRef declareNegativeIntegerExponent (LLVMModuleRef module);
 [[nodiscard]] LLVMValueRef declareInvalidFloatToInteger (LLVMModuleRef module);
+[[nodiscard]] LLVMValueRef declareArrayIndexOutOfBounds (LLVMModuleRef module);
 }

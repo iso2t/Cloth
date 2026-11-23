@@ -58,6 +58,7 @@ struct ResolvedType {
 	void                                           visitApplications (const std::function<void(const ResolvedType &)> &visit) const;
 	[[nodiscard]] bool                             nullable () const;
 	[[nodiscard]] bool                             array () const;
+	[[nodiscard]] std::optional<std::uint64_t>     arrayExtent () const;
 	[[nodiscard]] bool                             integer () const;
 	[[nodiscard]] bool                             unsignedInteger () const;
 	[[nodiscard]] bool                             floating () const;

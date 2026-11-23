@@ -1,0 +1,104 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    int total = 0
+    for (def n <- trace(1)..trace(4)) total += n
+    if (total != 6) return 1
+    for (int n <- trace(5)..trace(5)) return 2
+    for (def n <- trace(7)..trace(6)) return 3
+    if (!capturedBounds() || !mutableCounter()) return 4
+    if (!integerLimits() || !wideUnsigned()) return 5
+    if (nested() != 42) return 6
+    if (leaveAtStart(true) != 42 || leaveAtEnd(true) != 42) return 7
+    if (leaveAtStart(false) != 7 || leaveAtEnd(false) != 7) return 8
+    return 42
+}
+
+fn<bool> capturedBounds() {
+    int first = 1
+    int last = 4
+    int digits = 0
+    for (def n <- first..(if (last == 4) { first = 9; last } else 0)) {
+        last = 1
+        digits = digits * 10 + n
+    }
+    return digits == 123 && first == 9
+}
+
+fn<bool> mutableCounter() {
+    int digits = 0
+    for (int n <- 1..9) {
+        digits = digits * 10 + n
+        if (n == 1) { n = 3; continue }
+        if (n == 4) n = 5
+        else break
+    }
+    if (digits != 146) return false
+    int visits = 0
+    for (def n <- 4..7) {
+        visits++
+        if (visits == 1) n = 3
+        else if (visits == 2 && n == 4) n = 1
+        else return false
+    }
+    return visits == 2
+}
+
+fn<bool> integerLimits() {
+    int visits = 0
+    for (int<1> n <- int<1>::min..int<1>::max) {
+        if (n != int<1>::min || visits != 0) return false
+        visits++
+    }
+    for (unsigned int<1> n <- 0..1) {
+        if (n != 0 || visits != 1) return false
+        visits++
+    }
+    for (isize n <- isize::min..isize::max) {
+        if (visits != 2) return false
+        visits++
+        n = isize::max
+    }
+    for (usize n <- 0..usize::max) {
+        if (visits != 3) return false
+        visits++
+        n = usize::max
+        continue
+    }
+    return visits == 4
+}
+
+fn<bool> wideUnsigned() {
+    unsigned int<65> first := 18446744073709551615
+    unsigned int<65> last := 18446744073709551618
+    int visits = 0
+    for (def n <- (first..last)) {
+        if (n < first || visits == 3) return false
+        visits++
+    }
+    return visits == 3
+}
+
+fn<int> nested() {
+    int digits = 0
+    for (int row <- 1..5) {
+        for (int n <- 4..(if (row == 2) { continue } else if (row == 4) { break } else 5)) {
+            if (row == 1) digits = n
+            else digits = digits * 10 + 2
+        }
+    }
+    return digits
+}
+
+fn<int> leaveAtStart(final bool early) {
+    for (int n <- (if (early) { return 42 } else { return 7 })..trace(99)) return 99
+}
+
+fn<int> leaveAtEnd(final bool early) {
+    for (int n <- trace(8)..(if (early) { return 42 } else { return 7 })) return 99
+}
+
+fn<int> trace(final int value) {
+    println(value)
+    return value
+}

@@ -38,9 +38,20 @@ A ``while`` loop tests its condition before each iteration. If the first test
 is false, execution continues after the loop without entering its body.
 A ``do``/``while`` loop runs its body before the first test and repeats while
 the condition is true. A return from the body skips the condition.
-``break`` exits the loop. ``continue`` skips the rest of its body and jumps
-to its condition. A jump inside a nested loop's condition targets the
-enclosing loop body. A guard such as ``if (done) break`` may omit ``else``.
+``break`` exits the loop. In a ``while`` or ``do``/``while`` loop,
+``continue`` jumps to the condition. A jump inside a nested loop's
+condition or iteration source targets the enclosing loop body. A guard
+such as ``if (done) break`` may omit ``else``.
+
+A ``for`` loop over ``start..end`` evaluates both integer bounds once, from
+left to right. It starts at ``start`` and excludes ``end``. Equal or reversed
+bounds give zero iterations. On reaching the end of the body or executing
+``continue``, the loop adds one to the current binding, including any change
+the body made to it. The loop exits if that increment exceeds the integer
+type's maximum or the result falls outside the captured bounds. The
+`integer range example <../../Tests/Compiler/Driver/Inputs/integer-range-loop.co>`_
+sums 13, 14 and 15 and returns 42.
+
 Scalar operators evaluate their operands in source order. If an operand
 executes ``return``, ``break``, ``continue`` or the built-in ``exit``, earlier
 side effects are preserved. Execution skips the remaining operands and the
@@ -96,10 +107,15 @@ example ``Mode.Off.code`` uses the default of 7 and ``main`` returns 42.
        return mode.code
    }
 
-Local structs can contain the supported primitives, enums, their nullable
-forms and other structs. A positional literal evaluates its fields once in
-declaration order, including nested literals. If a field transfers control out
-of the initializer, evaluation stops there. Assigning a struct copies all its
+Local structs can contain the supported primitives, enums and other structs.
+Each of these field types can be nullable. A nullable struct stores a presence
+byte followed by its payload at the struct's usual alignment. An all-zero struct
+is present and skips a ``?:`` fallback. After a null check, field reads and
+writes use the stored payload.
+
+A positional literal evaluates its fields once in declaration order, including
+nested literals. If a field transfers control out of the initializer,
+evaluation stops there. Assigning a struct copies all its
 nested fields. Numeric fields of a mutable local also support compound
 assignment, increment and decrement. This program returns 7 on both target
 widths. The earlier copy still holds 42.
@@ -119,6 +135,50 @@ widths. The earlier copy still holds 42.
 ``Inner`` occupies 4 bytes with 2-byte alignment. It is stored inline at
 byte 2 of ``Sample``, placing ``sample.inner.value`` at byte 4. ``Sample``
 occupies 6 bytes with 2-byte alignment.
+
+One-dimensional fixed-size array locals store their elements consecutively.
+A literal evaluates its elements from left to right. Assigning the whole array
+copies its values. An indexed read evaluates the array before the index. An
+indexed assignment to a mutable local evaluates the index once and checks its
+bounds before evaluating the right-hand side. Both reads and writes report
+``Cloth runtime error: array index out of bounds`` for a negative index or one
+at or beyond the length.
+
+A ``for`` loop evaluates its fixed-size array source once and visits the
+captured elements in index order. An empty array skips the body. Each
+iteration gives the binding a writable copy of its element. Changing the
+source array inside the loop leaves the captured values intact.
+``continue`` advances to the next element. The `array iteration example
+<../../Tests/Compiler/Driver/Inputs/fixed-array-iteration.co>`_ reads
+``[4, 2]`` from left to right and returns ``42``.
+
+Numeric elements support ``+=``, ``-=``, ``*=``, ``/=``, ``%=``, and
+standalone ``++`` and ``--``. A compound assignment reads the selected element
+before evaluating the right-hand side and writes the result back to the same
+slot. In the `indexed update example
+<../../Tests/Compiler/Driver/Inputs/fixed-array-update.co>`_,
+``values[index()] += 2`` calls ``index()`` once, prints 1, and changes the
+65-bit element from 40 to 42.
+
+Fixed-size arrays support `structural equality <Operators.rst#array-equality>`_
+for integers, booleans, characters, floats, and enums that use built-in
+equality. The elements can be nullable, as in ``int?[2]``.
+
+Signed and unsigned integer elements can have any width from 1 through 65,536
+bits. The distance between elements is the integer's allocation size on the
+selected target. For example, two ``int<12>`` elements start at byte offsets 0
+and 2, and two ``int<65536>`` elements start at byte offsets 0 and 8,192. This
+program returns 42 on both target widths. The earlier copy still contains 9.
+
+.. code-block:: text
+
+   pub fn<int> main() {
+       int<12>[2] values = [7, 9]
+       def saved := values
+       values[1] = 42
+       if (saved[1] != 9) return 1
+       return values[1] -> int
+   }
 
 Integer arithmetic, including ``**``, wraps at the operand width. On both
 targets ``int<12>`` wraps from 2047 to -2048. The width of ``isize`` and
@@ -237,23 +297,3 @@ imported helper has local linkage. The linked program exits with status 42.
 
    cloth --kind executable --src main.co --emit-object main.o
    cc main.o -o main
-
-Integer storage layout
-----------------------
-
-Signed and unsigned integers of the same width have the same layout.
-Round the bit width up to whole bytes, then round the byte count up to a
-multiple of the target integer alignment. This allocation size is both
-the scalar's ``::size`` and the stride between consecutive array elements.
-The array's own ``::size`` counts elements.
-
-On the Windows and Linux x86 targets, widths up to 8, 16, and 32 bits
-align to 1, 2, and 4 bytes respectively. Widths from 33 through 64 align
-to 8 bytes, except on 32-bit x86 System V where they align to 4. Wider
-integers align to 16 bytes. For example, ``int<12>::size`` is 2 and
-three elements occupy 6 bytes in an array's data buffer.
-
-Struct fields appear in declaration order. Each starts at its required
-alignment, and the struct's total size is rounded up to its largest field
-alignment. Fields of types ``int<8>``, ``int<12>``, and ``int<8>`` therefore
-start at byte offsets 0, 2, and 4. The struct occupies 6 bytes including padding.

@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <backend/nullable_value.hpp>
 #include <backend/runtime.hpp>
 #include <backend/scalar_lowering.hpp>
 
+#include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -212,6 +215,15 @@ void ScalarLowering::guardDivisor (LLVMValueRef dividend, LLVMValueRef divisor, 
 	failIf(LLVMBuildAnd(ir_builder, ir_minusOne, LLVMBuildICmp(ir_builder, LLVMIntEQ, dividend, ir_min, ""), ""), declareSignedDivisionOverflow);
 }
 
+LLVMValueRef ScalarLowering::checkedArrayIndex (LLVMValueRef index, bool isUnsigned, std::uint64_t length) const {
+	// Keep all index bits and leave a sign bit above the length so negative indices compare out of range.
+	const unsigned     u_bits   = std::max(LLVMGetIntTypeWidth(LLVMTypeOf(index)), static_cast<unsigned>(std::bit_width(length)) + !isUnsigned);
+	const LLVMTypeRef  ty_check = LLVMIntTypeInContext(LLVMGetModuleContext(mod_module), u_bits);
+	const LLVMValueRef ir_index = LLVMBuildIntCast2(ir_builder, index, ty_check, !isUnsigned, "");
+	failIf(LLVMBuildICmp(ir_builder, LLVMIntUGE, ir_index, integerConstant(ty_check, length), ""), declareArrayIndexOutOfBounds);
+	return LLVMBuildIntCast2(ir_builder, ir_index, type(cloth::ResolvedType(cloth::kUsize)), false, "");
+}
+
 LLVMValueRef ScalarLowering::floatToInteger (LLVMValueRef value, LLVMTypeRef target, bool isUnsigned) const {
 	// fpto[su]i truncates toward zero. Check the open interval around the representable integers before emitting it.
 	const LLVMTypeRef  ty_double = LLVMDoubleTypeInContext(LLVMGetModuleContext(mod_module));
@@ -289,19 +301,39 @@ LLVMValueRef ScalarLowering::integerPower (LLVMValueRef base, LLVMValueRef expon
 	return ir_product;
 }
 
-LLVMValueRef ScalarLowering::binary (cloth::Operator op, LLVMValueRef left, LLVMValueRef right, const cloth::ResolvedType &operandType) const {
-	if (operandType.floating() && operandType.width == 16) {
-		left  = convertHalf(left);
-		right = convertHalf(right);
-	}
-	if (cloth::isComparison(op)) {
-		const LLVMValueRef ir_test = operandType.floating() ?
-		                                     LLVMBuildFCmp(ir_builder, floatPredicate(op), left, right, "") :
-		                                     LLVMBuildICmp(ir_builder, integerPredicate(op, operandType.unsignedInteger()), left, right, "");
-		return boolean(ir_test);
+LLVMValueRef ScalarLowering::compare (cloth::Operator op, LLVMValueRef left, LLVMValueRef right, const cloth::ResolvedType &operandType) const {
+	if (operandType.nullable()) {
+		if (op != cloth::oEqual && op != cloth::oNotEqual) throw std::logic_error("Invalid nullable scalar comparison");
+		const LLVMValueRef ir_leftPresent  = predicate(nullable::presence(ir_builder, left));
+		const LLVMValueRef ir_rightPresent = predicate(nullable::presence(ir_builder, right));
+		const LLVMValueRef ir_presenceTest = LLVMBuildICmp(ir_builder, integerPredicate(op, false), ir_leftPresent, ir_rightPresent, "");
+		const LLVMValueRef ir_payloadTest =
+		        compare(op, nullable::payload(ir_builder, left), nullable::payload(ir_builder, right), operandType.element());
+		// The payload comparison contributes to the result only when both elements are present.
+		return LLVMBuildSelect(ir_builder, LLVMBuildAnd(ir_builder, ir_leftPresent, ir_rightPresent, ""), ir_payloadTest, ir_presenceTest, "");
 	}
 	if (operandType.floating()) {
+		if (operandType.width == 16) {
+			left  = convertHalf(left);
+			right = convertHalf(right);
+		}
+		return LLVMBuildFCmp(ir_builder, floatPredicate(op), left, right, "");
+	}
+	if (operandType == cloth::ResolvedType(cloth::kBoolean)) {
+		left  = predicate(left);
+		right = predicate(right);
+	}
+	return LLVMBuildICmp(ir_builder, integerPredicate(op, operandType.unsignedInteger()), left, right, "");
+}
+
+LLVMValueRef ScalarLowering::binary (cloth::Operator op, LLVMValueRef left, LLVMValueRef right, const cloth::ResolvedType &operandType) const {
+	if (cloth::isComparison(op)) return boolean(compare(op, left, right, operandType));
+	if (operandType.floating()) {
 		// The checker computes half arithmetic in single precision, then rounds the result to half.
+		if (operandType.width == 16) {
+			left  = convertHalf(left);
+			right = convertHalf(right);
+		}
 		LLVMTypeRef  ty_compute = LLVMTypeOf(left);
 		LLVMValueRef ir_result;
 		switch (op) {

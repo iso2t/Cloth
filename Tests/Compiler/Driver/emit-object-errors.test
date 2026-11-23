@@ -21,19 +21,19 @@
 # RUN: %filecheck "%/s" --check-prefix=STATEMENT --input-file "%t.err"
 # RUN: diff "%t.saved" "%t/answer.o"
 # RUN: echo "pub fn<int> main () {" > "%t/entry.co"
-# RUN: echo "    int unused := [40, 2][0]" >> "%t/entry.co"
+# RUN: echo "    int unused := int[2]::type::rank -> int" >> "%t/entry.co"
 # RUN: echo "    return 42" >> "%t/entry.co"
 # RUN: echo "}" >> "%t/entry.co"
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object answer.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=INITIALIZER --input-file "%t.err"
 # INITIALIZER: [C4040] Error: LLVM lowering does not support this expression
 # INITIALIZER: entry.co:2:19
-# INITIALIZER: int unused := [40, 2][0]
+# INITIALIZER: int unused := int[2]::type::rank -> int
 # INITIALIZER: unsupported expression
 # RUN: diff "%t.saved" "%t/answer.o"
 # RUN: echo "pub fn<int> main () {" > "%t/entry.co"
 # RUN: echo "    int answer = 42" >> "%t/entry.co"
-# RUN: echo "    answer += [7][0]" >> "%t/entry.co"
+# RUN: echo "    answer += int[2]::type::rank -> int" >> "%t/entry.co"
 # RUN: echo "    return answer" >> "%t/entry.co"
 # RUN: echo "}" >> "%t/entry.co"
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object answer.o 2> "%t.err"

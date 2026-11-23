@@ -231,12 +231,11 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 	if (s_name == provider::S_SIZE) {
 		if (payload.array()) {
 			requirePresent();
-			ExpressionInfo     result = selection(ProviderKind::ArraySize, ResolvedType(kUsize));
-			const std::string &extent = payload.suffixes.back();
-			if (extent == arraySuffix()) {
-				if (opt_receiver->isType) rejectForm();
-			} else
-				result.numericConstant = countConstant(std::stoull(extent.substr(to_string(oBracketOpen).size())));
+			ExpressionInfo result = selection(ProviderKind::ArraySize, ResolvedType(kUsize));
+			if (const std::optional<std::uint64_t> opt_extent = payload.arrayExtent())
+				result.numericConstant = countConstant(*opt_extent);
+			else if (opt_receiver->isType)
+				rejectForm();
 			return result;
 		}
 		if (payload == ResolvedType(kString)) {

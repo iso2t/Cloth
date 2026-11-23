@@ -32,4 +32,8 @@ LLVMValueRef presence (LLVMBuilderRef builder, LLVMValueRef value) {
 LLVMValueRef payload (LLVMBuilderRef builder, LLVMValueRef value) {
 	return LLVMBuildExtractValue(builder, value, PAYLOAD, "");
 }
+
+LLVMValueRef payloadAddress (LLVMBuilderRef builder, LLVMTypeRef payloadType, LLVMValueRef address) {
+	return LLVMBuildStructGEP2(builder, type(payloadType), address, PAYLOAD, "");
+}
 }

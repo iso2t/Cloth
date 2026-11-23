@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    if ([trace(1, 7), trace(2, 9)] == [trace(3, 8), trace(4, 9)]) return 1
+    if ([trace(5, 7)] == [trace(6, 7), trace(7, 9)]) return 2
+    if (!([7, 9] != [7])) return 3
+
+    int<17>[0] first := []
+    int<17>[0] second := []
+    if (first != second || !(first == []) || [] != second) return 4
+    if ((if (trace(8, 1) == 1) first else second) != (if (trace(9, 0) == 0) second else first)) return 5
+    if (first == [0] || !([0] != first)) return 6
+
+    int[3] values = [7, 40, 9]
+    def saved := values
+    if (values == (if (trace(10, 1) == 1) { values[1] = 42; values } else saved)) return 7
+    if (values != [7, 42, 9] || saved != [7, 40, 9]) return 8
+    if ((if (trace(11, 1) == 1) { values[2] = 11; values } else saved) != values) return 9
+    if (values == [7, 42, 9]) return 10
+
+    usize[2] sizes := [0, usize::max]
+    isize[2] offsets := [isize::min, 0]
+    if (sizes != [0, usize::max] || offsets == [isize::max, 0]) return 11
+    if (early(true) != 42 || early(false) != 42) return 12
+    return 42
+}
+
+fn<int> early(final bool stopOnLeft) {
+    if ([(if (stopOnLeft) { return 42 } else 7)] == [(if (!stopOnLeft) { return 42 } else 7), trace(99, 9)]) return 1
+    return 2
+}
+
+fn<int> trace(final int label, final int value) {
+    println(label)
+    return value
+}

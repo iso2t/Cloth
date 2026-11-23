@@ -11,4 +11,5 @@ LLVMValueRef presentConstant (LLVMValueRef payload);
 LLVMValueRef pack (LLVMBuilderRef builder, LLVMValueRef payload, LLVMValueRef presence = nullptr);
 LLVMValueRef presence (LLVMBuilderRef builder, LLVMValueRef value);
 LLVMValueRef payload (LLVMBuilderRef builder, LLVMValueRef value);
+LLVMValueRef payloadAddress (LLVMBuilderRef builder, LLVMTypeRef payloadType, LLVMValueRef address);
 }

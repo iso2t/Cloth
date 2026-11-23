@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Leaf<T> { pub bool ready, pub T value }
+typedef<struct> Sample { pub usize marker, pub Leaf<int>? inner }
+
+pub fn<int> main() {
+    Sample zero := {0, {false, 0}}
+    Sample? sample = zero -> Sample?
+    Sample? saved := sample
+    if (sample == null || sample.inner == null) return 1
+    sample.inner.value += 7
+    sample.inner.ready = true
+    if (sample.inner == null || sample.inner.value != 7 || !sample.inner.ready) return 2
+
+    sample.inner = null
+    if (sample.inner != null || sample.marker != 0) return 3
+    sample = null
+    if (sample != null || null == saved || saved.inner == null || saved.inner.ready || saved.inner.value != 0) return 4
+
+    sample = {42, {false, 7}}
+    if (null == sample || null == sample.inner) return 5
+    sample.inner.value++
+    if (sample.inner.value != 8 || sample.inner.ready) return 6
+    sample.inner.value += (if (sample.marker == 42) { sample.inner = null; 1 } else 0)
+    if (sample.inner != null || sample.marker != 42) return 7
+    if (fallback(true) != 0 || fallback(false) != 42) return 8
+    return sample.marker -> int
+}
+
+fn<int> fallback(final bool present) {
+    Leaf<int> zero := {false, 0}
+    Leaf<int>? maybe := if (present) zero else null
+    Leaf<int>? copy := maybe ?: (null -> Leaf<int>?)
+    if (present && (copy == null || copy.value != 0)) return 1
+    if (!present && null != copy) return 2
+    Leaf<int> selected := maybe ?: {true, trace(42)}
+    return selected.value
+}
+
+fn<int> trace(final int value) {
+    println(value)
+    return value
+}

@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<enum> Mode(pub def<int> code = 0) {
+    pub Off, pub On(42), pub Alias(42);
+    pub operator !=(Mode other) -> bool = true
+}
+
+pub fn<int> main() {
+    if (!boolPairs()) return 1
+    if (!floatPairs(0.0)) return 2
+
+    unsigned int<65>?[2] wide = [null, 0]
+    unsigned int<65>?[2] saved := wide
+    wide[1] = 18446744073709551616
+    if (wide == saved || !(wide != saved)) return 3
+
+    char?[2] letters = [null, '\0']
+    char?[2] original := letters
+    letters[1] = '𐀀'
+    if (letters == original) return 4
+    letters[1] = null
+    if (letters == original || letters != [null, null]) return 5
+
+    Mode?[2] modes = [null, Mode.On]
+    Mode?[2] before := modes
+    if (modes != before) return 6
+    modes[1] = Mode.Alias
+    if (modes == before || !(modes != before)) return 7
+    Mode?[1] off := [Mode.Off]
+    Mode?[1] missing := [null]
+    if (off == missing) return 8
+
+    int?[0] empty := []
+    if (empty != [] || empty == [traced(1, null)]) return 9
+    int?[1] current = [null]
+    if (current == (if (traced(2, 0) != null) { current[0] = 0; current } else current)) return 10
+    return 42
+}
+
+fn<bool> boolPairs() {
+    bool?[3] flags := [null, false, true]
+    usize i = 0
+    while (i < flags::size) {
+        usize j = 0
+        while (j < flags::size) {
+            bool?[1] left := [flags[i]]
+            bool?[1] right := [flags[j]]
+            if ((left == right) != (i == j) || (left != right) != (i != j)) return false
+            j++
+        }
+        i++
+    }
+    return true
+}
+
+fn<bool> floatPairs(final float<64> zero) {
+    float<64> nan := zero / zero
+    float<16>?[2] half = [null, zero -> float<16>]
+    float<16>?[2] saved := half
+    half[1] = -zero -> float<16>
+    if (half != saved) return false
+    half[1] = nan -> float<16>
+    if (half == half || !(half != half)) return false
+
+    float?[2] single := [null, nan -> float]
+    float<64>?[2] wide := [null, nan]
+    float<64>?[2] missing := [null, null]
+    if (missing != missing || wide == missing || missing == wide) return false
+    return single != single && !(single == single) && wide != wide && !(wide == wide)
+}
+
+fn<int?> traced(final int label, final int? value) {
+    println(label)
+    return value
+}

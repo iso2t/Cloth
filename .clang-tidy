@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+Checks: '-*,clang-diagnostic-*,modernize-use-nullptr,modernize-use-override,performance-for-range-copy'
+HeaderFilterRegex: '\.hpp$'

@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Sample { pub int value }
+
+pub fn<int> main() {
+    Sample? sample = {0}
+    if (sample == null || sample.value != 0) return 1
+    sample = null
+    return if (null == sample) 42 else 2
+}

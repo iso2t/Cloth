@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Sample { pub bool ready, pub int<12> value }
+
+pub fn<int> main() {
+    int<12>[3] values = [trace(1, 7) -> int<12>, 42, trace(2, -8) -> int<12>]
+    def saved := values
+    unsigned int<1> index := trace(3, 1) -> unsigned int<1>
+    if (values[index] != 42 || saved[0] != 7) return 1
+    if (values[if (index == 1) { values = [9, 10, 0]; 1 } else 0] != 42) return 2
+    if (values[1] != 10 || saved[1] != 42 || saved[2] != -8 || values::size != 3) return 3
+
+    Sample[2] samples := [{false, 7}, {true, 42}]
+    if (!samples[index].ready || samples[index].value != 42) return 4
+    int?[2] optional := [null, 0]
+    if (optional[0] != null || optional[1] == null || optional[1] != 0) return 5
+    if ([7, 42][index] != 42 || early(true) != 42 || early(false) != 7) return 6
+    int<12>[3] selected := null ?: (if (values[0] == 9) saved else values)
+    return selected[index] -> int
+}
+
+fn<int> early(final bool stop) {
+    int[2] values := [(if (stop) { return 42 } else 7), trace(4, 0)]
+    return values[0]
+}
+
+fn<int> trace(final int label, final int value) {
+    println(label)
+    return value
+}

@@ -22,13 +22,15 @@ literal Cloth text so they can catch unintended language changes.
 Explicit types
 --------------
 
-Use an explicit type anywhere a C++ declaration could use ``auto`` or
-``decltype(auto)``. This includes local variables, range-based loop
-variables, lambda parameters, and named function return types. Use a
-named type alias when it makes a declaration easier to read.
+Prefer explicit types when they make a declaration easier to understand.
+Use ``auto`` or ``decltype(auto)`` when deduction keeps the code clearer
+or avoids repeating a type. A clang-tidy fix that uses type deduction
+is acceptable when the result reads clearly. Use a named type alias
+when it improves readability.
 
-Pass a lambda directly to the function that uses it. When a callable
-needs a name, use a named function or a callable with an explicit type.
+Pass short lambdas directly to the function that uses them when the call
+stays readable. Give a callable a name when that clarifies its purpose
+or lets you reuse it. A named lambda may use ``auto``.
 
 Names
 -----

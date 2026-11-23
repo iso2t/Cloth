@@ -63,10 +63,38 @@ Struct values require an applicable equality operator. Enums have a built-in
 equality operation. For ``!=``, an explicit inequality overload takes
 precedence, followed by negating an applicable ``==``. Comparing nullable
 values checks presence before calling an overload on their payloads.
+The built-in identity operator ``===`` compares class and interface references.
+
+Array equality
+--------------
 
 Arrays compare structurally with ``==`` and ``!=``. The array rank, internal
 nullable positions, and element type must match. Declared extents may
 differ. Array inequality negates the structural equality result, so a
 struct element must supply ``==`` even when the caller writes ``!=``.
-The built-in identity operator ``===`` compares class and interface
-references.
+
+Both operands are evaluated once, from left to right, even when their lengths
+differ. Arrays of different lengths compare unequal. Two empty arrays with
+the same element type compare equal. For equal lengths, comparison stops at
+the first unequal pair.
+
+For nullable elements, two absent values compare equal. If only one element
+is present, the pair compares unequal. When both are present, their payloads
+use the element type's equality rule. In the `nullable integer array example
+<../../Tests/Compiler/Driver/Inputs/fixed-array-nullable-equality.co>`_,
+``[0, null]`` equals its copy. Swapping the positions of zero and null
+makes the arrays unequal.
+
+Integer elements compare at their declared width. In the `65-bit example
+<../../Tests/Compiler/Driver/Inputs/fixed-array-equality.co>`_, a copy
+initially compares equal. Setting the highest bit in the original's second
+element makes the arrays unequal, and the program returns 42.
+
+Boolean elements compare by truth value, characters by Unicode scalar value,
+and enums with built-in equality by case tag. Distinct enum cases can carry
+identical payloads and still compare unequal.
+
+Floating-point elements compare at their stored precision. Positive and
+negative zero compare equal at 16, 32, and 64 bits. An array containing NaN
+compares unequal even to itself, as the `floating-point array example
+<../../Tests/Compiler/Driver/Inputs/fixed-array-scalar-equality.co>`_ shows.
