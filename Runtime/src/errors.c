@@ -28,3 +28,7 @@ _Noreturn void cloth_rt_invalid_float_to_integer (void) {
 _Noreturn void cloth_rt_array_index_out_of_bounds (void) {
 	report_error("array index out of bounds");
 }
+
+_Noreturn void cloth_rt_stalled_range (void) {
+	report_error("range counter update made no progress");
+}

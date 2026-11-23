@@ -1,3 +1,5 @@
+.. SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 Integer storage layout
 ----------------------
 
@@ -17,3 +19,7 @@ Struct fields appear in declaration order. Each starts at its required
 alignment, and the struct's total size is rounded up to its largest field
 alignment. Fields of types ``int<8>``, ``int<12>``, and ``int<8>`` therefore
 start at byte offsets 0, 2, and 4. The struct occupies 6 bytes including padding.
+
+The compiler calculates integer alignment, array stride, and struct field
+positions in the `storage layout implementation
+<../../../Compiler/src/semantic/storage_layout.cpp>`_.

@@ -8,13 +8,13 @@
 namespace cloth::semantic {
 namespace {
 template <typename Visit> void enumConstant (const Expression &expression, const Visit &visit) {
-	if (const CastExpression *cast = dynamic_cast<const CastExpression *>(&expression))
+	if (const auto *cast = dynamic_cast<const CastExpression *>(&expression))
 		enumConstant(*cast->operand, visit);
-	else if (const ArrayLiteral *array = dynamic_cast<const ArrayLiteral *>(&expression)) {
+	else if (const auto *array = dynamic_cast<const ArrayLiteral *>(&expression)) {
 		for (const ExpressionPtr &ep_item : array->elements) enumConstant(*ep_item, visit);
-	} else if (const StructLiteral *structure = dynamic_cast<const StructLiteral *>(&expression)) {
+	} else if (const auto *structure = dynamic_cast<const StructLiteral *>(&expression)) {
 		for (const ExpressionPtr &ep_item : structure->fields) enumConstant(*ep_item, visit);
-	} else if (const UnaryExpression *unary = dynamic_cast<const UnaryExpression *>(&expression)) {
+	} else if (const auto *unary = dynamic_cast<const UnaryExpression *>(&expression)) {
 		if (!dynamic_cast<const NumberLiteral *>(unary->operand.get()) && !dynamic_cast<const BooleanLiteral *>(unary->operand.get()))
 			visit(expression, false);
 	} else if (!dynamic_cast<const NumberLiteral *>(&expression) && !dynamic_cast<const BooleanLiteral *>(&expression) &&

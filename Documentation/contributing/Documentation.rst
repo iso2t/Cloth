@@ -33,6 +33,27 @@ Keep the full explanation on one page so future changes have one place
 to update. When moving a page or renaming a heading, update links to
 its old path or section.
 
+Link a manual from source
+-------------------------
+
+When a source file owns a documented rule, put the repository-relative
+path to its ``.rst`` page near the top of that file. Keep the SPDX line
+first, leave a blank line, and put the pointer before the includes. Use
+forward slashes and match the filename's case.
+
+.. code-block:: cpp
+
+   // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+   // See Documentation/compiler/Flags.rst
+
+Choose the implementation or public header where a contributor would
+change the rule. A chapter can cover several files. Add its pointer when
+the page exists and update it in the same change if the page moves.
+Link back to the source from the manual when it helps explain a contract.
+For the compiler's planned chapters and their owners, see the
+`compiler documentation plan <Compiler%20Documentation%20Plan.rst>`_.
+
 Check an example
 ----------------
 

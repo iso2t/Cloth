@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    int total = 0
+    for (int n <- 13..=15) total += n
+
+    int visits = 0
+    for (usize n <- usize::max..=usize::max) {
+        if (n != usize::max || visits != 0) return 1
+        visits++
+    }
+    return if (visits == 1) total else 2
+}

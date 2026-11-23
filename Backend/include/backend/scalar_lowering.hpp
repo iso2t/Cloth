@@ -13,6 +13,11 @@ namespace backend::detail {
 LLVMTypeRef scalarType (LLVMContextRef context, cloth::TargetLayout layout, const cloth::ResolvedType &type);
 LLVMValueRef scalarConstant (LLVMTypeRef type, const cloth::NumericConstant &value);
 
+struct IntegerRangeStep {
+	LLVMValueRef value;
+	LLVMValueRef representable;
+};
+
 class ScalarLowering {
     public:
 	ScalarLowering (LLVMModuleRef module, LLVMBuilderRef builder, cloth::TargetLayout layout);
@@ -27,15 +32,20 @@ class ScalarLowering {
 	LLVMValueRef               compare (cloth::Operator op, LLVMValueRef left, LLVMValueRef right, const cloth::ResolvedType &operandType) const;
 	LLVMValueRef               binary (cloth::Operator op, LLVMValueRef left, LLVMValueRef right, const cloth::ResolvedType &operandType) const;
 
+	IntegerRangeStep integerRangeStep (cloth::Operator op, LLVMValueRef current, LLVMValueRef amount, const cloth::ResolvedType &type) const;
+	void             guardRangeProgress (LLVMValueRef unchanged, LLVMValueRef canContinue) const;
+
     private:
 	using FailureDeclaration = LLVMValueRef (*)(LLVMModuleRef module);
-	void         failIf (LLVMValueRef condition, FailureDeclaration declareFailure) const;
-	void         guardDivisor (LLVMValueRef dividend, LLVMValueRef divisor, bool isUnsigned) const;
-	LLVMValueRef integerPower (LLVMValueRef base, LLVMValueRef exponent, bool isUnsigned) const;
-	LLVMValueRef floatToInteger (LLVMValueRef value, LLVMTypeRef target, bool isUnsigned) const;
-	LLVMValueRef convertHalf (LLVMValueRef value) const;
-	LLVMValueRef extendHalf (LLVMValueRef value) const;
-	LLVMValueRef roundHalf (LLVMValueRef value) const;
+	void             failIf (LLVMValueRef condition, FailureDeclaration declareFailure) const;
+	void             guardDivisor (LLVMValueRef dividend, LLVMValueRef divisor, bool isUnsigned) const;
+	IntegerRangeStep wideRangeProduct (LLVMValueRef left, LLVMValueRef right, bool isUnsigned) const;
+	LLVMValueRef     rangeDivision (cloth::Operator op, LLVMValueRef dividend, LLVMValueRef divisor, const cloth::ResolvedType &type) const;
+	LLVMValueRef     integerPower (LLVMValueRef base, LLVMValueRef exponent, bool isUnsigned) const;
+	LLVMValueRef     floatToInteger (LLVMValueRef value, LLVMTypeRef target, bool isUnsigned) const;
+	LLVMValueRef     convertHalf (LLVMValueRef value) const;
+	LLVMValueRef     extendHalf (LLVMValueRef value) const;
+	LLVMValueRef     roundHalf (LLVMValueRef value) const;
 
 	LLVMModuleRef       mod_module;
 	LLVMBuilderRef      ir_builder;

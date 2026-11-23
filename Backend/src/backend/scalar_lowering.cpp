@@ -3,6 +3,7 @@
 #include <backend/nullable_value.hpp>
 #include <backend/runtime.hpp>
 #include <backend/scalar_lowering.hpp>
+#include <backend/value_types.hpp>
 
 #include <algorithm>
 #include <bit>
@@ -17,6 +18,12 @@ namespace backend::detail {
 namespace {
 LLVMValueRef integerConstant (LLVMTypeRef type, std::uint64_t value) {
 	return LLVMConstInt(type, value, false);
+}
+
+LLVMValueRef wordOperandSlot (LLVMBuilderRef builder, LLVMValueRef operand, LLVMTypeRef bufferType, bool isUnsigned) {
+	const LLVMValueRef ir_slot = allocateEntrySlot(builder, bufferType);
+	LLVMBuildStore(builder, LLVMBuildIntCast2(builder, operand, bufferType, !isUnsigned, ""), ir_slot);
+	return ir_slot;
 }
 
 LLVMIntPredicate integerPredicate (cloth::Operator op, bool isUnsigned) {
@@ -93,7 +100,7 @@ LLVMTypeRef ScalarLowering::type (const cloth::ResolvedType &resolved) const {
 
 LLVMValueRef scalarConstant (LLVMTypeRef type, const cloth::NumericConstant &value) {
 	if (const double *d_real = std::get_if<double>(&value)) return LLVMConstReal(type, *d_real);
-	const cloth::IntegerConstant &ic_value = std::get<cloth::IntegerConstant>(value);
+	const auto &ic_value = std::get<cloth::IntegerConstant>(value);
 	// Cloth stores little-endian 32-bit magnitude words. LLVM consumes little-endian 64-bit limbs.
 	std::vector<std::uint64_t> v_words((ic_value.magnitude.size() + 1) / 2);
 	for (std::size_t st_index = 0; st_index < ic_value.magnitude.size(); ++st_index)
@@ -222,6 +229,85 @@ LLVMValueRef ScalarLowering::checkedArrayIndex (LLVMValueRef index, bool isUnsig
 	const LLVMValueRef ir_index = LLVMBuildIntCast2(ir_builder, index, ty_check, !isUnsigned, "");
 	failIf(LLVMBuildICmp(ir_builder, LLVMIntUGE, ir_index, integerConstant(ty_check, length), ""), declareArrayIndexOutOfBounds);
 	return LLVMBuildIntCast2(ir_builder, ir_index, type(cloth::ResolvedType(cloth::kUsize)), false, "");
+}
+
+IntegerRangeStep ScalarLowering::integerRangeStep (cloth::Operator op, LLVMValueRef current, LLVMValueRef amount, const cloth::ResolvedType &type) const {
+	const LLVMValueRef ir_true = LLVMConstAllOnes(LLVMInt1TypeInContext(LLVMGetModuleContext(mod_module)));
+	std::string_view   sv_intrinsic;
+	switch (op) {
+	case cloth::oAssign:
+		return { amount, ir_true };
+	case cloth::oPlusPlus:
+	case cloth::oMinusMinus: {
+		// Postfix steps mean one mathematical unit even for a signed one-bit counter.
+		const bool         b_decrement = op == cloth::oMinusMinus;
+		const LLVMValueRef ir_next     = binary(b_decrement ? cloth::oMinus : cloth::oPlus, current, amount, type);
+		return { ir_next, compare(b_decrement ? cloth::oLess : cloth::oGreater, ir_next, current, type) };
+	}
+	case cloth::oPlus:
+		sv_intrinsic = type.unsignedInteger() ? "llvm.uadd.with.overflow" : "llvm.sadd.with.overflow";
+		break;
+	case cloth::oMinus:
+		sv_intrinsic = type.unsignedInteger() ? "llvm.usub.with.overflow" : "llvm.ssub.with.overflow";
+		break;
+	case cloth::oMul:
+		if (LLVMGetIntTypeWidth(LLVMTypeOf(current)) > tl_layout.sizeBits) return wideRangeProduct(current, amount, type.unsignedInteger());
+		sv_intrinsic = type.unsignedInteger() ? "llvm.umul.with.overflow" : "llvm.smul.with.overflow";
+		break;
+	case cloth::oDiv:
+	case cloth::oMod:
+		return { rangeDivision(op, current, amount, type), ir_true };
+	default:
+		throw std::logic_error("Invalid built-in integer range step");
+	}
+	LLVMTypeRef        ty_integer = LLVMTypeOf(current);
+	const LLVMValueRef fn_update  = intrinsic(mod_module, sv_intrinsic, &ty_integer, 1);
+	LLVMValueRef       v_args[]   = { current, amount };
+	const LLVMValueRef ir_update  = LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(fn_update), fn_update, v_args, 2, "");
+	return { LLVMBuildExtractValue(ir_builder, ir_update, 0, ""), LLVMBuildNot(ir_builder, LLVMBuildExtractValue(ir_builder, ir_update, 1, ""), "") };
+}
+
+IntegerRangeStep ScalarLowering::wideRangeProduct (LLVMValueRef left, LLVMValueRef right, bool isUnsigned) const {
+	// Twice the operand width holds the exact product. Multiply in a loop to avoid unrolling every pair of words.
+	const LLVMTypeRef    ty_counter  = LLVMTypeOf(left);
+	const unsigned       u_words     = (2 * LLVMGetIntTypeWidth(ty_counter) + 31) / 32;
+	const LLVMContextRef ctx_context = LLVMGetModuleContext(mod_module);
+	const LLVMTypeRef    ty_wide     = LLVMIntTypeInContext(ctx_context, u_words * 32);
+	const LLVMValueRef   ir_left     = wordOperandSlot(ir_builder, left, ty_wide, isUnsigned);
+	const LLVMValueRef   ir_right    = wordOperandSlot(ir_builder, right, ty_wide, isUnsigned);
+	const LLVMValueRef   ir_product  = allocateEntrySlot(ir_builder, ty_wide);
+	const LLVMValueRef   fn_multiply = declareMultiplyWords(mod_module);
+	LLVMValueRef         v_args[]    = { ir_product, ir_left, ir_right, integerConstant(LLVMInt32TypeInContext(ctx_context), u_words) };
+	LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(fn_multiply), fn_multiply, v_args, 4, "");
+	const LLVMValueRef ir_exact    = LLVMBuildLoad2(ir_builder, ty_wide, ir_product, "");
+	const LLVMValueRef ir_value    = LLVMBuildTrunc(ir_builder, ir_exact, ty_counter, "");
+	const LLVMValueRef ir_extended = LLVMBuildIntCast2(ir_builder, ir_value, ty_wide, !isUnsigned, "");
+	return { ir_value, LLVMBuildICmp(ir_builder, LLVMIntEQ, ir_exact, ir_extended, "") };
+}
+
+LLVMValueRef ScalarLowering::rangeDivision (cloth::Operator op, LLVMValueRef dividend, LLVMValueRef divisor, const cloth::ResolvedType &type) const {
+	const LLVMTypeRef ty_counter = LLVMTypeOf(dividend);
+	const unsigned    u_width    = LLVMGetIntTypeWidth(ty_counter);
+	if (u_width <= tl_layout.sizeBits) return binary(op, dividend, divisor, type);
+
+	const bool b_unsigned = type.unsignedInteger();
+	guardDivisor(dividend, divisor, b_unsigned);
+	const LLVMContextRef ctx_context  = LLVMGetModuleContext(mod_module);
+	const unsigned       u_words      = (u_width + 31) / 32;
+	const LLVMTypeRef    ty_buffer    = LLVMIntTypeInContext(ctx_context, 32 * u_words);
+	const LLVMTypeRef    ty_word      = LLVMInt32TypeInContext(ctx_context);
+	const LLVMValueRef   ir_quotient  = wordOperandSlot(ir_builder, dividend, ty_buffer, b_unsigned);
+	const LLVMValueRef   ir_divisor   = wordOperandSlot(ir_builder, divisor, ty_buffer, b_unsigned);
+	const LLVMValueRef   ir_remainder = allocateEntrySlot(ir_builder, ty_buffer);
+	const LLVMValueRef   fn_divmod    = declareDivideWords(mod_module);
+	LLVMValueRef         v_args[]     = { ir_quotient, ir_divisor, ir_remainder, integerConstant(ty_word, u_words), integerConstant(ty_word, !b_unsigned) };
+	LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(fn_divmod), fn_divmod, v_args, 5, "");
+	const LLVMValueRef ir_result = op == cloth::oMod ? ir_remainder : ir_quotient;
+	return LLVMBuildIntCast2(ir_builder, LLVMBuildLoad2(ir_builder, ty_buffer, ir_result, ""), ty_counter, !b_unsigned, "");
+}
+
+void ScalarLowering::guardRangeProgress (LLVMValueRef unchanged, LLVMValueRef canContinue) const {
+	if (!LLVMIsNull(unchanged)) failIf(LLVMBuildAnd(ir_builder, unchanged, canContinue, ""), declareStalledRange);
 }
 
 LLVMValueRef ScalarLowering::floatToInteger (LLVMValueRef value, LLVMTypeRef target, bool isUnsigned) const {

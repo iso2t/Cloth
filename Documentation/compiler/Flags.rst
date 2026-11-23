@@ -43,14 +43,73 @@ the condition is true. A return from the body skips the condition.
 condition or iteration source targets the enclosing loop body. A guard
 such as ``if (done) break`` may omit ``else``.
 
-A ``for`` loop over ``start..end`` evaluates both integer bounds once, from
-left to right. It starts at ``start`` and excludes ``end``. Equal or reversed
-bounds give zero iterations. On reaching the end of the body or executing
-``continue``, the loop adds one to the current binding, including any change
-the body made to it. The loop exits if that increment exceeds the integer
-type's maximum or the result falls outside the captured bounds. The
-`integer range example <../../Tests/Compiler/Driver/Inputs/integer-range-loop.co>`_
-sums 13, 14 and 15 and returns 42.
+A ``for`` loop over an integer range evaluates both bounds once, from left
+to right. ``start..end`` excludes the end and ``start..=end`` includes it.
+With the default step, reversed bounds give zero iterations in either
+form. The `half-open example <../../Tests/Compiler/Driver/Inputs/integer-range-loop.co>`_
+sums ``13..16`` and the `inclusive example <../../Tests/Compiler/Driver/Inputs/inclusive-integer-range-loop.co>`_
+sums ``13..=15``. Both return 42.
+
+An explicit ``n++`` adds one to the counter. The
+`increment example <../../Tests/Compiler/Driver/Inputs/increment-integer-range-loop.co>`_
+sums ``13..=15`` by visiting 13, 14 and 15. An explicit ``n--`` subtracts one. The
+`descending example <../../Tests/Compiler/Driver/Inputs/decrement-integer-range-loop.co>`_
+sums ``15..=13`` by visiting 15, 14 and 13. With ``15..13`` it would visit
+15 and 14. An explicit step can point away from the written end. With an
+unchanged counter, ``3..=1`` with ``n++`` visits 3 once, and ``1..=3`` with
+``n--`` visits 1 once.
+
+With ``n += step`` or ``n -= step``, the loop reads the counter, evaluates
+``step`` once, then adds or subtracts that amount. The
+`addition example <../../Tests/Compiler/Driver/Inputs/additive-integer-range-loop.co>`_
+visits 12, 14 and 16. The
+`subtraction example <../../Tests/Compiler/Driver/Inputs/subtractive-integer-range-loop.co>`_
+visits 16, 14 and 12. Both return 42. A signed step can change direction
+between iterations. Subtracting a negative step moves the counter upward.
+
+With ``n *= factor``, the loop reads the counter, evaluates ``factor`` once,
+and multiplies the two values. The
+`multiplication example <../../Tests/Compiler/Driver/Inputs/multiplicative-integer-range-loop.co>`_
+visits 6, 12 and 24 and returns 42.
+
+With ``n /= divisor`` or ``n %= divisor``, the loop reads the counter and
+evaluates ``divisor`` once. The division step uses the quotient, truncated
+toward zero. The remainder step uses the remainder, whose sign follows
+the counter when the remainder is nonzero.
+The `division example <../../Tests/Compiler/Driver/Inputs/division-integer-range-loop.co>`_
+visits 24, 12 and 6 and returns 42. The
+`remainder example <../../Tests/Compiler/Driver/Inputs/remainder-integer-range-loop.co>`_
+starts at 35, takes ``n %= 14``, and breaks at 7 with a sum of 42.
+Taking the step again at 7 reports the no-progress error.
+
+Both steps raise the usual integer division error for a zero divisor or
+the minimum signed value with divisor ``-1``. When a multiplication,
+division or remainder step uses a counter wider than the target pointer,
+link the object with ``Runtime/src/integer.c``.
+
+With ``n = expression``, the loop evaluates the expression once and uses
+its value as the next counter. The
+`assignment example <../../Tests/Compiler/Driver/Inputs/assignment-integer-range-loop.co>`_
+uses ``n = n / 4`` to visit 32, 8 and 2 and returns their sum, 42.
+Arithmetic inside the expression follows the ordinary integer rules.
+For example, assigning ``n + 1`` at the signed maximum produces the signed
+minimum. The loop continues if that value is in range.
+
+The step runs after the body or on ``continue``, using the counter value
+the body left behind. An empty range skips the step, as does a ``break``
+or ``return`` from the body.
+The loop exits when the new counter leaves the captured bounds.
+Increment, decrement, addition, subtraction and multiplication also end the
+loop if the result exceeds the counter type's limits.
+An update that leaves an in-range counter unchanged reports
+``Cloth runtime error: range counter update made no progress``.
+For example, a zero factor can move a nonzero counter to zero. If zero
+is in range, the body runs there. Multiplying that zero by any factor
+leaves it unchanged.
+Link objects that use this check with ``Runtime/src/errors.c``.
+With an unchanged counter, the default step and ``n++`` each visit
+``usize::max..=usize::max`` once. A loop with ``n--`` visits
+``usize::min..=usize::min`` once.
 
 Scalar operators evaluate their operands in source order. If an operand
 executes ``return``, ``break``, ``continue`` or the built-in ``exit``, earlier

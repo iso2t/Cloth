@@ -1,0 +1,46 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    if (!signedSteps(-2) || !wideSteps(4294967297, 4294967297)) return 1
+    int calls = 0
+    int total = 0
+    for (int n <- 24..3; n /= if (n == 18) { calls++; n = 100; 3 } else { calls++; 2 }) {
+        total += n
+        if (n == 24) { n = 18; continue }
+        if (n != 6) return 2
+    }
+    if (calls != 2 || total != 30) return 3
+    for (int n <- 4..4; n /= traced(n)) return 4
+    for (int n <- 4..=4; n /= traced(n)) break
+    for (int n <- 8..=8; n /= traced(n)) continue
+    for (int n <- 4..2; n /= 1) { n = 2; calls++; if (calls > 3) return 5 }
+    if (calls != 3) return 6
+    return 42
+}
+
+fn<int> traced(final int n) { println(n); return 2 }
+
+fn<bool> signedSteps(final int divisor) {
+    int visits = 0
+    for (int n <- -13..=7; n /= divisor) {
+        if (visits == 0 && n != -13 || visits == 1 && n != 6 || visits == 2 && n != -3) return false
+        if (visits == 3 && n != 1 || visits > 4) return false
+        visits++
+        if (n == 0) break
+    }
+    return visits == 5
+}
+
+fn<bool> wideSteps(final int<97> signedDivisor, final unsigned int<65> unsignedDivisor) {
+    int visits = 0
+    for (int<97> n <- -18446744090889433148..=-4294967299; n /= signedDivisor) {
+        if (visits == 1 && n != -4294967299 || visits >= 2) return false
+        visits++
+    }
+    if (visits != 2) return false
+    for (unsigned int<65> n <- 18446744082299486214..=4294967297; n /= unsignedDivisor) {
+        if (visits == 3 && n != 4294967297 || visits >= 4) return false
+        visits++
+    }
+    return visits == 4
+}

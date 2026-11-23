@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    int total = 0
+    for (int n <- 35..=7; n %= 14) {
+        total += n
+        if (n == 7) break
+    }
+    return total
+}

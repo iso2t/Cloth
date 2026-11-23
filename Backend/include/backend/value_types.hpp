@@ -9,6 +9,8 @@
 
 namespace backend::detail {
 
+LLVMValueRef allocateEntrySlot (LLVMBuilderRef builder, LLVMTypeRef type);
+
 class ValueTypes {
     public:
 	ValueTypes (LLVMModuleRef module, const cloth::CheckedProgram &program);

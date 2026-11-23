@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    if (!capturesCounter() || !integerWidths(-7)) return 1
+    if (returnsFromStep(true) != 42 || returnsFromStep(false) != 7) return 2
+    int visits = 0
+    for (int n <- 5..2; n = n) { n = 2; visits++; if (visits > 1) return 3 }
+    if (visits != 1) return 4
+    for (int n <- 4..4; n = unexpected()) return 5
+    for (int n <- 4..=4; n = unexpected()) break
+    return 42
+}
+
+fn<bool> capturesCounter() {
+    int updates = 0
+    int total = 0
+    for (int n <- 30..=2; n = if (n == 24) { updates++; n = 8; 8 } else { updates++; n / 4 }) {
+        total += n
+        if (n == 30) { n = 24; continue }
+        if (n == 2) break
+        if (n != 8) return false
+    }
+    return total == 40 && updates == 2
+}
+
+fn<bool> integerWidths(final int<7> small) {
+    int visits = 0
+    for (int<97> n <- 18446744073709551616..=-7; n = small -> int<97>) {
+        visits++
+        if (visits == 2) { if (n != -7) return false; break }
+    }
+    if (visits != 2) return false
+    for (int<8> n <- int<8>::max..=int<8>::min; n = n + 1) {
+        visits++
+        if (visits == 4) { if (n != int<8>::min) return false; break }
+    }
+    if (visits != 4) return false
+    for (unsigned int<65> n <- unsigned int<65>::max..=0; n = n + 1) {
+        visits++
+        if (visits == 6) return n == 0
+    }
+    return false
+}
+
+fn<int> returnsFromStep(final bool leave) {
+    for (int n <- 6..=6; n = if (leave) { return 42 } else 5) continue
+    return 7
+}
+
+fn<int> unexpected() { println(0); return 9 }

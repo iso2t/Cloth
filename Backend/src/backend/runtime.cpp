@@ -52,4 +52,23 @@ LLVMValueRef declareInvalidFloatToInteger (LLVMModuleRef module) {
 LLVMValueRef declareArrayIndexOutOfBounds (LLVMModuleRef module) {
 	return declareVoidFunction(module, "cloth_rt_array_index_out_of_bounds", {}, /*noReturn=*/true);
 }
+
+LLVMValueRef declareStalledRange (LLVMModuleRef module) {
+	return declareVoidFunction(module, "cloth_rt_stalled_range", {}, /*noReturn=*/true);
+}
+
+LLVMValueRef declareMultiplyWords (LLVMModuleRef module) {
+	const LLVMContextRef ctx_context    = LLVMGetModuleContext(module);
+	const LLVMTypeRef    ty_pointer     = LLVMPointerTypeInContext(ctx_context, 0);
+	LLVMTypeRef          v_parameters[] = { ty_pointer, ty_pointer, ty_pointer, LLVMInt32TypeInContext(ctx_context) };
+	return declareVoidFunction(module, "cloth_rt_mul_words", v_parameters);
+}
+
+LLVMValueRef declareDivideWords (LLVMModuleRef module) {
+	const LLVMContextRef ctx_context    = LLVMGetModuleContext(module);
+	const LLVMTypeRef    ty_pointer     = LLVMPointerTypeInContext(ctx_context, 0);
+	const LLVMTypeRef    ty_word        = LLVMInt32TypeInContext(ctx_context);
+	LLVMTypeRef          v_parameters[] = { ty_pointer, ty_pointer, ty_pointer, ty_word, ty_word };
+	return declareVoidFunction(module, "cloth_rt_divmod_words", v_parameters);
+}
 }

@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --kind executable --src "%S/Inputs/multiplicative-integer-range-loop.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/multiplicative-integer-range-loop.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/multiplicative-integer-range-loop.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+# RUN: %cloth --kind executable --src "%S/Inputs/multiplicative-integer-range-loop-values.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 3 --empty-stderr 42 "%t.exe"
+
+# RUN: echo "fn<int> factor(final int n) { println(n); return 1 }" > "%t.co"
+# RUN: echo "pub fn<int> main() { int visits = 0; for (int n <- 7..=7; n *= factor(n)) { if (visits > 0) return 2; visits++ }; return 3 }" >> "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 7 --stderr-line "Cloth runtime error: range counter update made no progress" 1 "%t.exe"
+
+# RUN: echo "pub fn<int> main() { int visits = 0; for (int n <- 7..=0; n *= if (n == 0) 2 else 0) { println(n); visits++; if (visits > 2) return 2 }; return 3 }" > "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 7 --stdout-line 0 --stderr-line "Cloth runtime error: range counter update made no progress" 1 "%t.exe"
+
+# RUN: echo "typedef<struct> Factor { pub int value; pub operator *(int left, self) -> int = left * value }" > "%t.co"
+# RUN: echo "pub fn<int> main() { Factor factor = { 2 }; int total = 0; for (int n <- 6..=24; n *= factor) total += n; return total }" >> "%t.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co"
+# RUN: %expect_exit 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" > "%t.log" 2>&1
+# RUN: %filecheck "%/s" --check-prefix=OVERLOAD --input-file "%t.log"
+# OVERLOAD: [C4040] Error:
+# OVERLOAD: unsupported range step

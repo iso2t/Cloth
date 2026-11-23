@@ -15,6 +15,18 @@
 
 namespace backend::detail {
 
+LLVMValueRef allocateEntrySlot (LLVMBuilderRef builder, LLVMTypeRef type) {
+	const LLVMBasicBlockRef bb_site  = LLVMGetInsertBlock(builder);
+	const LLVMBasicBlockRef bb_entry = LLVMGetEntryBasicBlock(LLVMGetBasicBlockParent(bb_site));
+	if (const LLVMValueRef ir_first = LLVMGetFirstInstruction(bb_entry))
+		LLVMPositionBuilderBefore(builder, ir_first);
+	else
+		LLVMPositionBuilderAtEnd(builder, bb_entry);
+	const LLVMValueRef ir_slot = LLVMBuildAlloca(builder, type, "");
+	LLVMPositionBuilderAtEnd(builder, bb_site);
+	return ir_slot;
+}
+
 ValueTypes::ValueTypes (LLVMModuleRef module, const cloth::CheckedProgram &program) : mod_module(module), cp_program(program) {
 }
 

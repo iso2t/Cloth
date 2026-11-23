@@ -12,4 +12,7 @@ namespace backend::detail {
 [[nodiscard]] LLVMValueRef declareNegativeIntegerExponent (LLVMModuleRef module);
 [[nodiscard]] LLVMValueRef declareInvalidFloatToInteger (LLVMModuleRef module);
 [[nodiscard]] LLVMValueRef declareArrayIndexOutOfBounds (LLVMModuleRef module);
+[[nodiscard]] LLVMValueRef declareStalledRange (LLVMModuleRef module);
+[[nodiscard]] LLVMValueRef declareMultiplyWords (LLVMModuleRef module);
+[[nodiscard]] LLVMValueRef declareDivideWords (LLVMModuleRef module);
 }

@@ -188,13 +188,13 @@ ExpressionInfo ExpressionInfo::never () {
 
 bool BodyFacts::isDirectReceiver (const Expression &expression) const {
 	const Expression *e_root = &expression;
-	while (const CastExpression *ce_cast = dynamic_cast<const CastExpression *>(e_root)) {
-		const ExpressionFacts::const_iterator it_cast = expressions.find(ce_cast);
+	while (const auto *ce_cast = dynamic_cast<const CastExpression *>(e_root)) {
+		const auto it_cast = expressions.find(ce_cast);
 		// A conversion operator can return a different instance. A state transition has no result.
 		if (it_cast == expressions.end() || it_cast->second.argumentContract || it_cast->second.types.empty()) return false;
 		e_root = ce_cast->operand.get();
 	}
-	const NameExpression *ne_name = dynamic_cast<const NameExpression *>(e_root);
+	const auto *ne_name = dynamic_cast<const NameExpression *>(e_root);
 	return ne_name && ne_name->name.get_lexeme() == to_string(kSelf);
 }
 
@@ -212,9 +212,9 @@ CheckedProgram::CheckedProgram (SymbolTable entry, TargetLayout layout, std::fil
 
 std::vector<const Expression *> CheckedProgram::enumFieldValues (const Symbol &field) const {
 	const Symbol          &sym_owner = *declarations.at(&field).owner;
-	const EnumDeclaration &ed_enum   = static_cast<const EnumDeclaration &>(*std::get<const TypeDeclaration *>(sym_owner.declaration));
+	const auto &ed_enum   = static_cast<const EnumDeclaration &>(*std::get<const TypeDeclaration *>(sym_owner.declaration));
 	// Field symbols point into this declaration's field vector. Checked case values use the same order.
-	const std::size_t               st_column = static_cast<std::size_t>(std::get<const EnumFieldDeclaration *>(field.declaration) - ed_enum.fields.data());
+	const auto               st_column = static_cast<std::size_t>(std::get<const EnumFieldDeclaration *>(field.declaration) - ed_enum.fields.data());
 	std::vector<const Expression *> v_values(ed_enum.cases.size());
 	for (const SymbolScope::value_type &group : sym_owner.members) {
 		for (const Symbol &member : group.second) {
@@ -265,7 +265,7 @@ const TypeParameterList *typeParameters (const Symbol &symbol) {
 			opt_parameters = &mt->typeParameters;
 		}
 	} else if (symbol.kind == SymbolKind::Type) {
-		const TypeDeclaration *td_type = std::get<const TypeDeclaration *>(symbol.declaration);
+		const auto td_type = std::get<const TypeDeclaration *>(symbol.declaration);
 		if (const auto *cd_class = dynamic_cast<const ClassDeclaration *>(td_type)) {
 			opt_parameters = &cd_class->typeParameters;
 		} else if (const auto *sd_struct = dynamic_cast<const StructDeclaration *>(td_type)) {
@@ -378,7 +378,7 @@ fs::path moduleEntry (ModuleDirectories &directories, const fs::path &parent, co
 		}
 	}
 	fs::path                              p_match;
-	const ModuleDirectory::const_iterator it_entries = md_names.find(key);
+	const auto it_entries = md_names.find(key);
 	if (it_entries == md_names.end()) return {};
 	for (const fs::path &p_entry : it_entries->second) {
 		if (directory ? !fs::is_directory(p_entry) : !fs::is_regular_file(p_entry)) continue;
@@ -514,7 +514,7 @@ Candidates Analyzer::lookup (const Symbol &context, const std::string &name, std
 		if (sym->kind == SymbolKind::Type && (!kind || *kind == SymbolKind::Type) && sym->name.get_name_key() == name) {
 			v_found.push_back(sym);
 		}
-		if (const SymbolScope::const_iterator it_members = sym->members.find(name); it_members != sym->members.end()) {
+		if (const auto it_members = sym->members.find(name); it_members != sym->members.end()) {
 			for (const Symbol &member : it_members->second) {
 				if (!kind || member.kind == *kind) v_found.push_back(&member);
 			}
@@ -604,7 +604,7 @@ void Analyzer::checkBodies () {
 		return std::tuple{ u_group, declarations.at(symbol).file, ts_name.startLine, ts_name.startCol };
 	});
 	for (const Symbol *sym : v_bodies) {
-		const std::unordered_map<const Symbol *, ResultTypes>::const_iterator it_hosts = m_stateHosts.find(standaloneState(*sym));
+		const auto it_hosts = m_stateHosts.find(standaloneState(*sym));
 		if (it_hosts == m_stateHosts.end()) {
 			BodyChecker(*this, *sym, program, {}, declarations.at(sym)).resolveDeclarationNames();
 		} else {
@@ -617,7 +617,7 @@ void Analyzer::checkBodies () {
 			continue;
 		}
 		if (const TypeDeclaration *const *type = std::get_if<const TypeDeclaration *>(&sym->declaration)) {
-			if (const EnumDeclaration *enumeration = dynamic_cast<const EnumDeclaration *>(*type)) {
+			if (const auto *enumeration = dynamic_cast<const EnumDeclaration *>(*type)) {
 				for (const EnumFieldDeclaration &field : enumeration->fields)
 					checkBodyOf(*std::ranges::find(sym->members.at(field.name.get_name_key()), SymbolKind::Field, &Symbol::kind));
 				for (const EnumCaseDeclaration &entry : enumeration->cases)
@@ -632,7 +632,7 @@ void Analyzer::checkBodies () {
 		if (!sym_primary) {
 			continue;
 		}
-		const ClassDeclaration &cd_class = static_cast<const ClassDeclaration &>(*std::get<const TypeDeclaration *>(sym->declaration));
+		const auto &cd_class = static_cast<const ClassDeclaration &>(*std::get<const TypeDeclaration *>(sym->declaration));
 		// The primary checked its defaults and the class checked its base call. Field initializers now follow source order.
 		for (const ClassMember &cm_member : cd_class.members) {
 			if (const ClassFieldDeclaration *cfd_field = std::get_if<ClassFieldDeclaration>(&cm_member.value)) {
@@ -686,7 +686,7 @@ void Analyzer::checkBodyOf (const Symbol &symbol) {
 		fail(Code::INVALID_OPERATOR_DECLARATION, symbol.name.get_span(), "Recursive operator needs an explicit result type");
 	}
 	try {
-		const std::unordered_map<const Symbol *, ResultTypes>::const_iterator it_hosts = m_stateHosts.find(standaloneState(symbol));
+		const auto it_hosts = m_stateHosts.find(standaloneState(symbol));
 		if (const TypeReference *tr_width = widthSelector(symbol)) {
 			if (isTemplate(symbol)) widthTemplate(symbol, tr_width->get_name().get_lexeme() == to_string(kInteger) ? MAX_INTEGER_BITS : 64u);
 		} else if (it_hosts != m_stateHosts.end()) {

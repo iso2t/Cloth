@@ -111,12 +111,20 @@ def header_consumers(entries, headers, work, tidy):
     return consumers, covered
 
 
+def run_tidy(tidy, options, root, work):
+    # A shared header can select enough files to exceed a Windows command line.
+    response = work / "tidy.rsp"
+    response.write_text(quote_command(options), encoding="utf-8")
+    return subprocess.run([tidy, f"@{response}"], cwd=root).returncode
+
+
 def check_patch(args, root, work):
     changed = changed_files(root, args.base)
     sources = {path for path in changed if path.suffix == ".cpp" and path.is_file()}
     headers = {path for path in changed if path.suffix == ".hpp"}
     if not sources and not headers:
-        print("No changed C++ sources or headers.")
+        print("No changed .cpp or .hpp files in this comparison. clang-tidy checked 0 files.")
+        print("To include a committed patch, pass its base with --base (e.g. --base HEAD^ for the latest commit).")
         return 0
 
     tidy = llvm_tool("clang-tidy")
@@ -142,31 +150,40 @@ def check_patch(args, root, work):
     # FileEntry names can be relative, or mix slash styles on Windows. Give
     # clang-tidy canonical names for the patch so its suffix-based line filter
     # matches the correct files even when two headers have the same basename.
-    files = sorted(str(path) for path in changed if path.is_file())
+    files = sorted(path for path in changed if path.is_file())
     overlay = work / "paths.json"
     overlay.write_text(json.dumps({"version": 0, "roots": [
-        {"type": "file", "name": name, "external-contents": name} for name in files
+        {"type": "file", "name": str(path), "external-contents": str(path)} for path in files
     ]}), encoding="utf-8")
-    line_filter = json.dumps([{"name": name} for name in files])
+    line_filter = json.dumps([{"name": str(path)} for path in files])
     options = [
         "-p", str(database.parent), f"--config-file={root / '.clang-tidy'}",
         f"--vfsoverlay={overlay}", f"--line-filter={line_filter}",
-        "--fix" if args.fix else "--warnings-as-errors=*",
         *(str(path.relative_to(root)) for path in sorted(selected)),
     ]
-    # A shared header can select enough files to exceed a Windows command line.
-    response = work / "tidy.rsp"
-    response.write_text(quote_command(options), encoding="utf-8")
-    print(f"Running clang-tidy on {len(selected)} translation unit(s).", flush=True)
-    result = subprocess.run([tidy, f"@{response}"], cwd=root)
-    return 2 if missing else result.returncode
+    if args.fix:
+        before = {path: path.read_bytes() for path in files}
+        print(f"Applying clang-tidy fixes across {len(selected)} translation unit(s).", flush=True)
+        status = run_tidy(tidy, ["--fix", *options], root, work)
+        edited = [path for path in files if path.read_bytes() != before[path]]
+        print(f"clang-tidy edited {len(edited)} file(s).", flush=True)
+        for path in edited:
+            print(f"  {path.relative_to(root)}", flush=True)
+        if status:
+            return 2 if missing else status
+
+    print(f"Checking {len(selected)} translation unit(s) for findings.", flush=True)
+    status = run_tidy(tidy, ["--warnings-as-errors=*", *options], root, work)
+    if not status and not missing:
+        print("No clang-tidy findings in the selected patch files.")
+    return 2 if missing else status
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", help="compare from the merge base with this ref (default: origin/HEAD, then HEAD)")
     parser.add_argument("-p", "--build-dir", type=Path, help="directory containing compile_commands.json")
-    parser.add_argument("--fix", action="store_true", help="apply clang-tidy's suggested fixes")
+    parser.add_argument("--fix", action="store_true", help="apply suggested fixes and check for remaining findings")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     try:

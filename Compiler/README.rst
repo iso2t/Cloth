@@ -18,6 +18,10 @@ overloads, checks types, and analyzes control flow.
 The backend receives a ``CheckedProgram`` with resolved declarations, chosen
 overloads, argument bindings and expression result types.
 
+For the proposed manuals, their source files, and the migration of the flags
+reference, see the `compiler documentation plan
+<../Documentation/contributing/Compiler%20Documentation%20Plan.rst>`_.
+
 Language reference
 ------------------
 

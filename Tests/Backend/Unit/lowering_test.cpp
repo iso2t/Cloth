@@ -341,7 +341,7 @@ TEST (BackendLowering, FixedArrayReadsAndWritesUseTheCheckedElementStrideOnBothT
 		const cloth::CheckedProgram                           cp_program = checkProgram(R"(fn<int> main() = replace(1, 42)
 fn<int> replace(final usize index, final int<12> next) { int<12>[2] values = [7, 9]; values[index] = next; return values[index] -> int })",
 		                                                                                { u_bits });
-		const decltype(cp_program.localTypes)::const_iterator it_array   = std::ranges::find_if(
+		const auto it_array   = std::ranges::find_if(
 		        cp_program.localTypes, [] (const decltype(cp_program.localTypes)::value_type &entry) { return entry.second.array(); });
 		ASSERT_NE(it_array, cp_program.localTypes.end());
 		EXPECT_EQ(it_array->second.arrayExtent(), 2u);
@@ -973,17 +973,22 @@ fn<void> skipped() {})",
 	}
 }
 
-TEST (BackendLowering, HalfOpenIntegerRangesCompareAndAdvanceAtTheCheckedWidth) {
+TEST (BackendLowering, IntegerRangesCompareAndAdvanceAtTheCheckedWidth) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = signedRange(-1, 1) + unsignedRange(0, 1)
+		const backend::LoweredModule lm_module(
+		        checkProgram(R"(fn<int> main() = signedRange(-1, 1) + unsignedRange(0, 1) + signedInclusive(-1, 1) + unsignedInclusive(0, 1)
 fn<int> signedRange(final int<65> first, final int<65> last) { for (def n <- first..last) n = last; return 0 }
-fn<int> unsignedRange(final usize first, final usize last) { for (def n <- first..last) n = last; return 0 })",
-		                                                    { u_bits }));
+fn<int> unsignedRange(final usize first, final usize last) { for (def n <- first..last) n = last; return 0 }
+fn<int> signedInclusive(final int<65> first, final int<65> last) { for (def n <- first..=last) n = last; return 0 }
+fn<int> unsignedInclusive(final usize first, final usize last) { for (def n <- first..=last) n = last; return 0 })",
+		                     { u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
-		for (const auto &[s_name, predicate] : { std::pair{ "cloth.signedRange", LLVMIntSLT }, std::pair{ "cloth.unsignedRange", LLVMIntULT } }) {
+		for (const auto &[s_name, predicate] :
+		     { std::pair{ "cloth.signedRange", LLVMIntSLT }, std::pair{ "cloth.unsignedRange", LLVMIntULT },
+		       std::pair{ "cloth.signedInclusive", LLVMIntSLE }, std::pair{ "cloth.unsignedInclusive", LLVMIntULE } }) {
 			SCOPED_TRACE(s_name);
-			const unsigned     u_width  = predicate == LLVMIntSLT ? 65u : u_bits;
+			const unsigned     u_width  = predicate == LLVMIntSLT || predicate == LLVMIntSLE ? 65u : u_bits;
 			const LLVMValueRef fn_range = LLVMGetNamedFunction(lm_module.get(), s_name);
 			ASSERT_NE(fn_range, nullptr);
 			const LLVMBasicBlockRef bb_entry  = LLVMGetEntryBasicBlock(fn_range);
@@ -1007,6 +1012,160 @@ fn<int> unsignedRange(final usize first, final usize last) { for (def n <- first
 			}
 			EXPECT_EQ(u_increments, 1u);
 		}
+	}
+}
+
+TEST (BackendLowering, PostfixRangeStepsUseTheCounterWidthAndAllowOverflowDetection) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() {
+    for (int<65> n <- int<65>::min..=int<65>::max; n++) n = int<65>::max
+    for (usize n <- usize::min..=usize::max; n++) n = usize::max
+    for (int<65> n <- int<65>::max..=int<65>::min; n--) n = int<65>::min
+    for (usize n <- usize::max..=usize::min; n--) n = usize::min
+    return 0
+})",
+		                                                    { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const LLVMValueRef fn_main = LLVMGetNamedFunction(lm_module.get(), "main");
+		ASSERT_NE(fn_main, nullptr);
+		for (const LLVMOpcode op_step : { LLVMAdd, LLVMSub }) {
+			SCOPED_TRACE(op_step);
+			std::vector<unsigned> v_widths;
+			for (LLVMBasicBlockRef bb = LLVMGetEntryBasicBlock(fn_main); bb; bb = LLVMGetNextBasicBlock(bb)) {
+				for (LLVMValueRef ir = LLVMGetFirstInstruction(bb); ir; ir = LLVMGetNextInstruction(ir)) {
+					if (LLVMGetInstructionOpcode(ir) != op_step) continue;
+					v_widths.push_back(LLVMGetIntTypeWidth(LLVMTypeOf(ir)));
+					EXPECT_FALSE(LLVMGetNSW(ir));
+					EXPECT_FALSE(LLVMGetNUW(ir));
+				}
+			}
+			std::ranges::sort(v_widths);
+			EXPECT_EQ(v_widths, (std::vector<unsigned>{ u_bits, 65u }));
+		}
+	}
+}
+
+TEST (BackendLowering, RangeAdditionAndSubtractionCheckOverflowAtTheCounterWidth) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = walk(-2, 2)
+fn<int> walk(final int<65> signedStep, final usize unsignedStep) {
+    for (int<65> n <- int<65>::max..=int<65>::min; n += signedStep) n = int<65>::min
+    for (usize n <- 0..=usize::max; n += unsignedStep) n = usize::max
+    for (int<65> n <- int<65>::min..=int<65>::max; n -= signedStep) n = int<65>::max
+    for (usize n <- usize::max..=0; n -= unsignedStep) n = 0
+    return 0
+})",
+		                                                    { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const std::string s_unsignedAdd = "llvm.uadd.with.overflow.i" + std::to_string(u_bits);
+		const std::string s_unsignedSub = "llvm.usub.with.overflow.i" + std::to_string(u_bits);
+		for (const char *s_name : { "llvm.sadd.with.overflow.i65", s_unsignedAdd.c_str(), "llvm.ssub.with.overflow.i65", s_unsignedSub.c_str() }) {
+			SCOPED_TRACE(s_name);
+			const LLVMValueRef fn_update = LLVMGetNamedFunction(lm_module.get(), s_name);
+			ASSERT_NE(fn_update, nullptr);
+			ASSERT_NE(LLVMGetFirstUse(fn_update), nullptr);
+			EXPECT_NE(LLVMIsACallInst(LLVMGetUser(LLVMGetFirstUse(fn_update))), nullptr);
+		}
+	}
+}
+
+TEST (BackendLowering, RangeProductsUseCheckedNativeOrMultiwordMultiplication) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = walk(-2, 2, -1)
+fn<int> walk(final isize signedFactor, final usize unsignedFactor, final int<129> wideFactor) {
+    for (isize n <- isize::min..=isize::max; n *= signedFactor) n = isize::max
+    for (usize n <- 0..=usize::max; n *= unsignedFactor) n = usize::max
+    for (int<129> n <- int<129>::min..=int<129>::max; n *= wideFactor) n = int<129>::min
+    return 0
+})",
+		                                                    { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const std::string s_signed   = "llvm.smul.with.overflow.i" + std::to_string(u_bits);
+		const std::string s_unsigned = "llvm.umul.with.overflow.i" + std::to_string(u_bits);
+		for (const char *s_name : { s_signed.c_str(), s_unsigned.c_str(), "cloth_rt_mul_words" }) {
+			const LLVMValueRef fn_mul = LLVMGetNamedFunction(lm_module.get(), s_name);
+			ASSERT_NE(fn_mul, nullptr) << s_name;
+			ASSERT_NE(LLVMGetFirstUse(fn_mul), nullptr) << s_name;
+		}
+		const LLVMValueRef fn_walk = LLVMGetNamedFunction(lm_module.get(), "cloth.walk");
+		ASSERT_NE(fn_walk, nullptr);
+		const LLVMBasicBlockRef bb_entry = LLVMGetEntryBasicBlock(fn_walk);
+		for (LLVMBasicBlockRef bb = LLVMGetNextBasicBlock(bb_entry); bb; bb = LLVMGetNextBasicBlock(bb))
+			for (LLVMValueRef ir = LLVMGetFirstInstruction(bb); ir; ir = LLVMGetNextInstruction(ir))
+				EXPECT_NE(LLVMGetInstructionOpcode(ir), LLVMAlloca);
+	}
+}
+
+TEST (BackendLowering, RangeDivisionAndRemainderUseTheSignednessAndWidthOfTheCounter) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = walk(-2, 2, 2, 2)
+fn<int> walk(final isize signedNative, final usize unsignedNative, final int<97> signedWide, final unsigned int<65> unsignedWide) {
+    for (isize n <- 24..=6; n /= signedNative) {}
+    for (usize n <- 24..=6; n /= unsignedNative) {}
+    for (int<97> n <- 24..=6; n /= signedWide) {}
+    for (unsigned int<65> n <- 24..=6; n /= unsignedWide) {}
+    for (isize n <- 35..=7; n %= signedNative) {}
+    for (usize n <- 35..=7; n %= unsignedNative) {}
+    for (int<97> n <- 35..=7; n %= signedWide) {}
+    for (unsigned int<65> n <- 35..=7; n %= unsignedWide) {}
+    return 0
+})",
+		                                                    { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const LLVMValueRef fn_walk   = LLVMGetNamedFunction(lm_module.get(), "cloth.walk");
+		const LLVMValueRef fn_divmod = LLVMGetNamedFunction(lm_module.get(), "cloth_rt_divmod_words");
+		ASSERT_NE(fn_walk, nullptr);
+		ASSERT_NE(fn_divmod, nullptr);
+		const LLVMBasicBlockRef                    bb_entry = LLVMGetEntryBasicBlock(fn_walk);
+		std::vector<LLVMOpcode>                    v_native;
+		std::vector<std::pair<unsigned, unsigned>> v_wide;
+		for (LLVMBasicBlockRef bb = bb_entry; bb; bb = LLVMGetNextBasicBlock(bb)) {
+			for (LLVMValueRef ir = LLVMGetFirstInstruction(bb); ir; ir = LLVMGetNextInstruction(ir)) {
+				const LLVMOpcode op = LLVMGetInstructionOpcode(ir);
+				if (op == LLVMAlloca) EXPECT_EQ(bb, bb_entry);
+				if (op == LLVMSDiv || op == LLVMUDiv || op == LLVMSRem || op == LLVMURem) {
+					EXPECT_EQ(LLVMGetIntTypeWidth(LLVMTypeOf(ir)), u_bits);
+					if (op == LLVMSDiv || op == LLVMUDiv) EXPECT_FALSE(LLVMGetExact(ir));
+					v_native.push_back(op);
+				}
+				if (op == LLVMCall && LLVMGetCalledValue(ir) == fn_divmod) {
+					v_wide.emplace_back(LLVMConstIntGetZExtValue(LLVMGetOperand(ir, 3)), LLVMConstIntGetZExtValue(LLVMGetOperand(ir, 4)));
+				}
+			}
+		}
+		for (const LLVMOpcode op : { LLVMSDiv, LLVMUDiv, LLVMSRem, LLVMURem }) EXPECT_EQ(std::ranges::count(v_native, op), 1);
+		std::ranges::sort(v_wide);
+		EXPECT_EQ(v_wide, (std::vector<std::pair<unsigned, unsigned>>{ { 3, 0 }, { 3, 0 }, { 4, 1 }, { 4, 1 } }));
+	}
+}
+
+TEST (BackendLowering, RangeAssignmentUsesTheReplacementAsTheNextCounter) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() {
+    for (isize n <- 0..=19; n = replacement()) { if (n == 19) break }
+    return 42
+}
+fn<isize> replacement() = 19)",
+		                                                    { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const LLVMValueRef fn_replacement = LLVMGetNamedFunction(lm_module.get(), "cloth.replacement");
+		ASSERT_NE(fn_replacement, nullptr);
+		const LLVMUseRef use_call = LLVMGetFirstUse(fn_replacement);
+		ASSERT_NE(use_call, nullptr);
+		EXPECT_EQ(LLVMGetNextUse(use_call), nullptr);
+		const LLVMValueRef ir_call = LLVMGetUser(use_call);
+		ASSERT_NE(LLVMIsACallInst(ir_call), nullptr);
+		EXPECT_EQ(LLVMGetIntTypeWidth(LLVMTypeOf(ir_call)), u_bits);
+		bool b_feedsCounter = false;
+		for (LLVMUseRef use = LLVMGetFirstUse(ir_call); use; use = LLVMGetNextUse(use)) {
+			if (LLVMIsAPHINode(LLVMGetUser(use))) b_feedsCounter = true;
+		}
+		EXPECT_TRUE(b_feedsCounter);
 	}
 }
 
