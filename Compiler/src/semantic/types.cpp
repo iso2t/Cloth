@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+// See Documentation/language/types/Types.rst
+
 #include <algorithm>
 #include <format>
 #include <functional>

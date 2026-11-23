@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+// See Documentation/compiler/driver/Objects.rst
+
 #include <backend/runtime.hpp>
 
 #include <span>

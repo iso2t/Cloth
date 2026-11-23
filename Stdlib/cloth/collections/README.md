@@ -2,7 +2,10 @@
 
 ## List
 
-Import the public class explicitly:
+Import the public class from `cloth.collections.List`. To check these examples
+from the repository root, pass `--stdlib Stdlib` to `cloth --src` with
+the path to the example. Collection methods are checked by the frontend.
+See the [native object guide](../../../Documentation/compiler/driver/Objects.rst#source-checks-and-native-code).
 
 ```cloth
 using cloth.collections.List : List
@@ -17,9 +20,9 @@ fn main() {
 }
 ```
 
-This prints `[2, 1]` and normal completion. `List<T>::new` creates an empty list.
-Type arguments are explicit and invariant. The private `ListSlot<T>` helper and
-backing field are implementation details; they are not exported.
+`List<T>::new` creates an empty list. In this example `saved` is an
+independent array containing 2 and 1 in that order. Its values survive
+deleting the list. Element type arguments are invariant.
 
 | Method                         | Result        | Behavior                                                               |
 |--------------------------------|---------------|------------------------------------------------------------------------|
@@ -34,8 +37,8 @@ backing field are implementation details; they are not exported.
 | `toArray()`                    | T[]           | Return an independent growable rectangular array.                      |
 | `copy()`                       | List&lt;T&gt; | Create a separate list identity with independent value storage.        |
 
-Invalid indices and allocation failures stop execution at the first runtime error.
-An immutable binding (`:=` or `final`) still permits list mutation. Assigning a
+Reads, replacements, and removals require an existing index. Insertion also
+accepts the index just past the last element. An immutable binding (`:=` or `final`) still permits list mutation. Assigning a
 list to another binding copies its class identity, so aliases mutate the same list.
 Explicitly delete every created list, including each result of `copy()`.
 
@@ -77,8 +80,10 @@ object or creating an ownership cycle raises an ownership error.
 ```cloth
 using cloth.collections.OwningList : OwningList
 
-typedef<class> Item (pub def<int> value) {
-    ~Item { println(value) }
+typedef<class> Item {
+    pub def<int> value = 0
+    pub Item(int initial) : () { value = initial }
+    pub ~Item { println(value) }
 }
 
 fn main() {
@@ -106,19 +111,24 @@ fn main() {
 
 Aliases can read and mutate the live object while the list owns it. After
 `removeAt`, any live alias can delete the object or give it to an owning list.
+For the rules that apply to every alias, see [Object ownership](../../../Documentation/language/objects/Ownership.rst#owning-lists).
+
 Direct foreach captures the entries in order before the first iteration. The
 snapshot holds aliases, so deleting an object also invalidates its snapshot entry.
 
-During `clear()`, element destructors see an empty list. Attempts to append,
-remove, clear, or delete that list during cleanup raise a runtime error. During
-list destruction, ordinary access through aliases to the list fails its liveness
-check. Aliases to each deleted element become stale as its destructor begins.
+`clear()` detaches the entries before calling any element destructor, so
+the list is empty during cleanup. An element destructor cannot append,
+remove, clear, or delete that list during cleanup. Deleting an element
+invalidates its aliases. See the [owning list implementation](OwningList.co)
+and [ownership checks](../../../Tests/Compiler/Semantic/Unit/ownership_test.cpp).
 
 ## Snapshot
 
 Import `Snapshot` and `emptySnapshot` from `cloth.collections.Snapshot` to
 give your own collection a `foreach` operator. Append elements in traversal
-order and return the snapshot.
+order and return the snapshot. The module also exposes the nested
+`Snapshot.Factory` type. Its `empty<E>()` method constructs the empty
+snapshot used by `emptySnapshot<E>()`. See the [snapshot declaration](Snapshot.co).
 
 ```cloth
 using cloth.collections.Snapshot : Snapshot, emptySnapshot
@@ -134,7 +144,8 @@ typedef<class> Pair (def<int> first, def<int> second) {
 ```
 
 The loop manages the snapshot's storage. Each iteration receives an
-independent value under the same rules as array foreach.
+independent value under the same rules as array foreach. For loop binding types
+and the order in which entries are visited, see [Collection iteration](../../../Documentation/language/statements/ControlFlow.rst#collection-iteration).
 
 ## Deque, Queue, and Stack
 
@@ -168,9 +179,9 @@ retains backing capacity. Reserve ensures backing capacity without changing
 size or order. Deque and Queue reserve space on both sides and may allocate
 temporary storage when rebalancing.
 
-Use `isEmpty()` to handle expected emptiness. Removal or peek on an empty
-collection terminates at the ordinary array bounds diagnostic. A stored null
-is a valid element when T is nullable.
+Use `isEmpty()` before removing or peeking when the collection can be
+empty. Both operations require an existing element. A stored null is a
+valid element when `T` is nullable.
 
 Insertion, removal, and peek use ordinary value copies. Strings, arrays, and
 structs have independent buffers, and array elements can have different lengths.

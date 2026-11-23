@@ -11,13 +11,15 @@ Getting started
 ---------------
 
 * `Build the compiler <Documentation/building/Building.rst>`_
+* `Run your first Cloth program <Documentation/getting-started/FirstProgram.rst>`_
 * `Use the compiler <Documentation/compiler/index.rst>`_
 * `Read the language reference <Documentation/language/index.rst>`_
-* `Browse the standard library <Stdlib/cloth/>`_
+* `Browse the standard library <Stdlib/README.md>`_
 
 Contributing
 ------------
 
+* `Explore compiler internals <Compiler/README.rst>`_
 * `Submit a change <Documentation/Welcome.rst#contributing>`_
 * `Run the test suite <Documentation/contributing/Testing.rst>`_
 * `Propose a language change <Documentation/contributing/RFC%20Process.rst>`_

@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+// See Documentation/compiler/driver/Objects.rst
+// See Documentation/compiler/internals/Backend.rst
+
 #include <backend/backend.hpp>
 #include <backend/enum_payloads.hpp>
 #include <backend/lowered_module.hpp>

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// See Documentation/compiler/Visibility.rst
+// See Documentation/language/source/Visibility.rst
 
 #include <algorithm>
 #include <format>

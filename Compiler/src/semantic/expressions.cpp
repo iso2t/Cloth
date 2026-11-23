@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+// See Documentation/language/expressions/Access.rst
+
 #include <algorithm>
 #include <bit>
 #include <cmath>

@@ -2,6 +2,8 @@
 
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 32 --src "%/S/Inputs/dispatch/client.co"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 64 --src "%/S/Inputs/dispatch/client.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 32 --src "%/S/Inputs/dispatch/meter.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 64 --src "%/S/Inputs/dispatch/meter.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --src "%/S/Inputs/dispatch/private_nested.co" 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=NESTED --input-file "%t.err"
 # NESTED: [C3132] Error: 'Secret' is private

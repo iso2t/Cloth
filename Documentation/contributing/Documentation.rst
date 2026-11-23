@@ -14,7 +14,7 @@ Choose a page
 
 * **Write a Cloth program.** A first-program walkthrough shows the source,
   how to run it, and the expected result. Explain language rules in the
-  language reference, as in `Calls and results <../compiler/Calls.rst>`_.
+  language reference, as in `Calls and results <../language/expressions/Calls.rst>`_.
 * **Use the compiler.** Show the command a task needs in its walkthrough.
   Keep the full description of an option such as ``--emit-object`` in the
   `compiler flags reference <../compiler/Flags.rst>`_.

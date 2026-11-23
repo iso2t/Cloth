@@ -3,278 +3,74 @@
 Compiler flags
 ==============
 
-==============  =================================================================  ============
-Flag            Behavior                                                           Return code
-==============  =================================================================  ============
-``-l``          Selects lexer-only mode and exits silently.                        ``0xD00001``
-``-L``          Prints the lexer token table to standard output.                   ``0xD00002``
-``--src PATH``  Reads a UTF-8 ``.co`` or ``.clib`` file. Quote paths with spaces.  By mode
-==============  =================================================================  ============
+Use ``cloth --src PATH`` to check a source file. A successful source
+check is silent and returns 0. A compilation error is reported on
+standard error and returns 1.
 
-``--target-bits 32`` and ``--target-bits 64`` select the width used to check
-target-sized integers and array extents. The default is the native pointer width.
+Source files and imports
+------------------------
 
-``--stdlib PATH`` adds a standard library source root. Imports search the entry
-directory first. Collection iteration uses the Snapshot declaration supplied
-by the configured standard library.
+``--src PATH`` selects a UTF-8 ``.co`` or ``.clib`` entry file. Quote
+paths that contain spaces. The compiler follows ``using`` imports from
+the entry file. See `Names and visibility <../language/source/Visibility.rst>`_.
 
-``--kind library`` checks declarations and bodies. This is the default, and
-helper-only sources are valid. ``--kind executable`` also requires exactly one
-top-level ``main`` in the entry file. It can take no parameters or one
-``string[]`` or ``string[]?`` parameter and can return ``void``, ``isize``, or
-a signed ``int`` at a supported width. Both modes run the frontend checks.
+``--stdlib PATH`` sets the standard library source root. Imports search
+the entry directory first, then this root. To use the library in this
+checkout, pass ``--stdlib Stdlib`` from the repository root. This
+supplies the standard library declaration for `collection iteration
+<../language/statements/ControlFlow.rst#collection-iteration>`_.
 
-An intrinsic body must come from its registered module imported through
-``--stdlib``. The frontend checks the declaration and its full signature
-before recording the operation for later compilation stages.
+Lexer modes
+-----------
+
+Both lexer modes stop after scanning the source.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Option
+     - Output on success
+     - Driver return code
+   * - ``-l``
+     - No output
+     - ``0xD00001``
+   * - ``-L``
+     - Token table on standard output
+     - ``0xD00002``
+
+Unix shells expose the low eight bits of these codes, 1 and 2
+respectively.
+
+Program kind
+------------
+
+``--kind library`` checks declarations and bodies. This is the default.
+A file containing only helper functions is a valid library.
+
+``--kind executable`` also requires exactly one top-level ``main`` in the
+entry file. It can take no parameters or one ``string[]`` or ``string[]?``
+parameter. Its return type can be ``void``, ``isize``, or a signed ``int``
+at a supported width. For the signature used in native object files,
+see `Entry point and output <driver/Objects.rst#entry-point-and-output>`_.
+
+Target width
+------------
+
+``--target-bits 32`` and ``--target-bits 64`` select the width for
+``isize``, ``usize``, and `array extents
+<../language/types/Arrays.rst#rank-and-extents>`_. The default is the
+native pointer width.
 
 Object emission
 ---------------
 
-With ``--kind executable``, add ``--emit-object PATH`` to write a relocatable
-object after the frontend checks succeed. The emitter supports a parameterless
-``main`` returning a signed 32-bit ``int``. Its body can be an expression
-or a block. For conditionals, loops, and jumps, see the
-`control-flow chapter <../language/statements/ControlFlow.rst>`_.
+``--emit-object PATH`` writes a relocatable object at the requested
+path. It requires ``--src`` and ``--kind executable`` and is incompatible
+with ``-l`` and ``-L``. For target formats and linking, see
+`Emitting and linking object files <driver/Objects.rst>`_.
 
-Link objects that check `range steps
-<../language/statements/ControlFlow.rst#integer-ranges>`_ for progress
-with ``Runtime/src/errors.c``. For multiplication, division, or remainder
-steps with a counter wider than the target pointer, also link
-``Runtime/src/integer.c``.
+.. _native-values-and-operations:
 
-Locals and non-generic helper functions can use signed and unsigned integers
-of any Cloth width, ``isize``, ``usize``, ``bool``, ``char`` and 16-, 32- or
-64-bit floats. A mutable numeric local supports assignment, compound arithmetic
-assignment, increment and decrement.
-A local declared with ``:=`` keeps its initial value. A ``def`` binding infers
-its type from the initializer.
-
-Nullable integers, booleans, floats, characters and enums use a one-byte presence
-flag followed by the payload at its usual alignment. On both target widths,
-``int?``, ``float?`` and ``char?`` occupy eight bytes. A ``bool?`` occupies two.
-A present character stores its full 32-bit Unicode scalar value, including
-``'\0'``. Comparisons with ``null`` test the flag. Two absent values compare
-equal. Present floats use ordinary floating-point equality at their declared
-precision. Positive and negative zero compare equal, and a present NaN
-compares unequal to itself.
-The ``?:`` operator evaluates its fallback only for an absent value. A present
-``false``, ``0.0`` or ``'\0'`` skips it. This program returns 42.
-
-.. code-block:: text
-
-   pub fn<int> main() {
-       int? value = 0
-       if (value == null || value != 0) return 1
-       value = null
-       return if (value == null) 42 else 2
-   }
-
-An enum stores a four-byte tag on both target widths.
-Tags start at zero and follow declaration order, including private cases.
-A nullable enum occupies eight bytes. Its presence byte is at offset zero
-and its tag is at offset four. The first case is present even though its
-tag is zero, so it skips a ``?:`` fallback.
-The built-in ``==`` and ``!=`` compare the tags of two present values of the
-same enum. Casting a case or a stored enum value to ``int`` gives its tag.
-Casting a nullable enum to ``int?`` preserves absence.
-A payload field is read-only. Reading it selects the case's explicit value
-or the field's declared default. The object emitter supports integers,
-booleans, floats, characters, their nullable forms and structs composed of
-supported fields. A nullable enum field can default to ``null``. In this
-example ``Mode.Off.code`` uses the default of 7 and ``main`` returns 42.
-
-.. code-block:: text
-
-   typedef<enum> Mode(pub def<int> code = 7) { pub Off, pub On(42) }
-
-   pub fn<int> main() {
-       Mode mode = Mode.On
-       return mode.code
-   }
-
-Local structs can contain the supported primitives, enums and other structs.
-Each of these field types can be nullable. A nullable struct stores a presence
-byte followed by its payload at the struct's usual alignment. An all-zero struct
-is present and skips a ``?:`` fallback. After a null check, field reads and
-writes use the stored payload.
-
-A positional literal evaluates its fields once in declaration order, including
-nested literals. If a field transfers control out of the initializer,
-evaluation stops there. Assigning a struct copies all its
-nested fields. Numeric fields of a mutable local also support compound
-assignment, increment and decrement. This program returns 7 on both target
-widths. The earlier copy still holds 42.
-
-.. code-block:: text
-
-   typedef<struct> Inner { pub bool ready, pub int<12> value }
-   typedef<struct> Sample { pub bool tagged, pub Inner inner }
-
-   pub fn<int> main() {
-       Sample sample = {true, {true, 42}}
-       def original := sample
-       sample.inner.value = 7
-       return if (sample.tagged && sample.inner.ready && original.inner.value == 42) sample.inner.value -> int else 1
-   }
-
-``Inner`` occupies 4 bytes with 2-byte alignment. It is stored inline at
-byte 2 of ``Sample``, placing ``sample.inner.value`` at byte 4. ``Sample``
-occupies 6 bytes with 2-byte alignment.
-
-One-dimensional fixed-size array locals store their elements consecutively.
-A literal evaluates its elements from left to right. Assigning the whole array
-copies its values. An indexed read evaluates the array before the index. An
-indexed assignment to a mutable local evaluates the index once and checks its
-bounds before evaluating the right-hand side. Both reads and writes report
-``Cloth runtime error: array index out of bounds`` for a negative index or one
-at or beyond the length.
-
-For element order and the loop binding, see `Fixed-size array iteration
-<../language/statements/ControlFlow.rst#fixed-size-array-iteration>`_.
-
-Numeric elements support ``+=``, ``-=``, ``*=``, ``/=``, ``%=``, and
-standalone ``++`` and ``--``. A compound assignment reads the selected element
-before evaluating the right-hand side and writes the result back to the same
-slot. In the `indexed update example
-<../../Tests/Compiler/Driver/Inputs/fixed-array-update.co>`_,
-``values[index()] += 2`` calls ``index()`` once, prints 1, and changes the
-65-bit element from 40 to 42.
-
-Fixed-size arrays support `structural equality <Operators.rst#array-equality>`_
-for integers, booleans, characters, floats, and enums that use built-in
-equality. The elements can be nullable, as in ``int?[2]``.
-
-Signed and unsigned integer elements can have any width from 1 through 65,536
-bits. The distance between elements is the integer's allocation size on the
-selected target. For example, two ``int<12>`` elements start at byte offsets 0
-and 2, and two ``int<65536>`` elements start at byte offsets 0 and 8,192. This
-program returns 42 on both target widths. The earlier copy still contains 9.
-
-.. code-block:: text
-
-   pub fn<int> main() {
-       int<12>[2] values = [7, 9]
-       def saved := values
-       values[1] = 42
-       if (saved[1] != 9) return 1
-       return values[1] -> int
-   }
-
-Integer arithmetic, including ``**``, wraps at the operand width. On both
-targets ``int<12>`` wraps from 2047 to -2048. The width of ``isize`` and
-``usize`` follows ``--target-bits``. Unary ``~`` flips every bit at that width.
-Signed division truncates toward zero, and a nonzero remainder has the sign
-of the dividend. Integer ``/``, ``%``, ``/=`` and ``%=`` evaluate both
-operands once, in source order. A zero divisor reports
-``Cloth runtime error: integer division by zero``. A signed minimum dividend
-with divisor -1 reports ``Cloth runtime error: signed integer division overflow``.
-Integer ``**`` with a negative exponent reports
-``Cloth runtime error: negative integer exponent``.
-The frontend diagnoses literal zero divisors (``C3050``), literal signed division
-overflow (``C3051``) and literal negative integer exponents (``C3018``).
-
-Comparisons use the checked operand type. Integer-to-boolean conversion
-maps zero to false and every nonzero value to true, including at parameter
-and return boundaries. Booleans occupy one byte. Built-in ``&&`` and ``||``
-evaluate their right operand only when needed. A character holds one Unicode
-scalar value. The ``toInt()`` method returns its code point or a boolean's
-normalized integer value.
-
-Numeric casts use the destination width. Floating-to-integer casts truncate
-toward zero. If the operand is NaN or infinite, or the truncated integer is
-outside the destination range, the cast reports
-``Cloth runtime error: invalid float-to-integer cast (NaN or out of range)``.
-For example, ``-128.75`` converts to ``-128`` in ``int<8>``, while ``-129.0``
-reports the error.
-
-Arithmetic and conversion errors flush earlier standard output, write one
-diagnostic to standard error and exit with status 1. Link objects that use
-these checks with ``Runtime/src/errors.c``, for example ``cc main.o Runtime/src/errors.c -o main``.
-
-The built-in ``exit(status)`` evaluates its integer argument once and converts
-it to a signed 32-bit ``int`` on both target widths. It flushes buffered
-output and ends the process. Windows exposes the 32-bit exit status and
-Unix exposes its low eight bits. Link objects that call it with ``Runtime/src/process.c``.
-
-Floating comparison follows IEEE rules, including unordered inequality for
-NaN. Floating remainder and exponentiation can require the platform math
-library. On Unix, link these objects with ``-lm``.
-
-A call can reach a function in the same file or a ``pub`` function imported
-with ``using``. Helpers take the supported primitives, enums and their nullable
-forms by value. They can return one such value or ``void``. Supply every
-argument at the call site. A call can stand alone as a statement. A ``void``
-helper returns at the end of its block or at a bare ``return``. On x86,
-``--target-bits`` selects a 32- or 64-bit object. The output directory must
-already exist. A successful write replaces the named file. Source files used
-by the compilation are protected from replacement.
-
-Save the following program as ``answer.co``.
-
-.. code-block:: text
-
-   pub fn<int> main () {
-       int answer = 42
-       answer = 7
-       touch()
-       return answer
-   }
-
-   fn<void> touch() {}
-
-Compile the object and link it with the platform C driver. The resulting
-program exits with status 7.
-
-.. code-block:: console
-
-   cloth --kind executable --src answer.co --emit-object answer.o
-   cc answer.o -o answer
-
-With MinGW, link with ``gcc answer.o -o answer.exe``.
-
-The built-in ``println`` accepts a signed 32-bit ``int`` for native output.
-It writes the decimal value and a newline to standard output. The following
-program prints one line containing ``1`` and exits with status 42.
-
-.. code-block:: text
-
-   pub fn<int> main() {
-       println(1)
-       return 42
-   }
-
-Save it as ``print.co``. From the repository root, link the runtime helper
-with the emitted object using a C compiler for the same target and width.
-
-.. code-block:: console
-
-   cloth --kind executable --src print.co --emit-object print.o
-   cc print.o Runtime/src/println.c -o print
-
-The helper uses the C calling convention and has the signature
-``void cloth_rt_println_i32(int32_t value)`` on both target widths.
-
-To call a function in another file, place ``main.co`` and ``helpers.co`` in
-the same directory. Import the function in ``main.co``.
-
-.. code-block:: text
-
-   using helpers: identity
-
-   pub fn<int> main () = identity(42)
-
-Declare the function public in ``helpers.co``.
-
-.. code-block:: text
-
-   pub fn<int> identity(int value) = value
-
-Compile the entry file to emit ``main`` and the functions it calls into one
-object. In this executable object, ``main`` has external linkage and the
-imported helper has local linkage. The linked program exits with status 42.
-
-.. code-block:: console
-
-   cloth --kind executable --src main.co --emit-object main.o
-   cc main.o -o main
+For the behavior of values in source, see the `language reference
+<../language/index.rst>`_. For byte sizes and field offsets, see
+`Aggregate storage layout <storage/Aggregates.rst>`_.

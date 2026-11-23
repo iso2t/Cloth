@@ -7,7 +7,7 @@ Follow this guide when adding or editing C++ code for the Cloth
 compiler.
 
 Cloth keywords and operators
----------------------------
+----------------------------
 
 Keep the spelling of each Cloth keyword and operator in the token module.
 Use the ``Keyword`` and ``Operator`` enumerators when making decisions about

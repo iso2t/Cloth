@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+// See Documentation/compiler/storage/Aggregates.rst
+
 #include <backend/nullable_value.hpp>
 
 namespace backend::detail::nullable {

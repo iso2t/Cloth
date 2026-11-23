@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+// See Documentation/compiler/driver/Diagnostics.rst
+// See Diagnostics/README.rst
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdlib>

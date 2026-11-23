@@ -71,6 +71,11 @@ or a braced block. The step runs after the body or on ``continue``, using
 the counter value the body left behind. An empty range skips the step,
 as does a ``break`` or ``return`` from the body.
 
+The source checker also accepts floating-point ranges, for example
+``for (float n <- 0.0 .. 1.0) {}``. Native range loops use integer
+counters. For storing a range or testing membership without a loop, see
+`Ranges and membership <../expressions/Operators.rst#ranges-and-membership>`_.
+
 Each example adds the values it visits and returns 42.
 
 .. list-table::
@@ -136,6 +141,8 @@ An update that leaves an in-range counter unchanged reports
 remainder example, taking one more step at 7 would produce 7 again.
 Multiplication by zero can move a nonzero counter to zero. If zero is
 in range, the body runs there and another multiplication leaves it unchanged.
+For the runtime sources to link with these loops, see `Runtime dependencies
+<../../compiler/driver/Objects.rst#runtime-dependencies>`_.
 
 Fixed-size array iteration
 --------------------------
@@ -154,6 +161,45 @@ advances to the next element.
 
 The loop reads 4 and then 2, leaving ``result`` equal to 42. See the
 `array iteration example <../../../Tests/Compiler/Driver/Inputs/fixed-array-iteration.co>`_.
+For indexing and whole-array copies, see `Arrays <../types/Arrays.rst>`_.
+
+Collection iteration
+--------------------
+
+A ``for`` loop calls the collection's ``operator foreach()`` once before
+entering the body. The operator returns a ``Snapshot<T>`` whose entries
+the loop visits in order. A ``List<T>`` captures its entries in list
+order. Appending or removing an entry in the body leaves the captured
+sequence intact.
+
+.. code-block:: text
+
+   using cloth.collections.List : List
+
+   fn<int> sumPresent(List<int?> values) {
+       int total = 0
+       for (int? value <- values) total += value ?: 0
+       return total
+   }
+
+For a ``List<int>``, ``for (def value <- values)`` infers ``int``.
+For a ``List<int?>``, the binding needs the explicit ``int?`` shown above.
+The fallback contributes zero to the sum for each absent value. From
+the repository root, use ``--stdlib Stdlib`` to check the `sum example
+<../../../Tests/Compiler/Semantic/Inputs/collection/sum-present.co>`_.
+
+Each iteration binds a writable copy of the element. Reassigning that
+binding leaves the collection entry alone. When the elements are class
+references, the copies refer to the same objects.
+
+To allow iteration outside the declaring type, give the collection a
+``pub operator foreach() -> Snapshot<T>``. The operator takes no
+parameters. Import ``Snapshot`` from ``cloth.collections.Snapshot`` in
+the configured standard library. To build a snapshot in traversal order,
+see the `custom collection example <../../../Stdlib/cloth/collections/README.md#snapshot>`_.
+
+For the loop sources accepted by ``--emit-object``, see the `object-file
+guide <../../compiler/driver/Objects.rst#entry-point-and-output>`_.
 
 Break and continue
 ------------------
@@ -162,8 +208,8 @@ Break and continue
 Execution resumes after that loop, skipping any remaining step or
 condition check. ``continue`` skips the rest of the current iteration.
 In both ``while`` and ``do`` loops it goes straight to the condition.
-A range loop runs its step, and a fixed-size array loop advances to the
-next element.
+A range loop runs its step. An array or collection loop advances to the
+next captured element.
 
 Both jumps require an enclosing loop body. A jump in a nested loop's
 condition or iteration source targets the surrounding loop. For example,

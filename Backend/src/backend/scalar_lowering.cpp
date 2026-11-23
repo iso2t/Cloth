@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+// See Documentation/language/expressions/Operators.rst
+
 #include <backend/nullable_value.hpp>
 #include <backend/runtime.hpp>
 #include <backend/scalar_lowering.hpp>

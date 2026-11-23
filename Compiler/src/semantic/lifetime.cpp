@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+// See Documentation/language/objects/Ownership.rst
+// See Documentation/language/objects/States.rst
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>

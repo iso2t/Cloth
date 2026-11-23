@@ -9,6 +9,8 @@ description: Write and review Cloth source accepted by the C++ parser, including
 
 Use the parser to trace accepted syntax and its `SourceUnit`. The ordinary `--src` invocation also builds the file's `SymbolTable`, resolves declarations and checks bodies across reachable imports. The backend receives the resulting `CheckedProgram`. [Parser](../../../Compiler/src/parser/parser.cpp) · [Semantic checking](../../../Compiler/src/semantic/checked_program.cpp) · [Driver](../../../Compiler/src/cloth.cpp)
 
+Use the [language reference](../../../Documentation/language/index.rst) for program behavior. [Names and visibility](../../../Documentation/language/source/Visibility.rst) · [Calls and results](../../../Documentation/language/expressions/Calls.rst) · [Operator overloads and equality](../../../Documentation/language/expressions/Operators.rst) · [Arrays](../../../Documentation/language/types/Arrays.rst)
+
 ## Source files and functions
 
 ~~~cloth

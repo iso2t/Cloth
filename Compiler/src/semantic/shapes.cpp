@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+// See Documentation/language/types/Arrays.rst
+
 #include <algorithm>
 #include <format>
 

@@ -1,3 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --stdlib "%/S/Inputs/collection/standard" --src "%/S/Inputs/collection/main.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --stdlib "%/S/../../../Stdlib" --src "%/S/Inputs/collection/sum-present.co" --target-bits 32
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --stdlib "%/S/../../../Stdlib" --src "%/S/Inputs/collection/sum-present.co" --target-bits 64

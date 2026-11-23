@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub typedef<class> Meter {
+    pub state<int> ::reading()
+    pub default state<void> Idle {}
+    pub state Loaded
+}
+
+typedef<state<int>> pub Loaded for Meter {
+    mt<int> reading() = state
+}
+
+fn<int> load(Meter meter) {
+    def alias = meter
+    alias -> Loaded(42)
+    return meter::reading()
+}

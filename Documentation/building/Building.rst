@@ -37,6 +37,9 @@ The default target builds ``build/cloth`` or ``build/cloth.exe``. The
 and its imports in library mode, using ``Stdlib`` as the standard library
 root. Success is silent apart from Make's command output.
 
+With the compiler built, `write and run your first Cloth program
+<../getting-started/FirstProgram.rst>`_.
+
 The `Stdlib guide <../../Stdlib/README.md#validate-the-library-sources>`_
 also gives the command for checking every shipped module at both target
 widths. The `testing guide <../contributing/Testing.rst>`_ lists the

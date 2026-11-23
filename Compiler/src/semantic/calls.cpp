@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// See Documentation/compiler/Calls.rst
+// See Documentation/language/expressions/Calls.rst
 
 #include <algorithm>
 #include <ranges>

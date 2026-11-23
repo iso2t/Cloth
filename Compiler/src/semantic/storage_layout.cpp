@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // See Documentation/compiler/storage/Integers.rst
+// See Documentation/compiler/storage/Aggregates.rst
 
 #include <algorithm>
 #include <bit>
