@@ -47,7 +47,7 @@ class Parser {
 	SourceUnit parse ();
 	SourceUnit parseDeclarations ();
 
-	static const std::unordered_set<std::string_view> assignmentOperators;
+	static const std::unordered_set<std::string_view> ASSIGNMENT_OPERATORS;
 
     private:
 	struct BindingBraceSyntax {

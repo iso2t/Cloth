@@ -7,10 +7,19 @@
 #include <bit>
 #include <cstdint>
 #include <format>
+#include <optional>
 #include <stdexcept>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include <ast/expr/expressions.hpp>
+#include <semantic/checked_program.hpp>
 #include <semantic/checker.hpp>
+#include <semantic/symbol_table.hpp>
+#include <semantic/target_layout.hpp>
+#include <token/numeric_literals.hpp>
+#include <token/token.hpp>
 
 namespace cloth {
 namespace {
@@ -20,9 +29,8 @@ std::uint64_t padding (std::uint64_t offset, unsigned alignment) {
 }
 
 [[noreturn]] void structTooLarge (const ResolvedType &type, const Symbol &field, const TargetLayout &target) {
-	semantic::fail(semantic::Code::INVALID_STRUCT_FIELD, field.name.get_span(),
-	               std::format("Storage of {} '{}' exceeds {} on a {}-bit target", to_string(kStruct), type.spelling(), to_string(kUsize),
-	                           target.sizeBits));
+	semantic::fail(semantic::Code::InvalidStructField, field.name.getSpan(),
+	               std::format("Storage of {} '{}' exceeds {} on a {}-bit target", toString(KStruct), type.spelling(), toString(KUsize), target.sizeBits));
 }
 
 // A field starts at its ABI alignment. Tail padding is applied once all fields are placed.
@@ -44,7 +52,7 @@ class StructStorage {
 	[[nodiscard]] std::optional<StorageLayout> finish () const {
 		const std::uint64_t u64_padding = padding(u64_end, u_alignment);
 		if (u64_padding > u64_limit - u64_end) return {};
-		return StorageLayout{ std::max<std::uint64_t>(1, u64_end + u64_padding), u_alignment };
+		return StorageLayout{ .size = std::max<std::uint64_t>(1, u64_end + u64_padding), .alignment = u_alignment };
 	}
 
     private:
@@ -64,7 +72,7 @@ StorageLayout TargetLayout::integerStorage (unsigned width) const {
 		u_alignment = std::bit_ceil(u_bytes);
 	else if (width <= 64)
 		u_alignment = sizeBits == 32 ? scalar64Alignment32 : 8;
-	return { u_bytes + padding(u_bytes, u_alignment), u_alignment };
+	return { .size = u_bytes + padding(u_bytes, u_alignment), .alignment = u_alignment };
 }
 
 std::optional<StorageLayout> CheckedProgram::storageLayout (const ResolvedType &type) const {
@@ -73,7 +81,7 @@ std::optional<StorageLayout> CheckedProgram::storageLayout (const ResolvedType &
 		const std::optional<StorageLayout> opt_payload = storageLayout(type.element());
 		if (!opt_payload || opt_payload->size > layout.maximumSize() - opt_payload->alignment) return {};
 		// The presence byte and its padding precede the aligned payload.
-		return StorageLayout{ opt_payload->alignment + opt_payload->size, opt_payload->alignment };
+		return StorageLayout{ .size = opt_payload->alignment + opt_payload->size, .alignment = opt_payload->alignment };
 	}
 	const StorageLayout sl_word = layout.integerStorage(layout.sizeBits);
 	if (type.array()) {
@@ -81,20 +89,20 @@ std::optional<StorageLayout> CheckedProgram::storageLayout (const ResolvedType &
 		std::uint64_t u64_rank       = 0;
 		bool          b_nullableRows = false;
 		for (const std::string &s_suffix : type.suffixes) {
-			if (s_suffix == to_string(oQuestion))
+			if (s_suffix == toString(OQuestion))
 				b_nullableRows |= u64_rank != 0;
 			else
 				++u64_rank;
 		}
 		const std::uint64_t u64_words = 4 + 2 * (u64_rank - 1) + b_nullableRows;
 		if (u64_words > layout.maximumSize() / sl_word.size) return {};
-		return StorageLayout{ u64_words * sl_word.size, sl_word.alignment };
+		return StorageLayout{ .size = u64_words * sl_word.size, .alignment = sl_word.alignment };
 	}
 	if (type.integer() || type.floating()) return layout.integerStorage(type.width ? type.width : layout.sizeBits);
-	if (type == ResolvedType(kBoolean)) return layout.integerStorage(8);
-	if (type == ResolvedType(kCharacter) || semantic::enumeration(type)) return layout.integerStorage(32);
-	if (type == ResolvedType(kTypeinfo)) return sl_word;
-	if (type == ResolvedType(kString)) return StorageLayout{ 2 * sl_word.size, sl_word.alignment };
+	if (type == ResolvedType(KBoolean)) return layout.integerStorage(8);
+	if (type == ResolvedType(KCharacter) || semantic::enumeration(type)) return layout.integerStorage(32);
+	if (type == ResolvedType(KTypeinfo)) return sl_word;
+	if (type == ResolvedType(KString)) return StorageLayout{ .size = 2 * sl_word.size, .alignment = sl_word.alignment };
 	if (semantic::asClass(type.declaration) || semantic::asInterface(type.declaration)) return layout.integerStorage(64);
 	if (const ResolvedType *rt_endpoint = semantic::rangeEndpoint(type)) {
 		const std::optional<StorageLayout> opt_endpoint = storageLayout(*rt_endpoint);
@@ -112,13 +120,13 @@ std::optional<StorageLayout> CheckedProgram::arrayDataLayout (const ResolvedType
 	if (!array.array()) return {};
 	const std::optional<StorageLayout> opt_element = storageLayout(array.element());
 	if (!opt_element || count > layout.maximumSize() / opt_element->size) return {};
-	return StorageLayout{ count * opt_element->size, opt_element->alignment };
+	return StorageLayout{ .size = count * opt_element->size, .alignment = opt_element->alignment };
 }
 
 namespace semantic {
 
 void Analyzer::useArrayLiteral (const ResolvedType &type, const ArrayLiteral &literal) {
-	v_arrayLiterals.push_back({ type, literal.elements.size(), literal.get_span() });
+	v_arrayLiterals.push_back({ .type = type, .count = literal.elements.size(), .where = literal.getSpan() });
 }
 
 void Analyzer::layoutStruct (const ResolvedType &type, const StorageFields &fields) const {
@@ -134,7 +142,7 @@ void Analyzer::layoutStruct (const ResolvedType &type, const StorageFields &fiel
 		// A nullable array field retains its shape after the value is cleared.
 		if (field.type.nullable() && field.type.element().array()) v_shapeWitnesses.push_back(*opt_storage);
 	}
-	for (StorageLayout sl_witness : v_shapeWitnesses) {
+	for (StorageLayout const sl_witness : v_shapeWitnesses) {
 		if (!ss_fields.append(sl_witness)) structTooLarge(type, *type.declaration, program.layout);
 	}
 	const std::optional<StorageLayout> opt_storage = ss_fields.finish();

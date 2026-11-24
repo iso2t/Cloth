@@ -6,6 +6,8 @@
 
 #include <span>
 #include <string_view>
+#include <llvm-c/Core.h>
+#include <llvm-c/Types.h>
 
 namespace backend::detail {
 namespace {

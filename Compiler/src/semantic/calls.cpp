@@ -3,40 +3,57 @@
 // See Documentation/language/expressions/Calls.rst
 
 #include <algorithm>
+#include <cstddef>
+#include <functional>
+#include <map>
+#include <optional>
 #include <ranges>
+#include <set>
+#include <unordered_map>
+#include <utility>
 #include <variant>
+#include <vector>
 
+#include <ast/decl/declarations.hpp>
+#include <ast/expr/expression.hpp>
+#include <ast/expr/expressions.hpp>
+#include <ast/expr/member_call_expression.hpp>
+#include <ast/type/type_parameters.hpp>
+#include <ast/type/type_reference.hpp>
+#include <diagnostics.hpp>
+#include <semantic/checked_program.hpp>
 #include <semantic/checker.hpp>
+#include <semantic/symbol_table.hpp>
 #include <token/token.hpp>
 
 namespace cloth::semantic {
 bool contextualFailure (const cde::ClothDiagnostic &error) {
 	if (dynamic_cast<const IntrinsicDiagnostic *>(&error)) return false;
-	switch (error.get_code()) {
-	case Code::TYPE_MISMATCH:
-	case Code::INTEGER_RANGE:
-	case Code::FLOAT_RANGE:
-	case Code::INTEGER_DIVISION_OVERFLOW:
-	case Code::NEGATIVE_EXPONENT:
-	case Code::INVALID_CAST:
-	case Code::UNARY_OPERAND:
-	case Code::BINARY_OPERANDS:
-	case Code::MIXED_INTEGERS:
-	case Code::INCOMPARABLE_TYPES:
-	case Code::INVALID_ARRAY:
-	case Code::INVALID_INDEX:
-	case Code::INVALID_STRUCT_LITERAL:
-	case Code::INVALID_STRUCT_FIELD:
-	case Code::INVALID_RANGE_VALUE:
-	case Code::INVALID_RANGE_MEMBERSHIP:
-	case Code::INVALID_NULLABLE_TYPE:
-	case Code::EXPLICIT_NULLABLE_TYPE:
-	case Code::MISSING_ELSE:
-	case Code::NON_BOOLEAN_CONDITION:
-	case Code::MISSING_BRANCH_VALUE:
-	case Code::BRANCH_TYPE_MISMATCH:
-	case Code::BRANCH_RESULT_ARITY:
-	case Code::VOID_VALUE:
+	switch (error.getCode()) {
+	case Code::TypeMismatch:
+	case Code::IntegerRange:
+	case Code::FloatRange:
+	case Code::IntegerDivisionOverflow:
+	case Code::NegativeExponent:
+	case Code::InvalidCast:
+	case Code::UnaryOperand:
+	case Code::BinaryOperands:
+	case Code::MixedIntegers:
+	case Code::IncomparableTypes:
+	case Code::InvalidArray:
+	case Code::InvalidIndex:
+	case Code::InvalidStructLiteral:
+	case Code::InvalidStructField:
+	case Code::InvalidRangeValue:
+	case Code::InvalidRangeMembership:
+	case Code::InvalidNullableType:
+	case Code::ExplicitNullableType:
+	case Code::MissingElse:
+	case Code::NonBooleanCondition:
+	case Code::MissingBranchValue:
+	case Code::BranchTypeMismatch:
+	case Code::BranchResultArity:
+	case Code::VoidValue:
 		return true;
 	default:
 		return false;
@@ -49,10 +66,10 @@ bool acceptsTypeArgumentCount (const TypeParameterList *parameters, std::size_t 
 	                           [] (const TypeParameterDeclaration &parameter) { return parameter.defaultType.has_value(); });
 }
 
-void rejectTypeArgumentCount (const TypeArgumentList &arguments, const Symbol &declaration, bool generic) {
+void rejectTypeArgumentCount (const TypeArgumentList &arguments, const Symbol &declaration, const bool generic) {
 	if (arguments.arguments.empty() && !generic)
-		fail(Code::INVALID_GENERIC_ARGUMENT, arguments.get_span(), "This declaration has no type parameters", &declaration.name);
-	fail(Code::GENERIC_ARITY, arguments.get_span(), "No overload accepts this number of type arguments", &declaration.name);
+		fail(Code::InvalidGenericArgument, arguments.getSpan(), "This declaration has no type parameters", &declaration.name);
+	fail(Code::GenericArity, arguments.getSpan(), "No overload accepts this number of type arguments", &declaration.name);
 }
 
 namespace {
@@ -72,7 +89,7 @@ using PlacementResult = std::variant<ArgumentPlacement, BindingProblem>;
 
 PlacementResult placeArguments (const std::vector<CallArgument> &arguments, const Symbol &symbol, const TokenSpan &span) {
 	const std::vector<ParameterDeclaration> &v_parameters = callable(symbol)->parameters;
-	ArgumentPlacement                        ap_placement{ std::vector<std::size_t>(arguments.size()), {} };
+	ArgumentPlacement                        ap_placement{ .destinations = std::vector<std::size_t>(arguments.size()), .omitted = {} };
 	std::vector<const Token *>               v_labels(v_parameters.size());
 	std::size_t                              st_positional = 0;
 	for (std::size_t st_source = 0; st_source < arguments.size(); ++st_source) {
@@ -81,10 +98,13 @@ PlacementResult placeArguments (const std::vector<CallArgument> &arguments, cons
 			++st_positional;
 			continue;
 		}
-		const auto it_parameter = std::ranges::find_if(
-		        v_parameters, [&] (const ParameterDeclaration &parameter) { return parameter.name.get_name_key() == opt_label->get_name_key(); });
+		const auto it_parameter = std::ranges::find_if(v_parameters, [&] (const ParameterDeclaration &parameter) {
+			return parameter.name.getNameKey() == opt_label->getNameKey();
+		});
 		if (it_parameter == v_parameters.end()) {
-			return BindingProblem{ opt_label->get_span(), "Unknown argument label '" + opt_label->get_lexeme() + "'", &symbol.name };
+			return BindingProblem{ .span        = opt_label->getSpan(),
+				               .message     = "Unknown argument label '" + opt_label->getLexeme() + "'",
+				               .declaration = &symbol.name };
 		}
 		const std::size_t st_slot            = static_cast<std::size_t>(it_parameter - v_parameters.begin());
 		ap_placement.destinations[st_source] = st_slot;
@@ -105,18 +125,22 @@ PlacementResult placeArguments (const std::vector<CallArgument> &arguments, cons
 		}
 		if (st_next < st_positional && (!pd_parameter.isOptional() || st_positional - st_next > st_required)) {
 			if (t_label) {
-				return BindingProblem{ t_label->get_span(), "Parameter '" + t_label->get_lexeme() + "' is supplied twice", &pd_parameter.name };
+				return BindingProblem{ .span        = t_label->getSpan(),
+					               .message     = "Parameter '" + t_label->getLexeme() + "' is supplied twice",
+					               .declaration = &pd_parameter.name };
 			}
 			ap_placement.destinations[st_next++] = st_slot;
 		} else if (!t_label) {
 			if (!pd_parameter.isOptional()) {
-				return BindingProblem{ span, "Missing required argument '" + pd_parameter.name.get_lexeme() + "'", &pd_parameter.name };
+				return BindingProblem{ .span        = span,
+					               .message     = "Missing required argument '" + pd_parameter.name.getLexeme() + "'",
+					               .declaration = &pd_parameter.name };
 			}
 			ap_placement.omitted.push_back(st_slot);
 		}
 	}
 	if (st_next < st_positional) {
-		return BindingProblem{ arguments[st_next].get_span(), "Too many positional arguments", &symbol.name };
+		return BindingProblem{ .span = arguments[st_next].getSpan(), .message = "Too many positional arguments", .declaration = &symbol.name };
 	}
 	return ap_placement;
 }
@@ -132,9 +156,9 @@ struct Inference {
 
 	bool collect (const ResolvedType &pattern, ResolvedType actual, const InferenceSlots &slots, const TokenSpan &use,
 	              std::set<std::pair<ResolvedType, ResolvedType>> &seen) {
-		if (!pattern.dependent() || actual.name == to_string(kNull) || !seen.emplace(pattern, actual).second) return true;
+		if (!pattern.dependent() || actual.name == toString(KNull) || !seen.emplace(pattern, actual).second) return true;
 		for (const std::string &s_suffix : std::views::reverse(pattern.suffixes)) {
-			if (s_suffix == to_string(oQuestion)) {
+			if (s_suffix == toString(OQuestion)) {
 				if (actual.nullable()) actual = actual.element();
 			} else {
 				if (!actual.array()) return true;
@@ -143,22 +167,25 @@ struct Inference {
 		}
 		if (pattern.parameter) {
 			if (!slots.contains(pattern.parameter)) return true;
-			const std::pair<Substitutions::iterator, bool> it_argument = arguments.emplace(pattern.parameter, actual);
-			if (it_argument.second) spans.emplace(pattern.parameter, use);
-			if (it_argument.second || it_argument.first->second == actual) return true;
+			const auto [fst, snd] = arguments.emplace(pattern.parameter, actual);
+			if (snd) spans.emplace(pattern.parameter, use);
+			if (snd || fst->second == actual) return true;
 			if (report) {
 				const Token &t_parameter = pattern.parameter->name;
-				throw cde::ClothDiagnostic(Code::GENERIC_INFERENCE_FAILED, "Conflicting types for '" + t_parameter.get_lexeme() + "'",
-				                           { { spans.at(pattern.parameter), "infers " + it_argument.first->second.spelling() },
-				                             { use, "infers " + actual.spelling() },
-				                             { t_parameter.get_span(), "type parameter declared here" } });
+				throw cde::ClothDiagnostic(Code::GenericInferenceFailed, "Conflicting types for '" + t_parameter.getLexeme() + "'",
+				                           { { .span = spans.at(pattern.parameter), .text = "infers " + fst->second.spelling() },
+				                             { .span = use, .text = "infers " + actual.spelling() },
+				                             { .span = t_parameter.getSpan(), .text = "type parameter declared here" } });
 			}
 			return false;
 		}
 		if (pattern.arguments().empty() || !actual.suffixes.empty()) return true;
-		const std::function<bool(const ResolvedType &)> match = [&] (const ResolvedType &view) {
-			for (std::size_t st_slot = 0; st_slot < pattern.arguments().size(); ++st_slot)
-				if (!collect(pattern.arguments()[st_slot], view.arguments()[st_slot], slots, use, seen)) return false;
+		const auto match = [&] (const ResolvedType &view) {
+			const auto &patternArguments = pattern.arguments();
+			const auto &viewArguments    = view.arguments();
+			for (std::size_t slot = 0; slot < patternArguments.size(); ++slot) {
+				if (!collect(patternArguments[slot], viewArguments[slot], slots, use, seen)) return false;
+			}
 			return true;
 		};
 		if (pattern.declaration) return std::ranges::all_of(analyzer.applicationsOf(actual, *pattern.declaration), match);
@@ -181,7 +208,7 @@ struct ArgumentEvidence {
 };
 
 std::vector<PlacedCandidate> bindCandidates (const Token &name, const TokenSpan &span, const std::vector<CallArgument> &arguments,
-                                             const std::vector<Candidate> &group, bool named, const TypeArgumentList *written) {
+                                             const std::vector<Candidate> &group, const bool named, const TypeArgumentList *written) {
 	std::vector<PlacedCandidate>  v_placed;
 	std::optional<BindingProblem> opt_firstProblem;
 	bool                          b_optional = false;
@@ -192,7 +219,7 @@ std::vector<PlacedCandidate> bindCandidates (const Token &name, const TokenSpan 
 		if (written && !acceptsTypeArgumentCount(tpl_parameters, written->arguments.size())) continue;
 		PlacementResult pr_result = placeArguments(arguments, *c_candidate.symbol, span);
 		if (auto *ap_placement = std::get_if<ArgumentPlacement>(&pr_result)) {
-			v_placed.push_back({ &c_candidate, std::move(*ap_placement), tpl_parameters });
+			v_placed.push_back({ .candidate = &c_candidate, .placement = std::move(*ap_placement), .parameters = tpl_parameters });
 		} else {
 			if (!opt_firstProblem) opt_firstProblem = std::get<BindingProblem>(std::move(pr_result));
 			b_optional |= std::ranges::any_of(callable(*c_candidate.symbol)->parameters, &ParameterDeclaration::isOptional);
@@ -200,37 +227,38 @@ std::vector<PlacedCandidate> bindCandidates (const Token &name, const TokenSpan 
 	}
 	if (v_placed.empty()) {
 		if (!opt_firstProblem) rejectTypeArgumentCount(*written, *group.front().symbol, b_generic);
-		if (named || b_optional) fail(Code::INVALID_ARGUMENT_BINDING, opt_firstProblem->span, opt_firstProblem->message, opt_firstProblem->declaration);
-		fail(Code::CALL_ARITY, span, "No overload of '" + name.get_lexeme() + "' accepts these arguments", &group.front().symbol->name);
+		if (named || b_optional) fail(Code::InvalidArgumentBinding, opt_firstProblem->span, opt_firstProblem->message, opt_firstProblem->declaration);
+		fail(Code::CallArity, span, "No overload of '" + name.getLexeme() + "' accepts these arguments", &group.front().symbol->name);
 	}
 	return v_placed;
 }
 
 bool inferCall (const Analyzer &analyzer, const PlacedCandidate &placed, const Symbol &context, const TokenSpan &span, const TypeArgumentList *written,
-                const std::vector<std::optional<ResolvedType>> &explicitTypes, const std::vector<ArgumentEvidence> &evidence, bool report,
+                const std::vector<std::optional<ResolvedType>> &explicitTypes, const std::vector<ArgumentEvidence> &evidence, const bool report,
                 Substitutions &arguments, std::optional<cde::ClothDiagnostic> &firstBoundFailure) {
 	const std::vector<TypeParameterDeclaration> &v_parameters    = placed.parameters->parameters;
 	const Symbol                                &sym_declaration = *placed.candidate->symbol;
 	const ResultTypes                           &v_patterns      = analyzer.declarations.at(&sym_declaration).parameters;
-	Inference                                    in_match{ analyzer, arguments, {}, report };
+	Inference                                    in_match{ .analyzer = analyzer, .arguments = arguments, .spans = {}, .report = report };
 	InferenceSlots                               s_slots;
 	for (std::size_t st_slot = 0; st_slot < v_parameters.size(); ++st_slot) {
 		const TypeParameterDeclaration *tp_parameter = &v_parameters[st_slot];
 		if (st_slot < explicitTypes.size() && explicitTypes[st_slot]) {
 			arguments[tp_parameter] = *explicitTypes[st_slot];
-			in_match.spans.emplace(tp_parameter, written->arguments[st_slot].get_span());
+			in_match.spans.emplace(tp_parameter, written->arguments[st_slot].getSpan());
 		} else if ((!written || st_slot < explicitTypes.size()) && !arguments.contains(tp_parameter)) {
 			s_slots.insert(tp_parameter);
 		}
 	}
 	// Evidence within a tier must agree. Later tiers can only fill slots the earlier arguments left open.
-	for (InferenceTier it_tier : { InferenceTier::Typed, InferenceTier::TypedArray, InferenceTier::Literal }) {
+	for (InferenceTier const it_tier : { InferenceTier::Typed, InferenceTier::TypedArray, InferenceTier::Literal }) {
 		if (s_slots.empty()) break;
 		for (std::size_t st_index = 0; st_index < evidence.size(); ++st_index) {
-			const ArgumentEvidence &ae_value = evidence[st_index];
-			if (!ae_value.type || ae_value.tier != it_tier) continue;
-			std::set<std::pair<ResolvedType, ResolvedType>> s_seen;
-			if (!in_match.collect(v_patterns[placed.placement.destinations[st_index]], *ae_value.type, s_slots, ae_value.use, s_seen)) return false;
+			const auto &[use, type, tier] = evidence[st_index];
+			if (!type || tier != it_tier) continue;
+			if (std::set<std::pair<ResolvedType, ResolvedType>> s_seen;
+			    !in_match.collect(v_patterns[placed.placement.destinations[st_index]], *type, s_slots, use, s_seen))
+				return false;
 		}
 		std::erase_if(s_slots, [&] (const TypeParameterDeclaration *parameter) { return arguments.contains(parameter); });
 	}
@@ -241,8 +269,8 @@ bool inferCall (const Analyzer &analyzer, const PlacedCandidate &placed, const S
 			continue;
 		}
 		if (report)
-			fail(Code::GENERIC_INFERENCE_FAILED, written ? written->get_span() : span,
-			     "Cannot infer type argument '" + tp_parameter.name.get_lexeme() + "'", &tp_parameter.name);
+			fail(Code::GenericInferenceFailed, written ? written->getSpan() : span,
+			     "Cannot infer type argument '" + tp_parameter.name.getLexeme() + "'", &tp_parameter.name);
 		return false;
 	}
 	try {
@@ -251,7 +279,7 @@ bool inferCall (const Analyzer &analyzer, const PlacedCandidate &placed, const S
 			analyzer.checkBounds(tp_parameter, arguments, context, it_span == in_match.spans.end() ? span : it_span->second);
 		}
 	} catch (const cde::ClothDiagnostic &error) {
-		if (report || (error.get_code() != Code::UNSATISFIED_GENERIC_BOUND && error.get_code() != Code::CONFLICTING_INTERFACE_APPLICATION)) throw;
+		if (report || (error.getCode() != Code::UnsatisfiedGenericBound && error.getCode() != Code::ConflictingInterfaceApplication)) throw;
 		if (!firstBoundFailure) firstBoundFailure = error;
 		return false;
 	}
@@ -281,38 +309,39 @@ struct Match {
 bool usesBooleanArgumentConversion (const ResolvedType &parameter, const ResolvedType &argument) {
 	if (parameter.convertsIntegerToBool(argument)) return true;
 	// A contextual array literal can convert each element. The normal argument check still validates the full array shape.
-	if (parameter.name != to_string(kBoolean) || !hasArrayShape(parameter) || !hasArrayShape(argument)) return false;
+	if (parameter.name != toString(KBoolean) || !hasArrayShape(parameter) || !hasArrayShape(argument)) return false;
 	ResolvedType rt_leaf = argument;
 	rt_leaf.suffixes.clear();
 	return rt_leaf.integer();
 }
 
 bool BodyChecker::checkArguments (const std::vector<CallArgument> &arguments, const ResultTypes &parameters, const std::vector<ArgumentProbe> &probes,
-                                  bool contextual) {
+                                  const bool contextual) {
 	bool                       b_continues = true;
 	std::optional<BodyChecker> opt_unreachable;
 	for (std::size_t st_source = 0; st_source < arguments.size(); ++st_source) {
-		const ResolvedType  &rt_parameter = parameters[st_source];
-		const Expression    &e_argument   = *arguments[st_source].expression;
-		BodyChecker         &bc_operand   = onPath(b_continues, opt_unreachable);
-		const ArgumentProbe &ap_probe     = probes[st_source];
-		const bool           b_sameInput  = ap_probe.result && ap_probe.before == bc_operand.fs_flow;
-		const bool           b_fits = b_sameInput && (!ap_probe.result->fallsThrough || analyzer.accepts(rt_parameter, ap_probe.result->types.front()));
+		const ResolvedType &rt_parameter    = parameters[st_source];
+		const Expression   &e_argument      = *arguments[st_source].expression;
+		BodyChecker        &bc_operand      = onPath(b_continues, opt_unreachable);
+		const auto &[result, before, after] = probes[st_source];
+		const bool b_sameInput              = result && before == bc_operand.fs_flow;
+		const bool b_fits                   = b_sameInput && (!result->fallsThrough || analyzer.accepts(rt_parameter, result->types.front()));
 		// A nested call's written arguments determine its return contract.
 		if (b_sameInput && !b_fits && dynamic_cast<const CallSite *>(&e_argument)) {
-			require(ap_probe.result->types, { rt_parameter }, e_argument.get_span());
+			require(result->types, { rt_parameter }, e_argument.getSpan());
 		}
 		if (b_fits && !record && !we_capture && (!contextual || dynamic_cast<const CallSite *>(&e_argument))) {
 			// Reuse an already typed operand only with the same incoming facts, then carry its effects to the next written argument.
-			bc_operand.fs_flow = ap_probe.after;
-			b_continues &= ap_probe.result->fallsThrough;
+			bc_operand.fs_flow = after;
+			b_continues &= result->fallsThrough;
 			continue;
 		}
-		const std::optional<ResolvedType> opt_actual = bc_operand.scalar(e_argument, contextual ? &rt_parameter : nullptr, FloatContext{ contextual });
+		const std::optional<ResolvedType> opt_actual =
+		        bc_operand.scalar(e_argument, contextual ? &rt_parameter : nullptr, FloatContext{ .contextual = contextual });
 		if (opt_actual) {
-			require({ *opt_actual }, { rt_parameter }, e_argument.get_span());
+			require({ *opt_actual }, { rt_parameter }, e_argument.getSpan());
 			if (record && hasArrayShape(rt_parameter)) {
-				const TokenSpan span = e_argument.get_span();
+				const TokenSpan span = e_argument.getSpan();
 				refineShape(rt_parameter, bc_operand.shapeOf(e_argument, *opt_actual), &span);
 			}
 		}
@@ -323,13 +352,14 @@ bool BodyChecker::checkArguments (const std::vector<CallArgument> &arguments, co
 
 std::vector<Candidate> BodyChecker::methodCandidates (const MemberCallExpression &site, const ResolvedType &receiver) const {
 	receiverClassBound(*site.receiver, receiver);
-	std::vector<Candidate> v_candidates = analyzer.members(receiver, site.name.get_name_key(), SymbolKind::Method, MemberLookup::CallContract);
+	std::vector<Candidate> v_candidates = analyzer.members(receiver, site.name.getNameKey(), SymbolKind::Method, MemberLookup::CallContract);
 	if (!m_arguments.empty()) {
-		using Facts                             = std::unordered_map<const Expression *, ExpressionInfo>;
-		const Facts                &m_open      = openFacts().expressions;
-		const auto it_receiver = m_open.find(site.receiver.get()), it_call = m_open.find(&site);
-		if (it_receiver != m_open.end() && it_call != m_open.end() && it_call->second.argumentContract && it_receiver->second.types.size() == 1 &&
-		    it_receiver->second.types.front().parameter) {
+		using Facts          = std::unordered_map<const Expression *, ExpressionInfo>;
+		const Facts &m_open  = openFacts().expressions;
+		const auto   it_call = m_open.find(&site);
+		if (const auto it_receiver = m_open.find(site.receiver.get()); it_receiver != m_open.end() && it_call != m_open.end() &&
+		                                                               it_call->second.argumentContract && it_receiver->second.types.size() == 1 &&
+		                                                               it_receiver->second.types.front().parameter) {
 			return { analyzer.boundMethod(it_call->second, receiver, v_candidates, m_arguments) };
 		}
 	}
@@ -348,12 +378,11 @@ bool validateArgumentLabels (const std::vector<CallArgument> &arguments) {
 	std::map<std::string, const Token *> labels;
 	for (const CallArgument &arg : arguments) {
 		if (!arg.label && !labels.empty()) {
-			fail(Code::INVALID_ARGUMENT_BINDING, arg.get_span(), "Positional arguments must precede named arguments");
+			fail(Code::InvalidArgumentBinding, arg.getSpan(), "Positional arguments must precede named arguments");
 		}
 		if (arg.label) {
-			const std::pair<decltype(labels)::iterator, bool> it_inserted = labels.emplace(arg.label->get_name_key(), &*arg.label);
-			if (!it_inserted.second) {
-				fail(Code::INVALID_ARGUMENT_BINDING, arg.label->get_span(), "Duplicate argument label", it_inserted.first->second);
+			if (const auto [fst, snd] = labels.emplace(arg.label->getNameKey(), &*arg.label); !snd) {
+				fail(Code::InvalidArgumentBinding, arg.label->getSpan(), "Duplicate argument label", fst->second);
 			}
 		}
 	}
@@ -362,18 +391,17 @@ bool validateArgumentLabels (const std::vector<CallArgument> &arguments) {
 
 ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, const std::vector<CallArgument> &arguments, const std::vector<Candidate> &group,
                                       const TypeArgumentList *typeArguments, const ResultTypes *knownArguments, const ReceiverProofs &proofs) {
-	const std::string &spelling = name.get_lexeme();
+	const std::string &spelling = name.getLexeme();
 	if (group.empty()) unknownName(name);
-	std::vector<PlacedCandidate>                 v_placed = bindCandidates(name, span, arguments, group, validateArgumentLabels(arguments), typeArguments);
-	const auto it_firstGeneric =
-	        std::stable_partition(v_placed.begin(), v_placed.end(), [] (const PlacedCandidate &placed) { return !placed.parameters; });
-	const bool                               b_singleTemplate = v_placed.end() - it_firstGeneric == 1;
+	std::vector<PlacedCandidate> v_placed = bindCandidates(name, span, arguments, group, validateArgumentLabels(arguments), typeArguments);
+	const auto it_firstGeneric = std::stable_partition(v_placed.begin(), v_placed.end(), [] (const PlacedCandidate &placed) { return !placed.parameters; });
+	const bool b_singleTemplate = v_placed.end() - it_firstGeneric == 1;
 	std::vector<std::optional<ResolvedType>> explicitTypes;
 	if (typeArguments) {
 		for (const TypeReference &ref : typeArguments->arguments) {
-			explicitTypes.push_back(ref.is_placeholder() ? std::nullopt : std::optional{ bodyType(ref) });
-			if (explicitTypes.back() && explicitTypes.back()->name == to_string(kVoid))
-				fail(Code::INVALID_GENERIC_ARGUMENT, ref.get_span(), "A type argument must be a value type");
+			explicitTypes.push_back(ref.isPlaceholder() ? std::nullopt : std::optional{ bodyType(ref) });
+			if (explicitTypes.back() && explicitTypes.back()->name == toString(KVoid))
+				fail(Code::InvalidGenericArgument, ref.getSpan(), "A type argument must be a value type");
 		}
 	}
 	std::vector<ArgumentProbe>    v_probes;
@@ -390,17 +418,17 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 		ArgumentProbe               ap_probe{ .result = {}, .before = bc_input.fs_flow, .after = bc_input.fs_flow };
 		std::optional<ResolvedType> opt_evidence;
 		if (knownArguments) {
-			ap_probe.result = ExpressionInfo{ { knownArguments->at(v_probes.size()) } };
+			ap_probe.result = ExpressionInfo{ .types = { knownArguments->at(v_probes.size()) } };
 		} else {
 			BodyChecker bc_operand = bc_input;
 			try {
 				ap_probe.result              = bc_operand.expression(*arg.expression);
 				const ResultKind rk_argument = ap_probe.result->resultKind();
 				if (rk_argument == ResultKind::Empty)
-					fail(Code::NO_MATCHING_CALL, span, "No overload of '" + spelling + "' accepts an argument that produces no value",
+					fail(Code::NoMatchingCall, span, "No overload of '" + spelling + "' accepts an argument that produces no value",
 					     &group.front().symbol->name);
 				if (rk_argument == ResultKind::Multiple)
-					fail(Code::MULTIPLE_RESULTS_IN_SCALAR, arg.expression->get_span(), "A call argument requires one value");
+					fail(Code::MultipleResultsInScalar, arg.expression->getSpan(), "A call argument requires one value");
 				ap_probe.after = bc_input.fs_flow = std::move(bc_operand.fs_flow);
 				b_naturalContinues &= ap_probe.result->fallsThrough;
 			} catch (const cde::ClothDiagnostic &error) {
@@ -408,13 +436,14 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 				if (it_firstGeneric != v_placed.end()) {
 					BodyChecker bc_default = bc_input;
 					try {
-						if (error.get_code() == Code::INTEGER_RANGE || error.get_code() == Code::FLOAT_RANGE) {
+						if (error.getCode() == Code::IntegerRange || error.getCode() == Code::FloatRange) {
 							bc_default.b_inferenceDefaults = true;
 							opt_evidence                   = bc_default.scalar(*arg.expression);
-						} else if (error.get_code() == Code::EXPLICIT_NULLABLE_TYPE) {
+						} else if (error.getCode() == Code::ExplicitNullableType) {
 							// The inferred parameter supplies a destination for an array of possibly absent elements.
-							const std::optional<ResolvedType> opt_array = bc_default.elementHint(*arg.expression, {});
-							if (opt_array && opt_array->array()) opt_evidence = bc_default.scalar(*arg.expression, &*opt_array);
+							if (const std::optional<ResolvedType> opt_array = bc_default.elementHint(*arg.expression, {});
+							    opt_array && opt_array->array())
+								opt_evidence = bc_default.scalar(*arg.expression, &*opt_array);
 						}
 					} catch (const cde::ClothDiagnostic &failure) {
 						if (!contextualFailure(failure)) throw;
@@ -428,7 +457,7 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 			const InferenceTier it_tier = ee_kind == ElementEvidence::Literal                                         ? InferenceTier::Literal :
 			                              !knownArguments && dynamic_cast<const ArrayLiteral *>(arg.expression.get()) ? InferenceTier::TypedArray :
 			                                                                                                            InferenceTier::Typed;
-			v_evidence.push_back({ arg.get_span(), std::move(opt_evidence), it_tier });
+			v_evidence.push_back({ .use = arg.getSpan(), .type = std::move(opt_evidence), .tier = it_tier });
 		}
 		v_probes.push_back(std::move(ap_probe));
 	}
@@ -457,8 +486,9 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
                                 try {
                                         trial.checkArguments(arguments, match.parameters, v_probes, true);
                                 } catch (const cde::ClothDiagnostic &error) {
-                                        const bool b_private = error.get_code() == Code::PRIVATE_CLASS_MEMBER || error.get_code() == Code::PRIVATE_NESTED_TYPE;
-                                        if (b_private && group.size() > 1 && !dynamic_cast<const IntrinsicDiagnostic *>(&error)) continue;
+                                        if (const bool b_private = error.getCode() == Code::PrivateClassMember || error.getCode() == Code::PrivateNestedType;
+                                            b_private && group.size() > 1 && !dynamic_cast<const IntrinsicDiagnostic *>(&error))
+                                                continue;
                                         if (contextualFailure(error)) continue;
                                         throw;
                                 }
@@ -530,7 +560,7 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 	if (matches.empty()) {
 		if (sym_privateConversion) analyzer.requireAccess(*sym_privateConversion, context, span);
 		if (!b_inferred && opt_boundFailure) throw *opt_boundFailure;
-		fail(Code::NO_MATCHING_CALL, span, "No overload of '" + spelling + "' accepts these arguments", &group.front().symbol->name);
+		fail(Code::NoMatchingCall, span, "No overload of '" + spelling + "' accepts these arguments", &group.front().symbol->name);
 	}
 	const MatchRank mr_best = std::ranges::min_element(matches, {}, &Match::rank)->rank;
 	std::erase_if(matches, [mr_best] (const Match &match) { return match.rank != mr_best; });
@@ -539,12 +569,12 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 		std::erase_if(matches, [st_omitted] (const Match &match) { return match.omittedCount() != st_omitted; });
 	}
 	if (matches.size() != 1) {
-		fail(Code::AMBIGUOUS_CALL, span, "Ambiguous call to '" + spelling + "'", &matches.front().symbol->name);
+		fail(Code::AmbiguousCall, span, "Ambiguous call to '" + spelling + "'", &matches.front().symbol->name);
 	}
 	Match &best = matches.front();
 	if (best.contract->visibility == Visibility::Private && asInterface(analyzer.declarations.at(best.contract).owner) &&
 	    !callable(*best.contract)->executableBody()) {
-		fail(Code::MISSING_INTERFACE_IMPLEMENTATION, span, "Private interface method '" + spelling + "' has no body", &best.contract->name);
+		fail(Code::MissingInterfaceImplementation, span, "Private interface method '" + spelling + "' has no body", &best.contract->name);
 	}
 	bool b_continues = true;
 	if (!knownArguments || best.rank == MatchRank::Contextual) {
@@ -566,7 +596,7 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 	const GenericInstance *gi_contract = nullptr, *gi_target = nullptr;
 	if (record) {
 		const ResolvedType *rt_host = best.dispatch && best.dispatch->kind == DispatchKind::State ? &best.dispatch->contract.owner : nullptr;
-		const TokenSpan     ts_use  = typeArguments ? typeArguments->get_span() : span;
+		const TokenSpan     ts_use  = typeArguments ? typeArguments->getSpan() : span;
 		gi_target = gi_contract = analyzer.useCallable(*best.contract, best.substitutions, context, ts_use, rt_host, best.operatorWidth);
 		if (best.dispatch) analyzer.useDispatch(*best.dispatch, best.substitutions, context, span);
 		if (best.symbol != best.contract) {

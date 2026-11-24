@@ -34,13 +34,13 @@ class TypeParser {
 	std::vector<std::invoke_result_t<ParseClause &, TypeReference, const Token &>> parseParents (std::string_view description, ParseClause &&parseClause) {
 		using Clause = std::invoke_result_t<ParseClause &, TypeReference, const Token &>;
 		std::vector<Clause> v_parents;
-		if (!at(oColon)) {
+		if (!at(OColon)) {
 			return v_parents;
 		}
 		do {
 			auto [separator, type] = parseParent(description);
 			v_parents.push_back(parseClause(std::move(type), std::as_const(separator)));
-		} while (at(oComma));
+		} while (at(OComma));
 		return v_parents;
 	}
 

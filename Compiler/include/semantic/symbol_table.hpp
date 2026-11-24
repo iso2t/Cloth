@@ -69,11 +69,11 @@ class SymbolTable {
     public:
 	explicit SymbolTable (SourceUnit source);
 
-	[[nodiscard]] const SourceUnit &get_source_unit () const {
+	[[nodiscard]] const SourceUnit &getSourceUnit () const {
 		return su_source;
 	}
 
-	[[nodiscard]] const SymbolScope &get_globals () const {
+	[[nodiscard]] const SymbolScope &getGlobals () const {
 		return ss_globals;
 	}
 

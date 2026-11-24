@@ -3,13 +3,31 @@
 // See Documentation/language/types/Types.rst
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <format>
 #include <functional>
+#include <map>
+#include <memory>
 #include <set>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <variant>
+#include <vector>
 
+#include <ast/decl/class_declaration.hpp>
+#include <ast/decl/declarations.hpp>
 #include <ast/decl/enum_declaration.hpp>
 #include <ast/decl/interface_declaration.hpp>
+#include <ast/decl/state_declaration.hpp>
+#include <ast/decl/struct_declaration.hpp>
+#include <ast/type/type_parameters.hpp>
+#include <ast/type/type_reference.hpp>
+#include <diagnostics.hpp>
+#include <semantic/checked_program.hpp>
 #include <semantic/checker.hpp>
+#include <semantic/symbol_table.hpp>
 #include <token/numeric_literals.hpp>
 #include <token/token.hpp>
 
@@ -43,7 +61,7 @@ bool possibleView (const ResolvedType &expected, const ResolvedType &view) {
 
 // An intersection may reach the same interface through several ancestors or different written bounds.
 template <typename Resolve>
-void checkBoundInterfaces (const Analyzer &analyzer, const TypeParameterDeclaration &parameter, Resolve resolve, const TokenSpan *use) {
+void checkBoundInterfaces (const Analyzer &analyzer, const TypeParameterDeclaration &parameter, const Resolve &resolve, const TokenSpan *use) {
 	if (parameter.bounds.size() < 2) return;
 	using Applications = std::map<ResolvedType, TokenSpan>;
 	std::map<const Symbol *, Applications> m_interfaces;
@@ -60,13 +78,13 @@ void checkBoundInterfaces (const Analyzer &analyzer, const TypeParameterDeclarat
 			for (const Applications::value_type &entry : m_prior) {
 				if (possibleView(view, entry.first)) continue;
 				std::vector<cde::SourceLabel> v_labels;
-				if (use) v_labels.push_back({ *use, "type argument here" });
-				v_labels.push_back({ tr_bound->get_span(), "requires " + view.spelling() });
-				v_labels.push_back({ entry.second, "requires " + entry.first.spelling() });
-				throw cde::ClothDiagnostic(Code::CONFLICTING_INTERFACE_APPLICATION,
-				                           "Conflicting interface applications for '" + parameter.name.get_lexeme() + "'", std::move(v_labels));
+				if (use) v_labels.push_back({ .span = *use, .text = "type argument here" });
+				v_labels.push_back({ .span = tr_bound->getSpan(), .text = "requires " + view.spelling() });
+				v_labels.push_back({ .span = entry.second, .text = "requires " + entry.first.spelling() });
+				throw cde::ClothDiagnostic(Code::ConflictingInterfaceApplication,
+				                           "Conflicting interface applications for '" + parameter.name.getLexeme() + "'", std::move(v_labels));
 			}
-			m_prior.emplace(view, tr_bound->get_span());
+			m_prior.emplace(view, tr_bound->getSpan());
 			return false;
 		});
 	}
@@ -75,11 +93,11 @@ void checkBoundInterfaces (const Analyzer &analyzer, const TypeParameterDeclarat
 
 const Symbol &objectRoot () {
 	// The implicit base has a stable nominal identity and no source constructor.
-	static const TokenSpan        TS_ROOT{ 1, 1, 1, 1 };
-	static const Token            T_CLASS{ std::string(to_string(kClass)), TokenType::Keyword, TS_ROOT };
+	static const TokenSpan        TS_ROOT{ .startLine = 1, .startCol = 1, .endLine = 1, .endCol = 1 };
+	static const Token            T_CLASS{ std::string(toString(KClass)), TokenType::Keyword, TS_ROOT };
 	static const Token            T_NAME{ "Object", TokenType::Identifier, TS_ROOT };
 	static const ClassDeclaration CD_ROOT{ T_CLASS, T_NAME, {}, {}, {}, {}, TS_ROOT };
-	static const Symbol           SYM_ROOT{ SymbolKind::Type, Visibility::Public, T_NAME, &CD_ROOT, {} };
+	static const Symbol SYM_ROOT{ .kind = SymbolKind::Type, .visibility = Visibility::Public, .name = T_NAME, .declaration = &CD_ROOT, .members = {} };
 	return SYM_ROOT;
 }
 
@@ -109,13 +127,13 @@ const ClassDeclaration *asClass (const Symbol *symbol) {
 }
 
 const TypeReference &fieldType (const Symbol &symbol) {
-	if (const auto field = std::get_if<const StructFieldDeclaration *>(&symbol.declaration)) {
+	if (const auto *const field = std::get_if<const StructFieldDeclaration *>(&symbol.declaration)) {
 		return (*field)->type;
 	}
-	if (const auto field = std::get_if<const ClassFieldDeclaration *>(&symbol.declaration)) {
+	if (const auto *const field = std::get_if<const ClassFieldDeclaration *>(&symbol.declaration)) {
 		return (*field)->type;
 	}
-	if (const auto field = std::get_if<const ClassParameterDeclaration *>(&symbol.declaration)) {
+	if (const auto *const field = std::get_if<const ClassParameterDeclaration *>(&symbol.declaration)) {
 		return (*field)->parameter.type;
 	}
 	return std::get<const EnumFieldDeclaration *>(symbol.declaration)->type;
@@ -136,43 +154,43 @@ ResolvedType Analyzer::substitute (ResolvedType type, const Substitutions &argum
 	if (arguments.empty() || !type.dependent()) return type;
 	using Replacements = std::map<const TypeArguments *, std::shared_ptr<const TypeArguments>>;
 	Replacements                                    m_replaced;
-	const std::function<ResolvedType(ResolvedType)> replace = [&] (ResolvedType rt_type) {
-		if (const auto it_argument = arguments.find(rt_type.parameter); it_argument != arguments.end()) {
+	const std::function<ResolvedType(ResolvedType)> replace = [&] (ResolvedType rtType) {
+		if (const auto it_argument = arguments.find(rtType.parameter); it_argument != arguments.end()) {
 			ResolvedType rt_result = it_argument->second;
-			if (rt_type.projectedSuffixes) {
+			if (rtType.projectedSuffixes) {
 				rt_result = boundShape(rt_result);
-				if (rt_result.suffixes.size() < rt_type.projectedSuffixes)
-					fail(Code::UNSATISFIED_GENERIC_BOUND, rt_type.parameter->name.get_span(), "Type argument lacks the required payload");
-				rt_result.suffixes.resize(rt_result.suffixes.size() - rt_type.projectedSuffixes);
+				if (rt_result.suffixes.size() < rtType.projectedSuffixes)
+					fail(Code::UnsatisfiedGenericBound, rtType.parameter->name.getSpan(), "Type argument lacks the required payload");
+				rt_result.suffixes.resize(rt_result.suffixes.size() - rtType.projectedSuffixes);
 			}
-			for (const std::string &s_suffix : rt_type.suffixes) {
-				if (s_suffix != to_string(oQuestion) || !rt_result.nullable()) rt_result.suffixes.push_back(s_suffix);
+			for (const std::string &s_suffix : rtType.suffixes) {
+				if (s_suffix != toString(OQuestion) || !rt_result.nullable()) rt_result.suffixes.push_back(s_suffix);
 			}
 			return rt_result;
 		}
-		if (rt_type.application && rt_type.application->dependent) {
-			const std::pair<Replacements::iterator, bool> it_result = m_replaced.try_emplace(rt_type.application.get());
+		if (rtType.application && rtType.application->dependent) {
+			const std::pair<Replacements::iterator, bool> it_result = m_replaced.try_emplace(rtType.application.get());
 			if (it_result.second) {
 				ResultTypes v_arguments;
-				for (const ResolvedType &rt_argument : rt_type.arguments()) v_arguments.push_back(replace(rt_argument));
-				applyArguments(rt_type, std::move(v_arguments));
-				it_result.first->second = rt_type.application;
+				for (const ResolvedType &rt_argument : rtType.arguments()) v_arguments.push_back(replace(rt_argument));
+				applyArguments(rtType, std::move(v_arguments));
+				it_result.first->second = rtType.application;
 			} else {
-				rt_type.application = it_result.first->second;
+				rtType.application = it_result.first->second;
 			}
 		}
-		return rt_type;
+		return rtType;
 	};
 	return replace(std::move(type));
 }
 
 ResolvedType Analyzer::ownerType (const Symbol &symbol) const {
-	ResolvedType rt_type(symbol.name.get_name_key());
+	ResolvedType rt_type(symbol.name.getNameKey());
 	rt_type.declaration = &symbol;
 	if (const TypeParameterList *tp = typeParameters(symbol)) {
 		ResultTypes v_arguments;
 		for (const TypeParameterDeclaration &param : tp->parameters) {
-			ResolvedType rt_arg(param.name.get_name_key());
+			ResolvedType rt_arg(param.name.getNameKey());
 			rt_arg.parameter = &param;
 			v_arguments.push_back(std::move(rt_arg));
 		}
@@ -196,7 +214,7 @@ const TypeParameterDeclaration *Analyzer::genericParameter (const Symbol &contex
 	for (const Symbol *sym = &context; sym; sym = declarations.at(sym).owner) {
 		if (const TypeParameterList *tp = typeParameters(*sym)) {
 			for (const TypeParameterDeclaration &param : tp->parameters) {
-				if (param.name.get_name_key() == name) {
+				if (param.name.getNameKey() == name) {
 					return &param;
 				}
 			}
@@ -214,28 +232,26 @@ void Analyzer::checkParameterNames (const Symbol &symbol) const {
 	ParameterNames m_names;
 	for (const TypeParameterDeclaration &tp_parameter : tpl_parameters->parameters) {
 		const Token &t_name = tp_parameter.name;
-		if (t_name.get_name_key() == symbol.name.get_name_key())
-			fail(Code::INVALID_GENERIC_PARAMETER, t_name.get_span(), "A type parameter cannot have its owner's name", &symbol.name);
+		if (t_name.getNameKey() == symbol.name.getNameKey())
+			fail(Code::InvalidGenericParameter, t_name.getSpan(), "A type parameter cannot have its owner's name", &symbol.name);
 		if (sym_owner && symbol.kind != SymbolKind::Type) {
-			if (const TypeParameterDeclaration *tp_outer = genericParameter(*sym_owner, t_name.get_name_key()))
-				fail(Code::INVALID_GENERIC_PARAMETER, t_name.get_span(), "Type parameter already declared by the enclosing type",
-				     &tp_outer->name);
+			if (const TypeParameterDeclaration *tp_outer = genericParameter(*sym_owner, t_name.getNameKey()))
+				fail(Code::InvalidGenericParameter, t_name.getSpan(), "Type parameter already declared by the enclosing type", &tp_outer->name);
 		}
-		const std::pair<ParameterNames::iterator, bool> it_name = m_names.emplace(t_name.get_name_key(), &t_name);
-		if (!it_name.second) fail(Code::INVALID_GENERIC_PARAMETER, t_name.get_span(), "Duplicate type parameter", it_name.first->second);
+		const std::pair<ParameterNames::iterator, bool> it_name = m_names.emplace(t_name.getNameKey(), &t_name);
+		if (!it_name.second) fail(Code::InvalidGenericParameter, t_name.getSpan(), "Duplicate type parameter", it_name.first->second);
 	}
 	// Defaults can refer to enclosing and earlier parameters, including inside a nested type application.
 	for (const TypeParameterDeclaration &tp_parameter : tpl_parameters->parameters) {
 		if (tp_parameter.defaultType) {
 			const std::function<void(const TypeReference &)> check = [&] (const TypeReference &ref) {
-				if (m_names.contains(ref.get_name().get_name_key()))
-					fail(Code::INVALID_GENERIC_ARGUMENT, ref.get_span(), "A default can only use earlier type parameters",
-					     &tp_parameter.name);
-				for (const TypeReference &tr_argument : ref.get_type_arguments()) check(tr_argument);
+				if (m_names.contains(ref.getName().getNameKey()))
+					fail(Code::InvalidGenericArgument, ref.getSpan(), "A default can only use earlier type parameters", &tp_parameter.name);
+				for (const TypeReference &tr_argument : ref.getTypeArguments()) check(tr_argument);
 			};
 			check(*tp_parameter.defaultType);
 		}
-		m_names.erase(tp_parameter.name.get_name_key());
+		m_names.erase(tp_parameter.name.getNameKey());
 	}
 }
 
@@ -243,7 +259,7 @@ ResolvedType Analyzer::checkedType (const TypeReference &reference, const Symbol
                                     unsigned operatorWidth) const {
 	std::set<const TypeParameterDeclaration *> s_activeDefaults;
 	ResolvedType rt_type = substitute(resolveType(reference, context, 0, allowOpen, s_activeDefaults, operatorWidth), arguments);
-	if (!allowOpen) checkBounds(rt_type, reference.get_span(), context);
+	if (!allowOpen) checkBounds(rt_type, reference.getSpan(), context);
 	return rt_type;
 }
 
@@ -254,27 +270,27 @@ ResolvedType Analyzer::type (const TypeReference &reference, const Symbol &conte
 
 ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol &context, unsigned depth, bool allowOpen,
                                     std::set<const TypeParameterDeclaration *> &activeDefaults, unsigned operatorWidth) const {
-	const Token    &t_name  = reference.get_name();
-	const TokenSpan ts_span = reference.get_span();
-	if (reference.get_application()) b_hasTypeApplications = true;
+	const Token    &t_name  = reference.getName();
+	const TokenSpan ts_span = reference.getSpan();
+	if (reference.getApplication()) b_hasTypeApplications = true;
 	if (depth > MAX_TYPE_ARG_NESTING) {
-		fail(Code::GENERIC_SUBSTITUTION_NESTING, ts_span, "Recursive generic type or default argument");
+		fail(Code::GenericSubstitutionNesting, ts_span, "Recursive generic type or default argument");
 	}
-	const std::string &s_name = t_name.get_name_key();
+	const std::string &s_name = t_name.getNameKey();
 	ResolvedType       rt_type(s_name);
-	if (s_name == to_string(kRange) && !hasTypeName(context, t_name)) {
-		if (reference.get_type_arguments().size() != 1) fail(Code::INVALID_RANGE_VALUE, ts_span, "A range requires one numeric endpoint type");
-		ResolvedType element = resolveType(reference.get_type_arguments().front(), context, depth + 1, false, activeDefaults, operatorWidth);
-		if (!element.parameter && !numeric(element)) fail(Code::INVALID_RANGE_VALUE, ts_span, "Range endpoints must be numeric");
+	if (s_name == toString(KRange) && !hasTypeName(context, t_name)) {
+		if (reference.getTypeArguments().size() != 1) fail(Code::InvalidRangeValue, ts_span, "A range requires one numeric endpoint type");
+		ResolvedType const element = resolveType(reference.getTypeArguments().front(), context, depth + 1, false, activeDefaults, operatorWidth);
+		if (!element.parameter && !numeric(element)) fail(Code::InvalidRangeValue, ts_span, "Range endpoints must be numeric");
 		applyArguments(rt_type, { element });
-	} else if (t_name.get_type() == TokenType::Identifier) {
+	} else if (t_name.getType() == TokenType::Identifier) {
 		rt_type.parameter = genericParameter(context, s_name);
 		if (!rt_type.parameter) {
-			const std::string_view s_separator = to_string(oDot);
+			const std::string_view s_separator = toString(ODot);
 			std::size_t            st_end      = s_name.find(s_separator);
 			const Symbol          *sym         = lookupTypeRoot(context, s_name.substr(0, st_end), st_end != std::string::npos);
 			if (!sym) {
-				fail(Code::UNSUPPORTED_TYPE, ts_span, "Unknown type '" + t_name.get_lexeme() + "'");
+				fail(Code::UnsupportedType, ts_span, "Unknown type '" + t_name.getLexeme() + "'");
 			}
 			requireAccess(*sym, context, ts_span);
 			while (st_end != std::string::npos) {
@@ -291,90 +307,89 @@ ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol
 					}
 				}
 				if (!nested) {
-					fail(Code::UNSUPPORTED_TYPE, ts_span, "Unknown nested type '" + t_name.get_lexeme() + "'");
+					fail(Code::UnsupportedType, ts_span, "Unknown nested type '" + t_name.getLexeme() + "'");
 				}
 				sym = nested;
 				requireAccess(*sym, context, ts_span);
 			}
-			rt_type.name                                 = sym->name.get_name_key();
+			rt_type.name                                 = sym->name.getNameKey();
 			rt_type.declaration                          = sym;
 			const TypeParameterList          *tp         = typeParameters(*sym);
 			const std::size_t                 st_count   = tp ? tp->parameters.size() : 0;
-			const std::vector<TypeReference> &v_supplied = reference.get_type_arguments();
-			if (tp && !allowOpen && !reference.get_application())
-				fail(Code::RAW_GENERIC_TYPE, ts_span, "Expected type arguments for '" + t_name.get_lexeme() + "'", &sym->name);
-			if (v_supplied.size() > st_count || (!tp && reference.get_application())) {
-				fail(Code::GENERIC_ARITY, ts_span, "Unexpected type arguments for '" + t_name.get_lexeme() + "'");
+			const std::vector<TypeReference> &v_supplied = reference.getTypeArguments();
+			if (tp && !allowOpen && !reference.getApplication())
+				fail(Code::RawGenericType, ts_span, "Expected type arguments for '" + t_name.getLexeme() + "'", &sym->name);
+			if (v_supplied.size() > st_count || (!tp && reference.getApplication())) {
+				fail(Code::GenericArity, ts_span, "Unexpected type arguments for '" + t_name.getLexeme() + "'");
 			}
 			Substitutions m_args;
 			ResultTypes   v_arguments;
 			for (std::size_t i = 0; i < st_count; ++i) {
 				const TypeParameterDeclaration &param = tp->parameters[i];
 				ResolvedType                    rt_arg;
-				if (allowOpen && (i >= v_supplied.size() || v_supplied[i].is_placeholder())) {
-					rt_arg.name      = param.name.get_name_key();
+				if (allowOpen && (i >= v_supplied.size() || v_supplied[i].isPlaceholder())) {
+					rt_arg.name      = param.name.getNameKey();
 					rt_arg.parameter = &param;
 				} else if (i < v_supplied.size()) {
 					rt_arg = resolveType(v_supplied[i], context, depth + 1, false, activeDefaults, operatorWidth);
 				} else if (param.defaultType) {
 					if (!activeDefaults.insert(&param).second)
-						fail(Code::INVALID_GENERIC_ARGUMENT, param.defaultType->get_span(), "Cyclic type argument default",
-						     &param.name);
+						fail(Code::InvalidGenericArgument, param.defaultType->getSpan(), "Cyclic type argument default", &param.name);
 					rt_arg = substitute(resolveType(*param.defaultType, *sym, depth + 1, false, activeDefaults), m_args);
 					activeDefaults.erase(&param);
 				} else {
-					fail(Code::GENERIC_ARITY, ts_span, "Missing type argument for '" + param.name.get_lexeme() + "'");
+					fail(Code::GenericArity, ts_span, "Missing type argument for '" + param.name.getLexeme() + "'");
 				}
-				if (rt_arg.name == to_string(kVoid)) {
-					fail(Code::INVALID_GENERIC_ARGUMENT, ts_span, "A type argument must be a value type");
+				if (rt_arg.name == toString(KVoid)) {
+					fail(Code::InvalidGenericArgument, ts_span, "A type argument must be a value type");
 				}
 				m_args.emplace(&param, rt_arg);
 				v_arguments.emplace_back(std::move(rt_arg));
 			}
 			applyArguments(rt_type, std::move(v_arguments));
-		} else if (reference.get_application()) {
-			fail(Code::INVALID_GENERIC_ARGUMENT, ts_span, "A type parameter cannot take type arguments");
+		} else if (reference.getApplication()) {
+			fail(Code::InvalidGenericArgument, ts_span, "A type parameter cannot take type arguments");
 		}
-	} else if (reference.is_placeholder()) {
-		fail(Code::INVALID_GENERIC_ARGUMENT, ts_span, "This type argument needs a concrete type");
+	} else if (reference.isPlaceholder()) {
+		fail(Code::InvalidGenericArgument, ts_span, "This type argument needs a concrete type");
 	}
 	if (reference.isUnsigned()) {
-		if (s_name != to_string(kInteger)) {
-			fail(Code::INVALID_UNSIGNED, ts_span, std::format("Only {} can be {}", to_string(kInteger), to_string(kUnsigned)));
+		if (s_name != toString(KInteger)) {
+			fail(Code::InvalidUnsigned, ts_span, std::format("Only {} can be {}", toString(KInteger), toString(KUnsigned)));
 		}
 		rt_type.name = unsignedIntegerSpelling();
 	}
-	if (reference.get_width()) {
-		const Token &t_width = *reference.get_width();
-		if (s_name != to_string(kInteger) && s_name != to_string(kFloat)) {
-			fail(Code::UNSUPPORTED_WIDTH, ts_span, "Width requires an integer or floating-point type");
+	if (reference.getWidth()) {
+		const Token &t_width = *reference.getWidth();
+		if (s_name != toString(KInteger) && s_name != toString(KFloat)) {
+			fail(Code::UnsupportedWidth, ts_span, "Width requires an integer or floating-point type");
 		}
-		if (t_width.get_lexeme() == to_string(kAuto)) {
-			if (depth) fail(Code::UNSUPPORTED_TYPE, ts_span, "A type application needs a concrete numeric width");
-			if (operatorWidth && reference.isUnsigned()) fail(Code::UNSUPPORTED_TYPE, ts_span, "A captured width requires a signed numeric type");
-			if (operatorWidth && s_name == to_string(kFloat) && operatorWidth != 16 && operatorWidth != 32 && operatorWidth != 64)
-				fail(Code::UNSUPPORTED_WIDTH, ts_span, "Unsupported captured floating-point width");
+		if (t_width.getLexeme() == toString(KAuto)) {
+			if (depth) fail(Code::UnsupportedType, ts_span, "A type application needs a concrete numeric width");
+			if (operatorWidth && reference.isUnsigned()) fail(Code::UnsupportedType, ts_span, "A captured width requires a signed numeric type");
+			if (operatorWidth && s_name == toString(KFloat) && operatorWidth != 16 && operatorWidth != 32 && operatorWidth != 64)
+				fail(Code::UnsupportedWidth, ts_span, "Unsupported captured floating-point width");
 			rt_type.width = operatorWidth;
 		} else {
 			const IntegerValue v_width = integerLiteralValue(t_width);
 			if (v_width.size() != 1 || !v_width.front() || v_width.front() > MAX_INTEGER_BITS ||
-			    (s_name == to_string(kFloat) && v_width.front() != 16 && v_width.front() != 32 && v_width.front() != 64)) {
-				fail(Code::UNSUPPORTED_WIDTH, ts_span, "Unsupported numeric width");
+			    (s_name == toString(KFloat) && v_width.front() != 16 && v_width.front() != 32 && v_width.front() != 64)) {
+				fail(Code::UnsupportedWidth, ts_span, "Unsupported numeric width");
 			}
 			rt_type.width = v_width.front();
 		}
 	}
-	if (reference.get_nullable()) {
-		rt_type.suffixes.emplace_back(to_string(oQuestion));
+	if (reference.getNullable()) {
+		rt_type.suffixes.emplace_back(toString(OQuestion));
 	}
-	for (std::size_t i = 0; i < reference.get_array_suffixes().size(); ++i) {
+	for (std::size_t i = 0; i < reference.getArraySuffixes().size(); ++i) {
 		std::string       s_extent;
-		const std::size_t index = reference.get_array_suffixes().size() - 1 - i;
-		if (index < reference.get_array_sizes().size() && reference.get_array_sizes()[index]) {
-			const IntegerValue v_size = integerLiteralValue(*reference.get_array_sizes()[index]);
+		const std::size_t index = reference.getArraySuffixes().size() - 1 - i;
+		if (index < reference.getArraySizes().size() && reference.getArraySizes()[index]) {
+			const IntegerValue v_size = integerLiteralValue(*reference.getArraySizes()[index]);
 			if (v_size.size() > program.layout.sizeBits / 32) {
-				fail(Code::INVALID_ARRAY, reference.get_array_sizes()[index]->get_span(),
-				     std::format("Array extent exceeds {} on a {}-bit target", to_string(kUsize), program.layout.sizeBits));
+				fail(Code::InvalidArray, reference.getArraySizes()[index]->getSpan(),
+				     std::format("Array extent exceeds {} on a {}-bit target", toString(KUsize), program.layout.sizeBits));
 			}
 			std::uint64_t extent = v_size.front();
 			if (v_size.size() == 2) {
@@ -383,14 +398,14 @@ ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol
 			s_extent = std::to_string(extent);
 		}
 		rt_type.suffixes.push_back(arraySuffix(s_extent));
-		if (i < reference.get_array_nullability().size() && reference.get_array_nullability()[i]) {
-			rt_type.suffixes.emplace_back(to_string(oQuestion));
+		if (i < reference.getArrayNullability().size() && reference.getArrayNullability()[i]) {
+			rt_type.suffixes.emplace_back(toString(OQuestion));
 		}
 	}
-	if (rt_type.name == to_string(kVoid) && !rt_type.suffixes.empty()) {
+	if (rt_type.name == toString(KVoid) && !rt_type.suffixes.empty()) {
 		if (reference.hasNullability())
-			fail(Code::INVALID_NULLABLE_TYPE, ts_span, std::format("{} has no value and cannot be nullable", to_string(kVoid)));
-		fail(Code::VOID_TYPE, ts_span, std::format("{} cannot be an array element", to_string(kVoid)));
+			fail(Code::InvalidNullableType, ts_span, std::format("{} has no value and cannot be nullable", toString(KVoid)));
+		fail(Code::VoidType, ts_span, std::format("{} cannot be an array element", toString(KVoid)));
 	}
 	return rt_type;
 }
@@ -403,7 +418,7 @@ bool Analyzer::sameSignature (const Candidate &left, const Candidate &right, boo
 	Substitutions mapped = right.arguments;
 	if (a && b) {
 		for (std::size_t i = 0; i < a->parameters.size(); ++i) {
-			ResolvedType parameter(a->parameters[i].name.get_name_key());
+			ResolvedType parameter(a->parameters[i].name.getNameKey());
 			parameter.parameter       = &a->parameters[i];
 			mapped[&b->parameters[i]] = parameter;
 		}
@@ -436,7 +451,7 @@ std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_
 				const auto guarantees = m_guarantees.find(pc_contract.parameter);
 				if (guarantees != m_guarantees.end()) {
 					for (const Symbol *sym : guarantees->second) {
-						v_members.push_back({ sym, pc_contract.arguments });
+						v_members.push_back({ .symbol = sym, .arguments = pc_contract.arguments });
 					}
 				}
 				return;
@@ -461,22 +476,23 @@ std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_
 			const TypeDispatch &td_table = dispatchFor(receiver);
 			if (kind == SymbolKind::StateMethodContract) {
 				for (const StateMethod &sm_method : td_table.stateMethods) {
-					if (sm_method.contract.symbol->name.get_name_key() != name) continue;
-					Candidate c_method{ sm_method.contract.symbol, argumentsOf(sm_method.contract.owner) };
-					c_method.dispatch = CallDispatch{ DispatchKind::State, receiver, sm_method.contract };
+					if (sm_method.contract.symbol->name.getNameKey() != name) continue;
+					Candidate c_method{ .symbol = sm_method.contract.symbol, .arguments = argumentsOf(sm_method.contract.owner) };
+					c_method.dispatch = CallDispatch{ .kind = DispatchKind::State, .receiver = receiver, .contract = sm_method.contract };
 					v_members.push_back(std::move(c_method));
 				}
 			} else {
 				for (const MethodSlot &ms_slot : td_table.methods) {
-					if (ms_slot.contract.symbol->name.get_name_key() != name) continue;
+					if (ms_slot.contract.symbol->name.getNameKey() != name) continue;
 					const MethodRef &mr_static = lookup == MemberLookup::Declaration && ms_slot.implementation ? *ms_slot.implementation :
 					                                                                                             ms_slot.contract;
-					Candidate        c_method{ mr_static.symbol, argumentsOf(mr_static.owner) };
+					Candidate        c_method{ .symbol = mr_static.symbol, .arguments = argumentsOf(mr_static.owner) };
 					if (ms_slot.implementation && ms_slot.implementation->symbol != mr_static.symbol) {
 						c_method.overridingMethod    = ms_slot.implementation->symbol;
 						c_method.overridingArguments = argumentsOf(ms_slot.implementation->owner);
 					}
-					if (ms_slot.kind != DispatchKind::Direct) c_method.dispatch = CallDispatch{ ms_slot.kind, receiver, ms_slot.contract };
+					if (ms_slot.kind != DispatchKind::Direct)
+						c_method.dispatch = CallDispatch{ .kind = ms_slot.kind, .receiver = receiver, .contract = ms_slot.contract };
 					v_members.push_back(std::move(c_method));
 				}
 			}
@@ -488,7 +504,7 @@ std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_
 		if (it != receiver.declaration->members.end()) {
 			for (const Symbol &sym : it->second) {
 				if (sym.kind == kind) {
-					v_members.push_back({ &sym, m_args });
+					v_members.push_back({ .symbol = &sym, .arguments = m_args });
 				}
 			}
 		}
@@ -510,21 +526,21 @@ std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_
 	// A diamond can reach one declaration twice. A derived override also occupies its parent's callable slot.
 	std::vector<Candidate> unique;
 	for (const Candidate &candidate : v_members) {
-		const DeclarationInfo                 &current  = declarations.at(candidate.symbol);
-		const auto it_prior = std::ranges::find_if(unique, [&] (const Candidate &prior) {
-			if (prior.symbol == candidate.symbol) {
-				return prior.arguments == candidate.arguments;
-			}
-			const DeclarationInfo &previous = declarations.at(prior.symbol);
-			if (kind != SymbolKind::Method || previous.owner == current.owner || !previous.owner || !current.owner ||
-			    !sameSignature(prior, candidate)) {
-				return false;
-			}
-			if (asClass(previous.owner) && asInterface(current.owner)) {
-				return true;
-			}
-			return accepts(substitute(ownerType(*current.owner), candidate.arguments), substitute(ownerType(*previous.owner), prior.arguments));
-		});
+		const DeclarationInfo &current  = declarations.at(candidate.symbol);
+		const auto             it_prior = std::ranges::find_if(unique, [&] (const Candidate &prior) {
+                        if (prior.symbol == candidate.symbol) {
+                                return prior.arguments == candidate.arguments;
+                        }
+                        const DeclarationInfo &previous = declarations.at(prior.symbol);
+                        if (kind != SymbolKind::Method || previous.owner == current.owner || !previous.owner || !current.owner ||
+                            !sameSignature(prior, candidate)) {
+                                return false;
+                        }
+                        if (asClass(previous.owner) && asInterface(current.owner)) {
+                                return true;
+                        }
+                        return accepts(substitute(ownerType(*current.owner), candidate.arguments), substitute(ownerType(*previous.owner), prior.arguments));
+                });
 		if (it_prior == unique.end()) {
 			unique.push_back(candidate);
 		}
@@ -535,7 +551,7 @@ std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_
 Candidate Analyzer::boundMethod (const ExpressionInfo &call, const ResolvedType &receiver, const std::vector<Candidate> &candidates,
                                  const Substitutions &arguments) const {
 	// The template selects the overload. A concrete receiver can supply an implementation of the same method.
-	Candidate c_contract{ call.argumentContract };
+	Candidate c_contract{ .symbol = call.argumentContract };
 	for (const Substitutions::value_type &entry : call.typeArguments) {
 		c_contract.arguments.emplace(entry.first, substitute(entry.second, arguments));
 	}
@@ -593,16 +609,16 @@ ResolvedType Analyzer::boundShape (const ResolvedType &value) const {
 		const TypeReference    *tr_shape    = nullptr;
 		for (const TypeParameterBound &tp_bound : pc_contract.parameter->bounds) {
 			const TypeReference *tr_bound = std::get_if<TypeReference>(&tp_bound.value);
-			if (tr_bound && (!tr_bound->get_array_suffixes().empty() || tr_bound->get_nullable())) {
+			if (tr_bound && (!tr_bound->getArraySuffixes().empty() || tr_bound->getNullable())) {
 				tr_shape = tr_bound;
 				break;
 			}
 		}
 		if (!tr_shape) break;
 		if (!s_active.insert(rt_result.parameter).second)
-			fail(Code::INVALID_GENERIC_BOUND, tr_shape->get_span(), "Cyclic array bound", &rt_result.parameter->name);
+			fail(Code::InvalidGenericBound, tr_shape->getSpan(), "Cyclic array bound", &rt_result.parameter->name);
 		ResolvedType rt_required = substitute(type(*tr_shape, *m_genericOwners.at(pc_contract.parameter)), pc_contract.arguments);
-		if (tr_shape->get_array_suffixes().empty() || (sym_number && rt_required.declaration == sym_number)) {
+		if (tr_shape->getArraySuffixes().empty() || (sym_number && rt_required.declaration == sym_number)) {
 			rt_required.name        = rt_result.name;
 			rt_required.parameter   = rt_result.parameter;
 			rt_required.declaration = nullptr;
@@ -610,7 +626,7 @@ ResolvedType Analyzer::boundShape (const ResolvedType &value) const {
 			rt_required.projectedSuffixes = rt_required.suffixes.size();
 		}
 		for (const std::string &s_suffix : rt_result.suffixes)
-			if (s_suffix != to_string(oQuestion) || !rt_required.nullable()) rt_required.suffixes.push_back(s_suffix);
+			if (s_suffix != toString(OQuestion) || !rt_required.nullable()) rt_required.suffixes.push_back(s_suffix);
 		rt_result = std::move(rt_required);
 	}
 	return rt_result;
@@ -655,7 +671,7 @@ bool Analyzer::referenceType (const ResolvedType &type) const {
 }
 
 bool Analyzer::mayBeAbsent (const ResolvedType &type) const {
-	return type.nullable() || (type.suffixes.empty() && (type.name == to_string(kNull) ||
+	return type.nullable() || (type.suffixes.empty() && (type.name == toString(KNull) ||
 	                                                     (type.parameter && !type.width && parameterContract(*type.parameter).parameter->bounds.empty())));
 }
 
@@ -675,9 +691,9 @@ bool Analyzer::supportsEquality (const ResolvedType &type) const {
 
 bool Analyzer::classEqualityMayCall (const ResolvedType &type, Operator operation) const {
 	const std::function hasEquality = [&] (const ResolvedType &owner) {
-		for (const Candidate &c_op : members(owner, to_string(operation), SymbolKind::Operator)) {
-			const auto &md_equal = dynamic_cast<const MethodDeclaration &>(*callable(*c_op.symbol));
-			const OperatorMember    &om_form  = *md_equal.operatorMember;
+		for (const Candidate &c_op : members(owner, toString(operation), SymbolKind::Operator)) {
+			const auto           &md_equal = dynamic_cast<const MethodDeclaration &>(*callable(*c_op.symbol));
+			const OperatorMember &om_form  = *md_equal.operatorMember;
 			if (!om_form.provider && !om_form.selector && !om_form.rightReceiver && md_equal.parameters.size() == 1 &&
 			    c_op.symbol->visibility == Visibility::Public &&
 			    accepts(substitute(declarations.at(c_op.symbol).parameters.front(), c_op.arguments), owner))
@@ -685,7 +701,7 @@ bool Analyzer::classEqualityMayCall (const ResolvedType &type, Operator operatio
 		}
 		return false;
 	};
-	if (operation == oNotEqual && classEqualityMayCall(type, oEqual)) return true;
+	if (operation == ONotEqual && classEqualityMayCall(type, OEqual)) return true;
 	return hasEquality(type) || anyReceiverClass(type, hasEquality);
 }
 
@@ -728,7 +744,7 @@ bool Analyzer::accepts (const ResolvedType &expected, const ResolvedType &actual
 		if (rt_target != expected || rt_source != actual) return accepts(rt_target, rt_source);
 	}
 	if (expected.nullable()) {
-		return actual.name == to_string(kNull) || accepts(expected.element(), actual.nullable() ? actual.element() : actual);
+		return actual.name == toString(KNull) || accepts(expected.element(), actual.nullable() ? actual.element() : actual);
 	}
 	if (actual.nullable()) {
 		return false;
@@ -762,25 +778,25 @@ void Analyzer::resolveDeclaration (const Symbol &symbol) {
 	DeclarationInfo &info      = declarations.at(&symbol);
 	const auto       valueType = [&] (const TypeReference &reference) {
                 ResolvedType rt = type(reference, symbol);
-                if (rt.name == to_string(kVoid)) {
-                        fail(Code::VOID_TYPE, reference.get_span(), std::format("A value needs a non-{} type", to_string(kVoid)));
+                if (rt.name == toString(KVoid)) {
+                        fail(Code::VoidType, reference.getSpan(), std::format("A value needs a non-{} type", toString(KVoid)));
                 }
                 return rt;
 	};
 	if (const CallableSignature *cs = callable(symbol)) {
 		std::set<std::string> s_names;
 		for (const ParameterDeclaration &param : cs->parameters) {
-			if (!s_names.insert(param.name.get_name_key()).second) {
-				fail(Code::DUPLICATE_BINDING, param.name.get_span(), "Duplicate parameter '" + param.name.get_lexeme() + "'");
+			if (!s_names.insert(param.name.getNameKey()).second) {
+				fail(Code::DuplicateBinding, param.name.getSpan(), "Duplicate parameter '" + param.name.getLexeme() + "'");
 			}
 			info.parameters.push_back(valueType(param.type));
 		}
 		for (const TypeReference &ref : cs->returnTypes) {
 			ResolvedType rt = type(ref, symbol);
-			if (rt.name != to_string(kVoid)) {
+			if (rt.name != toString(KVoid)) {
 				info.returns.push_back(std::move(rt));
 			} else if (cs->returnTypes.size() != 1) {
-				fail(Code::VOID_TYPE, ref.get_span(), std::format("{} must be the only result", to_string(kVoid)));
+				fail(Code::VoidType, ref.getSpan(), std::format("{} must be the only result", toString(KVoid)));
 			}
 		}
 		if (symbol.kind == SymbolKind::Operator) {
@@ -791,21 +807,21 @@ void Analyzer::resolveDeclaration (const Symbol &symbol) {
 	} else if (symbol.kind == SymbolKind::EnumCase) {
 		info.value = ownerType(*info.owner);
 	} else if (symbol.kind == SymbolKind::State) {
-		const auto state = std::get<const StateBodyDeclaration *>(symbol.declaration);
-		info.value       = type(state->payloadType, symbol);
+		const auto *const state = std::get<const StateBodyDeclaration *>(symbol.declaration);
+		info.value              = type(state->payloadType, symbol);
 		if (const auto *top = dynamic_cast<const TopLevelStateDeclaration *>(state)) {
 			info.parents.push_back(valueType(top->host));
 		}
 	} else if (symbol.kind == SymbolKind::Type) {
-		const auto td = std::get<const TypeDeclaration *>(symbol.declaration);
+		const auto *const td = std::get<const TypeDeclaration *>(symbol.declaration);
 		if (const auto *cd = dynamic_cast<const ClassDeclaration *>(td)) {
 			for (const ClassParentClause &parent : cd->parents) {
 				const ResolvedType &rt_parent = info.parents.emplace_back(valueType(parent.type));
 				if (asInterface(rt_parent.declaration) && parent.constructorArguments)
-					fail(Code::INVALID_INTERFACE_HEADER, parent.span, "An interface clause takes no constructor arguments",
+					fail(Code::InvalidInterfaceHeader, parent.span, "An interface clause takes no constructor arguments",
 					     &rt_parent.declaration->name);
 				if (rt_parent.declaration == &objectRoot() && parent.constructorArguments && !parent.constructorArguments->empty())
-					fail(Code::INVALID_CLASS_MEMBER, parent.span, std::format("{} takes no base arguments", rt_parent.name));
+					fail(Code::InvalidClassMember, parent.span, std::format("{} takes no base arguments", rt_parent.name));
 			}
 			if (std::ranges::none_of(info.parents, [] (const ResolvedType &parent) { return asClass(parent.declaration); }))
 				info.parents.push_back(ownerType(objectRoot()));
@@ -818,10 +834,10 @@ void Analyzer::resolveDeclaration (const Symbol &symbol) {
 }
 
 void Analyzer::checkBounds (const ResolvedType &type, const TokenSpan &where, const Symbol &use) const {
-	type.visitApplications([&] (const ResolvedType &rt_type) {
-		if (!rt_type.declaration && rt_type.name == to_string(kRange) && !numeric(rt_type.arguments().front()))
-			fail(Code::INVALID_RANGE_VALUE, where, "Range endpoints must be numeric");
-		const Substitutions m_arguments = argumentsOf(rt_type);
+	type.visitApplications([&] (const ResolvedType &rtType) {
+		if (!rtType.declaration && rtType.name == toString(KRange) && !numeric(rtType.arguments().front()))
+			fail(Code::InvalidRangeValue, where, "Range endpoints must be numeric");
+		const Substitutions m_arguments = argumentsOf(rtType);
 		for (const Substitutions::value_type &entry : m_arguments) {
 			checkBounds(*entry.first, m_arguments, use, where);
 		}
@@ -856,19 +872,21 @@ void Analyzer::checkBounds (const TypeParameterDeclaration &parameter, const Sub
 				v_required.push_back(resolve(pd_param.type));
 			if (constructorFor(rt_actual, v_required, rt_actual.parameter ? nullptr : &use) || hasConstructorProof(rt_actual, v_required)) continue;
 		}
-		throw cde::ClothDiagnostic(Code::UNSATISFIED_GENERIC_BOUND,
-		                           rt_actual.spelling() + " does not satisfy the bounds of '" + parameter.name.get_lexeme() + "'",
-		                           { { where, "type argument here" }, { tp_bound.get_span(), "unsatisfied bound" } });
+		throw cde::ClothDiagnostic(Code::UnsatisfiedGenericBound,
+		                           rt_actual.spelling() + " does not satisfy the bounds of '" + parameter.name.getLexeme() + "'",
+		                           { { .span = where, .text = "type argument here" }, { .span = tp_bound.getSpan(), .text = "unsatisfied bound" } });
 	}
 }
 
 void Analyzer::checkOverload (const Symbol &symbol, const Substitutions &arguments, const TokenSpan *application) const {
 	if (!callable(symbol) || dynamic_cast<const ConstructorGuaranteeDeclaration *>(callable(symbol))) return;
 	const DeclarationInfo &di_info  = declarations.at(&symbol);
-	const SymbolScope     &ss_scope = di_info.owner ? di_info.owner->members : program.units[di_info.file]->get_globals();
-	for (const Symbol &sym_prior : ss_scope.at(symbol.name.get_name_key())) {
+	const SymbolScope     &ss_scope = di_info.owner ? di_info.owner->members : program.units[di_info.file]->getGlobals();
+	for (const Symbol &sym_prior : ss_scope.at(symbol.name.getNameKey())) {
 		if (&sym_prior == &symbol) break;
-		if (sym_prior.kind != symbol.kind || !sameSignature({ &sym_prior, arguments }, { &symbol, arguments })) continue;
+		if (sym_prior.kind != symbol.kind ||
+		    !sameSignature({ .symbol = &sym_prior, .arguments = arguments }, { .symbol = &symbol, .arguments = arguments }))
+			continue;
 		if (symbol.kind == SymbolKind::Operator) {
 			const OperatorMember &om_prior   = *dynamic_cast<const MethodDeclaration &>(*callable(sym_prior)).operatorMember;
 			const OperatorMember &om_current = *dynamic_cast<const MethodDeclaration &>(*callable(symbol)).operatorMember;
@@ -876,15 +894,15 @@ void Analyzer::checkOverload (const Symbol &symbol, const Substitutions &argumen
 			    specialize(declarations.at(&sym_prior), arguments).value != specialize(di_info, arguments).value)
 				continue;
 		}
-		const std::string s_message = "Duplicate signature for '" + symbol.name.get_lexeme() + "'";
-		const Code        dc_code   = di_info.owner ? Code::DUPLICATE_METHOD : Code::DUPLICATE_FUNCTION;
+		const std::string s_message = "Duplicate signature for '" + symbol.name.getLexeme() + "'";
+		const Code        dc_code   = di_info.owner ? Code::DuplicateMethod : Code::DuplicateFunction;
 		if (application) {
-			throw cde::ClothDiagnostic(symbol.kind == SymbolKind::Constructor ? Code::INVALID_CLASS_MEMBER : dc_code, s_message,
-			                           { { *application, "instantiated here" },
-			                             { symbol.name.get_span(), s_message },
-			                             { sym_prior.name.get_span(), "previous declaration" } });
+			throw cde::ClothDiagnostic(symbol.kind == SymbolKind::Constructor ? Code::InvalidClassMember : dc_code, s_message,
+			                           { { .span = *application, .text = "instantiated here" },
+			                             { .span = symbol.name.getSpan(), .text = s_message },
+			                             { .span = sym_prior.name.getSpan(), .text = "previous declaration" } });
 		}
-		fail(dc_code, symbol.name.get_span(), s_message, &sym_prior.name);
+		fail(dc_code, symbol.name.getSpan(), s_message, &sym_prior.name);
 	}
 }
 
@@ -901,23 +919,23 @@ void Analyzer::checkPublicSurface (const Symbol &symbol, const Symbol *exporting
 		        if (!s_exposed.insert(type).second) return;
 		        for (const Symbol *sym_type = type.declaration; sym_type; sym_type = declarations.at(sym_type).owner) {
 			        if (sym_type->visibility != Visibility::Public)
-				        fail(Code::PRIVATE_GENERIC_SIGNATURE, where,
-				             "Public signature exposes private type '" + sym_type->name.get_lexeme() + "'", &sym_type->name);
+				        fail(Code::PrivateGenericSignature, where, "Public signature exposes private type '" + sym_type->name.getLexeme() + "'",
+				             &sym_type->name);
 		        }
 		        for (std::size_t st_index = 0; st_index < type.arguments().size(); ++st_index) {
 			        const TypeReference *tr_arg =
-			                reference && st_index < reference->get_type_arguments().size() ? &reference->get_type_arguments()[st_index] : nullptr;
-			        expose(type.arguments()[st_index], tr_arg, tr_arg ? tr_arg->get_span() : where);
+			                reference && st_index < reference->getTypeArguments().size() ? &reference->getTypeArguments()[st_index] : nullptr;
+			        expose(type.arguments()[st_index], tr_arg, tr_arg ? tr_arg->getSpan() : where);
 		        }
 	        };
 	const std::function<void(const TypeReference &)> written = [&] (const TypeReference &reference) {
-		expose(type(reference, symbol), &reference, reference.get_span());
+		expose(type(reference, symbol), &reference, reference.getSpan());
 	};
 	if (const CallableSignature *cs_method = callable(symbol)) {
 		for (const ParameterDeclaration &pd_param : cs_method->parameters) written(pd_param.type);
 		for (const TypeReference &tr_result : cs_method->returnTypes) written(tr_result);
 		if (cs_method->returnTypes.empty()) {
-			for (const ResolvedType &rt_result : di_info.returns) expose(rt_result, nullptr, symbol.name.get_span());
+			for (const ResolvedType &rt_result : di_info.returns) expose(rt_result, nullptr, symbol.name.getSpan());
 		}
 		if (const auto *md_method = dynamic_cast<const MethodDeclaration *>(cs_method);
 		    md_method && md_method->operatorMember && md_method->operatorMember->selector)
@@ -933,7 +951,7 @@ void Analyzer::checkPublicSurface (const Symbol &symbol, const Symbol *exporting
 		written(sd_state.payloadType);
 		if (const auto *ts_state = dynamic_cast<const TopLevelStateDeclaration *>(&sd_state)) written(ts_state->host);
 	} else if (symbol.kind == SymbolKind::StateAttachment) {
-		expose(*di_info.value, nullptr, symbol.name.get_span());
+		expose(*di_info.value, nullptr, symbol.name.getSpan());
 	}
 	if (const TypeParameterList *tpl_parameters = typeParameters(symbol)) {
 		for (const TypeParameterDeclaration &tp_param : tpl_parameters->parameters) {
@@ -955,9 +973,9 @@ void Analyzer::checkArrayBound (const TypeParameterDeclaration &parameter, const
 	const std::function<void(const ResolvedType &)> visit = [&] (const ResolvedType &part) {
 		if (s_complete.contains(part)) return;
 		if (part.parameter) {
-			if (!s_active.insert(part.parameter).second) fail(Code::INVALID_GENERIC_BOUND, where, "Cyclic array bound", &part.parameter->name);
+			if (!s_active.insert(part.parameter).second) fail(Code::InvalidGenericBound, where, "Cyclic array bound", &part.parameter->name);
 			if (s_active.size() > MAX_TYPE_ARG_NESTING)
-				fail(Code::GENERIC_SUBSTITUTION_NESTING, where, "Array bound nesting limit exceeded", &parameter.name);
+				fail(Code::GenericSubstitutionNesting, where, "Array bound nesting limit exceeded", &parameter.name);
 			for (const ResolvedType &rt_next : typeBounds(part))
 				if ((rt_next.nullable() ? rt_next.element() : rt_next).array()) visit(rt_next);
 			s_active.erase(part.parameter);
@@ -980,34 +998,33 @@ void Analyzer::checkDeclaredBounds (const TypeParameterDeclaration &parameter, c
 			for (const ParameterDeclaration &pd_argument : cb_bound->declaration.parameters) v_signature.push_back(type(pd_argument.type, symbol));
 			const Token                                       &t_keyword   = cb_bound->declaration.keyword;
 			const std::pair<ConstructorBounds::iterator, bool> it_previous = m_constructors.emplace(std::move(v_signature), &t_keyword);
-			if (!it_previous.second)
-				fail(Code::INVALID_GENERIC_BOUND, tp_bound.get_span(), "Duplicate constructor bound", it_previous.first->second);
+			if (!it_previous.second) fail(Code::InvalidGenericBound, tp_bound.getSpan(), "Duplicate constructor bound", it_previous.first->second);
 			t_present = &t_keyword;
 		} else {
-			const auto &tr_bound    = std::get<TypeReference>(tp_bound.value);
-			const ResolvedType   rt_required = type(tr_bound, symbol);
-			const ResolvedType   rt_payload  = rt_required.nullable() ? rt_required.element() : rt_required;
+			const auto        &tr_bound    = std::get<TypeReference>(tp_bound.value);
+			const ResolvedType rt_required = type(tr_bound, symbol);
+			const ResolvedType rt_payload  = rt_required.nullable() ? rt_required.element() : rt_required;
 			if (rt_payload.array() || (sym_number && rt_payload.declaration == sym_number)) {
 				if (parameter.bounds.size() > 1)
-					fail(Code::INVALID_GENERIC_BOUND, tr_bound.get_span(), rt_required.spelling() + " must be the only bound",
+					fail(Code::InvalidGenericBound, tr_bound.getSpan(), rt_required.spelling() + " must be the only bound",
 					     &parameter.name);
-				if (rt_payload.array()) checkArrayBound(parameter, rt_required, tr_bound.get_span());
+				if (rt_payload.array()) checkArrayBound(parameter, rt_required, tr_bound.getSpan());
 			} else if (!asClass(rt_payload.declaration) && !asInterface(rt_payload.declaration)) {
-				fail(Code::INVALID_GENERIC_BOUND, tr_bound.get_span(), "Expected a class, interface, or array bound", &parameter.name);
+				fail(Code::InvalidGenericBound, tr_bound.getSpan(), "Expected a class, interface, or array bound", &parameter.name);
 			}
-			const std::pair<NominalBounds::iterator, bool> it_previous = m_nominal.emplace(rt_payload, &tr_bound.get_name());
+			const std::pair<NominalBounds::iterator, bool> it_previous = m_nominal.emplace(rt_payload, &tr_bound.getName());
 			if (!it_previous.second)
-				fail(Code::INVALID_GENERIC_BOUND, tr_bound.get_span(), "Duplicate bound '" + rt_required.spelling() + "'",
+				fail(Code::InvalidGenericBound, tr_bound.getSpan(), "Duplicate bound '" + rt_required.spelling() + "'",
 				     it_previous.first->second);
 			if (!rt_payload.array() && asClass(rt_payload.declaration)) {
 				if (t_classBound)
-					fail(Code::INVALID_GENERIC_BOUND, tr_bound.get_span(), "A parameter can have only one class bound", t_classBound);
-				t_classBound = &tr_bound.get_name();
+					fail(Code::InvalidGenericBound, tr_bound.getSpan(), "A parameter can have only one class bound", t_classBound);
+				t_classBound = &tr_bound.getName();
 			}
-			(rt_required.nullable() ? t_nullable : t_present) = &tr_bound.get_name();
+			(rt_required.nullable() ? t_nullable : t_present) = &tr_bound.getName();
 		}
 		if (t_nullable && t_present)
-			fail(Code::INVALID_GENERIC_BOUND, t_nullable->get_span(), "Nullable and non-nullable bounds cannot be combined", t_present);
+			fail(Code::InvalidGenericBound, t_nullable->getSpan(), "Nullable and non-nullable bounds cannot be combined", t_present);
 	}
 	checkBoundInterfaces(*this, parameter, [&] (const TypeReference &ref) { return type(ref, symbol); }, nullptr);
 }
@@ -1017,13 +1034,13 @@ void Analyzer::checkDeclarations () {
 	for (const Symbol *sym : v_order) {
 		DeclarationInfo &info = declarations.at(sym);
 		if (sym->kind == SymbolKind::StateAttachment) {
-			info.attachedState = lookupFileState(*sym, sym->name.get_name_key());
+			info.attachedState = lookupFileState(*sym, sym->name.getNameKey());
 			if (!info.attachedState) {
-				fail(Code::INVALID_STATE_ATTACHMENT, sym->name.get_span(), "Unknown attached state '" + sym->name.get_lexeme() + "'");
+				fail(Code::InvalidStateAttachment, sym->name.getSpan(), "Unknown attached state '" + sym->name.getLexeme() + "'");
 			}
 			const DeclarationInfo &state = declarations.at(info.attachedState);
 			if (!accepts(state.parents.front(), ownerType(*info.owner))) {
-				fail(Code::INVALID_STATE_ATTACHMENT, sym->name.get_span(), "State is declared for a different host", &info.attachedState->name);
+				fail(Code::InvalidStateAttachment, sym->name.getSpan(), "State is declared for a different host", &info.attachedState->name);
 			}
 			info.value = state.value;
 			m_stateHosts[info.attachedState].push_back(ownerType(*info.owner));
@@ -1041,25 +1058,24 @@ void Analyzer::checkDeclarations () {
 				if (param.defaultType) {
 					ResolvedType &rt_default = m_defaults.at(&param);
 					rt_default               = substitute(type(*param.defaultType, *sym), m_defaults);
-					if (rt_default.name == to_string(kVoid))
-						fail(Code::INVALID_GENERIC_ARGUMENT, param.defaultType->get_span(), "A default must be a value type",
-						     &param.name);
-					checkBounds(rt_default, param.defaultType->get_span(), *sym);
-					checkBounds(param, m_defaults, *sym, param.defaultType->get_span());
+					if (rt_default.name == toString(KVoid))
+						fail(Code::InvalidGenericArgument, param.defaultType->getSpan(), "A default must be a value type", &param.name);
+					checkBounds(rt_default, param.defaultType->getSpan(), *sym);
+					checkBounds(param, m_defaults, *sym, param.defaultType->getSpan());
 				}
 			}
 		}
 		for (const ResolvedType &rt : info.parameters) {
-			checkBounds(rt, sym->name.get_span(), *sym);
+			checkBounds(rt, sym->name.getSpan(), *sym);
 		}
 		for (const ResolvedType &rt : info.returns) {
-			checkBounds(rt, sym->name.get_span(), *sym);
+			checkBounds(rt, sym->name.getSpan(), *sym);
 		}
 		for (const ResolvedType &rt : info.parents) {
-			checkBounds(rt, sym->name.get_span(), *sym);
+			checkBounds(rt, sym->name.getSpan(), *sym);
 		}
 		if (info.value) {
-			checkBounds(*info.value, sym->name.get_span(), *sym);
+			checkBounds(*info.value, sym->name.getSpan(), *sym);
 		}
 		checkOverload(*sym, {}, nullptr);
 		if (sym->kind == SymbolKind::Operator) checkCollectionOperator(*sym);

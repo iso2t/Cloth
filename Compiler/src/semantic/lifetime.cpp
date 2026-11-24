@@ -13,14 +13,30 @@
 #include <set>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include <ast/decl/class_declaration.hpp>
+#include <ast/decl/declarations.hpp>
 #include <ast/decl/enum_declaration.hpp>
+#include <ast/decl/state_declaration.hpp>
+#include <ast/expr/class_expression.hpp>
+#include <ast/expr/expression.hpp>
+#include <ast/expr/expressions.hpp>
+#include <ast/expr/member_call_expression.hpp>
 #include <ast/expr/provider_expressions.hpp>
+#include <ast/expr/struct_expressions.hpp>
 #include <ast/stmt/do_while_statement.hpp>
 #include <ast/stmt/for_statement.hpp>
+#include <ast/stmt/loop_control.hpp>
+#include <ast/stmt/statement.hpp>
+#include <ast/stmt/statements.hpp>
 #include <ast/stmt/while_statement.hpp>
+#include <diagnostics.hpp>
+#include <semantic/checked_program.hpp>
 #include <semantic/checker.hpp>
+#include <semantic/symbol_table.hpp>
+#include <token/token.hpp>
 
 namespace cloth::semantic {
 namespace {
@@ -86,8 +102,8 @@ struct StorageOwner {
 };
 
 const ObjectFacts &object (const Identity identity, const Path &path) {
-	static const ObjectFacts                     OF_UNKNOWN;
-	const auto it_entry = path.objects.find(identity);
+	static const ObjectFacts OF_UNKNOWN;
+	const auto               it_entry = path.objects.find(identity);
 	return it_entry == path.objects.end() ? OF_UNKNOWN : it_entry->second;
 }
 
@@ -103,8 +119,9 @@ ObjectFacts common (const ObjectFacts &left, const ObjectFacts &right) {
 		of_result.active->directOnly |= right.active->directOnly;
 	}
 	if (left.ownership && right.ownership) {
-		of_result.ownership = Ownership{ left.ownership->list == right.ownership->list ? left.ownership->list : 0,
-			                         left.ownership->acquiredAt == right.ownership->acquiredAt ? left.ownership->acquiredAt : nullptr };
+		of_result.ownership =
+		        Ownership{ .list       = left.ownership->list == right.ownership->list ? left.ownership->list : 0,
+			           .acquiredAt = left.ownership->acquiredAt == right.ownership->acquiredAt ? left.ownership->acquiredAt : nullptr };
 	}
 	if (left.allocation == right.allocation) of_result.allocation = left.allocation;
 	return of_result;
@@ -132,10 +149,10 @@ struct OwningListMethods {
 };
 
 OwningListMethods owningListMethods (const Analyzer &analyzer, const Symbol *owner) {
-	OwningListMethods olm_list{ owner, {} };
+	OwningListMethods olm_list{ .owner = owner, .operations = {} };
 	if (!owner) return olm_list;
 	const ResultTypes v_element = analyzer.ownerType(*owner).arguments();
-	const ResultTypes v_index{ ResolvedType(kUsize) };
+	const ResultTypes v_index{ ResolvedType(KUsize) };
 	if (v_element.size() != 1) return olm_list;
 	for (const std::vector<Symbol> &v_group : owner->members | std::views::values) {
 		for (const Symbol &sym_member : v_group) {
@@ -145,13 +162,13 @@ OwningListMethods owningListMethods (const Analyzer &analyzer, const Symbol *own
 			const DeclarationInfo &di_member = analyzer.declarations.at(&sym_member);
 			const bool             b_read    = di_member.parameters == v_index && di_member.returns == v_element;
 			if (sym_member.kind == SymbolKind::Operator) {
-				if (sym_member.name.get_operator() == oIndexRead && b_read) olm_list.operations.emplace(&sym_member, ListOperation::Get);
-				if (sym_member.name.get_operator() == oForeach && di_member.parameters.empty() && di_member.returns.size() == 1 &&
+				if (sym_member.name.getOperator() == OIndexRead && b_read) olm_list.operations.emplace(&sym_member, ListOperation::Get);
+				if (sym_member.name.getOperator() == OForeach && di_member.parameters.empty() && di_member.returns.size() == 1 &&
 				    di_member.returns.front().arguments() == v_element)
 					olm_list.operations.emplace(&sym_member, ListOperation::Foreach);
 				continue;
 			}
-			const std::string                 &s_name       = sym_member.name.get_name_key();
+			const std::string                 &s_name       = sym_member.name.getNameKey();
 			const std::optional<ArrayMutation> opt_mutation = arrayMutationNamed(s_name);
 			if (s_name == "get" && b_read)
 				olm_list.operations.emplace(&sym_member, ListOperation::Get);
@@ -178,9 +195,9 @@ void forgetOtherOrders (const Identity list, Path &path) {
 }
 
 void ownershipError (const std::string &message, const Expression &operation, const Expression *acquiredAt) {
-	std::vector<cde::SourceLabel> v_labels{ { operation.get_span(), "invalid ownership operation" } };
-	if (acquiredAt) v_labels.push_back({ acquiredAt->get_span(), "ownership acquired here" });
-	throw cde::ClothDiagnostic(Code::INVALID_COLLECTION_OWNERSHIP, message, std::move(v_labels));
+	std::vector<cde::SourceLabel> v_labels{ { .span = operation.getSpan(), .text = "invalid ownership operation" } };
+	if (acquiredAt) v_labels.push_back({ .span = acquiredAt->getSpan(), .text = "ownership acquired here" });
+	throw cde::ClothDiagnostic(Code::InvalidCollectionOwnership, message, std::move(v_labels));
 }
 
 class LifetimeChecker {
@@ -245,7 +262,7 @@ class LifetimeChecker {
 Handle LifetimeChecker::fresh (const ResolvedType &type) {
 	const bool b_optional  = type.nullable();
 	const bool b_reference = a_analyzer.referenceType(b_optional ? type.element() : type);
-	const bool b_present   = !b_optional && (b_reference || !type.parameter) && type.name != to_string(kNull);
+	const bool b_present   = !b_optional && (b_reference || !type.parameter) && type.name != toString(KNull);
 	return { .identity = b_reference ? id_next++ : 0, .presence = b_present ? Presence::Present : Presence::Unknown };
 }
 
@@ -283,7 +300,7 @@ void LifetimeChecker::join (OptionalPath &paths, const Path &other) {
                         // This identity selects between objects. It cannot prove distinct allocations.
                         p_joined.objects[id_object].allocation = nullptr;
                 }
-                return Handle{ id_object, a.presence == b.presence ? a.presence : Presence::Unknown };
+                return Handle{ .identity = id_object, .presence = a.presence == b.presence ? a.presence : Presence::Unknown };
 	};
 	for (const std::map<const Token *, Handle>::value_type &entry : left.bindings) {
 		const auto it_entry = other.bindings.find(entry.first);
@@ -327,9 +344,10 @@ void LifetimeChecker::access (const Handle &handle, const Path &path, const Toke
 		const std::string             s_message = of_object.lifetime == Lifetime::Dead ? "Access to a deleted class instance" :
 		                                                                                 "This access is invalid while the instance is being destroyed";
 		std::vector<cde::SourceLabel> v_labels{ { .span = span, .text = s_message } };
-		for (const Token *t_delete : of_object.deletions) v_labels.push_back({ t_delete->get_span(), "instance deleted here" });
-		if (of_object.lifetime == Lifetime::Destroying) v_labels.push_back({ lb_job.context->name.get_span(), "destructor declared here" });
-		throw cde::ClothDiagnostic(Code::DELETED_CLASS_ACCESS, s_message, std::move(v_labels));
+		for (const Token *t_delete : of_object.deletions) v_labels.push_back({ .span = t_delete->getSpan(), .text = "instance deleted here" });
+		if (of_object.lifetime == Lifetime::Destroying)
+			v_labels.push_back({ .span = lb_job.context->name.getSpan(), .text = "destructor declared here" });
+		throw cde::ClothDiagnostic(Code::DeletedClassAccess, s_message, std::move(v_labels));
 	}
 	runtime |= of_object.lifetime == Lifetime::Unknown;
 }
@@ -345,7 +363,7 @@ void LifetimeChecker::enter (Path &path, Handle handle, const Symbol &selection,
 		unknownEffect(path);
 		return;
 	}
-	const auto it_entry = td_host->states.find(selection.name.get_name_key());
+	const auto it_entry = td_host->states.find(selection.name.getNameKey());
 	if (it_entry == td_host->states.end() || it_entry->second.selection != &selection) {
 		unknownEffect(path);
 		return;
@@ -358,7 +376,7 @@ void LifetimeChecker::enter (Path &path, Handle handle, const Symbol &selection,
 	}
 	// Other bindings may refer to this instance. Entering a state without a hook preserves liveness.
 	for (std::map<Identity, ObjectFacts>::value_type &entry : path.objects) entry.second.active.reset();
-	if (handle.identity) path.objects[handle.identity].active = Activation{ &selection, host };
+	if (handle.identity) path.objects[handle.identity].active = Activation{ .selection = &selection, .host = host };
 }
 
 void LifetimeChecker::selectState (const ExpressionInfo &call, Handle receiver, bool self, const Token &name, Path &path, ReceiverChecks &checks) {
@@ -379,8 +397,8 @@ void LifetimeChecker::selectState (const ExpressionInfo &call, Handle receiver, 
 		}
 	}
 	if (b_emit && (!sm_contract || !sm_contract->implementations.contains(active->selection)))
-		fail(Code::INVALID_STATE_DISPATCH, name.get_span(),
-		     "State '" + active->selection->name.get_lexeme() + "' does not implement '" + name.get_lexeme() + "'", &active->selection->name);
+		fail(Code::InvalidStateDispatch, name.getSpan(),
+		     "State '" + active->selection->name.getLexeme() + "' does not implement '" + name.getLexeme() + "'", &active->selection->name);
 	checks.knownState = active->selection;
 }
 
@@ -431,7 +449,7 @@ void LifetimeChecker::arguments (const CallSite &call, Path &path, bool *formatC
 void LifetimeChecker::formatText (const Expression &operand, Path &path, bool &runtime) {
 	const Handle h_value = scalar(operand, path);
 	if (!path.reachable) return;
-	if (h_value.identity) access(h_value, path, operand.get_span(), bf_facts.isDirectReceiver(operand), runtime);
+	if (h_value.identity) access(h_value, path, operand.getSpan(), bf_facts.isDirectReceiver(operand), runtime);
 	if (const auto it_format = bf_facts.textConversions.find(&operand); it_format != bf_facts.textConversions.end() && it_format->second.callsFormatter)
 		unknownEffect(path);
 }
@@ -447,7 +465,7 @@ std::optional<std::uint64_t> LifetimeChecker::constantIndex (const Expression &i
 void LifetimeChecker::append (Identity list, Handle item, const CallSite &call, Path &path) const {
 	// The acquire intrinsic checks the argument at runtime when its liveness is unknown.
 	bool b_runtime = false;
-	access(item, path, call.suppliedArguments.front().get_span(), false, b_runtime);
+	access(item, path, call.suppliedArguments.front().getSpan(), false, b_runtime);
 	if (item.identity) {
 		const std::optional<Ownership> &owner = object(item.identity, path).ownership;
 		if (owner) {
@@ -463,7 +481,7 @@ void LifetimeChecker::append (Identity list, Handle item, const CallSite &call, 
 			const std::optional<Ownership> &parent = object(ancestor, path).ownership;
 			ancestor                               = parent ? parent->list : 0;
 		}
-		path.objects[item.identity].ownership = Ownership{ list, &call };
+		path.objects[item.identity].ownership = Ownership{ .list = list, .acquiredAt = &call };
 	}
 	forgetOtherOrders(list, path);
 	const auto it_order = path.entries.find(list);
@@ -479,18 +497,18 @@ Handle LifetimeChecker::readOwned (Identity list, std::optional<std::uint64_t> i
 	if (it_order != path.entries.end()) {
 		const std::vector<Identity> &order = it_order->second;
 		if (order.empty() || (index && *index >= order.size())) return {};
-		if (index) return { order[*index], Presence::Present };
+		if (index) return { .identity = order[*index], .presence = Presence::Present };
 	}
 	const Handle h_read = fresh(type);
-	if (h_read.identity) path.objects[h_read.identity].ownership = Ownership{ list, nullptr };
+	if (h_read.identity) path.objects[h_read.identity].ownership = Ownership{ .list = list, .acquiredAt = nullptr };
 	return h_read;
 }
 
 Handle LifetimeChecker::remove (Identity list, std::optional<std::uint64_t> index, Path &path) const {
 	forgetOtherOrders(list, path);
-	const auto it_order   = path.entries.find(list);
-	Identity                               id_removed = 0;
-	std::set<Identity>                     s_remaining;
+	const auto         it_order   = path.entries.find(list);
+	Identity           id_removed = 0;
+	std::set<Identity> s_remaining;
 	if (it_order != path.entries.end() && index && *index < it_order->second.size()) {
 		id_removed = it_order->second[*index];
 		it_order->second.erase(it_order->second.begin() + *index);
@@ -504,7 +522,7 @@ Handle LifetimeChecker::remove (Identity list, std::optional<std::uint64_t> inde
 		owner.reset();
 	}
 	if (!id_removed) path.entries.erase(list);
-	return id_removed ? Handle{ id_removed, Presence::Present } : Handle{};
+	return id_removed ? Handle{ .identity = id_removed, .presence = Presence::Present } : Handle{};
 }
 
 bool LifetimeChecker::mayRunDestructor (const Symbol *allocation) const {
@@ -512,10 +530,9 @@ bool LifetimeChecker::mayRunDestructor (const Symbol *allocation) const {
 	while (allocation && allocation != &objectRoot()) {
 		for (const std::vector<Symbol> &group : allocation->members | std::views::values)
 			if (std::ranges::any_of(group, [] (const Symbol &symbol) { return symbol.kind == SymbolKind::Destructor; })) return true;
-		const ResultTypes                &parents = a_analyzer.declarations.at(allocation).parents;
-		const auto it_base =
-		        std::ranges::find_if(parents, [] (const ResolvedType &parent) { return asClass(parent.declaration); });
-		allocation = it_base == parents.end() ? nullptr : it_base->declaration;
+		const ResultTypes &parents = a_analyzer.declarations.at(allocation).parents;
+		const auto         it_base = std::ranges::find_if(parents, [] (const ResolvedType &parent) { return asClass(parent.declaration); });
+		allocation                 = it_base == parents.end() ? nullptr : it_base->declaration;
 	}
 	return false;
 }
@@ -530,16 +547,16 @@ void LifetimeChecker::destroyOwned (Identity list, const Token &site, Path &path
 	while (!v_pending.empty()) {
 		const Identity id_nextChild = v_pending.back();
 		v_pending.pop_back();
-		const auto   it_children   = m_children.find(id_nextChild);
-		const auto it_order      = path.entries.find(id_nextChild);
-		const Symbol                                *sym_allocated = object(id_nextChild, path).allocation;
+		const auto    it_children   = m_children.find(id_nextChild);
+		const auto    it_order      = path.entries.find(id_nextChild);
+		const Symbol *sym_allocated = object(id_nextChild, path).allocation;
 		if (it_children == m_children.end() && it_order == path.entries.end() && sym_allocated != olm_list.owner) {
 			if (mayRunDestructor(sym_allocated)) break;
 			continue;
 		}
 		// Cleanup detaches all direct children before the first user destructor can run.
 		if (it_children != m_children.end()) {
-			for (Identity child : it_children->second) {
+			for (Identity const child : it_children->second) {
 				ObjectFacts &of_child = path.objects[child];
 				of_child.lifetime     = Lifetime::Dead;
 				of_child.deletions.insert(&site);
@@ -551,12 +568,12 @@ void LifetimeChecker::destroyOwned (Identity list, const Token &site, Path &path
 }
 
 Values LifetimeChecker::call (const CallSite &node, const ExpressionInfo &info, Path &path, ReceiverChecks &checks) {
-	const auto    *mc_method  = dynamic_cast<const MemberCallExpression *>(&node);
-	const auto     *sc_state   = dynamic_cast<const StateCallExpression *>(&node);
-	const auto *cc_new     = dynamic_cast<const ClassCreationExpression *>(&node);
-	const Expression              *e_receiver = mc_method ? mc_method->receiver.get() : sc_state ? sc_state->receiver.get() : nullptr;
-	const bool                     b_method   = info.symbol && info.symbol->kind == SymbolKind::Method;
-	const StorageOwner             arrayOwner = info.arrayMutation && e_receiver ? storageOwner(*e_receiver) : StorageOwner{};
+	const auto        *mc_method  = dynamic_cast<const MemberCallExpression *>(&node);
+	const auto        *sc_state   = dynamic_cast<const StateCallExpression *>(&node);
+	const auto        *cc_new     = dynamic_cast<const ClassCreationExpression *>(&node);
+	const Expression  *e_receiver = mc_method ? mc_method->receiver.get() : sc_state ? sc_state->receiver.get() : nullptr;
+	const bool         b_method   = info.symbol && info.symbol->kind == SymbolKind::Method;
+	const StorageOwner arrayOwner = info.arrayMutation && e_receiver ? storageOwner(*e_receiver) : StorageOwner{};
 	if (arrayOwner.receiver) m_observed.try_emplace(arrayOwner.receiver);
 	const Handle h_receiver  = e_receiver ? scalar(*e_receiver, path) : b_method ? path.bindings[&lb_job.context->name] : Handle{};
 	const Handle storedOwner = arrayOwner.receiver ? m_observed.at(arrayOwner.receiver) :
@@ -564,7 +581,7 @@ Values LifetimeChecker::call (const CallSite &node, const ExpressionInfo &info, 
 	                                                 Handle{};
 	if (arrayOwner.receiver) m_observed.erase(arrayOwner.receiver);
 	const bool      b_self      = !e_receiver || bf_facts.isDirectReceiver(*e_receiver);
-	const TokenSpan ts_receiver = e_receiver ? e_receiver->get_span() : node.name.get_span();
+	const TokenSpan ts_receiver = e_receiver ? e_receiver->getSpan() : node.name.getSpan();
 	if (path.reachable && !sc_state && b_method) access(h_receiver, path, ts_receiver, b_self, checks.beforeArguments);
 	const std::optional<ListOperation> opt_operation = olm_list.lookup(info.symbol);
 	Handle                             h_argument;
@@ -630,14 +647,14 @@ Branches LifetimeChecker::condition (const Expression &node, Path &path) {
 	if (!path.reachable) return {};
 	const auto it_info = bf_facts.expressions.find(&node);
 	if (const auto *ue_not = dynamic_cast<const UnaryExpression *>(&node);
-	    ue_not && ue_not->op.get_operator() == oNot && it_info != bf_facts.expressions.end() && !it_info->second.argumentContract) {
+	    ue_not && ue_not->op.getOperator() == ONot && it_info != bf_facts.expressions.end() && !it_info->second.argumentContract) {
 		Branches br_paths = condition(*ue_not->operand, path);
 		std::swap(br_paths.yes, br_paths.no);
 		return br_paths;
 	}
 	if (const auto *be_test = dynamic_cast<const BinaryExpression *>(&node)) {
-		const Operator o_operation = be_test->op.get_operator();
-		if ((o_operation == oEqual || o_operation == oNotEqual || o_operation == oIdentity) && it_info != bf_facts.expressions.end() &&
+		const Operator o_operation = be_test->op.getOperator();
+		if ((o_operation == OEqual || o_operation == ONotEqual || o_operation == OIdentity) && it_info != bf_facts.expressions.end() &&
 		    !it_info->second.argumentContract) {
 			const Expression *e_operand = dynamic_cast<const NullLiteral *>(be_test->left.get())  ? be_test->right.get() :
 			                              dynamic_cast<const NullLiteral *>(be_test->right.get()) ? be_test->left.get() :
@@ -645,9 +662,9 @@ Branches LifetimeChecker::condition (const Expression &node, Path &path) {
 			if (e_operand) {
 				const Handle h_value = scalar(*e_operand, path);
 				if (!path.reachable) return {};
-				Branches      br_paths{ path, path };
-				OptionalPath &opt_present = o_operation == oNotEqual ? br_paths.yes : br_paths.no;
-				OptionalPath &opt_absent  = o_operation == oNotEqual ? br_paths.no : br_paths.yes;
+				Branches      br_paths{ .yes = path, .no = path };
+				OptionalPath &opt_present = o_operation == ONotEqual ? br_paths.yes : br_paths.no;
+				OptionalPath &opt_absent  = o_operation == ONotEqual ? br_paths.no : br_paths.yes;
 				if (h_value.presence == Presence::Absent) opt_present.reset();
 				if (h_value.presence == Presence::Present) opt_absent.reset();
 				const ExpressionInfo &ei_operand = bf_facts.expressions.at(e_operand);
@@ -662,15 +679,15 @@ Branches LifetimeChecker::condition (const Expression &node, Path &path) {
 				return br_paths;
 			}
 		}
-		if ((o_operation == oAnd || o_operation == oOr) && it_info != bf_facts.expressions.end() && !it_info->second.argumentContract &&
+		if ((o_operation == OAnd || o_operation == OOr) && it_info != bf_facts.expressions.end() && !it_info->second.argumentContract &&
 		    !it_info->second.leftContext && !it_info->second.rightContext) {
 			Branches      br_left = condition(*be_test->left, path);
-			OptionalPath &p_next  = o_operation == oAnd ? br_left.yes : br_left.no;
+			OptionalPath &p_next  = o_operation == OAnd ? br_left.yes : br_left.no;
 			if (!p_next) return br_left;
-			Branches            br_right = condition(*be_test->right, *p_next);
-			const OptionalPath &p_short  = o_operation == oAnd ? br_right.no : br_right.yes;
-			if (p_short) join(o_operation == oAnd ? br_left.no : br_left.yes, *p_short);
-			p_next = o_operation == oAnd ? br_right.yes : br_right.no;
+			Branches const      br_right = condition(*be_test->right, *p_next);
+			const OptionalPath &p_short  = o_operation == OAnd ? br_right.no : br_right.yes;
+			if (p_short) join(o_operation == OAnd ? br_left.no : br_left.yes, *p_short);
+			p_next = o_operation == OAnd ? br_right.yes : br_right.no;
 			return br_left;
 		}
 	}
@@ -680,10 +697,10 @@ Branches LifetimeChecker::condition (const Expression &node, Path &path) {
 		const Handle   h_receiver = scalar(*tc_test->operand, path);
 		const bool     b_self     = bf_facts.isDirectReceiver(*tc_test->operand);
 		ReceiverChecks rc_check;
-		access(h_receiver, path, tc_test->operand->get_span(), b_self, rc_check.atAccess);
+		access(h_receiver, path, tc_test->operand->getSpan(), b_self, rc_check.atAccess);
 		if (b_emit) it_info->second.receiverChecks.atAccess |= rc_check.atAccess;
 		if (!path.reachable) return {};
-		Branches                        br_paths{ path, path };
+		Branches                        br_paths{ .yes = path, .no = path };
 		const Symbol                   *sym_target = it_info->second.symbol;
 		const std::optional<Activation> active     = object(h_receiver.identity, path).active;
 		if (active && active->selection == sym_target)
@@ -691,18 +708,20 @@ Branches LifetimeChecker::condition (const Expression &node, Path &path) {
 		else if (active)
 			br_paths.yes.reset();
 		if (h_receiver.identity && br_paths.yes) {
-			const ResolvedType &rt_host                       = lb_job.state && b_self && lb_job.host ? *lb_job.host :
-			                                                                                            bf_facts.expressions.at(tc_test->operand.get()).types.front();
-			br_paths.yes->objects[h_receiver.identity].active = Activation{ sym_target, rt_host, b_self && (!active || active->directOnly) };
+			const ResolvedType &rt_host = lb_job.state && b_self && lb_job.host ? *lb_job.host :
+			                                                                      bf_facts.expressions.at(tc_test->operand.get()).types.front();
+			br_paths.yes->objects[h_receiver.identity].active =
+			        Activation{ .selection = sym_target, .host = rt_host, .directOnly = b_self && (!active || active->directOnly) };
 		}
 		return br_paths;
 	}
 	expression(node, path);
 	if (!path.reachable) return {};
 	if (it_info != bf_facts.expressions.end()) {
-		if (const std::optional<bool> opt_truth = it_info->second.integerTruth()) return *opt_truth ? Branches{ path, {} } : Branches{ {}, path };
+		if (const std::optional<bool> opt_truth = it_info->second.integerTruth())
+			return *opt_truth ? Branches{ .yes = path, .no = {} } : Branches{ .yes = {}, .no = path };
 	}
-	return { path, path };
+	return { .yes = path, .no = path };
 }
 
 Values LifetimeChecker::conditional (const IfExpression &node, Path &path) {
@@ -734,11 +753,11 @@ Values LifetimeChecker::conditional (const IfExpression &node, Path &path) {
 
 Values LifetimeChecker::guardedAccess (const GuardedAccessExpression &node, Path &path) {
 	Values v_result;
-	Handle h_value = scalar(*node.get_receiver(), path);
+	Handle h_value = scalar(*node.getReceiver(), path);
 	if (path.reachable && h_value.presence != Presence::Absent) {
 		OptionalPath after;
 		if (h_value.presence != Presence::Present) {
-			path.values = { { 0, Presence::Absent } };
+			path.values = { { .identity = 0, .presence = Presence::Absent } };
 			after       = path;
 		}
 		h_value.presence              = Presence::Present;
@@ -756,8 +775,8 @@ Values LifetimeChecker::guardedAccess (const GuardedAccessExpression &node, Path
 }
 
 void LifetimeChecker::binary (const BinaryExpression &node, const ExpressionInfo &info, Path &path, ReceiverChecks &checks) {
-	const Operator o_operation = node.op.get_operator();
-	if ((o_operation == oAnd || o_operation == oOr) && !info.argumentContract && !info.leftContext && !info.rightContext) {
+	const Operator o_operation = node.op.getOperator();
+	if ((o_operation == OAnd || o_operation == OOr) && !info.argumentContract && !info.leftContext && !info.rightContext) {
 		Branches br_paths = condition(node, path);
 		if (br_paths.no) join(br_paths.yes, *br_paths.no);
 		if (br_paths.yes)
@@ -768,7 +787,7 @@ void LifetimeChecker::binary (const BinaryExpression &node, const ExpressionInfo
 		const std::function operand = [&] (const Expression &source, const std::optional<OperatorSelection> &projection, bool &runtime) {
 			const Handle h_source = scalar(source, path);
 			if (!projection || !path.reachable) return h_source;
-			access(h_source, path, source.get_span(), bf_facts.isDirectReceiver(source), runtime);
+			access(h_source, path, source.getSpan(), bf_facts.isDirectReceiver(source), runtime);
 			unknownEffect(path);
 			const DeclarationInfo &di_projection = projection->instance ? projection->instance->signature :
 			                                                              a_analyzer.declarations.at(projection->symbol);
@@ -778,20 +797,20 @@ void LifetimeChecker::binary (const BinaryExpression &node, const ExpressionInfo
 		const bool   b_right = info.argumentContract &&
 		                     dynamic_cast<const MethodDeclaration &>(*callable(*info.argumentContract)).operatorMember->rightReceiver;
 		if (info.argumentContract && !b_right && !info.liftedEquality)
-			access(h_left, path, node.left->get_span(), bf_facts.isDirectReceiver(*node.left), checks.beforeArguments);
+			access(h_left, path, node.left->getSpan(), bf_facts.isDirectReceiver(*node.left), checks.beforeArguments);
 		const Handle h_right = operand(*node.right, info.rightContext, checks.atAccess);
 		if (info.callsElementEquality) unknownEffect(path);
 		if (info.liftedEquality && (h_left.presence == Presence::Absent || h_right.presence == Presence::Absent)) return;
 		if (info.argumentContract) {
 			const Expression &e_operand = b_right ? *node.right : *node.left;
-			access(b_right ? h_right : h_left, path, e_operand.get_span(), bf_facts.isDirectReceiver(e_operand), checks.atAccess);
+			access(b_right ? h_right : h_left, path, e_operand.getSpan(), bf_facts.isDirectReceiver(e_operand), checks.atAccess);
 			if (isEquality(o_operation) && h_left.presence == Presence::Present && h_right.presence == Presence::Present)
-				access(b_right ? h_left : h_right, path, (b_right ? node.left : node.right)->get_span(), false, checks.atAccess);
+				access(b_right ? h_left : h_right, path, (b_right ? node.left : node.right)->getSpan(), false, checks.atAccess);
 			unknownEffect(path);
-		} else if (isEquality(o_operation) && (o_operation != oIdentity || info.checkedIdentity) && h_left.presence == Presence::Present &&
+		} else if (isEquality(o_operation) && (o_operation != OIdentity || info.checkedIdentity) && h_left.presence == Presence::Present &&
 		           h_right.presence == Presence::Present) {
-			access(h_left, path, node.left->get_span(), bf_facts.isDirectReceiver(*node.left), checks.atAccess);
-			access(h_right, path, node.right->get_span(), bf_facts.isDirectReceiver(*node.right), checks.atAccess);
+			access(h_left, path, node.left->getSpan(), bf_facts.isDirectReceiver(*node.left), checks.atAccess);
+			access(h_right, path, node.right->getSpan(), bf_facts.isDirectReceiver(*node.right), checks.atAccess);
 		}
 		if (info.callsClassEquality) unknownEffect(path);
 	}
@@ -811,8 +830,8 @@ Values LifetimeChecker::expression (const Expression &node, Path &path) {
 			const Values           v_values   = runDeferred(*db_binding.block, path);
 			if (!ei_info.types.empty() && !v_values.empty()) v_result.push_back(v_values.at(db_binding.resultIndex));
 		} else if (ei_info.binding || bf_facts.isDirectReceiver(node)) {
-			const Token                                          *t_key      = ei_info.binding ? ei_info.binding : &lb_job.context->name;
-			const auto it_binding = path.bindings.find(t_key);
+			const Token *t_key      = ei_info.binding ? ei_info.binding : &lb_job.context->name;
+			const auto   it_binding = path.bindings.find(t_key);
 			if (it_binding != path.bindings.end()) {
 				Handle h_value = it_binding->second;
 				if (!ei_info.types.empty() && !ei_info.types.front().nullable() && !ei_info.types.front().parameter)
@@ -820,19 +839,19 @@ Values LifetimeChecker::expression (const Expression &node, Path &path) {
 				v_result.push_back(h_value);
 			}
 		} else if (ei_info.symbol && ei_info.symbol->kind == SymbolKind::Field) {
-			access(path.bindings[&lb_job.context->name], path, ne_name->get_span(), true, rc_checks.atAccess);
+			access(path.bindings[&lb_job.context->name], path, ne_name->getSpan(), true, rc_checks.atAccess);
 		}
 	} else if (dynamic_cast<const NullLiteral *>(&node)) {
-		v_result.push_back({ 0, Presence::Absent });
+		v_result.push_back({ .identity = 0, .presence = Presence::Absent });
 	} else if (const auto *ie_if = dynamic_cast<const IfExpression *>(&node)) {
 		v_result = conditional(*ie_if, path);
 	} else if (const auto *fa_field = dynamic_cast<const FieldAccessExpression *>(&node)) {
 		const Handle h_value = scalar(*fa_field->receiver, path);
 		if (ei_info.symbol && ei_info.symbol->kind == SymbolKind::Field)
-			access(h_value, path, node.get_span(), bf_facts.isDirectReceiver(*fa_field->receiver), rc_checks.atAccess);
+			access(h_value, path, node.getSpan(), bf_facts.isDirectReceiver(*fa_field->receiver), rc_checks.atAccess);
 	} else if (const auto *cd_delete = dynamic_cast<const ClassDeletionExpression *>(&node)) {
 		const Handle h_value = scalar(*cd_delete->receiver, path);
-		access(h_value, path, node.get_span(), false, rc_checks.atAccess);
+		access(h_value, path, node.getSpan(), false, rc_checks.atAccess);
 		if (path.reachable && h_value.presence != Presence::Absent) {
 			const ObjectFacts &of_value             = object(h_value.identity, path);
 			const bool         b_list               = olm_list.owner && of_value.allocation == olm_list.owner;
@@ -867,7 +886,7 @@ Values LifetimeChecker::expression (const Expression &node, Path &path) {
 				v_result = expression(*ee_expr->fallback, path);
 			else if (path.reachable) {
 				Path p_present     = path;
-				p_present.values   = { { h_value.identity, Presence::Present } };
+				p_present.values   = { { .identity = h_value.identity, .presence = Presence::Present } };
 				OptionalPath after = std::move(p_present);
 				path.values        = expression(*ee_expr->fallback, path);
 				join(after, path);
@@ -882,19 +901,19 @@ Values LifetimeChecker::expression (const Expression &node, Path &path) {
 		else {
 			const Handle h_value = scalar(*tc_test->operand, path);
 			if (ei_info.argumentContract) {
-				access(h_value, path, tc_test->operand->get_span(), bf_facts.isDirectReceiver(*tc_test->operand), rc_checks.atAccess);
+				access(h_value, path, tc_test->operand->getSpan(), bf_facts.isDirectReceiver(*tc_test->operand), rc_checks.atAccess);
 				unknownEffect(path);
 			} else if (ei_info.symbol && (asClass(ei_info.symbol) || asInterface(ei_info.symbol) || ei_info.symbol->kind == SymbolKind::State ||
 			                              ei_info.symbol->kind == SymbolKind::StateAttachment))
-				access(h_value, path, tc_test->operand->get_span(), bf_facts.isDirectReceiver(*tc_test->operand), rc_checks.atAccess);
+				access(h_value, path, tc_test->operand->getSpan(), bf_facts.isDirectReceiver(*tc_test->operand), rc_checks.atAccess);
 		}
 	} else if (const auto *ce_cast = dynamic_cast<const CastExpression *>(&node)) {
 		const Handle h_value = scalar(*ce_cast->operand, path);
 		if (ei_info.argumentContract) {
-			access(h_value, path, ce_cast->operand->get_span(), bf_facts.isDirectReceiver(*ce_cast->operand), rc_checks.atAccess);
+			access(h_value, path, ce_cast->operand->getSpan(), bf_facts.isDirectReceiver(*ce_cast->operand), rc_checks.atAccess);
 			unknownEffect(path);
 		} else if (ei_info.symbol && (ei_info.symbol->kind == SymbolKind::State || ei_info.symbol->kind == SymbolKind::StateAttachment)) {
-			access(h_value, path, ce_cast->operand->get_span(), false, rc_checks.atAccess);
+			access(h_value, path, ce_cast->operand->getSpan(), false, rc_checks.atAccess);
 			if (path.reachable)
 				enter(path, h_value, *ei_info.symbol,
 				      lb_job.state && bf_facts.isDirectReceiver(*ce_cast->operand) ?
@@ -905,7 +924,7 @@ Values LifetimeChecker::expression (const Expression &node, Path &path) {
 	} else if (const auto *st_enter = dynamic_cast<const StateTransitionExpression *>(&node)) {
 		const Handle h_value = scalar(*st_enter->receiver, path);
 		if (st_enter->payload) expression(*st_enter->payload, path);
-		access(h_value, path, st_enter->receiver->get_span(), false, rc_checks.atAccess);
+		access(h_value, path, st_enter->receiver->getSpan(), false, rc_checks.atAccess);
 		if (path.reachable && ei_info.symbol)
 			enter(path, h_value, *ei_info.symbol,
 			      lb_job.state && bf_facts.isDirectReceiver(*st_enter->receiver) ? *lb_job.host :
@@ -915,30 +934,30 @@ Values LifetimeChecker::expression (const Expression &node, Path &path) {
 	} else if (const auto *ue_op = dynamic_cast<const UnaryExpression *>(&node)) {
 		const Handle h_value = scalar(*ue_op->operand, path);
 		if (ei_info.argumentContract) {
-			access(h_value, path, node.get_span(), bf_facts.isDirectReceiver(*ue_op->operand), rc_checks.atAccess);
+			access(h_value, path, node.getSpan(), bf_facts.isDirectReceiver(*ue_op->operand), rc_checks.atAccess);
 			unknownEffect(path);
 		}
 	} else if (const auto *ie_index = dynamic_cast<const IndexExpression *>(&node)) {
 		const Handle h_value = scalar(*ie_index->array, path);
 		const bool   b_self  = ei_info.argumentContract && bf_facts.isDirectReceiver(*ie_index->array);
-		if (ei_info.argumentContract) access(h_value, path, ie_index->array->get_span(), b_self, rc_checks.beforeArguments);
+		if (ei_info.argumentContract) access(h_value, path, ie_index->array->getSpan(), b_self, rc_checks.beforeArguments);
 		expression(*ie_index->index, path);
 		if (ei_info.argumentContract) {
-			access(h_value, path, ie_index->array->get_span(), b_self, rc_checks.atAccess);
+			access(h_value, path, ie_index->array->getSpan(), b_self, rc_checks.atAccess);
 			if (path.reachable && olm_list.lookup(ei_info.symbol) == ListOperation::Get && ei_info.types.size() == 1) {
 				v_result = { readOwned(h_value.identity, constantIndex(*ie_index->index), ei_info.types.front(), path) };
 			} else {
 				if (ei_info.indexed && ei_info.indexed->validator) {
 					unknownEffect(path);
-					access(h_value, path, ie_index->array->get_span(), b_self, rc_checks.atAccess);
+					access(h_value, path, ie_index->array->getSpan(), b_self, rc_checks.atAccess);
 				}
 				unknownEffect(path);
 			}
 		}
 	} else if (const auto *pa_provider = dynamic_cast<const ProviderAccessExpression *>(&node)) {
 		const Handle h_value = scalar(*pa_provider->receiver, path);
-		if (ei_info.argumentContract || pa_provider->name.get_name_key() == provider::S_STRING) {
-			access(h_value, path, pa_provider->receiver->get_span(), bf_facts.isDirectReceiver(*pa_provider->receiver), rc_checks.atAccess);
+		if (ei_info.argumentContract || pa_provider->name.getNameKey() == provider::S_STRING) {
+			access(h_value, path, pa_provider->receiver->getSpan(), bf_facts.isDirectReceiver(*pa_provider->receiver), rc_checks.atAccess);
 			if (ei_info.argumentContract || (ei_info.provider && ei_info.provider->callsFormatter)) unknownEffect(path);
 		}
 	} else if (const auto *rl_results = dynamic_cast<const ResultListExpression *>(&node)) {
@@ -967,28 +986,28 @@ Values LifetimeChecker::expression (const Expression &node, Path &path) {
 }
 
 StorageOwner LifetimeChecker::storageOwner (const Expression &target) const {
-	const auto it_target = bf_facts.expressions.find(&target);
-	const Symbol                                        *sym_field = it_target == bf_facts.expressions.end() ? nullptr : it_target->second.symbol;
-	const bool b_classField = sym_field && sym_field->kind == SymbolKind::Field && asClass(a_analyzer.declarations.at(sym_field).owner);
+	const auto    it_target    = bf_facts.expressions.find(&target);
+	const Symbol *sym_field    = it_target == bf_facts.expressions.end() ? nullptr : it_target->second.symbol;
+	const bool    b_classField = sym_field && sym_field->kind == SymbolKind::Field && asClass(a_analyzer.declarations.at(sym_field).owner);
 	if (const auto *fa_field = dynamic_cast<const FieldAccessExpression *>(&target)) {
-		return b_classField ? StorageOwner{ fa_field->receiver.get() } : storageOwner(*fa_field->receiver);
+		return b_classField ? StorageOwner{ .receiver = fa_field->receiver.get() } : storageOwner(*fa_field->receiver);
 	}
 	if (const auto *ie_index = dynamic_cast<const IndexExpression *>(&target)) return storageOwner(*ie_index->array);
-	return { nullptr, b_classField };
+	return { .receiver = nullptr, .implicit = b_classField };
 }
 
 void LifetimeChecker::write (const Statement &node, const Expression &target, const ExpressionPtr &value, const ExpressionPtr &compound, Path &path) {
-	const auto                    *fa_field      = dynamic_cast<const FieldAccessExpression *>(&target);
-	const auto                          *ie_index      = dynamic_cast<const IndexExpression *>(&target);
-	const auto it_write      = bf_facts.writes.find(&node);
-	const bool                                      b_indexUpdate = ie_index && it_write != bf_facts.writes.end() && it_write->second.indexed &&
-	                           isUpdate(it_write->second.symbol->name.get_operator());
+	const auto *fa_field      = dynamic_cast<const FieldAccessExpression *>(&target);
+	const auto *ie_index      = dynamic_cast<const IndexExpression *>(&target);
+	const auto  it_write      = bf_facts.writes.find(&node);
+	const bool  b_indexUpdate = ie_index && it_write != bf_facts.writes.end() && it_write->second.indexed &&
+	                           isUpdate(it_write->second.symbol->name.getOperator());
 	if (b_indexUpdate && a_analyzer.referenceType(bf_facts.expressions.at(&target).types.front())) {
 		const Handle   h_item = scalar(target, path);
 		ReceiverChecks rc_item;
-		access(h_item, path, target.get_span(), false, rc_item.beforeArguments);
+		access(h_item, path, target.getSpan(), false, rc_item.beforeArguments);
 		if (value) expression(*value, path);
-		access(h_item, path, target.get_span(), false, rc_item.atAccess);
+		access(h_item, path, target.getSpan(), false, rc_item.atAccess);
 		if (b_emit) {
 			bf_facts.writeChecks[&node].beforeArguments |= rc_item.beforeArguments;
 			bf_facts.writeChecks[&node].atAccess |= rc_item.atAccess;
@@ -1005,19 +1024,19 @@ void LifetimeChecker::write (const Statement &node, const Expression &target, co
 	const bool     b_ownerSelf = so_owner.implicit || (so_owner.receiver && bf_facts.isDirectReceiver(*so_owner.receiver));
 	const bool     b_self      = ie_index && bf_facts.isDirectReceiver(e_receiver);
 	ReceiverChecks rc_checks;
-	access(h_owner, path, target.get_span(), b_ownerSelf, rc_checks.beforeArguments);
+	access(h_owner, path, target.getSpan(), b_ownerSelf, rc_checks.beforeArguments);
 	const bool b_setter = ie_index && it_write != bf_facts.writes.end() && it_write->second.indexed.has_value();
-	if (b_setter) access(h_receiver, path, e_receiver.get_span(), b_self, rc_checks.beforeArguments);
+	if (b_setter) access(h_receiver, path, e_receiver.getSpan(), b_self, rc_checks.beforeArguments);
 	if (ie_index) expression(*ie_index->index, path);
 	const auto it_read  = bf_facts.expressions.find(&target);
-	const bool                                     b_getter = b_setter && it_read != bf_facts.expressions.end() && it_read->second.argumentContract;
+	const bool b_getter = b_setter && it_read != bf_facts.expressions.end() && it_read->second.argumentContract;
 	if (b_setter) {
-		access(h_receiver, path, e_receiver.get_span(), b_self, rc_checks.beforeArguments);
+		access(h_receiver, path, e_receiver.getSpan(), b_self, rc_checks.beforeArguments);
 		unknownEffect(path);
 	}
 	if (b_getter) {
 		bool b_runtime = false;
-		access(h_receiver, path, e_receiver.get_span(), b_self, b_runtime);
+		access(h_receiver, path, e_receiver.getSpan(), b_self, b_runtime);
 		if (b_emit) it_read->second.receiverChecks.atAccess |= b_runtime;
 		unknownEffect(path);
 	}
@@ -1026,20 +1045,20 @@ void LifetimeChecker::write (const Statement &node, const Expression &target, co
 	const ExpressionInfo *ei_binary    = compound && bf_facts.expressions.contains(compound.get()) ? &bf_facts.expressions.at(compound.get()) : nullptr;
 	const bool            b_binaryCall = ei_binary && ei_binary->argumentContract;
 	const bool b_right = b_binaryCall && dynamic_cast<const MethodDeclaration &>(*callable(*ei_binary->argumentContract)).operatorMember->rightReceiver;
-	if (b_update || (b_binaryCall && !b_right)) access(h_target, path, target.get_span(), false, rc_checks.beforeArguments);
+	if (b_update || (b_binaryCall && !b_right)) access(h_target, path, target.getSpan(), false, rc_checks.beforeArguments);
 	const Handle h_rhs = value ? scalar(*value, path) : Handle{};
 	if (b_binaryCall) {
-		access(b_right ? h_rhs : h_target, path, target.get_span(), false, rc_checks.atAccess);
+		access(b_right ? h_rhs : h_target, path, target.getSpan(), false, rc_checks.atAccess);
 		unknownEffect(path);
 	}
-	if (b_update) access(h_target, path, target.get_span(), false, rc_checks.atAccess);
+	if (b_update) access(h_target, path, target.getSpan(), false, rc_checks.atAccess);
 	if (b_indexUpdate) unknownEffect(path);
 	if (b_setter) {
-		access(h_receiver, path, e_receiver.get_span(), b_self, rc_checks.atAccess);
+		access(h_receiver, path, e_receiver.getSpan(), b_self, rc_checks.atAccess);
 		unknownEffect(path);
-		access(h_receiver, path, e_receiver.get_span(), b_self, rc_checks.atAccess);
+		access(h_receiver, path, e_receiver.getSpan(), b_self, rc_checks.atAccess);
 	}
-	access(h_owner, path, target.get_span(), b_ownerSelf, rc_checks.atAccess);
+	access(h_owner, path, target.getSpan(), b_ownerSelf, rc_checks.atAccess);
 	if (it_write != bf_facts.writes.end()) unknownEffect(path);
 	if (b_emit) {
 		ReceiverChecks &rc_write = bf_facts.writeChecks[&node];
@@ -1096,17 +1115,17 @@ void LifetimeChecker::statement (const Statement &node, Path &path) {
 		const Token   *t_binding = binding(as_assignment->name);
 		const bool     b_field   = !bf_facts.localTypes.contains(t_binding);
 		ReceiverChecks checks;
-		if (b_field) access(path.bindings[&lb_job.context->name], path, as_assignment->name.get_span(), true, checks.beforeArguments);
-		if (const BinaryExpression *be_compound = as_assignment->get_compound(); be_compound && bf_facts.writes.contains(&node)) {
+		if (b_field) access(path.bindings[&lb_job.context->name], path, as_assignment->name.getSpan(), true, checks.beforeArguments);
+		if (const BinaryExpression *be_compound = as_assignment->getCompound(); be_compound && bf_facts.writes.contains(&node)) {
 			const Handle h_receiver = scalar(*be_compound->left, path);
-			access(h_receiver, path, be_compound->left->get_span(), false, checks.beforeArguments);
+			access(h_receiver, path, be_compound->left->getSpan(), false, checks.beforeArguments);
 			expression(*be_compound->right, path);
-			access(h_receiver, path, be_compound->left->get_span(), false, checks.atAccess);
+			access(h_receiver, path, be_compound->left->getSpan(), false, checks.atAccess);
 			unknownEffect(path);
 		} else {
 			const Handle h_value = scalar(*as_assignment->value, path);
 			if (b_field)
-				access(path.bindings[&lb_job.context->name], path, as_assignment->name.get_span(), true, checks.atAccess);
+				access(path.bindings[&lb_job.context->name], path, as_assignment->name.getSpan(), true, checks.atAccess);
 			else if (path.reachable)
 				store(*t_binding, h_value, path);
 		}
@@ -1123,18 +1142,18 @@ void LifetimeChecker::statement (const Statement &node, Path &path) {
 		const Values values = expression(*bg_group->initializer, path);
 		for (std::size_t st_index = 0; path.reachable && st_index < bg_group->targets.size(); ++st_index)
 			if (std::holds_alternative<ReceivingTarget::Named>(bg_group->targets[st_index].value))
-				store(bg_group->targets[st_index].get_token(), values.at(values.size() == 1 ? 0 : st_index), path);
+				store(bg_group->targets[st_index].getToken(), values.at(values.size() == 1 ? 0 : st_index), path);
 	} else if (const auto *ma_assignment = dynamic_cast<const MultiAssignmentStatement *>(&node)) {
 		const Values values = expression(*ma_assignment->value, path);
 		for (std::size_t st_index = 0; path.reachable && st_index < ma_assignment->targets.size(); ++st_index) {
 			if (std::holds_alternative<ReceivingTarget::Discard>(ma_assignment->targets[st_index].value)) continue;
-			const Token &t_name    = ma_assignment->targets[st_index].get_token();
+			const Token &t_name    = ma_assignment->targets[st_index].getToken();
 			const Token *t_binding = binding(t_name);
 			if (bf_facts.localTypes.contains(t_binding))
 				store(*t_binding, values.at(values.size() == 1 ? 0 : st_index), path);
 			else {
 				bool b_runtime = false;
-				access(path.bindings[&lb_job.context->name], path, t_name.get_span(), true, b_runtime);
+				access(path.bindings[&lb_job.context->name], path, t_name.getSpan(), true, b_runtime);
 				if (b_emit) bf_facts.writeChecks[&node].atAccess |= b_runtime;
 			}
 		}
@@ -1146,7 +1165,7 @@ void LifetimeChecker::statement (const Statement &node, Path &path) {
 		const Handle h_value = scalar(*us_update->target, path);
 		if (bf_facts.writes.contains(&node)) {
 			ReceiverChecks checks;
-			access(h_value, path, node.get_span(), false, checks.atAccess);
+			access(h_value, path, node.getSpan(), false, checks.atAccess);
 			if (b_emit) bf_facts.writeChecks[&node].atAccess |= checks.atAccess;
 			unknownEffect(path);
 		}
@@ -1159,20 +1178,20 @@ void LifetimeChecker::statement (const Statement &node, Path &path) {
 }
 
 void LifetimeChecker::loop (const LoopStatement &node, Path &path) {
-	const auto        *fs_for   = dynamic_cast<const ForStatement *>(&node);
-	const auto      *ws_while = dynamic_cast<const WhileStatement *>(&node);
-	const auto    *ds_do    = dynamic_cast<const DoWhileStatement *>(&node);
+	const auto                *fs_for   = dynamic_cast<const ForStatement *>(&node);
+	const auto                *ws_while = dynamic_cast<const WhileStatement *>(&node);
+	const auto                *ds_do    = dynamic_cast<const DoWhileStatement *>(&node);
 	const LoopBody            &body     = fs_for ? fs_for->body : ws_while ? ws_while->body : ds_do->body;
-	const LoopTarget          *target   = node.get_loop_target().get();
+	const LoopTarget          *target   = node.getLoopTarget().get();
 	std::optional<Handle>      opt_first;
 	std::optional<std::size_t> opt_count;
 	if (fs_for) {
-		const Expression &source = fs_for->source.get_expression();
+		const Expression &source = fs_for->source.getExpression();
 		const Handle      handle = scalar(source, path);
 		const auto        plan   = bf_facts.iterations.find(fs_for);
 		if (plan != bf_facts.iterations.end() && plan->second.snapshot) {
 			bool runtime = false;
-			access(handle, path, source.get_span(), bf_facts.isDirectReceiver(source), runtime);
+			access(handle, path, source.getSpan(), bf_facts.isDirectReceiver(source), runtime);
 			if (b_emit) plan->second.snapshot->receiverChecks.atAccess |= runtime;
 			if (path.reachable && olm_list.lookup(plan->second.snapshot->symbol) == ListOperation::Foreach) {
 				const auto it_order = path.entries.find(handle.identity);
@@ -1188,7 +1207,7 @@ void LifetimeChecker::loop (const LoopStatement &node, Path &path) {
 	if (!path.reachable) return;
 	const std::function iterate = [&] (LifetimeChecker &checker, Path header, const Handle *first) {
 		Branches paths = ws_while ? checker.condition(*ws_while->condition, header) :
-		                            Branches{ header, fs_for && !(first && opt_count) ? OptionalPath{ header } : std::nullopt };
+		                            Branches{ .yes = header, .no = fs_for && !(first && opt_count) ? OptionalPath{ header } : std::nullopt };
 		if (!paths.yes) return paths;
 		Path p_body = std::move(*paths.yes);
 		if (fs_for) checker.store(fs_for->binding.name, first ? *first : Handle{}, p_body);
@@ -1205,7 +1224,7 @@ void LifetimeChecker::loop (const LoopStatement &node, Path &path) {
 			if (!lp_edges.continues->reachable) lp_edges.continues.reset();
 		}
 		if (lp_edges.breaks) checker.join(paths.no, *lp_edges.breaks);
-		return Branches{ std::move(lp_edges.continues), std::move(paths.no) };
+		return Branches{ .yes = std::move(lp_edges.continues), .no = std::move(paths.no) };
 	};
 	OptionalPath firstExit;
 	if (opt_first) {
@@ -1264,10 +1283,11 @@ void LifetimeChecker::check () {
 			of_self.lifetime                    = sym_context.kind == SymbolKind::Destructor ? Lifetime::Destroying : Lifetime::Unknown;
 			if (lb_job.state) {
 				if (const TypeDispatch *td_host = table(*lb_job.host)) {
-					const auto it_entry = td_host->states.find(lb_job.state->name.get_name_key());
+					const auto it_entry = td_host->states.find(lb_job.state->name.getNameKey());
 					if (it_entry != td_host->states.end() && it_entry->second.definition == lb_job.state)
-						of_self.active = Activation{ it_entry->second.selection, *lb_job.host,
-							                     sym_context.kind != SymbolKind::StateInitializer };
+						of_self.active = Activation{ .selection  = it_entry->second.selection,
+							                     .host       = *lb_job.host,
+							                     .directOnly = sym_context.kind != SymbolKind::StateInitializer };
 				}
 			}
 		}
@@ -1331,8 +1351,8 @@ bool Analyzer::preservesNewReceiver (const ResolvedType &host, const Symbol &con
 		return false;
 	const auto it_effects = m_initializationEffects.find(host);
 	if (it_effects == m_initializationEffects.end()) return true;
-	const auto it_host     = program.dispatchTables.find(host);
-	const Symbol                                          *sym_initial = it_host == program.dispatchTables.end() ? nullptr : it_host->second.initialState;
+	const auto    it_host     = program.dispatchTables.find(host);
+	const Symbol *sym_initial = it_host == program.dispatchTables.end() ? nullptr : it_host->second.initialState;
 	return std::ranges::none_of(it_effects->second, [&] (const Symbol *declaration) {
 		return declaration == &constructor || declaration == sym_initial || declaration->kind == SymbolKind::Field;
 	});

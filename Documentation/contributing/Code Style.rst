@@ -3,8 +3,8 @@
 Code Style
 ==========
 
-Follow this guide when adding or editing C++ code for the Cloth
-compiler.
+Follow this guide when adding or editing C++ code for the Cloth compiler.
+The repository's `.clang-tidy <../../.clang-tidy>`_ defines the checks.
 
 Cloth keywords and operators
 ----------------------------
@@ -12,7 +12,7 @@ Cloth keywords and operators
 Keep the spelling of each Cloth keyword and operator in the token module.
 Use the ``Keyword`` and ``Operator`` enumerators when making decisions about
 syntax. When matching or emitting source text, obtain the spelling with
-``to_string``. Use ``to_stringmulti`` for a known, space-separated sequence of
+``toString``. Use ``toStringmulti`` for a known, space-separated sequence of
 keywords. Apply the same rule to synthesized tokens, type names, and
 diagnostics that show the programmer what to write.
 
@@ -23,40 +23,54 @@ Explicit types
 --------------
 
 Prefer explicit types when they make a declaration easier to understand.
-Use ``auto`` or ``decltype(auto)`` when deduction keeps the code clearer
-or avoids repeating a type. A clang-tidy fix that uses type deduction
-is acceptable when the result reads clearly. Use a named type alias
-when it improves readability.
+Use ``auto`` when an iterator, cast, or ``new`` expression already
+establishes the type. Keep pointer and reference markers visible, as in
+``auto *node`` and ``const auto &entry``. Use a named type alias when it
+improves readability.
 
 Pass short lambdas directly to the function that uses them when the call
 stays readable. Give a callable a name when that clarifies its purpose
 or lets you reuse it. A named lambda may use ``auto``.
 
+Initialization and iteration
+----------------------------
+
+Initialize local variables and use constructor member initializers where
+possible. Use designated initializers for multi-field aggregates when the
+language permits them. Mark values, references, and member functions
+``const`` when they only need read access. Use ``override`` on overrides
+and ``nullptr`` for null pointers.
+
+Prefer range-based loops when visiting a whole container. Keep an index
+when a traversal must also visit entries it appends, or when it uses the
+same position in two sequences. Use a const reference to read an element
+that would be expensive to copy. Test for an empty container with
+``empty()``.
+
 Names
 -----
 
 * Use ``snake_case`` for C++ filenames, such as ``source_file.cpp`` and
-  ``source_file.hpp``. Use ``PascalCase`` for classes, structs, enum
-  types, and type aliases.
-* Use ``lowerCamelCase`` for new functions and methods, as in
-  ``scanTokens``. Follow the established pattern when extending an API
-  family such as the ``get_*`` accessors or ``to_string`` overloads.
+  ``source_file.hpp``.
+* Use ``PascalCase`` for classes, structs, enum types, type aliases
+  (including typedefs), and template parameters.
+* Use ``lowerCamelCase`` for functions and methods, including accessors
+  and overloads, as in ``scanTokens``, ``getSpan``, and ``toString``.
 * Name function and lambda parameters by role alone in
   ``lowerCamelCase``, as in ``sourcePath``, ``offset``, and ``output``.
-* Use ``PascalCase`` for scoped enumerators, as in
-  ``TokenType::EndOfFile``. Follow an existing enum's naming pattern
-  when adding to it.
-* Use ``UPPER_SNAKE_CASE`` for macros and namespace-scope constants,
-  as in ``LEXED_ONLY`` and ``V_KEYWORDS``.
+  Leave an unused parameter unnamed when the signature requires it.
+* Use ``PascalCase`` for both scoped and unscoped enumerators, as in
+  ``TokenType::EndOfFile``, ``KReturn``, and ``OPlus``.
+* Use ``UPPER_SNAKE_CASE`` for macros and constants at global or
+  namespace scope, as in ``LEXED_ONLY`` and ``V_KEYWORDS``.
 
 Type prefixes
 -------------
 
-Name each local variable with a short prefix for its type, an underscore,
-and a descriptive ``lowerCamelCase`` name. Apply this convention to loop
-variables, local constants, and class data members such as ``s_source``
-and ``v_tokens``. Fields in simple value records can use names such as
-``Position::line`` and ``Position::column``.
+Use a descriptive ``lowerCamelCase`` name for locals, loop variables,
+local constants, and data members. A short type prefix followed by an
+underscore is optional. For example, both ``tokens`` and ``v_tokens`` fit
+the convention. When using a prefix, follow the surrounding code.
 
 .. list-table::
    :header-rows: 1
@@ -103,7 +117,7 @@ Choose a recognizable abbreviation when a type needs a new prefix.
 
 	namespace cloth {
 
-	std::size_t countNewlines(std::string_view source) {
+	std::size_t countNewlines (std::string_view source) {
 		std::size_t st_count = 0;
 		for (const char c_character : source) {
 			if (c_character == '\n') {
@@ -114,6 +128,24 @@ Choose a recognizable abbreviation when a type needs a new prefix.
 	}
 
 	}
+
+Checking a patch
+----------------
+
+Run the `repository checker <../../scripts/clang_tidy_patch.py>`_ from the
+repository root. It uses the project's compilation database and checks a
+changed header through the translation units that include it.
+
+.. code-block:: console
+
+   python scripts/clang_tidy_patch.py
+
+For an on-demand check of the whole project before a push, run
+``python scripts/clang_tidy_patch.py --all``. Both commands report findings.
+Add ``--fix`` when you want to apply fixes. After a rename, check declarations,
+overrides, definitions, and callers together. Run ``make test``
+(``mingw32-make test`` on Windows) to build the compiler and exercise its
+callers, including tests.
 
 Formatting
 ----------

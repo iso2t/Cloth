@@ -17,7 +17,7 @@ struct SourceUnit {
 	std::optional<TokenSpan>       end     = std::nullopt;
 	std::vector<ImportDeclaration> imports = {};
 
-	[[nodiscard]] const SourceFile *get_source () const {
+	[[nodiscard]] const SourceFile *getSource () const {
 		return end ? end->source.get() : nullptr;
 	}
 };

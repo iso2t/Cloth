@@ -20,12 +20,12 @@ struct FunctionDeclaration : CallableDeclaration {
 	FunctionDeclaration (const Token &keyword, const Token &name, std::vector<TypeReference> returnTypes, std::vector<ParameterDeclaration> parameters,
 	                     FunctionBody body, std::optional<Token> visibility = std::nullopt,
 	                     std::optional<TypeParameterList> typeParameters = std::nullopt) :
-	        CallableDeclaration(keyword, name, std::move(parameters), std::move(body), (visibility ? *visibility : keyword).get_span(),
+	        CallableDeclaration(keyword, name, std::move(parameters), std::move(body), (visibility ? *visibility : keyword).getSpan(),
 	                            std::move(returnTypes), visibility),
 	        typeParameters(std::move(typeParameters)) {
 	}
 
-	[[nodiscard]] const TypeReference *get_return_type () const {
+	[[nodiscard]] const TypeReference *getReturnType () const {
 		return returnTypes.size() == 1 ? &returnTypes.front() : nullptr;
 	}
 };

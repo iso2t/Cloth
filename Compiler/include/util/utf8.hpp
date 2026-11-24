@@ -8,7 +8,7 @@
 namespace cloth {
 
 // Returns the byte length of the first UTF-8 scalar, or zero for invalid input.
-inline std::size_t utf8_scalar_length (std::string_view bytes) {
+inline std::size_t utf8ScalarLength (std::string_view bytes) {
 	if (bytes.empty()) {
 		return 0;
 	}
@@ -20,7 +20,7 @@ inline std::size_t utf8_scalar_length (std::string_view bytes) {
 
 	// Bound the second byte to reject overlong encodings, surrogates and
 	// code points beyond U+10FFFF.
-	std::size_t   length;
+	std::size_t   length = 0;
 	unsigned char secondMin = 0x80;
 	unsigned char secondMax = 0xBF;
 	if (first >= 0xC2 && first <= 0xDF) {
@@ -62,10 +62,10 @@ inline std::size_t utf8_scalar_length (std::string_view bytes) {
 }
 
 // Returns the number of bytes preceding the first invalid scalar.
-inline std::size_t utf8_valid_prefix_length (std::string_view bytes) {
+inline std::size_t utf8ValidPrefixLength (std::string_view bytes) {
 	std::size_t st_offset = 0;
 	while (st_offset < bytes.size()) {
-		const std::size_t st_length = utf8_scalar_length(bytes.substr(st_offset));
+		const std::size_t st_length = utf8ScalarLength(bytes.substr(st_offset));
 		if (st_length == 0) break;
 		st_offset += st_length;
 	}
@@ -73,7 +73,7 @@ inline std::size_t utf8_valid_prefix_length (std::string_view bytes) {
 }
 
 // Decodes one scalar after utf8_scalar_length has validated its bytes.
-inline char32_t utf8_scalar_value (std::string_view scalar) {
+inline char32_t utf8ScalarValue (std::string_view scalar) {
 	const auto c_first = static_cast<unsigned char>(scalar.front());
 	if (scalar.size() == 1) {
 		return c_first;

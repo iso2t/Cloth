@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <cstdio>
 #include <exception>
 #include <iostream>
-#include <ostream>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
-#include <cde/cloth_diagnostic.hpp>
-#include <cde/diagnostic_reporter.hpp>
+#include <diagnostics.hpp>
 #include <errors/cloth_errors.hpp>
 #include <file/object_file.hpp>
 #include <file/source_file.hpp>
@@ -35,19 +34,19 @@ int wmain (const int argc, wchar_t *wideArgv[]) try {
 int main (const int argc, char *argv[]) try {
 #endif
 	const cloth::sys::CompilerOptions co_options{ argc, argv };
-	if (co_options.is_empty()) {
+	if (co_options.isEmpty()) {
 		std::fprintf(stderr, "incorrect usage: cloth <args>");
 	}
 
 	if (!co_options.p_sourcePath) return FAILED;
 
 	auto l_lexer = cloth::Lexer{ cloth::SourceFile{ *co_options.p_sourcePath } };
-	if (co_options.get_lexer_flag() == 1) {
+	if (co_options.getLexerFlag() == 1) {
 		std::ignore = l_lexer.scanTokens(); // discards result, not capturing the vector.
 		return LEXED_ONLY;
 	}
 
-	if (co_options.get_lexer_flag() == 2) {
+	if (co_options.getLexerFlag() == 2) {
 		cloth::printLexer(l_lexer, std::cout);
 		return PRINT_LEXED_ONLY;
 	}

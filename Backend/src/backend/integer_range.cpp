@@ -4,6 +4,8 @@
 
 #include <backend/integer_range.hpp>
 #include <backend/nullable_value.hpp>
+#include <llvm-c/Core.h>
+#include <llvm-c/Types.h>
 
 namespace backend::detail {
 namespace {
@@ -17,8 +19,8 @@ LLVMTypeRef IntegerRange::type (LLVMTypeRef endpoint) {
 }
 
 IntegerRange IntegerRange::unpack (LLVMBuilderRef builder, LLVMValueRef value) {
-	return { LLVMBuildExtractValue(builder, value, Start, ""), LLVMBuildExtractValue(builder, value, End, ""),
-		 LLVMBuildIsNotNull(builder, LLVMBuildExtractValue(builder, value, Inclusive, ""), "") };
+	return { .start=LLVMBuildExtractValue(builder, value, Start, ""), .end=LLVMBuildExtractValue(builder, value, End, ""),
+		 .inclusive=LLVMBuildIsNotNull(builder, LLVMBuildExtractValue(builder, value, Inclusive, ""), "") };
 }
 
 LLVMValueRef IntegerRange::pack (LLVMBuilderRef builder) const {

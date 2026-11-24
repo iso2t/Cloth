@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "ast/expr/expression.hpp"
+#include "ast/expr/expressions.hpp"
+#include "cde/diagnostic_code.hpp"
 #include "checked_program_test.hpp"
+#include "gtest/gtest.h"
+#include "semantic/checked_program.hpp"
+#include "semantic/symbol_table.hpp"
+#include "token/token.hpp"
 
 namespace cloth::test {
 namespace {
@@ -8,7 +15,7 @@ namespace {
 using Code = cde::DiagnosticCode;
 
 const ExpressionInfo &resultOf (const CheckedProgram &program, const char *function) {
-	return program.expressions.at(&bodyExpression(program.units.front()->get_globals().at(function).front()));
+	return program.expressions.at(&bodyExpression(program.units.front()->getGlobals().at(function).front()));
 }
 
 TEST (SemanticOperators, ChecksContractsBeforeUse) {
@@ -16,7 +23,7 @@ TEST (SemanticOperators, ChecksContractsBeforeUse) {
 	                              "operator<int> +(int x) = x", "operator<unsigned int<auto>> +() = 1", "operator ++(int x) {}",
 	                              "operator +=(int x, self) {}", "operator +=(int x) -> int = x", "operator <(int x) -> int = x",
 	                              "operator +(int x) -> void {}", "operator +(int x) = null", "operator ::label(int x) = x", "operator ,(int x) = x" }) {
-		expectError(std::string("typedef<class> C { ") + s_member + " }", Code::INVALID_OPERATOR_DECLARATION);
+		expectError(std::string("typedef<class> C { ") + s_member + " }", Code::InvalidOperatorDeclaration);
 	}
 }
 
@@ -39,7 +46,7 @@ fn<int<8>> again(Gauge g, int<8> n) = n + g
 	EXPECT_EQ(gi_narrow, ei_again.rightContext->instance);
 	EXPECT_EQ(gi_narrow->signature.returns.front().width, 8u);
 	EXPECT_EQ(gi_wide->signature.returns.front().width, 16u);
-	const Symbol     &sym_gauge = cp_program.units.front()->get_globals().at("Gauge").front();
+	const Symbol     &sym_gauge = cp_program.units.front()->getGlobals().at("Gauge").front();
 	const Symbol     &sym_op    = sym_gauge.members.at("+").front();
 	const Expression &e_pick    = bodyExpression(sym_op);
 	EXPECT_FALSE(cp_program.expressions.contains(&e_pick));
@@ -59,13 +66,13 @@ typedef<struct> Gauge { Item backing;
 )";
 	EXPECT_NO_THROW(checkSource(s_gauge));
 	EXPECT_NO_THROW(checkSource(s_gauge + "fn use(Gauge g, int<8> n) { g + n }"));
-	expectError(s_gauge + "fn use(Gauge g, int<8> n, int<16> m) { g + n; g + m }", Code::NULLABLE_PAYLOAD_ACCESS);
-	expectError(R"(typedef<class> Gauge { pub operator<int<auto>> +() -> int<auto> { int n = "x"; return missing } })", Code::UNKNOWN_NAME);
-	expectError("typedef<class> Gauge<T> { pub operator<int<auto>> +() -> int<auto> = false }", Code::RETURN_TYPE);
+	expectError(s_gauge + "fn use(Gauge g, int<8> n, int<16> m) { g + n; g + m }", Code::NullablePayloadAccess);
+	expectError(R"(typedef<class> Gauge { pub operator<int<auto>> +() -> int<auto> { int n = "x"; return missing } })", Code::UnknownName);
+	expectError("typedef<class> Gauge<T> { pub operator<int<auto>> +() -> int<auto> = false }", Code::ReturnType);
 	const std::string s_annotation = "typedef<class> Gauge { pub operator<int<auto>> +() -> int<auto> { Missing item = 1; return 1 } }\n";
 	EXPECT_NO_THROW(checkSource(s_annotation));
-	expectError(s_annotation + "fn use(Gauge g) { g + 1 }", Code::UNSUPPORTED_TYPE);
-	expectError(s_annotation + "fn generic<T>() {}", Code::UNSUPPORTED_TYPE);
+	expectError(s_annotation + "fn use(Gauge g) { g + 1 }", Code::UnsupportedType);
+	expectError(s_annotation + "fn generic<T>() {}", Code::UnsupportedType);
 }
 
 TEST (SemanticOperators, ResolvesWidthDependentMethodArgumentsAtTheChosenWidth) {
@@ -73,9 +80,9 @@ TEST (SemanticOperators, ResolvesWidthDependentMethodArgumentsAtTheChosenWidth) 
 	const std::string s_prefix = "typedef<class> Gauge { mt<T> pick<T>(T x) = x\n pub operator<int<auto>> +() -> int<auto> { ";
 	const std::string s_use    = " } }\nfn<int<8>> narrow(Gauge g, int<8> n) = g+n";
 	EXPECT_NO_THROW(checkSource(s_prefix + "int<auto>[] items = [1]; return pick<int<auto>>(items[0])" + s_use));
-	expectError(s_global + s_prefix + "return echo<int<auto>>(1)" + s_use, Code::UNSUPPORTED_TYPE);
+	expectError(s_global + s_prefix + "return echo<int<auto>>(1)" + s_use, Code::UnsupportedType);
 	EXPECT_NO_THROW(checkSource("fn<T> echo<T,U=bool>(T x) = x\n" + s_prefix + "return echo<int<auto>>(1)" + s_use));
-	expectError("typedef<class> Box<T> {}\n" + s_prefix + "Box<int<auto>>? b=null; return 1" + s_use, Code::UNSUPPORTED_TYPE);
+	expectError("typedef<class> Box<T> {}\n" + s_prefix + "Box<int<auto>>? b=null; return 1" + s_use, Code::UnsupportedType);
 }
 
 TEST (SemanticOperators, KeysCapturedWidthsByClosedReceiver) {
@@ -91,8 +98,8 @@ fn<float<16>> second(Gauge<string> g, float<16> n) = g + n
 	ASSERT_NE(gi_second, nullptr);
 	EXPECT_NE(gi_first, gi_second);
 	ASSERT_EQ(gi_first->body.localTypes.size(), 1u);
-	EXPECT_EQ(gi_first->body.localTypes.begin()->second, ResolvedType(kBoolean));
-	EXPECT_EQ(gi_second->body.localTypes.at(gi_first->body.localTypes.begin()->first), ResolvedType(kString));
+	EXPECT_EQ(gi_first->body.localTypes.begin()->second, ResolvedType(KBoolean));
+	EXPECT_EQ(gi_second->body.localTypes.at(gi_first->body.localTypes.begin()->first), ResolvedType(KString));
 }
 
 TEST (SemanticOperators, ResolvesConcreteOverridesAndKeepsBuiltInFallbacks) {
@@ -129,8 +136,8 @@ fn<bool> raw(Object a, Tag b) = a === b
 		EXPECT_NE(resultOf(cp_program, s_name).argumentContract, nullptr) << s_name;
 	EXPECT_EQ(resultOf(cp_program, "raw").argumentContract, nullptr);
 	EXPECT_EQ(resultOf(cp_program, "fallback").argumentContract, nullptr);
-	expectError("typedef<class> P { operator ==(P rhs) = true }\nfn<bool> f(P a) = a == a", Code::PRIVATE_CLASS_MEMBER);
-	expectError("typedef<class> A { pub operator +(int v) = v }\nfn<int> f(A a) = a + \"bad\"", Code::OPERATOR_MATCH);
+	expectError("typedef<class> P { operator ==(P rhs) = true }\nfn<bool> f(P a) = a == a", Code::PrivateClassMember);
+	expectError("typedef<class> A { pub operator +(int v) = v }\nfn<int> f(A a) = a + \"bad\"", Code::OperatorMatch);
 }
 
 TEST (SemanticOperators, ComparesArraysByShapeAndElementEquality) {
@@ -148,20 +155,20 @@ fn<bool> absent(int[]? a) = a == null
 	const ExpressionInfo &ei_array   = resultOf(cp_program, "compared");
 	ASSERT_TRUE(ei_array.elementEquality);
 	EXPECT_NE(ei_array.elementEquality->instance, nullptr);
-	EXPECT_EQ(ei_array.elementEquality->symbol->name.get_operator(), oEqual);
+	EXPECT_EQ(ei_array.elementEquality->symbol->name.getOperator(), OEqual);
 	EXPECT_TRUE(ei_array.callsElementEquality);
 	EXPECT_FALSE(resultOf(cp_program, "primitive").callsElementEquality);
 	EXPECT_FALSE(resultOf(cp_program, "enumeration").elementEquality);
-	const BinaryExpression &be_empty = dynamic_cast<const BinaryExpression &>(bodyExpression(cp_program.units.front()->get_globals().at("empty").front()));
+	const BinaryExpression &be_empty = dynamic_cast<const BinaryExpression &>(bodyExpression(cp_program.units.front()->getGlobals().at("empty").front()));
 	EXPECT_EQ(cp_program.expressions.at(be_empty.left.get()).types.front().element().suffixes.back(), "[1]");
 	for (const char *s_source :
 	     { "fn<bool> f(int[] a) = a === a", "fn<bool> f(int a) = a === a", "fn<bool> f(int?[] a, int[] b) = a == b",
 	       "fn<bool> f(int[][] a, int[] b) = a != b", "typedef<struct> P {}\nfn<bool> f(P a) = a == a", "typedef<struct> P {}\nfn<bool> f(P[] a) = a == []",
 	       "typedef<struct> P { pub operator !=(P p) = true }\nfn<bool> f(P[] a) = a != a" })
-		expectError(s_source, Code::INCOMPARABLE_TYPES);
-	expectError("fn<bool> f(int[] a) = a == null", Code::INVALID_NULL_COMPARISON);
-	expectError("typedef<struct> P { pub operator ==(P p) = true\npub operator ==(P p, self) = false }\nfn<bool> f(P[] a) = a == a", Code::OPERATOR_MATCH);
-	expectError("typedef<struct> P { operator ==(P p) = true }\nfn<bool> f(P[] a) = a != a", Code::PRIVATE_CLASS_MEMBER);
+		expectError(s_source, Code::IncomparableTypes);
+	expectError("fn<bool> f(int[] a) = a == null", Code::InvalidNullComparison);
+	expectError("typedef<struct> P { pub operator ==(P p) = true\npub operator ==(P p, self) = false }\nfn<bool> f(P[] a) = a == a", Code::OperatorMatch);
+	expectError("typedef<struct> P { operator ==(P p) = true }\nfn<bool> f(P[] a) = a != a", Code::PrivateClassMember);
 }
 
 TEST (SemanticOperators, AppliesOperandContextsInSourceOrder) {
@@ -182,7 +189,7 @@ fn<bool> f(Word w) { string rhs = { w::delete; return "x" }; return w == rhs }
 typedef<class> Clear { pub operator<usize> ==() -> usize = 0 }
 fn<bool> f(Box b, Clear c) { if (b.name != null) return c == b.name::size; return false }
 )",
-	            Code::NULLABLE_PAYLOAD_ACCESS);
+	            Code::NullablePayloadAccess);
 }
 
 TEST (SemanticOperators, ShortCircuitsOnlyTheBuiltInLogicalOperations) {
@@ -190,9 +197,9 @@ TEST (SemanticOperators, ShortCircuitsOnlyTheBuiltInLogicalOperations) {
 pub operator ||(bool flag, self) = flag }
 )";
 	for (const char *s_expr : { "false && p", "true || p" })
-		expectError(s_ops + "fn<bool> f(P p) { p::delete; return " + s_expr + " }", Code::DELETED_CLASS_ACCESS);
+		expectError(s_ops + "fn<bool> f(P p) { p::delete; return " + s_expr + " }", Code::DeletedClassAccess);
 	EXPECT_NO_THROW(checkSource(s_ops + "fn<bool> use(P p) { p::delete; return true || (true && p) }"));
-	expectError("typedef<class> P { pub operator &&(bool b) = b }\nfn f(P p, opt<bool> x ?: p && true) {}", Code::INVALID_PARAMETER_DEFAULT);
+	expectError("typedef<class> P { pub operator &&(bool b) = b }\nfn f(P p, opt<bool> x ?: p && true) {}", Code::InvalidParameterDefault);
 }
 
 TEST (SemanticOperators, UpdatesCapturedClassElementsAndFallsBackToArithmetic) {
@@ -210,11 +217,11 @@ fn update(Items items, Item item) { items[0]++; items[1] += "x"; item += 1 }
 )"));
 	expectError(
 	        "typedef<class> Item { pub operator ++() {} }\ntypedef<class> Items(def<Item> item) { pub operator [](int n) = item }\nfn f(Items items) { items[0]++ }",
-	        Code::INVALID_INDEX);
+	        Code::InvalidIndex);
 	expectError(
 	        "typedef<class> Item { pub operator ++() {} }\ntypedef<class> Items(def<Item> item) { pub operator [](int n) = item\noperator []?(int n) = true\npub operator []=(int n, Item value) {} }\n"
 	        "fn f(Items items) { items::delete; items[0]++ }",
-	        Code::DELETED_CLASS_ACCESS);
+	        Code::DeletedClassAccess);
 }
 }
 }

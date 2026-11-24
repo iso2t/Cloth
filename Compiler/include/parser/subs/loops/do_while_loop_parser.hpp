@@ -11,7 +11,7 @@ class DoWhileLoopParser : public LoopParser {
     public:
 	using LoopParser::LoopParser;
 
-	DoWhileStatement parseDoWhile ();
+	DoWhileStatement parseDoWhile () const;
 };
 
 }

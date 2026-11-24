@@ -5,7 +5,12 @@
 #include <string>
 #include <vector>
 
+#include "cde/diagnostic_code.hpp"
 #include "checked_program_test.hpp"
+#include "gtest/gtest.h"
+#include "semantic/checked_program.hpp"
+#include "semantic/symbol_table.hpp"
+#include "token/token.hpp"
 
 namespace cloth::test {
 namespace {
@@ -13,7 +18,7 @@ namespace {
 using Code = cde::DiagnosticCode;
 
 const Symbol &global (const CheckedProgram &program, const char *name) {
-	return program.units.front()->get_globals().at(name).front();
+	return program.units.front()->getGlobals().at(name).front();
 }
 
 const ExpressionInfo &callIn (const CheckedProgram &program, const char *name) {
@@ -43,7 +48,7 @@ fn<int> holder(Holder item) = item.pick(3)
 	for (const InterfaceTarget &it_target : td_holder.interfaceTargets) {
 		EXPECT_EQ(it_target.contract.symbol, &sym_pick);
 		EXPECT_EQ(it_target.contract, it_target.implementation);
-		EXPECT_EQ(it_target.contract.owner.arguments(), ResultTypes{ ResolvedType(kInteger) });
+		EXPECT_EQ(it_target.contract.owner.arguments(), ResultTypes{ ResolvedType(KInteger) });
 	}
 	for (const char *s_name : { "root", "diamond", "holder" }) {
 		const ExpressionInfo &ei_call = callIn(cp_program, s_name);
@@ -52,7 +57,7 @@ fn<int> holder(Holder item) = item.pick(3)
 		EXPECT_EQ(ei_call.dispatch->receiver, cp_program.declarations.at(&global(cp_program, s_name)).parameters.front());
 		EXPECT_EQ(ei_call.argumentContract, &sym_pick);
 		EXPECT_EQ(ei_call.omittedParameters, (std::vector<std::size_t>{ 1 }));
-		EXPECT_EQ(ei_call.types, ResultTypes{ ResolvedType(kInteger) });
+		EXPECT_EQ(ei_call.types, ResultTypes{ ResolvedType(KInteger) });
 	}
 }
 
@@ -106,7 +111,7 @@ fn<int> use(Reader item) = through(item)
 		EXPECT_EQ(it_read.contract.symbol, &global(cp_program, "Readable").members.at("read").front());
 		EXPECT_EQ(it_read.implementation.symbol, &global(cp_program, "Reader").members.at("read").front());
 	}
-	expectError(s_default + s_plain, Code::INVALID_INTERFACE_OVERRIDE);
+	expectError(s_default + s_plain, Code::InvalidInterfaceOverride);
 }
 
 TEST (SemanticDispatch, ResolvesIndependentDefaultsWithAnExplicitClassImplementation) {
@@ -115,8 +120,8 @@ typedef<interface> B { pub mt<int> pick() = default (2) }
 )";
 	for (const char *s_parents : { "A, B", "B, A" }) {
 		const std::string s_class = s_interfaces + "typedef<class> C : " + s_parents;
-		expectError(s_class + " {}", Code::CONFLICTING_INTERFACE_DEFAULTS);
-		expectError(s_class + " { pub mt<int> pick() = 3 }", Code::INVALID_INTERFACE_OVERRIDE);
+		expectError(s_class + " {}", Code::ConflictingInterfaceDefaults);
+		expectError(s_class + " { pub mt<int> pick() = 3 }", Code::InvalidInterfaceOverride);
 		const CheckedProgram cp_program = checkSource(s_class + " { pub override mt<int> pick() = 3 }\nfn<int> read(C item) = item.pick()");
 		const TypeDispatch  &td_class   = tableFor(cp_program, "read");
 		ASSERT_EQ(td_class.interfaceTargets.size(), 2u);
@@ -124,12 +129,12 @@ typedef<interface> B { pub mt<int> pick() = default (2) }
 			EXPECT_EQ(it_target.implementation.symbol, &global(cp_program, "C").members.at("pick").front());
 	}
 	expectError("typedef<interface> A { pub mt<int> read(int a) }\ntypedef<interface> B { pub mt<int> read(int b) }\ntypedef<interface> C : A, B {}",
-	            Code::INCOMPATIBLE_INTERFACE_REQUIREMENT);
+	            Code::IncompatibleInterfaceRequirement);
 	expectError("typedef<interface> A { pub mt<int> read() = default (1) }\ntypedef<interface> B : A { pub mt<int> read() }",
-	            Code::INCOMPATIBLE_INTERFACE_REQUIREMENT);
+	            Code::IncompatibleInterfaceRequirement);
 	expectError("typedef<interface> A { pub mt<int, bool> pair() }\ntypedef<interface> B : A { pub mt<bool, int> pair() }",
-	            Code::INCOMPATIBLE_INTERFACE_REQUIREMENT);
-	expectError("typedef<interface> A<T> {}\ntypedef<interface> B : A<int> {}\ntypedef<class> C : B, A<bool> {}", Code::CONFLICTING_INTERFACE_APPLICATION);
+	            Code::IncompatibleInterfaceRequirement);
+	expectError("typedef<interface> A<T> {}\ntypedef<interface> B : A<int> {}\ntypedef<class> C : B, A<bool> {}", Code::ConflictingInterfaceApplication);
 }
 
 TEST (SemanticDispatch, SelectsPublicInterfaceImplementationsDeclaredOrInheritedByTheClass) {
@@ -178,14 +183,14 @@ TEST (SemanticDispatch, PreservesPrivateHelpersAndChecksSharedConstructorContrac
 typedef<class> C : I {}
 fn<int> run(I i) = i.visible()
 )"));
-	expectError("typedef<interface> I { mt<int> secret() = default (2) }\nfn<int> leak(I i) = i.secret()", Code::PRIVATE_CLASS_MEMBER);
+	expectError("typedef<interface> I { mt<int> secret() = default (2) }\nfn<int> leak(I i) = i.secret()", Code::PrivateClassMember);
 	expectError("typedef<interface> I { pub mt<int> f() }\ntypedef<interface> J : I { mt<int> f() = default (1) }",
-	            Code::INCOMPATIBLE_INTERFACE_REQUIREMENT);
+	            Code::IncompatibleInterfaceRequirement);
 	expectError(R"(typedef<interface> A { pub mt<T> make<T: new(int x)>() }
 typedef<interface> B { pub mt<U> make<U: new(int y)>() }
 typedef<class> C : A, B { pub override mt<V> make<V>() = V::new(1) }
 )",
-	            Code::INCOMPATIBLE_INTERFACE_REQUIREMENT);
+	            Code::IncompatibleInterfaceRequirement);
 }
 
 TEST (SemanticDispatch, PreservesTheRootVirtualContractAcrossThreeClassLevels) {
@@ -208,7 +213,7 @@ fn<int, bool> leaf(Leaf item) = item.read(count=3)
 	EXPECT_EQ(ei_leaf.dispatch->kind, DispatchKind::Virtual);
 	EXPECT_EQ(ei_leaf.argumentContract, &sym_base);
 	EXPECT_EQ(ei_leaf.symbol, &sym_mid);
-	EXPECT_EQ(ei_leaf.types, (ResultTypes{ ResolvedType(kInteger), ResolvedType(kBoolean) }));
+	EXPECT_EQ(ei_leaf.types, (ResultTypes{ ResolvedType(KInteger), ResolvedType(KBoolean) }));
 	const TypeDispatch &td_leaf = tableFor(cp_program, "leaf");
 	ASSERT_EQ(td_leaf.methods.size(), 1u);
 	ASSERT_TRUE(td_leaf.methods.front().implementation);
@@ -217,10 +222,10 @@ fn<int, bool> leaf(Leaf item) = item.read(count=3)
 	const std::string s_base = "typedef<class> A { pub virtual mt<int, bool> go(int n) = n, true }\ntypedef<class> B : A { ";
 	for (const char *s_bad : { "pub mt<int, bool> go(int n) = n, true", "override mt<int, bool> go(int n) = n, true",
 	                           "pub override mt<bool, int> go(int n) = true, n", "pub override mt<int, bool> go(opt<int> n ?: 7) = n, true" }) {
-		expectError(s_base + s_bad + " }", Code::INVALID_VIRTUAL_METHOD);
+		expectError(s_base + s_bad + " }", Code::InvalidVirtualMethod);
 	}
-	expectError(s_base + "pub override mt<int, bool> go(bool n) = 1, n }", Code::INVALID_INTERFACE_OVERRIDE);
-	expectError("typedef<class> C { virtual mt f() {} }", Code::INVALID_VIRTUAL_METHOD);
+	expectError(s_base + "pub override mt<int, bool> go(bool n) = 1, n }", Code::InvalidInterfaceOverride);
+	expectError("typedef<class> C { virtual mt f() {} }", Code::InvalidVirtualMethod);
 }
 
 TEST (SemanticDispatch, ResolvesStateContractsSelectionsAndOverloadsOnTheHost) {
@@ -254,13 +259,13 @@ fn<bool> ready(Leaf item) = item is Ready
 	EXPECT_EQ(ei_call.dispatch->kind, DispatchKind::State);
 	EXPECT_EQ(ei_call.argumentContract->kind, SymbolKind::StateMethodContract);
 	EXPECT_EQ(ei_call.omittedParameters, (std::vector<std::size_t>{ 0, 1 }));
-	EXPECT_EQ(ei_call.types, (ResultTypes{ ResolvedType(kInteger), ResolvedType(kBoolean) }));
+	EXPECT_EQ(ei_call.types, (ResultTypes{ ResolvedType(KInteger), ResolvedType(KBoolean) }));
 	EXPECT_EQ(callIn(cp_program, "named").parameterForArgument, (std::vector<std::size_t>{ 1, 0 }));
 	EXPECT_NE(callIn(cp_program, "ordinary").argumentContract, ei_call.argumentContract);
 	EXPECT_EQ(callIn(cp_program, "ready").symbol, &sym_ready);
 	const TypeDispatch &td_leaf = tableFor(cp_program, "omitted");
 	EXPECT_EQ(td_leaf.initialState, &sym_busy);
-	EXPECT_EQ(td_leaf.states.at("Busy").payload, ResolvedType(kInteger));
+	EXPECT_EQ(td_leaf.states.at("Busy").payload, ResolvedType(KInteger));
 	ASSERT_EQ(td_leaf.stateMethods.size(), 2u);
 	for (const StateMethod &sm_method : td_leaf.stateMethods) {
 		EXPECT_EQ(sm_method.contract.owner.declaration, &sym_host);
@@ -276,27 +281,27 @@ fn<bool> ready(Leaf item) = item is Ready
 TEST (SemanticDispatch, RejectsMismatchedStateContractsAndPayloads) {
 	const std::string s_host = "typedef<class> C { pub default state<void> Ready {}\n pub state<int> Full {} }\ntypedef<class> Other {}\n";
 	for (const char *s_expr : { "item -> Full", "item -> Full(false)", "item -> Ready(1)" })
-		expectError(s_host + "fn move(C item) { " + s_expr + " }", Code::INVALID_STATE_PAYLOAD);
+		expectError(s_host + "fn move(C item) { " + s_expr + " }", Code::InvalidStatePayload);
 	for (const char *s_expr : { "other is Ready", "other -> Ready()", "other::unknown()" })
-		expectError(s_host + "fn test(Other other) { " + s_expr + " }", Code::INVALID_STATE_TARGET);
-	expectError(s_host + "fn bad(C? item) { item::read() }", Code::NULLABLE_PAYLOAD_ACCESS);
+		expectError(s_host + "fn test(Other other) { " + s_expr + " }", Code::InvalidStateTarget);
+	expectError(s_host + "fn bad(C? item) { item::read() }", Code::NullablePayloadAccess);
 	for (const char *s_state : { "default(false) state<int> Ready {}", "default(1) state<void> Ready {}", "default state<int> Ready {}" })
-		expectError("typedef<class> C { " + std::string(s_state) + " }", Code::INVALID_STATE_PAYLOAD);
-	expectError("typedef<class> C { default state<void> Ready { mt<int> read() = state } }", Code::UNKNOWN_NAME);
+		expectError("typedef<class> C { " + std::string(s_state) + " }", Code::InvalidStatePayload);
+	expectError("typedef<class> C { default state<void> Ready { mt<int> read() = state } }", Code::UnknownName);
 	expectError("typedef<class> C { default state<void> A { pub mt<int> f(int x) = x }\n state<void> B { pub mt<int> f(int y) = y } }",
-	            Code::INVALID_STATE_CONTRACT);
-	expectError("typedef<class> C { pub state<int> ::f()\n default state<void> A { mt<bool> f() = true } }", Code::INVALID_STATE_CONTRACT);
-	expectError("typedef<class> C { default state<void> Ready { mt<int> f(opt<int> x ?: 1) = x } }", Code::INVALID_STATE_CONTRACT);
-	expectError("typedef<class> C { default state<void> A {}\n default state<void> B {} }", Code::INVALID_STATE_DECLARATION);
-	expectError("typedef<state<void>> Bad for int {}", Code::INVALID_STATE_ATTACHMENT);
+	            Code::InvalidStateContract);
+	expectError("typedef<class> C { pub state<int> ::f()\n default state<void> A { mt<bool> f() = true } }", Code::InvalidStateContract);
+	expectError("typedef<class> C { default state<void> Ready { mt<int> f(opt<int> x ?: 1) = x } }", Code::InvalidStateContract);
+	expectError("typedef<class> C { default state<void> A {}\n default state<void> B {} }", Code::InvalidStateDeclaration);
+	expectError("typedef<state<void>> Bad for int {}", Code::InvalidStateAttachment);
 }
 
 TEST (SemanticDispatch, RequiresADefaultWhereStatesAreIntroduced) {
-	expectError("typedef<class> Host { state<void> Ready {} }", Code::INVALID_STATE_DECLARATION);
-	expectError("typedef<state<void>> Ready for Host {}\ntypedef<class> Host { state Ready }", Code::INVALID_STATE_DECLARATION);
+	expectError("typedef<class> Host { state<void> Ready {} }", Code::InvalidStateDeclaration);
+	expectError("typedef<state<void>> Ready for Host {}\ntypedef<class> Host { state Ready }", Code::InvalidStateDeclaration);
 	const std::string s_parent = "typedef<class> Base(int seed) { pub Base() : (0) {}\n default state<void> Ready {} }\n";
-	expectError(s_parent + "typedef<class> Child : Base { state<void> Busy {} }", Code::INVALID_STATE_DECLARATION);
-	expectError(s_parent + "typedef<state<void>> Busy for Base {}\ntypedef<class> Child : Base { state Busy }", Code::INVALID_STATE_DECLARATION);
+	expectError(s_parent + "typedef<class> Child : Base { state<void> Busy {} }", Code::InvalidStateDeclaration);
+	expectError(s_parent + "typedef<state<void>> Busy for Base {}\ntypedef<class> Child : Base { state Busy }", Code::InvalidStateDeclaration);
 	EXPECT_NO_THROW(checkSource(s_parent + "typedef<class> Child : Base {}"));
 	EXPECT_NO_THROW(checkSource(s_parent + "typedef<state<void>> Busy for Base {}\ntypedef<class> Child : Base { default state Busy }"));
 }
@@ -322,13 +327,13 @@ fn<Base> up(Child<int> item) = item
 	const ResolvedType  &rt_child   = cp_program.declarations.at(&global(cp_program, "up")).parameters.front();
 	const Symbol        &sym_child = global(cp_program, "Child"), &sym_busy = sym_child.members.at("Busy").front();
 	const std::function<void(const Symbol &, const ResolvedType &)> check = [&] (const Symbol &body, const ResolvedType &argument) {
-		const GenericInstance &gi_instance = cp_program.instances.at({ &body, rt_child, { argument } });
+		const GenericInstance &gi_instance = cp_program.instances.at({ .declaration=&body, .receiver=rt_child, .arguments={ argument } });
 		EXPECT_EQ(gi_instance.signature.returns, ResultTypes{ argument });
 		EXPECT_EQ(gi_instance.body.expressions.at(&bodyExpression(body)).types, ResultTypes{ argument });
 	};
-	check(sym_child.members.at("echo").front(), ResolvedType(kBoolean));
-	check(sym_child.members.at("get").front(), ResolvedType(kInteger));
-	check(sym_busy.members.at("read").front(), ResolvedType(kString));
+	check(sym_child.members.at("echo").front(), ResolvedType(KBoolean));
+	check(sym_child.members.at("get").front(), ResolvedType(KInteger));
+	check(sym_busy.members.at("read").front(), ResolvedType(KString));
 }
 
 TEST (SemanticDispatch, ChecksAnAttachedBodyAgainstEachHostAndKeepsItsLexicalReceiver) {
@@ -358,13 +363,13 @@ fn<bool> b(B<int> item) = item::ready()
 	const BodyFacts &bf_a    = cp_program.attachmentBodies.at(rt_a);
 	EXPECT_EQ(bf_a.expressions.at(&bodyExpression(sym_query)).symbol, &global(cp_program, "A").members.at("Ready").front());
 	EXPECT_EQ(bf_a.expressions.at(&bodyExpression(sym_read)).argumentContract, &global(cp_program, "Host").members.at("id").front());
-	const GenericInstance &gi_b = cp_program.instances.at({ &sym_query, rt_b, {} });
+	const GenericInstance &gi_b = cp_program.instances.at({ .declaration=&sym_query, .receiver=rt_b, .arguments={} });
 	EXPECT_EQ(gi_b.body.expressions.at(&bodyExpression(sym_query)).symbol, &global(cp_program, "B").members.at("Ready").front());
 	EXPECT_EQ(cp_program.dispatchTables.at(rt_b).states.at("Shared").definition, &sym_shared);
-	expectError(s_decls + "typedef<class> Bad : Host { pub override mt<int> id() = 3; default state Shared }", Code::INVALID_STATE_TARGET);
+	expectError(s_decls + "typedef<class> Bad : Host { pub override mt<int> id() = 3; default state Shared }", Code::InvalidStateTarget);
 	expectError(
 	        "typedef<class> Host { def<int> hidden = 1; default state Shared }\ntypedef<state<void>> Shared for Host { pub mt<int> bad() = self.hidden }",
-	        Code::PRIVATE_CLASS_MEMBER);
+	        Code::PrivateClassMember);
 }
 
 TEST (SemanticDispatch, ChecksEveryPublicSignatureIncludingBoundsAndInferredStateMethods) {
@@ -372,7 +377,7 @@ TEST (SemanticDispatch, ChecksEveryPublicSignatureIncludingBoundsAndInferredStat
 	for (const char *s_decl : { "pub fn f<T: Secret>(T x) {}", "pub fn f<T: new(Box<Secret> value)>(T x) {}", "pub typedef<class> Api<T = Secret> {}",
 	                            "pub typedef<interface> Api { pub mt<Box<Secret>[]> leak() }", "pub typedef<class> Api { pub def<Secret?> leaked = null }",
 	                            "pub typedef<class> Api { default state<void> Hidden { pub mt<Secret> leak(Secret item) = item } }" }) {
-		expectError(s_types + s_decl, Code::PRIVATE_GENERIC_SIGNATURE);
+		expectError(s_types + s_decl, Code::PrivateGenericSignature);
 	}
 	EXPECT_NO_THROW(checkSource(s_types + "pub typedef<class> Api { mt<Secret> internal(Secret item) = item }"));
 }
@@ -397,7 +402,7 @@ fn<Base> up(Child item) = item
 	const ResolvedType    &rt_child   = cp_program.declarations.at(&global(cp_program, "up")).parameters.front();
 	const ResolvedType    &rt_product = cp_program.declarations.at(&global(cp_program, "make")).returns.front();
 	const Symbol          &sym_make   = global(cp_program, "Child").members.at("make").front();
-	const GenericInstance &gi_make    = cp_program.instances.at({ &sym_make, rt_child, { rt_product } });
+	const GenericInstance &gi_make    = cp_program.instances.at({ .declaration=&sym_make, .receiver=rt_child, .arguments={ rt_product } });
 	const ExpressionInfo  &ei_create  = gi_make.body.expressions.at(&bodyExpression(sym_make));
 	EXPECT_EQ(ei_create.types, ResultTypes{ rt_product });
 	ASSERT_NE(ei_create.argumentContract, nullptr);

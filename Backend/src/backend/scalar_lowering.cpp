@@ -10,11 +10,19 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <string_view>
+#include <variant>
 #include <vector>
+
+#include <llvm-c/Core.h>
+#include <llvm-c/Types.h>
+#include <semantic/checked_program.hpp>
+#include <semantic/target_layout.hpp>
+#include <token/token.hpp>
 
 namespace backend::detail {
 namespace {
@@ -30,17 +38,17 @@ LLVMValueRef wordOperandSlot (LLVMBuilderRef builder, LLVMValueRef operand, LLVM
 
 LLVMIntPredicate integerPredicate (cloth::Operator op, bool isUnsigned) {
 	switch (op) {
-	case cloth::oEqual:
+	case cloth::OEqual:
 		return LLVMIntEQ;
-	case cloth::oNotEqual:
+	case cloth::ONotEqual:
 		return LLVMIntNE;
-	case cloth::oLess:
+	case cloth::OLess:
 		return isUnsigned ? LLVMIntULT : LLVMIntSLT;
-	case cloth::oLessEqual:
+	case cloth::OLessEqual:
 		return isUnsigned ? LLVMIntULE : LLVMIntSLE;
-	case cloth::oGreater:
+	case cloth::OGreater:
 		return isUnsigned ? LLVMIntUGT : LLVMIntSGT;
-	case cloth::oGreaterEqual:
+	case cloth::OGreaterEqual:
 		return isUnsigned ? LLVMIntUGE : LLVMIntSGE;
 	default:
 		throw std::logic_error("Invalid primitive integer comparison");
@@ -49,17 +57,17 @@ LLVMIntPredicate integerPredicate (cloth::Operator op, bool isUnsigned) {
 
 LLVMRealPredicate floatPredicate (cloth::Operator op) {
 	switch (op) {
-	case cloth::oEqual:
+	case cloth::OEqual:
 		return LLVMRealOEQ;
-	case cloth::oNotEqual:
+	case cloth::ONotEqual:
 		return LLVMRealUNE;
-	case cloth::oLess:
+	case cloth::OLess:
 		return LLVMRealOLT;
-	case cloth::oLessEqual:
+	case cloth::OLessEqual:
 		return LLVMRealOLE;
-	case cloth::oGreater:
+	case cloth::OGreater:
 		return LLVMRealOGT;
-	case cloth::oGreaterEqual:
+	case cloth::OGreaterEqual:
 		return LLVMRealOGE;
 	default:
 		throw std::logic_error("Invalid primitive floating comparison");
@@ -75,8 +83,8 @@ LLVMTypeRef scalarType (LLVMContextRef context, cloth::TargetLayout layout, cons
 	if (type.parameter || !type.suffixes.empty()) return nullptr;
 	if (type.declaration) return type.enumeration() ? LLVMInt32TypeInContext(context) : nullptr;
 	if (type.integer()) return LLVMIntTypeInContext(context, type.width ? type.width : layout.sizeBits);
-	if (type == cloth::ResolvedType(cloth::kBoolean)) return LLVMInt8TypeInContext(context);
-	if (type == cloth::ResolvedType(cloth::kCharacter)) return LLVMInt32TypeInContext(context);
+	if (type == cloth::ResolvedType(cloth::KBoolean)) return LLVMInt8TypeInContext(context);
+	if (type == cloth::ResolvedType(cloth::KCharacter)) return LLVMInt32TypeInContext(context);
 	if (type.floating()) {
 		switch (type.width) {
 		case 16:
@@ -230,13 +238,13 @@ LLVMValueRef ScalarLowering::checkedArrayIndex (LLVMValueRef index, bool isUnsig
 	const LLVMTypeRef  ty_check = LLVMIntTypeInContext(LLVMGetModuleContext(mod_module), u_bits);
 	const LLVMValueRef ir_index = LLVMBuildIntCast2(ir_builder, index, ty_check, !isUnsigned, "");
 	failIf(LLVMBuildICmp(ir_builder, LLVMIntUGE, ir_index, integerConstant(ty_check, length), ""), declareArrayIndexOutOfBounds);
-	return LLVMBuildIntCast2(ir_builder, ir_index, type(cloth::ResolvedType(cloth::kUsize)), false, "");
+	return LLVMBuildIntCast2(ir_builder, ir_index, type(cloth::ResolvedType(cloth::KUsize)), false, "");
 }
 
 LLVMValueRef ScalarLowering::withinRangeEnd (LLVMValueRef value, LLVMValueRef end, LLVMValueRef inclusive, const cloth::ResolvedType &type) const {
-	if (LLVMIsAConstantInt(inclusive)) return compare(LLVMIsNull(inclusive) ? cloth::oLess : cloth::oLessEqual, value, end, type);
-	const LLVMValueRef ir_before = compare(cloth::oLess, value, end, type);
-	const LLVMValueRef ir_atEnd  = compare(cloth::oEqual, value, end, type);
+	if (LLVMIsAConstantInt(inclusive)) return compare(LLVMIsNull(inclusive) ? cloth::OLess : cloth::OLessEqual, value, end, type);
+	const LLVMValueRef ir_before = compare(cloth::OLess, value, end, type);
+	const LLVMValueRef ir_atEnd  = compare(cloth::OEqual, value, end, type);
 	return LLVMBuildOr(ir_builder, ir_before, LLVMBuildAnd(ir_builder, inclusive, ir_atEnd, ""), "");
 }
 
@@ -244,28 +252,28 @@ IntegerRangeStep ScalarLowering::integerRangeStep (cloth::Operator op, LLVMValue
 	const LLVMValueRef ir_true = LLVMConstAllOnes(LLVMInt1TypeInContext(LLVMGetModuleContext(mod_module)));
 	std::string_view   sv_intrinsic;
 	switch (op) {
-	case cloth::oAssign:
-		return { amount, ir_true };
-	case cloth::oPlusPlus:
-	case cloth::oMinusMinus: {
+	case cloth::OAssign:
+		return { .value = amount, .representable = ir_true };
+	case cloth::OPlusPlus:
+	case cloth::OMinusMinus: {
 		// Postfix steps mean one mathematical unit even for a signed one-bit counter.
-		const bool         b_decrement = op == cloth::oMinusMinus;
-		const LLVMValueRef ir_next     = binary(b_decrement ? cloth::oMinus : cloth::oPlus, current, amount, type);
-		return { ir_next, compare(b_decrement ? cloth::oLess : cloth::oGreater, ir_next, current, type) };
+		const bool         b_decrement = op == cloth::OMinusMinus;
+		const LLVMValueRef ir_next     = binary(b_decrement ? cloth::OMinus : cloth::OPlus, current, amount, type);
+		return { .value = ir_next, .representable = compare(b_decrement ? cloth::OLess : cloth::OGreater, ir_next, current, type) };
 	}
-	case cloth::oPlus:
+	case cloth::OPlus:
 		sv_intrinsic = type.unsignedInteger() ? "llvm.uadd.with.overflow" : "llvm.sadd.with.overflow";
 		break;
-	case cloth::oMinus:
+	case cloth::OMinus:
 		sv_intrinsic = type.unsignedInteger() ? "llvm.usub.with.overflow" : "llvm.ssub.with.overflow";
 		break;
-	case cloth::oMul:
+	case cloth::OMul:
 		if (LLVMGetIntTypeWidth(LLVMTypeOf(current)) > tl_layout.sizeBits) return wideRangeProduct(current, amount, type.unsignedInteger());
 		sv_intrinsic = type.unsignedInteger() ? "llvm.umul.with.overflow" : "llvm.smul.with.overflow";
 		break;
-	case cloth::oDiv:
-	case cloth::oMod:
-		return { rangeDivision(op, current, amount, type), ir_true };
+	case cloth::ODiv:
+	case cloth::OMod:
+		return { .value = rangeDivision(op, current, amount, type), .representable = ir_true };
 	default:
 		throw std::logic_error("Invalid built-in integer range step");
 	}
@@ -273,7 +281,8 @@ IntegerRangeStep ScalarLowering::integerRangeStep (cloth::Operator op, LLVMValue
 	const LLVMValueRef fn_update  = intrinsic(mod_module, sv_intrinsic, &ty_integer, 1);
 	LLVMValueRef       v_args[]   = { current, amount };
 	const LLVMValueRef ir_update  = LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(fn_update), fn_update, v_args, 2, "");
-	return { LLVMBuildExtractValue(ir_builder, ir_update, 0, ""), LLVMBuildNot(ir_builder, LLVMBuildExtractValue(ir_builder, ir_update, 1, ""), "") };
+	return { .value         = LLVMBuildExtractValue(ir_builder, ir_update, 0, ""),
+		 .representable = LLVMBuildNot(ir_builder, LLVMBuildExtractValue(ir_builder, ir_update, 1, ""), "") };
 }
 
 IntegerRangeStep ScalarLowering::wideRangeProduct (LLVMValueRef left, LLVMValueRef right, bool isUnsigned) const {
@@ -291,7 +300,7 @@ IntegerRangeStep ScalarLowering::wideRangeProduct (LLVMValueRef left, LLVMValueR
 	const LLVMValueRef ir_exact    = LLVMBuildLoad2(ir_builder, ty_wide, ir_product, "");
 	const LLVMValueRef ir_value    = LLVMBuildTrunc(ir_builder, ir_exact, ty_counter, "");
 	const LLVMValueRef ir_extended = LLVMBuildIntCast2(ir_builder, ir_value, ty_wide, !isUnsigned, "");
-	return { ir_value, LLVMBuildICmp(ir_builder, LLVMIntEQ, ir_exact, ir_extended, "") };
+	return { .value = ir_value, .representable = LLVMBuildICmp(ir_builder, LLVMIntEQ, ir_exact, ir_extended, "") };
 }
 
 LLVMValueRef ScalarLowering::rangeDivision (cloth::Operator op, LLVMValueRef dividend, LLVMValueRef divisor, const cloth::ResolvedType &type) const {
@@ -311,7 +320,7 @@ LLVMValueRef ScalarLowering::rangeDivision (cloth::Operator op, LLVMValueRef div
 	const LLVMValueRef   fn_divmod    = declareDivideWords(mod_module);
 	LLVMValueRef         v_args[]     = { ir_quotient, ir_divisor, ir_remainder, integerConstant(ty_word, u_words), integerConstant(ty_word, !b_unsigned) };
 	LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(fn_divmod), fn_divmod, v_args, 5, "");
-	const LLVMValueRef ir_result = op == cloth::oMod ? ir_remainder : ir_quotient;
+	const LLVMValueRef ir_result = op == cloth::OMod ? ir_remainder : ir_quotient;
 	return LLVMBuildIntCast2(ir_builder, LLVMBuildLoad2(ir_builder, ty_buffer, ir_result, ""), ty_counter, !b_unsigned, "");
 }
 
@@ -398,11 +407,11 @@ LLVMValueRef ScalarLowering::integerPower (LLVMValueRef base, LLVMValueRef expon
 
 LLVMValueRef ScalarLowering::compare (cloth::Operator op, LLVMValueRef left, LLVMValueRef right, const cloth::ResolvedType &operandType) const {
 	if (operandType.nullable()) {
-		if (op != cloth::oEqual && op != cloth::oNotEqual) throw std::logic_error("Invalid nullable scalar comparison");
+		if (op != cloth::OEqual && op != cloth::ONotEqual) throw std::logic_error("Invalid nullable scalar comparison");
 		const LLVMValueRef ir_payloadsEqual =
-		        compare(cloth::oEqual, nullable::payload(ir_builder, left), nullable::payload(ir_builder, right), operandType.element());
+		        compare(cloth::OEqual, nullable::payload(ir_builder, left), nullable::payload(ir_builder, right), operandType.element());
 		const LLVMValueRef ir_equal = nullable::equal(ir_builder, left, right, ir_payloadsEqual);
-		return op == cloth::oNotEqual ? LLVMBuildNot(ir_builder, ir_equal, "") : ir_equal;
+		return op == cloth::ONotEqual ? LLVMBuildNot(ir_builder, ir_equal, "") : ir_equal;
 	}
 	if (operandType.floating()) {
 		if (operandType.width == 16) {
@@ -411,7 +420,7 @@ LLVMValueRef ScalarLowering::compare (cloth::Operator op, LLVMValueRef left, LLV
 		}
 		return LLVMBuildFCmp(ir_builder, floatPredicate(op), left, right, "");
 	}
-	if (operandType == cloth::ResolvedType(cloth::kBoolean)) {
+	if (operandType == cloth::ResolvedType(cloth::KBoolean)) {
 		left  = predicate(left);
 		right = predicate(right);
 	}
@@ -427,24 +436,24 @@ LLVMValueRef ScalarLowering::binary (cloth::Operator op, LLVMValueRef left, LLVM
 			right = convertHalf(right);
 		}
 		LLVMTypeRef  ty_compute = LLVMTypeOf(left);
-		LLVMValueRef ir_result;
+		LLVMValueRef ir_result  = nullptr;
 		switch (op) {
-		case cloth::oPlus:
+		case cloth::OPlus:
 			ir_result = LLVMBuildFAdd(ir_builder, left, right, "");
 			break;
-		case cloth::oMinus:
+		case cloth::OMinus:
 			ir_result = LLVMBuildFSub(ir_builder, left, right, "");
 			break;
-		case cloth::oMul:
+		case cloth::OMul:
 			ir_result = LLVMBuildFMul(ir_builder, left, right, "");
 			break;
-		case cloth::oDiv:
+		case cloth::ODiv:
 			ir_result = LLVMBuildFDiv(ir_builder, left, right, "");
 			break;
-		case cloth::oMod:
+		case cloth::OMod:
 			ir_result = LLVMBuildFRem(ir_builder, left, right, "");
 			break;
-		case cloth::oMulMul: {
+		case cloth::OMulMul: {
 			const LLVMValueRef fn_pow        = intrinsic(mod_module, "llvm.pow", &ty_compute, 1);
 			LLVMValueRef       v_arguments[] = { left, right };
 			ir_result                        = LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(fn_pow), fn_pow, v_arguments, 2, "");
@@ -457,19 +466,19 @@ LLVMValueRef ScalarLowering::binary (cloth::Operator op, LLVMValueRef left, LLVM
 	}
 	const bool b_unsigned = operandType.unsignedInteger();
 	switch (op) {
-	case cloth::oPlus:
+	case cloth::OPlus:
 		return LLVMBuildAdd(ir_builder, left, right, "");
-	case cloth::oMinus:
+	case cloth::OMinus:
 		return LLVMBuildSub(ir_builder, left, right, "");
-	case cloth::oMul:
+	case cloth::OMul:
 		return LLVMBuildMul(ir_builder, left, right, "");
-	case cloth::oDiv:
+	case cloth::ODiv:
 		guardDivisor(left, right, b_unsigned);
 		return b_unsigned ? LLVMBuildUDiv(ir_builder, left, right, "") : LLVMBuildSDiv(ir_builder, left, right, "");
-	case cloth::oMod:
+	case cloth::OMod:
 		guardDivisor(left, right, b_unsigned);
 		return b_unsigned ? LLVMBuildURem(ir_builder, left, right, "") : LLVMBuildSRem(ir_builder, left, right, "");
-	case cloth::oMulMul:
+	case cloth::OMulMul:
 		return integerPower(left, right, b_unsigned);
 	default:
 		throw std::logic_error("Invalid primitive integer operation");

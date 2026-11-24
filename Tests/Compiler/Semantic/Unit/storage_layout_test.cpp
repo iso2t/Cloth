@@ -1,14 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "cde/cloth_diagnostic.hpp"
+#include "cde/diagnostic_code.hpp"
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <variant>
 #include "checked_program_test.hpp"
+#include "gtest/gtest.h"
+#include "semantic/checked_program.hpp"
+#include "semantic/symbol_table.hpp"
+#include "semantic/target_layout.hpp"
+#include "token/numeric_literals.hpp"
 
 namespace cloth::test {
 namespace {
 
 TEST (SemanticStorage, IntegerAllocationSizeAndAlignmentFollowTheTarget) {
-	for (unsigned u_bits : { 32u, 64u }) {
-		for (unsigned u_align64 : { 4u, 8u }) {
-			const TargetLayout tl_target{ u_bits, u_align64 };
+	for (unsigned const u_bits : { 32u, 64u }) {
+		for (unsigned const u_align64 : { 4u, 8u }) {
+			const TargetLayout tl_target{ .sizeBits=u_bits, .scalar64Alignment32=u_align64 };
 			SCOPED_TRACE(::testing::Message() << u_bits << "-bit target, i64 alignment on 32-bit " << u_align64);
 			EXPECT_EQ(tl_target.integerStorage(1), (StorageLayout{ 1, 1 }));
 			EXPECT_EQ(tl_target.integerStorage(8), (StorageLayout{ 1, 1 }));
@@ -27,15 +39,15 @@ TEST (SemanticStorage, IntegerAllocationSizeAndAlignmentFollowTheTarget) {
 }
 
 TEST (SemanticStorage, FoldsScalarBytesAndKeepsArrayElementCounts) {
-	for (unsigned u_bits : { 32u, 64u }) {
+	for (unsigned const u_bits : { 32u, 64u }) {
 		const CheckedProgram                    cp_program = checkSource(R"(fn<usize> signedBytes() = int<12>::size
 fn<usize> unsignedBytes(unsigned int<12> sample) = sample::size
 fn<usize> wideBytes() = unsigned int<257>::size
 fn<usize> wordBytes() = isize::size
 fn<usize> extent() = int<12>[3]::size
 fn<usize> length(int<12>[] samples) = samples::size)",
-		                                                                 { u_bits });
-		const SymbolScope                      &ss_globals = cp_program.units.front()->get_globals();
+		                                                                 { .sizeBits=u_bits });
+		const SymbolScope                      &ss_globals = cp_program.units.front()->getGlobals();
 		const std::pair<const char *, unsigned> v_counts[] = {
 			{ "signedBytes", 2 }, { "unsignedBytes", 2 }, { "wideBytes", 48 }, { "wordBytes", u_bits / 8 }, { "extent", 3 }
 		};
@@ -50,15 +62,15 @@ fn<usize> length(int<12>[] samples) = samples::size)",
 }
 
 TEST (SemanticStorage, PlacesFieldsAndStridesArraysOfConcreteTypes) {
-	for (unsigned u_bits : { 32u, 64u }) {
+	for (unsigned const u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const CheckedProgram cp_program = checkSource(R"(typedef<struct> Sample { int<8> z, int<12> a, int<8> m }
 typedef<struct> Box<T> { int<8> tag, T value }
 typedef<struct> Buffer { int<8> z, unsigned int<12>[3] samples, int<12> a }
 fn layout(Sample[3] records, int<12>[] data, unsigned int<12>[3] fixedSamples, Box<int<12>> small,
           Box<int<24>> wide, Box<Sample> nested, Buffer buffer) {})",
-		                                              { u_bits });
-		const SymbolScope   &ss_globals = cp_program.units.front()->get_globals();
+		                                              { .sizeBits=u_bits });
+		const SymbolScope   &ss_globals = cp_program.units.front()->getGlobals();
 		const ResultTypes   &v_types    = cp_program.declarations.at(&ss_globals.at("layout").front()).parameters;
 		const Symbol        &sym_sample = ss_globals.at("Sample").front();
 		const StructLayout  &sl_sample  = cp_program.structLayouts.at(v_types[0].element());
@@ -71,7 +83,7 @@ fn layout(Sample[3] records, int<12>[] data, unsigned int<12>[3] fixedSamples, B
 		EXPECT_EQ(sl_sample.fieldOffsets.at(&sym_sample.members.at("m").front()), 4u);
 		EXPECT_EQ(sl_sample.storage, (StorageLayout{ 6, 2 }));
 		EXPECT_EQ(cp_program.arrayDataLayout(v_types[0], 3), (StorageLayout{ 18, 2 }));
-		for (std::size_t st_index : { 1u, 2u }) {
+		for (std::size_t const st_index : { 1u, 2u }) {
 			EXPECT_EQ(cp_program.arrayDataLayout(v_types[st_index], 0), (StorageLayout{ 0, 2 }));
 			EXPECT_EQ(cp_program.arrayDataLayout(v_types[st_index], 1), (StorageLayout{ 2, 2 }));
 			EXPECT_EQ(cp_program.arrayDataLayout(v_types[st_index], 3), (StorageLayout{ 6, 2 }));
@@ -97,14 +109,14 @@ fn layout(Sample[3] records, int<12>[] data, unsigned int<12>[3] fixedSamples, B
 }
 
 TEST (SemanticStorage, UsesTheFieldAlignmentForWideArrayElements) {
-	for (unsigned u_bits : { 32u, 64u }) {
-		const TargetLayout   tl_target{ u_bits };
+	for (unsigned const u_bits : { 32u, 64u }) {
+		const TargetLayout   tl_target{ .sizeBits=u_bits };
 		const CheckedProgram cp_program = checkSource(R"(typedef<struct> Measure { int<8> first, int<48> value, int<8> last }
 typedef<struct> Wide { int<8> first, unsigned int<257> value, int<8> last }
 typedef<struct> OptionalSample { int<8> tag, int<12>? reading }
 fn store(Measure[] measures, Wide[] blocks, int<257>[] scalars, int<12>?[] optionalSamples, OptionalSample tagged) {})",
 		                                              tl_target);
-		const SymbolScope   &ss_globals = cp_program.units.front()->get_globals();
+		const SymbolScope   &ss_globals = cp_program.units.front()->getGlobals();
 		const ResultTypes   &v_types    = cp_program.declarations.at(&ss_globals.at("store").front()).parameters;
 		const unsigned       u_align    = tl_target.integerStorage(48).alignment;
 		const StructLayout  &sl_measure = cp_program.structLayouts.at(v_types[0].element());
@@ -130,16 +142,16 @@ TEST (SemanticStorage, DiagnosesUnrepresentableStructsAndArrayLiterals) {
 		s_source += "typedef<struct> Level" + std::to_string(u_level) + " { " + s_field + " left, " + s_field + " right }\n";
 	}
 	const std::pair<std::string, cde::DiagnosticCode> v_overflows[] = {
-		{ "fn pair(Level30 value) { def items = [value, value] }", cde::DiagnosticCode::INVALID_ARRAY },
-		{ "typedef<struct> Pair { Level30 left, Level30 right }", cde::DiagnosticCode::INVALID_STRUCT_FIELD }
+		{ "fn pair(Level30 value) { def items = [value, value] }", cde::DiagnosticCode::InvalidArray },
+		{ "typedef<struct> Pair { Level30 left, Level30 right }", cde::DiagnosticCode::InvalidStructField }
 	};
 	for (const std::pair<std::string, cde::DiagnosticCode> &entry : v_overflows) {
 		EXPECT_NO_THROW(checkSource(s_source + entry.first, { 64 }));
 		try {
-			checkSource(s_source + entry.first, { 32 });
+			checkSource(s_source + entry.first, { .sizeBits=32 });
 			FAIL() << "Expected target size overflow";
 		} catch (const cde::ClothDiagnostic &error) {
-			EXPECT_EQ(error.get_code(), entry.second) << error.what();
+			EXPECT_EQ(error.getCode(), entry.second) << error.what();
 		}
 	}
 }

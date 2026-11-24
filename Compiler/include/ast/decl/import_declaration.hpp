@@ -16,18 +16,18 @@ struct ImportPath {
 	std::vector<Token> components;
 	std::vector<Token> dots;
 
-	[[nodiscard]] TokenSpan get_span () const {
-		const TokenSpan ts_first = components.at(0).get_span();
-		return TokenSpan::span_through(ts_first, components.back().get_span());
+	[[nodiscard]] TokenSpan getSpan () const {
+		const TokenSpan ts_first = components.at(0).getSpan();
+		return TokenSpan::spanThrough(ts_first, components.back().getSpan());
 	}
 
-	[[nodiscard]] std::string get_spelling () const {
+	[[nodiscard]] std::string getSpelling () const {
 		std::string s_spelling;
 		for (std::size_t st_index = 0; st_index < components.size(); ++st_index) {
 			if (st_index != 0) {
-				s_spelling += to_string(oDot);
+				s_spelling += toString(ODot);
 			}
-			s_spelling += components[st_index].get_lexeme();
+			s_spelling += components[st_index].getLexeme();
 		}
 		return s_spelling;
 	}
@@ -38,24 +38,24 @@ struct ImportSelection {
 		std::vector<Token> names;
 		std::vector<Token> commas;
 
-		[[nodiscard]] TokenSpan get_span () const {
-			const TokenSpan ts_first = names.at(0).get_span();
-			return TokenSpan::span_through(ts_first, names.back().get_span());
+		[[nodiscard]] TokenSpan getSpan () const {
+			const TokenSpan ts_first = names.at(0).getSpan();
+			return TokenSpan::spanThrough(ts_first, names.back().getSpan());
 		}
 	};
 
 	struct Wildcard {
 		Token star;
 
-		[[nodiscard]] TokenSpan get_span () const {
-			return star.get_span();
+		[[nodiscard]] TokenSpan getSpan () const {
+			return star.getSpan();
 		}
 	};
 
 	std::variant<Names, Wildcard> value;
 
-	[[nodiscard]] TokenSpan get_span () const {
-		return std::visit([]<typename Selection>(const Selection &selection) -> TokenSpan { return selection.get_span(); }, value);
+	[[nodiscard]] TokenSpan getSpan () const {
+		return std::visit([]<typename Selection>(const Selection &selection) -> TokenSpan { return selection.getSpan(); }, value);
 	}
 };
 
@@ -66,8 +66,8 @@ struct ImportDeclaration {
 	ImportSelection      selection;
 	std::optional<Token> terminator = std::nullopt;
 
-	[[nodiscard]] TokenSpan get_span () const {
-		return TokenSpan::span_through(keyword.get_span(), selection.get_span());
+	[[nodiscard]] TokenSpan getSpan () const {
+		return TokenSpan::spanThrough(keyword.getSpan(), selection.getSpan());
 	}
 };
 

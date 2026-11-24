@@ -2,8 +2,11 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <iterator>
 #include <memory>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <utf8proc/utf8proc.h>
 
 #include <token/token.hpp>
@@ -25,14 +28,14 @@ constexpr IdentifierRange XID_RANGES[] = {
 
 std::size_t identifierLength (std::string_view text, bool start) {
 	if (text.empty()) return 0;
-	const unsigned char c_first = static_cast<unsigned char>(text.front());
+	const auto c_first = static_cast<unsigned char>(text.front());
 	if (c_first < 0x80) {
-		return (c_first >= 'a' && c_first <= 'z') || (c_first >= 'A' && c_first <= 'Z') || c_first == to_string(oUnderscore).front() ||
+		return (c_first >= 'a' && c_first <= 'z') || (c_first >= 'A' && c_first <= 'Z') || c_first == toString(OUnderscore).front() ||
 		       (!start && c_first >= '0' && c_first <= '9');
 	}
-	const std::size_t st_size = utf8_scalar_length(text);
+	const std::size_t st_size = utf8ScalarLength(text);
 	if (st_size == 0) return 0;
-	const char32_t         c32_scalar = utf8_scalar_value(text.substr(0, st_size));
+	const char32_t         c32_scalar = utf8ScalarValue(text.substr(0, st_size));
 	const IdentifierRange *ir_range   = std::ranges::lower_bound(XID_RANGES, c32_scalar, {}, &IdentifierRange::last);
 	return ir_range != std::end(XID_RANGES) && ir_range->first <= c32_scalar && (!start || ir_range->canStart) ? st_size : 0;
 }

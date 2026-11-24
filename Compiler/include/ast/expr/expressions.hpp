@@ -27,8 +27,8 @@ struct NameExpression : Expression {
 
 	explicit NameExpression (const Token &name);
 
-	[[nodiscard]] TokenSpan get_span () const override {
-		return name.get_span();
+	[[nodiscard]] TokenSpan getSpan () const override {
+		return name.getSpan();
 	}
 };
 
@@ -37,8 +37,8 @@ struct FunctionBlockExpression : Expression {
 
 	explicit FunctionBlockExpression (FunctionDeclaration declaration);
 
-	[[nodiscard]] TokenSpan get_span () const override {
-		return declaration.body.get_span();
+	[[nodiscard]] TokenSpan getSpan () const override {
+		return declaration.body.getSpan();
 	}
 };
 
@@ -47,14 +47,14 @@ struct CallArgument {
 	std::optional<Token> label  = std::nullopt;
 	std::optional<Token> equals = std::nullopt;
 
-	[[nodiscard]] TokenSpan get_span () const;
+	[[nodiscard]] TokenSpan getSpan () const;
 };
 
 struct CallSite : Expression {
 	Token                     name;
 	std::vector<CallArgument> suppliedArguments;
 
-	[[nodiscard]] std::vector<ExpressionPtr> get_arguments () const;
+	[[nodiscard]] std::vector<ExpressionPtr> getArguments () const;
 
     protected:
 	CallSite (const Token &name, std::vector<CallArgument> suppliedArguments);
@@ -67,7 +67,7 @@ struct CallExpression : CallSite {
 	CallExpression (const Token &name, std::vector<CallArgument> suppliedArguments, TokenSpan span,
 	                std::optional<TypeArgumentList> typeArguments = std::nullopt);
 
-	[[nodiscard]] TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan getSpan () const override {
 		return span;
 	}
 };
@@ -78,7 +78,7 @@ struct ArrayLiteral : Expression {
 
 	ArrayLiteral (std::vector<ExpressionPtr> elements, TokenSpan span);
 
-	[[nodiscard]] TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan getSpan () const override {
 		return span;
 	}
 };
@@ -89,7 +89,7 @@ struct ResultListExpression : Expression {
 
 	ResultListExpression (std::vector<ExpressionPtr> values, TokenSpan span);
 
-	[[nodiscard]] TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan getSpan () const override {
 		return span;
 	}
 };
@@ -101,7 +101,7 @@ struct IndexExpression : Expression {
 
 	IndexExpression (ExpressionPtr array, ExpressionPtr index, TokenSpan span);
 
-	[[nodiscard]] TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan getSpan () const override {
 		return span;
 	}
 };
@@ -112,8 +112,8 @@ struct UnaryExpression : Expression {
 
 	UnaryExpression (const Token &op, ExpressionPtr operand);
 
-	[[nodiscard]] TokenSpan get_span () const override {
-		return TokenSpan::span_through(op.get_span(), operand->get_span());
+	[[nodiscard]] TokenSpan getSpan () const override {
+		return TokenSpan::spanThrough(op.getSpan(), operand->getSpan());
 	}
 };
 
@@ -124,8 +124,8 @@ struct BinaryExpression : Expression {
 
 	BinaryExpression (ExpressionPtr left, const Token &op, ExpressionPtr right);
 
-	[[nodiscard]] TokenSpan get_span () const override {
-		return TokenSpan::span_through(left->get_span(), right->get_span());
+	[[nodiscard]] TokenSpan getSpan () const override {
+		return TokenSpan::spanThrough(left->getSpan(), right->getSpan());
 	}
 };
 
@@ -140,8 +140,8 @@ struct ElvisExpression : Expression {
 
 	ElvisExpression (ExpressionPtr left, const Token &op, ExpressionPtr fallback);
 
-	[[nodiscard]] TokenSpan get_span () const override {
-		return TokenSpan::span_through(left->get_span(), fallback->get_span());
+	[[nodiscard]] TokenSpan getSpan () const override {
+		return TokenSpan::spanThrough(left->getSpan(), fallback->getSpan());
 	}
 };
 
@@ -150,8 +150,8 @@ struct GuardedReceiver : Expression {
 
 	explicit GuardedReceiver (ExpressionPtr source);
 
-	[[nodiscard]] TokenSpan get_span () const override {
-		return source->get_span();
+	[[nodiscard]] TokenSpan getSpan () const override {
+		return source->getSpan();
 	}
 };
 
@@ -163,12 +163,12 @@ struct GuardedAccessExpression : Expression {
 
 	GuardedAccessExpression (const Token &op, std::shared_ptr<const GuardedReceiver> payload, ExpressionPtr continuation);
 
-	[[nodiscard]] const ExpressionPtr &get_receiver () const {
+	[[nodiscard]] const ExpressionPtr &getReceiver () const {
 		return payload->source;
 	}
 
-	[[nodiscard]] TokenSpan get_span () const override {
-		return TokenSpan::span_through(get_receiver()->get_span(), continuation->get_span());
+	[[nodiscard]] TokenSpan getSpan () const override {
+		return TokenSpan::spanThrough(getReceiver()->getSpan(), continuation->getSpan());
 	}
 };
 
@@ -177,7 +177,7 @@ struct NullLiteral : Expression {
 
 	explicit NullLiteral (TokenSpan span);
 
-	[[nodiscard]] TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan getSpan () const override {
 		return span;
 	}
 };
@@ -189,8 +189,8 @@ struct CastExpression : Expression {
 
 	CastExpression (ExpressionPtr operand, const Token &op, TypeReference target);
 
-	[[nodiscard]] TokenSpan get_span () const override {
-		return TokenSpan::span_through(operand->get_span(), target.get_span());
+	[[nodiscard]] TokenSpan getSpan () const override {
+		return TokenSpan::spanThrough(operand->getSpan(), target.getSpan());
 	}
 };
 
@@ -203,8 +203,8 @@ struct TypeCheckExpression : Expression {
 	TypeCheckExpression (ExpressionPtr operand, const Token &op, TypeReference target,
 	                     std::shared_ptr<const FieldAccessExpression> valueCandidate = nullptr);
 
-	[[nodiscard]] TokenSpan get_span () const override {
-		return TokenSpan::span_through(operand->get_span(), target.get_span());
+	[[nodiscard]] TokenSpan getSpan () const override {
+		return TokenSpan::spanThrough(operand->getSpan(), target.getSpan());
 	}
 };
 
@@ -224,7 +224,7 @@ struct IfExpression : Expression {
 	IfExpression (const Token &keyword, std::vector<ConditionalBranch> branches, std::optional<std::vector<StatementPtr>> otherwise, TokenSpan span,
 	              std::optional<TokenSpan> otherwiseSpan);
 
-	[[nodiscard]] TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan getSpan () const override {
 		return span;
 	}
 };
@@ -237,8 +237,8 @@ struct IntegerLiteral : NumberLiteral {
 
 	IntegerLiteral (IntegerValue value, const Token &token);
 
-	[[nodiscard]] TokenSpan get_span () const override {
-		return token.get_span();
+	[[nodiscard]] TokenSpan getSpan () const override {
+		return token.getSpan();
 	}
 };
 
@@ -249,8 +249,8 @@ struct FloatingPointLiteral : NumberLiteral {
 
 	FloatingPointLiteral (std::string value, const Token &token);
 
-	[[nodiscard]] TokenSpan get_span () const override {
-		return token.get_span();
+	[[nodiscard]] TokenSpan getSpan () const override {
+		return token.getSpan();
 	}
 };
 
@@ -260,7 +260,7 @@ struct BooleanLiteral : Expression {
 
 	BooleanLiteral (bool value, TokenSpan span);
 
-	[[nodiscard]] TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan getSpan () const override {
 		return span;
 	}
 };
@@ -271,7 +271,7 @@ struct CharacterLiteral : Expression {
 
 	CharacterLiteral (char32_t value, TokenSpan span);
 
-	[[nodiscard]] TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan getSpan () const override {
 		return span;
 	}
 };
@@ -282,7 +282,7 @@ struct StringLiteral : Expression {
 
 	StringLiteral (std::string value, TokenSpan span);
 
-	[[nodiscard]] TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan getSpan () const override {
 		return span;
 	}
 };
@@ -293,7 +293,7 @@ struct InterpolatedString : Expression {
 
 	InterpolatedString (std::vector<ExpressionPtr> parts, TokenSpan span);
 
-	[[nodiscard]] TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan getSpan () const override {
 		return span;
 	}
 };

@@ -4,14 +4,30 @@
 
 #include <algorithm>
 #include <functional>
+#include <map>
+#include <optional>
 #include <ranges>
 #include <span>
 #include <utility>
+#include <variant>
+#include <vector>
 
+#include <ast/decl/declarations.hpp>
+#include <ast/decl/struct_declaration.hpp>
+#include <ast/expr/expression.hpp>
+#include <ast/expr/expressions.hpp>
+#include <ast/expr/struct_expressions.hpp>
 #include <ast/stmt/do_while_statement.hpp>
 #include <ast/stmt/for_statement.hpp>
+#include <ast/stmt/loop_control.hpp>
+#include <ast/stmt/statement.hpp>
 #include <ast/stmt/while_statement.hpp>
+#include <diagnostics.hpp>
+#include <semantic/checked_program.hpp>
 #include <semantic/checker.hpp>
+#include <semantic/symbol_table.hpp>
+#include <token/numeric_literals.hpp>
+#include <token/token.hpp>
 
 namespace cloth::semantic {
 namespace {
@@ -19,10 +35,9 @@ unsigned classDepth (const Analyzer &analyzer, const Symbol *type) {
 	unsigned u_depth = 0;
 	while (type) {
 		++u_depth;
-		const ResultTypes                &v_parents = analyzer.declarations.at(type).parents;
-		const auto it_base =
-		        std::ranges::find_if(v_parents, [] (const ResolvedType &parent) { return asClass(parent.declaration); });
-		type = it_base == v_parents.end() ? nullptr : it_base->declaration;
+		const ResultTypes &v_parents = analyzer.declarations.at(type).parents;
+		const auto         it_base   = std::ranges::find_if(v_parents, [] (const ResolvedType &parent) { return asClass(parent.declaration); });
+		type                         = it_base == v_parents.end() ? nullptr : it_base->declaration;
 	}
 	return u_depth;
 }
@@ -50,9 +65,9 @@ bool StoragePlace::covers (const StoragePlace &proof, bool descendantsOnly) cons
 
 void BodyChecker::intersect (Narrowing &facts, const Narrowing &other) {
 	for (auto it = facts.begin(); it != facts.end();) {
-		const auto peer    = other.find(it->first);
-		const bool                      b_shape = it->first.fact == PlaceFact::CurrentShape || it->first.fact == PlaceFact::RetainedShape;
-		if (peer == other.end() || (!b_shape && it->second.type != peer->second.type))
+		const auto peer = other.find(it->first);
+		if (const bool b_shape = it->first.fact == PlaceFact::CurrentShape || it->first.fact == PlaceFact::RetainedShape;
+		    peer == other.end() || (!b_shape && it->second.type != peer->second.type))
 			it = facts.erase(it);
 		else {
 			if (b_shape) it->second.type = commonShape(it->second.type, peer->second.type);
@@ -90,30 +105,31 @@ bool BodyChecker::statement (const Statement &node) {
 	return b_normal;
 }
 
-void BodyChecker::finishStatement (const Statement &node, bool b_normal, const Exits &ex_incoming) {
+void BodyChecker::finishStatement (const Statement &node, const bool fallsThrough, const Exits &exIncoming) {
 	if (record) {
-		ControlFlow cf_result{ .fallsThrough = b_normal, .canReturn = fs_flow.exits.returned, .breaks = {}, .continues = {} };
+		ControlFlow cf_result{ .fallsThrough = fallsThrough, .canReturn = fs_flow.exits.returned, .breaks = {}, .continues = {} };
 		for (const auto &key : fs_flow.exits.breaks | std::views::keys) cf_result.breaks.insert(key);
 		for (const auto &key : fs_flow.exits.continues | std::views::keys) cf_result.continues.insert(key);
 		bf_facts.controlFlow.insert_or_assign(&node, std::move(cf_result));
 	}
-	mergeExits(fs_flow.exits, ex_incoming);
+	mergeExits(fs_flow.exits, exIncoming);
 }
 
 std::optional<BodyChecker::TypedPlace> BodyChecker::locate (const Expression &expression) const {
 	std::optional<TypedPlace> tp_receiver;
 	const Token              *t_field  = nullptr;
-	const auto    *ie_index = dynamic_cast<const IndexExpression *>(&expression);
+	const auto               *ie_index = dynamic_cast<const IndexExpression *>(&expression);
 	if (const auto *ne_name = dynamic_cast<const NameExpression *>(&expression)) {
-		if (const Binding *b_local = local(ne_name->name.get_name_key())) {
+		if (const Binding *b_local = local(ne_name->name.getNameKey())) {
 			if (!b_local->type || b_local->deferred) return std::nullopt;
-			return TypedPlace{ { b_local->name }, *b_local->type };
+			return TypedPlace{ .place = { .root = b_local->name }, .type = *b_local->type };
 		}
 		if (!hasInstance()) return std::nullopt;
-		if (ne_name->name.get_lexeme() == to_string(kState) && owner && owner->kind == SymbolKind::State)
-			return TypedPlace{ { &owner->name }, analyzer.substitute(*analyzer.declarations.at(owner).value, m_arguments) };
-		tp_receiver = TypedPlace{ { &context.name }, selfType() };
-		if (ne_name->name.get_lexeme() == to_string(kSelf)) return tp_receiver;
+		if (ne_name->name.getLexeme() == toString(KState) && owner && owner->kind == SymbolKind::State)
+			return TypedPlace{ .place = { .root = &owner->name },
+				           .type  = analyzer.substitute(*analyzer.declarations.at(owner).value, m_arguments) };
+		tp_receiver = TypedPlace{ .place = { .root = &context.name }, .type = selfType() };
+		if (ne_name->name.getLexeme() == toString(KSelf)) return tp_receiver;
 		t_field = &ne_name->name;
 	} else if (const auto *fa_field = dynamic_cast<const FieldAccessExpression *>(&expression)) {
 		tp_receiver = locate(*fa_field->receiver);
@@ -131,7 +147,7 @@ std::optional<BodyChecker::TypedPlace> BodyChecker::locate (const Expression &ex
 		tp_receiver->type = rt_receiver.element();
 		return tp_receiver;
 	}
-	const std::vector<Candidate> v_fields = analyzer.members(rt_receiver, t_field->get_name_key(), SymbolKind::Field);
+	const std::vector<Candidate> v_fields = analyzer.members(rt_receiver, t_field->getNameKey(), SymbolKind::Field);
 	if (v_fields.empty()) return std::nullopt;
 	const Candidate &c_field = v_fields.front();
 	tp_receiver->place.path.emplace_back(c_field.symbol);
@@ -145,7 +161,7 @@ BodyChecker::ReceiverProofs BodyChecker::receiverProofs (const Expression *recei
 	while (receiver) {
 		const std::optional<TypedPlace> tp_part = locate(*receiver);
 		if (tp_part && tp_part->type.nullable() && fs_flow.narrowed.contains(tp_part->place))
-			v_proofs.push_back({ tp_part->place, receiver->get_span() });
+			v_proofs.push_back({ .place = tp_part->place, .span = receiver->getSpan() });
 		if (const auto *fa_field = dynamic_cast<const FieldAccessExpression *>(receiver))
 			receiver = fa_field->receiver.get();
 		else if (const auto *ie_index = dynamic_cast<const IndexExpression *>(receiver))
@@ -159,11 +175,11 @@ BodyChecker::ReceiverProofs BodyChecker::receiverProofs (const Expression *recei
 void BodyChecker::requireReceiverProofs (const ReceiverProofs &proofs) const {
 	for (const ReceiverProof &rp_proof : std::views::reverse(proofs))
 		if (!fs_flow.narrowed.contains(rp_proof.place))
-			fail(Code::NULLABLE_PAYLOAD_ACCESS, rp_proof.span, "Receiver storage must remain present after evaluating the arguments");
+			fail(Code::NullablePayloadAccess, rp_proof.span, "Receiver storage must remain present after evaluating the arguments");
 }
 
 void BodyChecker::setPresence (const StoragePlace &place, const ResolvedType &declared, const std::optional<ResolvedType> &value) {
-	if (declared.nullable() && value && !analyzer.mayBeAbsent(*value)) fs_flow.narrowed.insert_or_assign(place, FlowFact{ declared.element() });
+	if (declared.nullable() && value && !analyzer.mayBeAbsent(*value)) fs_flow.narrowed.insert_or_assign(place, FlowFact{ .type = declared.element() });
 }
 
 void BodyChecker::assumePresent (const Expression &source) {
@@ -178,9 +194,8 @@ ResolvedType BodyChecker::readType (const StoragePlace &place, const ResolvedTyp
 	if (ff_proof.nominalTests.empty()) return ff_proof.type;
 	ResolvedType rt_view = ff_proof.type;
 	if (rt_view.parameter) {
-		const ResultTypes                 v_bounds = analyzer.typeBounds(rt_view);
-		const auto it_class =
-		        std::ranges::find_if(v_bounds, [] (const ResolvedType &bound) { return asClass(bound.declaration); });
+		const ResultTypes v_bounds = analyzer.typeBounds(rt_view);
+		const auto        it_class = std::ranges::find_if(v_bounds, [] (const ResolvedType &bound) { return asClass(bound.declaration); });
 		if (!v_bounds.empty()) rt_view = it_class == v_bounds.end() ? v_bounds.front() : *it_class;
 	}
 	const bool                        b_class  = asClass(rt_view.declaration);
@@ -250,7 +265,7 @@ void BodyChecker::invalidateShared () {
 	forgetShared();
 }
 
-void BodyChecker::forgetShared (bool indexedOnly) {
+void BodyChecker::forgetShared (const bool indexedOnly) {
 	std::erase_if(fs_flow.narrowed,
 	              [&] (const Narrowing::value_type &entry) { return (!indexedOnly || entry.first.indexed()) && sharedPlace(entry.first); });
 }
@@ -258,8 +273,8 @@ void BodyChecker::forgetShared (bool indexedOnly) {
 void BodyChecker::forgetMutableMetadata (Narrowing &facts) const {
 	if (facts.empty()) return;
 	for (const std::map<std::string, Binding> &m_locals : scopes)
-		for (const std::map<std::string, Binding>::value_type &entry : m_locals)
-			if (entry.second.mutableBinding) facts.erase({ entry.second.name, {}, PlaceFact::RepresentedType });
+		for (const auto &val : m_locals | std::views::values)
+			if (val.mutableBinding) facts.erase({ .root = val.name, .path = {}, .fact = PlaceFact::RepresentedType });
 }
 
 void BodyChecker::applyWrites (const Binding &binding) {
@@ -272,20 +287,21 @@ void BodyChecker::applyWrites (const Binding &binding) {
 
 BodyChecker::TestPaths BodyChecker::splitTest (const Expression &node, const ExpressionInfo &result) {
 	if (result.fallsThrough && e_test == &node) return tp_test;
-	TestPaths tp_paths{ .yes = { fs_flow.narrowed, result.fallsThrough }, .no = { fs_flow.narrowed, result.fallsThrough } };
+	TestPaths tp_paths{ .yes = { .facts = fs_flow.narrowed, .reachable = result.fallsThrough },
+		            .no  = { .facts = fs_flow.narrowed, .reachable = result.fallsThrough } };
 	if (!result.fallsThrough) return tp_paths;
 	if (const std::optional<bool> opt_truth = result.integerTruth()) {
 		(*opt_truth ? tp_paths.no : tp_paths.yes).reachable = false;
 	} else if (const auto *be_test = dynamic_cast<const BinaryExpression *>(&node); be_test && !result.argumentContract) {
-		const Operator o_op = be_test->op.get_operator();
-		if (o_op != oEqual && o_op != oNotEqual && o_op != oIdentity) return tp_paths;
+		const Operator o_op = be_test->op.getOperator();
+		if (o_op != OEqual && o_op != ONotEqual && o_op != OIdentity) return tp_paths;
 		const Expression               *e_operand = dynamic_cast<const NullLiteral *>(be_test->left.get())  ? be_test->right.get() :
 		                                            dynamic_cast<const NullLiteral *>(be_test->right.get()) ? be_test->left.get() :
 		                                                                                                      nullptr;
 		const std::optional<TypedPlace> tp_place  = e_operand ? locate(*e_operand) : std::nullopt;
 		if (tp_place && tp_place->place.stable() && tp_place->type.nullable()) {
-			(o_op == oNotEqual ? tp_paths.yes : tp_paths.no).facts.try_emplace(tp_place->place, tp_place->type.element());
-			forgetPresence((o_op == oNotEqual ? tp_paths.no : tp_paths.yes).facts, tp_place->place);
+			(o_op == ONotEqual ? tp_paths.yes : tp_paths.no).facts.try_emplace(tp_place->place, tp_place->type.element());
+			forgetPresence((o_op == ONotEqual ? tp_paths.no : tp_paths.yes).facts, tp_place->place);
 		}
 	} else if (const auto *tc_test = dynamic_cast<const TypeCheckExpression *>(&node); tc_test && result.testedType && result.testedType->declaration) {
 		const std::optional<TypedPlace> tp_place  = locate(*tc_test->operand);
@@ -318,7 +334,7 @@ ExpressionInfo BodyChecker::testOperand (const Expression &node) {
 		~ResetFacts () {
 			facts = nullptr;
 		}
-	} rf_scope{ ef_probeConstants };
+	} const rf_scope{ ef_probeConstants };
 
 	ef_probeConstants = &ef_constants;
 	return scalarInfo(node);
@@ -326,8 +342,8 @@ ExpressionInfo BodyChecker::testOperand (const Expression &node) {
 
 BodyChecker::TestPaths BodyChecker::test (const Expression &node) {
 	const ExpressionInfo ei_test = testOperand(node);
-	if (ei_test.fallsThrough && ei_test.types.front() != ResolvedType(kBoolean))
-		fail(Code::NON_BOOLEAN_CONDITION, node.get_span(), "A condition must have type " + std::string(to_string(kBoolean)));
+	if (ei_test.fallsThrough && ei_test.types.front() != ResolvedType(KBoolean))
+		fail(Code::NonBooleanCondition, node.getSpan(), "A condition must have type " + std::string(toString(KBoolean)));
 	return splitTest(node, ei_test);
 }
 
@@ -335,22 +351,22 @@ bool BodyChecker::loop (const LoopStatement &node) {
 	const auto       *fs_for    = dynamic_cast<const ForStatement *>(&node);
 	const auto       *ws_while  = dynamic_cast<const WhileStatement *>(&node);
 	const auto       *ds_do     = dynamic_cast<const DoWhileStatement *>(&node);
-	const LoopTarget *lt_target = node.get_loop_target().get();
+	const LoopTarget *lt_target = node.getLoopTarget().get();
 	const LoopBody   &lb_body   = fs_for ? fs_for->body : ws_while ? ws_while->body : ds_do->body;
 	bool              b_source  = true;
 	if (fs_for) {
 		std::optional<ResolvedType> annotation;
 		if (fs_for->binding.type) {
 			annotation = bodyType(*fs_for->binding.type);
-			if (*annotation == ResolvedType(kVoid))
-				fail(Code::INVALID_FOR_LOOP, fs_for->binding.get_span(), "An iteration binding requires a value type");
+			if (*annotation == ResolvedType(KVoid))
+				fail(Code::InvalidForLoop, fs_for->binding.getSpan(), "An iteration binding requires a value type");
 		}
 		std::optional<ResolvedType> opt_element;
-		const Expression           &source   = fs_for->source.get_expression();
+		const Expression           &source   = fs_for->source.getExpression();
 		std::optional<ResolvedType> opt_hint = annotation;
 		const bool                  b_range  = std::holds_alternative<ForSource::Range>(fs_for->source.value);
 		if (annotation && b_range) {
-			opt_hint = ResolvedType(kRange);
+			opt_hint = ResolvedType(KRange);
 			analyzer.applyArguments(*opt_hint, { *annotation });
 		} else if (opt_hint)
 			opt_hint->suffixes.push_back(arraySuffix());
@@ -358,37 +374,37 @@ bool BodyChecker::loop (const LoopStatement &node) {
 		try {
 			opt_source = scalar(source, opt_hint ? &*opt_hint : nullptr);
 		} catch (const cde::ClothDiagnostic &error) {
-			if (!b_range || error.get_code() != Code::INVALID_RANGE_VALUE) throw;
-			fail(Code::INVALID_FOR_LOOP, source.get_span(), "A range loop requires endpoints of one numeric type");
+			if (!b_range || error.getCode() != Code::InvalidRangeValue) throw;
+			fail(Code::InvalidForLoop, source.getSpan(), "A range loop requires endpoints of one numeric type");
 		}
 		if (!opt_source) {
 			b_source = false;
 		} else if (opt_source->array()) {
 			opt_element = opt_source->element();
-			if (record) bf_facts.iterations[fs_for] = { IterationKind::Array, *opt_element };
+			if (record) bf_facts.iterations[fs_for] = { .kind = IterationKind::Array, .element = *opt_element };
 		} else if (const ResolvedType *rt_endpoint = rangeEndpoint(*opt_source)) {
-			requirePresentOperand(*opt_source, source.get_span());
+			requirePresentOperand(*opt_source, source.getSpan());
 			opt_element = *rt_endpoint;
-			if (record) bf_facts.iterations[fs_for] = { IterationKind::Range, *opt_element };
+			if (record) bf_facts.iterations[fs_for] = { .kind = IterationKind::Range, .element = *opt_element };
 		} else {
-			const std::vector<Candidate> group = analyzer.members(*opt_source, to_string(oForeach), SymbolKind::Operator);
-			if (group.empty()) fail(Code::INVALID_FOR_LOOP, source.get_span(), "Expected a range, array, or collection with an iteration operator");
+			const std::vector<Candidate> group = analyzer.members(*opt_source, toString(OForeach), SymbolKind::Operator);
+			if (group.empty()) fail(Code::InvalidForLoop, source.getSpan(), "Expected a range, array, or collection with an iteration operator");
 			if (readOnlyDefaultRoot(source))
-				fail(Code::INVALID_PARAMETER_DEFAULT, source.get_span(), "A default cannot iterate a read-only receiver", &pd_default->name);
-			ExpressionInfo                  call     = invoke(group.front().symbol->name, source.get_span(), {}, group);
-			std::optional<cloth::Iteration> snapshot = call.types.size() == 1 ? analyzer.snapshotLayout(call.types.front()) : std::nullopt;
-			if (!snapshot) fail(Code::INVALID_FOR_LOOP, source.get_span(), "Iteration requires the standard library snapshot");
+				fail(Code::InvalidParameterDefault, source.getSpan(), "A default cannot iterate a read-only receiver", &pd_default->name);
+			ExpressionInfo           call     = invoke(group.front().symbol->name, source.getSpan(), {}, group);
+			std::optional<Iteration> snapshot = call.types.size() == 1 ? analyzer.snapshotLayout(call.types.front()) : std::nullopt;
+			if (!snapshot) fail(Code::InvalidForLoop, source.getSpan(), "Iteration requires the standard library snapshot");
 			mutatingReceiver(source, *opt_source);
 			opt_element        = snapshot->element;
 			snapshot->snapshot = std::move(call);
 			if (record) bf_facts.iterations[fs_for] = std::move(*snapshot);
 		}
 		if (!opt_element && !annotation)
-			fail(Code::INVALID_FOR_LOOP, fs_for->source.get_span(), "A noncontinuing loop source requires an element annotation");
+			fail(Code::InvalidForLoop, fs_for->source.getSpan(), "A noncontinuing loop source requires an element annotation");
 		if (annotation && opt_element) {
-			require({ *opt_element }, { *annotation }, fs_for->binding.get_span(), Code::INVALID_FOR_LOOP);
+			require({ *opt_element }, { *annotation }, fs_for->binding.getSpan(), Code::InvalidForLoop);
 		}
-		if (!annotation && opt_element) checkInferredBinding(*opt_element, fs_for->source.get_span());
+		if (!annotation && opt_element) checkInferredBinding(*opt_element, fs_for->source.getSpan());
 		scopes.emplace_back();
 		bind(fs_for->binding.name, annotation ? annotation : opt_element, true);
 	}
@@ -412,7 +428,7 @@ bool BodyChecker::loop (const LoopStatement &node) {
 		WriteEffects *we_entry = body.we_capture;
 		if (!b_body) body.we_capture = nullptr;
 		const LoopTarget *lt_outer = std::exchange(body.lt_loop, lt_target);
-		Exits             ex_test  = std::exchange(body.fs_flow.exits, {});
+		Exits const       ex_test  = std::exchange(body.fs_flow.exits, {});
 		const bool        b_normal = body.block(lb_body.statements).fallsThrough;
 		body.lt_loop               = lt_outer;
 		if (!b_body) body.fs_flow.exits = {};
@@ -445,11 +461,11 @@ bool BodyChecker::loop (const LoopStatement &node) {
 		} else if (fs_for && fs_for->stepper) {
 			body.remember(fs_for->stepper->target, fs_for->binding.name);
 			if (const Expression *e_update = fs_for->stepper->update()) {
-				const Binding                    &b_index = *body.local(fs_for->binding.name.get_name_key());
+				const Binding                    &b_index = *body.local(fs_for->binding.name.getNameKey());
 				const std::optional<ResolvedType> rt_step = body.scalar(*e_update, b_index.type ? &*b_index.type : nullptr);
 				if (rt_step && b_index.type) body.require({ *rt_step }, { *b_index.type }, fs_for->stepper->span);
 				if (body.record && rt_step && rt_step->floating())
-					requireFinite(*fs_for->stepper->value, body.bf_facts.expressions, Code::INVALID_FOR_LOOP);
+					requireFinite(*fs_for->stepper->value, body.bf_facts.expressions, Code::InvalidForLoop);
 				if (!rt_step) it_result.back.reset();
 			}
 			if (it_result.back) it_result.back = body.fs_flow.narrowed;
@@ -462,7 +478,7 @@ bool BodyChecker::loop (const LoopStatement &node) {
 		BodyChecker bc_trial = *this;
 		bc_trial.record      = false;
 		bc_trial.we_capture  = nullptr;
-		bc_trial.fs_flow     = { header, {} };
+		bc_trial.fs_flow     = { .narrowed = header, .exits = {} };
 		return iteration(bc_trial);
 	};
 	// A pre-test loop checks every occurrence against its source writes, including paths that never execute.

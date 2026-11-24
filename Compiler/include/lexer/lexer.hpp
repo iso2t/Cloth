@@ -39,7 +39,7 @@ class Lexer {
 	std::vector<Token> scanTokens ();
 	void               scan ();
 
-	[[nodiscard]] std::vector<Token> get_tokens () const {
+	[[nodiscard]] std::vector<Token> getTokens () const {
 		return v_tokens;
 	}
 
@@ -49,11 +49,11 @@ class Lexer {
 	std::size_t                       st_start   = 0;
 	std::size_t                       st_current = 0;
 
-	Position p_start{ 1, 1 };
-	Position p_current{ 1, 1 };
+	Position p_start{ .line=1, .column=1 };
+	Position p_current{ .line=1, .column=1 };
 
-	[[nodiscard]] const std::string &source_text () const noexcept {
-		return p_source->get_contents();
+	[[nodiscard]] const std::string &sourceText () const noexcept {
+		return p_source->getContents();
 	}
 
 	char                    advance ();

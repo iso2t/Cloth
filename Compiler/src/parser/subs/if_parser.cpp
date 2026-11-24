@@ -12,7 +12,7 @@
 #include <ast/expr/expression.hpp>
 #include <ast/expr/expressions.hpp>
 #include <ast/stmt/statement.hpp>
-#include <cde/syntax_errors.hpp>
+#include <diagnostics.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/expression_parser.hpp>
@@ -35,21 +35,21 @@ IfExpression IfParser::parseIf (bool allowWhileTrailer) const {
 		});
 		p_parser.skipNewLines();
 		BlockBody       bb_branch = parseBranchBody(allowWhileTrailer);
-		const TokenSpan ts_branch = TokenSpan::span_through(ep_condition->get_span(), bb_branch.span);
+		const TokenSpan ts_branch = TokenSpan::spanThrough(ep_condition->getSpan(), bb_branch.span);
 		v_branches.push_back({ .condition = std::move(ep_condition), .statements = std::move(bb_branch.statements), .span = ts_branch });
 
 		int i_elseOffset = 0;
-		while (p_parser.peek(i_elseOffset).get_type() == TokenType::NewLine) {
+		while (p_parser.peek(i_elseOffset).getType() == TokenType::NewLine) {
 			++i_elseOffset;
 		}
-		if (!p_parser.atKeyword(kElse, i_elseOffset)) {
+		if (!p_parser.atKeyword(KElse, i_elseOffset)) {
 			break;
 		}
 		for (int i_skipped = 0; i_skipped <= i_elseOffset; ++i_skipped) {
 			p_parser.advance();
 		}
 		p_parser.skipNewLines();
-		if (!p_parser.atKeyword(kIf)) {
+		if (!p_parser.atKeyword(KIf)) {
 			BlockBody bb_otherwise = parseBranchBody(allowWhileTrailer);
 			opt_otherwise          = std::move(bb_otherwise.statements);
 			opt_otherwiseSpan      = bb_otherwise.span;
@@ -59,19 +59,18 @@ IfExpression IfParser::parseIf (bool allowWhileTrailer) const {
 		p_parser.skipNewLines();
 	}
 
-	const TokenSpan ts_span = TokenSpan::span_through(t_keyword.get_span(), p_parser.previousStatementEnd());
+	const TokenSpan ts_span = TokenSpan::spanThrough(t_keyword.getSpan(), p_parser.previousStatementEnd());
 	return { t_keyword, std::move(v_branches), std::move(opt_otherwise), ts_span, opt_otherwiseSpan };
 }
 
 BlockBody IfParser::parseBranchBody (const bool allowWhileTrailer) const {
 	const Token        t_start  = p_parser.peek();
-	const std::string &s_lexeme = t_start.get_lexeme();
-	if (s_lexeme == to_string(oBraceOpen)) {
+	const std::string &s_lexeme = t_start.getLexeme();
+	if (s_lexeme == toString(OBraceOpen)) {
 		return p_parser.parseBlock();
 	}
-	if (t_start.get_type() == TokenType::EndOfFile || p_parser.atKeyword(kElse) || s_lexeme == to_string(oBraceClose) ||
-	    s_lexeme == to_string(oSemicolon)) {
-		throw cde::SyntaxErrors::expected(std::format("a conditional body ('{}' or a statement)", to_string(oBraceOpen)), t_start);
+	if (t_start.getType() == TokenType::EndOfFile || p_parser.atKeyword(KElse) || s_lexeme == toString(OBraceClose) || s_lexeme == toString(OSemicolon)) {
+		throw cde::SyntaxErrors::expected(std::format("a conditional body ('{}' or a statement)", toString(OBraceOpen)), t_start);
 	}
 	return p_parser.parseUnbracedBody(allowWhileTrailer);
 }

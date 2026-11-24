@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <algorithm>
 #include <cstddef>
 #include <format>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <vector>
 
+#include <lexer/lexer.hpp>
+#include <token/token.hpp>
 #include <util/pstream.hpp>
 
 namespace cloth {
@@ -59,9 +66,9 @@ void printLexer (Lexer &lexer, std::ostream &out) {
 	};
 
 	std::vector<Row> v_rows;
-	v_rows.reserve(lexer.get_tokens().size());
-	for (const Token &t_token : lexer.get_tokens()) {
-		const Row &r_row = v_rows.emplace_back(quoteLexeme(t_token.get_lexeme()), t_token.type_name(), t_token.get_span().to_string());
+	v_rows.reserve(lexer.getTokens().size());
+	for (const Token &t_token : lexer.getTokens()) {
+		const Row &r_row = v_rows.emplace_back(quoteLexeme(t_token.getLexeme()), t_token.typeName(), t_token.getSpan().toString());
 		st_lexemeWidth   = std::max(st_lexemeWidth, r_row.lexeme.size());
 		st_typeWidth     = std::max(st_typeWidth, r_row.type.size());
 		st_spanWidth     = std::max(st_spanWidth, r_row.span.size());
@@ -76,7 +83,7 @@ void printLexer (Lexer &lexer, std::ostream &out) {
 		printRow(lexeme, type, span);
 	}
 
-	out << "Count: " << lexer.get_tokens().size();
+	out << "Count: " << lexer.getTokens().size();
 }
 
 }

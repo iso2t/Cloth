@@ -65,11 +65,11 @@ struct ParameterDeclaration {
 		return defaultDelimiter.has_value();
 	}
 
-	[[nodiscard]] std::optional<TokenSpan> get_optional_type_span () const {
+	[[nodiscard]] std::optional<TokenSpan> getOptionalTypeSpan () const {
 		if (!optKeyword) {
 			return std::nullopt;
 		}
-		return TokenSpan::span_through(optKeyword->get_span(), optClosing ? optClosing->get_span() : type.get_span());
+		return TokenSpan::spanThrough(optKeyword->getSpan(), optClosing ? optClosing->getSpan() : type.getSpan());
 	}
 };
 
@@ -96,12 +96,12 @@ struct IntrinsicBody {
 	IntrinsicBody (const Token &equals, const Token &operation) :
 	        equals(equals),
 	        operation(operation),
-	        span(TokenSpan::span_through(equals.get_span(), operation.get_span())) {
+	        span(TokenSpan::spanThrough(equals.getSpan(), operation.getSpan())) {
 	}
 
-	[[nodiscard]] std::string_view get_id () const {
-		const std::string_view s_name  = operation.get_lexeme();
-		const std::string_view s_quote = to_string(oDoubleQuotation);
+	[[nodiscard]] std::string_view getId () const {
+		const std::string_view s_name  = operation.getLexeme();
+		const std::string_view s_quote = toString(ODoubleQuotation);
 		if (s_name.size() >= 2 * s_quote.size() && s_name.starts_with(s_quote) && s_name.ends_with(s_quote)) {
 			return s_name.substr(s_quote.size(), s_name.size() - 2 * s_quote.size());
 		}
@@ -112,11 +112,11 @@ struct IntrinsicBody {
 struct FunctionBody {
 	std::variant<BlockBody, ExpressionBody, IntrinsicBody> value;
 
-	[[nodiscard]] TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan getSpan () const {
 		return std::visit([]<typename Body>(const Body &body) -> TokenSpan { return body.span; }, value);
 	}
 
-	[[nodiscard]] const Token *get_equals () const {
+	[[nodiscard]] const Token *getEquals () const {
 		return std::visit(
 		        []<typename Body>(const Body &body) -> const Token * {
 			        if constexpr (std::is_same_v<Body, BlockBody>) {
@@ -137,7 +137,7 @@ struct CallableSignature : Declaration {
 	std::vector<ParameterDeclaration> parameters;
 
 	~CallableSignature () override                       = default;
-	[[nodiscard]] virtual const Token &get_name () const = 0;
+	[[nodiscard]] virtual const Token &getName () const = 0;
 
 	[[nodiscard]] virtual const FunctionBody *executableBody () const {
 		return nullptr;
@@ -159,7 +159,7 @@ struct ConstructorGuaranteeDeclaration : CallableSignature {
 	        CallableSignature(keyword, std::move(parameters), span) {
 	}
 
-	[[nodiscard]] const Token &get_name () const override {
+	[[nodiscard]] const Token &getName () const override {
 		return keyword;
 	}
 };
@@ -168,7 +168,7 @@ struct CallableDeclaration : CallableSignature {
 	Token        name;
 	FunctionBody body;
 
-	[[nodiscard]] const Token &get_name () const override {
+	[[nodiscard]] const Token &getName () const override {
 		return name;
 	}
 
@@ -179,7 +179,7 @@ struct CallableDeclaration : CallableSignature {
     protected:
 	CallableDeclaration (const Token &keyword, const Token &name, std::vector<ParameterDeclaration> parameters, FunctionBody body, const TokenSpan &start,
 	                     std::vector<TypeReference> returnTypes = {}, const std::optional<Token> &visibility = std::nullopt) :
-	        CallableSignature(keyword, std::move(parameters), TokenSpan::span_through(start, body.get_span()), std::move(returnTypes), visibility),
+	        CallableSignature(keyword, std::move(parameters), TokenSpan::spanThrough(start, body.getSpan()), std::move(returnTypes), visibility),
 	        name(name),
 	        body(std::move(body)) {
 	}

@@ -3,21 +3,40 @@
 // See Documentation/language/statements/Bindings.rst
 
 #include <algorithm>
+#include <cstddef>
 #include <format>
 #include <functional>
+#include <map>
+#include <memory>
+#include <optional>
 #include <ranges>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
 
+#include <ast/decl/class_declaration.hpp>
+#include <ast/decl/declarations.hpp>
 #include <ast/decl/enum_declaration.hpp>
-#include <ast/stmt/do_while_statement.hpp>
-#include <ast/stmt/for_statement.hpp>
+#include <ast/decl/state_declaration.hpp>
+#include <ast/decl/struct_declaration.hpp>
+#include <ast/expr/class_expression.hpp>
+#include <ast/expr/expression.hpp>
+#include <ast/expr/expressions.hpp>
+#include <ast/expr/struct_expressions.hpp>
+#include <ast/stmt/loop_control.hpp>
+#include <ast/stmt/statement.hpp>
 #include <ast/stmt/statements.hpp>
+#include <ast/type/type_reference.hpp>
+#include <semantic/checked_program.hpp>
 #include <semantic/checker.hpp>
+#include <semantic/symbol_table.hpp>
 #include <token/token.hpp>
 
 namespace cloth::semantic {
 
 BodyChecker::BodyChecker (Analyzer &analyzer, const Symbol &context, BodyFacts &facts, const Substitutions &arguments, DeclarationInfo &signature,
-                          const ResolvedType *attachment, unsigned operatorWidth) :
+                          const ResolvedType *attachment, const unsigned operatorWidth) :
         analyzer(analyzer),
         context(context),
         bf_facts(facts),
@@ -45,9 +64,9 @@ const Binding *BodyChecker::local (const std::string &name) const {
 }
 
 const Binding *BodyChecker::assignmentBinding (const Token &target) const {
-	const Binding *b_local = local(target.get_name_key());
+	const Binding *b_local = local(target.getNameKey());
 	if (b_local && b_local->deferred)
-		fail(Code::BLOCK_ASSIGNMENT, target.get_span(), "Cannot assign to deferred binding '" + target.get_lexeme() + "'", b_local->name);
+		fail(Code::BlockAssignment, target.getSpan(), "Cannot assign to deferred binding '" + target.getLexeme() + "'", b_local->name);
 	return b_local;
 }
 
@@ -58,19 +77,19 @@ void BodyChecker::remember (const Token &use, const Token &declaration) const {
 }
 
 void duplicateBinding (const Token &name, const Token &previous) {
-	throw cde::ClothDiagnostic(Code::DUPLICATE_BINDING, std::format("Binding '{}' is already declared in this scope", name.get_lexeme()),
-	                           { { previous.get_span(), "first declared here" }, { name.get_span(), "declared again here" } });
+	throw cde::ClothDiagnostic(Code::DuplicateBinding, std::format("Binding '{}' is already declared in this scope", name.getLexeme()),
+	                           { { .span = previous.getSpan(), .text = "first declared here" },
+	                             { .span = name.getSpan(), .text = "declared again here" } });
 }
 
 void BodyChecker::checkBindingName (const Token &name) const {
-	const auto it_bound = scopes.back().find(name.get_name_key());
-	if (it_bound != scopes.back().end()) duplicateBinding(name, *it_bound->second.name);
+	if (const auto it_bound = scopes.back().find(name.getNameKey()); it_bound != scopes.back().end()) duplicateBinding(name, *it_bound->second.name);
 }
 
 Binding &BodyChecker::bind (const Token &name, std::optional<ResolvedType> type, const bool mutableBinding, const bool deferred) {
 	if (type && type->parameter) type = analyzer.boundShape(*type);
 	const auto [fst, snd] = scopes.back().emplace(
-	        name.get_name_key(), Binding{ .type = std::move(type), .name = &name, .mutableBinding = mutableBinding, .deferred = deferred });
+	        name.getNameKey(), Binding{ .type = std::move(type), .name = &name, .mutableBinding = mutableBinding, .deferred = deferred });
 	if (!snd) {
 		duplicateBinding(name, *fst->second.name);
 	}
@@ -78,7 +97,7 @@ Binding &BodyChecker::bind (const Token &name, std::optional<ResolvedType> type,
 	return fst->second;
 }
 
-void BodyChecker::bindDeferred (const Token &name, std::optional<ResolvedType> type, bool mutableBinding, DeferredBinding result,
+void BodyChecker::bindDeferred (const Token &name, std::optional<ResolvedType> type, const bool mutableBinding, DeferredBinding result,
                                 const std::shared_ptr<const WriteEffects> &presenceWrites) {
 	Binding &b_binding       = bind(name, std::move(type), mutableBinding, true);
 	b_binding.effects        = we_deferred;
@@ -87,10 +106,10 @@ void BodyChecker::bindDeferred (const Token &name, std::optional<ResolvedType> t
 }
 
 void BodyChecker::checkDefaultName (const Token &name) const {
-	if (!pd_default || local(name.get_name_key())) return;
+	if (!pd_default || local(name.getNameKey())) return;
 	for (const ParameterDeclaration &pd_parameter : callable(context)->parameters) {
-		if (pd_parameter.name.get_name_key() == name.get_name_key()) {
-			fail(Code::INVALID_PARAMETER_DEFAULT, name.get_span(), "A default can only read earlier parameters", &pd_parameter.name);
+		if (pd_parameter.name.getNameKey() == name.getNameKey()) {
+			fail(Code::InvalidParameterDefault, name.getSpan(), "A default can only read earlier parameters", &pd_parameter.name);
 		}
 	}
 }
@@ -104,17 +123,17 @@ bool BodyChecker::readOnlyDefaultRoot (const Expression &node) const {
 	if (const auto *ga_access = dynamic_cast<const GuardedAccessExpression *>(&node)) return readOnlyDefaultRoot(*ga_access->continuation);
 	const auto *ne_name = dynamic_cast<const NameExpression *>(&node);
 	if (!ne_name) return false;
-	const std::string &s_name = ne_name->name.get_name_key();
+	const std::string &s_name = ne_name->name.getNameKey();
 	if (const Binding *b_binding = local(s_name)) {
 		return std::ranges::any_of(callable(context)->parameters,
 		                           [b_binding] (const ParameterDeclaration &parameter) { return &parameter.name == b_binding->name; });
 	}
-	return hasInstance() && (s_name == to_string(kSelf) || !analyzer.members(selfType(), s_name, SymbolKind::Field).empty());
+	return hasInstance() && (s_name == toString(KSelf) || !analyzer.members(selfType(), s_name, SymbolKind::Field).empty());
 }
 
 ResolvedType BodyChecker::selfType () const {
 	if (!owner) {
-		fail(Code::RECEIVER_OUTSIDE_METHOD, context.name.get_span(), "No enclosing receiver");
+		fail(Code::ReceiverOutsideMethod, context.name.getSpan(), "No enclosing receiver");
 	}
 	if (owner->kind == SymbolKind::State) {
 		const DeclarationInfo &state = analyzer.declarations.at(owner);
@@ -125,7 +144,7 @@ ResolvedType BodyChecker::selfType () const {
 
 ResolvedType BodyChecker::bodyType (const TypeReference &reference, const bool allowOpen) const {
 	ResolvedType rt_type = analyzer.checkedType(reference, context, m_arguments, allowOpen, u_operatorWidth);
-	if (record && !allowOpen) analyzer.useType(rt_type, context, reference.get_span());
+	if (record && !allowOpen) analyzer.useType(rt_type, context, reference.getSpan());
 	if (rt_type.parameter) return analyzer.boundShape(rt_type);
 	return rt_type;
 }
@@ -137,8 +156,8 @@ const BodyFacts &BodyChecker::openFacts () const {
 
 std::optional<ResolvedType> BodyChecker::receiverClassBound (const Expression &receiver, const ResolvedType &actual) const {
 	if (m_arguments.empty()) return {};
-	const ExpressionFacts                &ef_open = openFacts().expressions;
-	const auto it_open = ef_open.find(&receiver);
+	const ExpressionFacts &ef_open = openFacts().expressions;
+	const auto             it_open = ef_open.find(&receiver);
 	if (it_open == ef_open.end() || it_open->second.types.size() != 1) return {};
 	const ResolvedType &rt_open      = it_open->second.types.front();
 	const ResolvedType  rt_parameter = rt_open.nullable() ? rt_open.element() : rt_open;
@@ -150,7 +169,7 @@ std::optional<ResolvedType> BodyChecker::receiverClassBound (const Expression &r
 		if (rt_bound.nullable()) rt_bound = rt_bound.element();
 		if (!rt_bound.suffixes.empty() || !rt_bound.declaration) continue;
 		if (!analyzer.accepts(rt_bound, rt_payload))
-			fail(Code::INVALID_CLASS_MEMBER, receiver.get_span(),
+			fail(Code::InvalidClassMember, receiver.getSpan(),
 			     std::format("Type '{}' cannot use the '{}' bound", actual.spelling(), rt_bound.spelling()), &rt_parameter.parameter->name);
 		if (asClass(rt_bound.declaration)) opt_class = rt_bound;
 	}
@@ -164,21 +183,21 @@ bool BodyChecker::hasInstance () const {
 void BodyChecker::checkFieldRead (const Symbol &field, const Token &use) const {
 	if (rp_receiverPhase == ReceiverPhase::FieldInitializer && field.classFieldIndex && analyzer.declarations.at(&field).owner == owner &&
 	    *field.classFieldIndex >= context.classFieldIndex.value()) {
-		fail(Code::PARTIAL_CLASS_INSTANCE, use.get_span(), std::format("Field '{}' has not been initialized", use.get_lexeme()), &field.name);
+		fail(Code::PartialClassInstance, use.getSpan(), std::format("Field '{}' has not been initialized", use.getLexeme()), &field.name);
 	}
 }
 
 void BodyChecker::checkFieldWrite (const ExpressionInfo &target, const TokenSpan &span) const {
-	if (context.kind == SymbolKind::Operator && context.name.get_operator() == oIndexValidate && target.receiverFieldPath == ReceiverFieldPath::Stored)
-		fail(Code::INVALID_OPERATOR_DECLARATION, span, "An index validator can only read its receiver", &context.name);
+	if (context.kind == SymbolKind::Operator && context.name.getOperator() == OIndexValidate && target.receiverFieldPath == ReceiverFieldPath::Stored)
+		fail(Code::InvalidOperatorDeclaration, span, "An index validator can only read its receiver", &context.name);
 	if (rp_receiverPhase == ReceiverPhase::FieldInitializer && target.receiverFieldPath != ReceiverFieldPath::None) {
-		fail(Code::PARTIAL_CLASS_INSTANCE, span, "Instance fields are read-only during field initialization");
+		fail(Code::PartialClassInstance, span, "Instance fields are read-only during field initialization");
 	}
 }
 
 void BodyChecker::require (const ResultTypes &actual, const ResultTypes &expected, const TokenSpan &span, const Code code) const {
 	if (actual.size() != expected.size()) {
-		fail(code == Code::TYPE_MISMATCH ? Code::RESULT_ARITY : code, span,
+		fail(code == Code::TypeMismatch ? Code::ResultArity : code, span,
 		     std::format("Expected {} result(s), found {}", expected.size(), actual.size()));
 	}
 	for (std::size_t i = 0; i < actual.size(); ++i) {
@@ -188,16 +207,16 @@ void BodyChecker::require (const ResultTypes &actual, const ResultTypes &expecte
 	}
 }
 
-void BodyChecker::requireStoredValue (const ResolvedType &expected, const ResolvedType &actual, const TokenSpan &span, Code code) const {
+void BodyChecker::requireStoredValue (const ResolvedType &expected, const ResolvedType &actual, const TokenSpan &span, const Code code) const {
 	if (analyzer.accepts(expected, actual)) return;
-	const std::string s_message = std::format("{} requires '{}', got '{}'", code == Code::INVALID_ARRAY ? "Array element" : "Field assignment",
+	const std::string s_message = std::format("{} requires '{}', got '{}'", code == Code::InvalidArray ? "Array element" : "Field assignment",
 	                                          expected.spelling(), actual.spelling());
-	throw cde::ClothDiagnostic(code, s_message, { { span, code == Code::INVALID_ARRAY ? "here" : "field use here" } });
+	throw cde::ClothDiagnostic(code, s_message, { { .span = span, .text = code == Code::InvalidArray ? "here" : "field use here" } });
 }
 
 bool BodyChecker::expect (const Expression &node, const ResolvedType &type) {
 	const std::optional<ResolvedType> opt_actual = scalar(node, &type);
-	if (opt_actual) require({ *opt_actual }, { type }, node.get_span());
+	if (opt_actual) require({ *opt_actual }, { type }, node.getSpan());
 	return opt_actual.has_value();
 }
 
@@ -211,20 +230,20 @@ bool BodyChecker::checkReturn (const Expression &node) {
 	}
 	if (!ei_result.fallsThrough) return false;
 	if (returns.empty() && !ei_result.types.empty()) {
-		fail(Code::VALUE_IN_VOID, node.get_span(), "This callable declares no results", t_contract);
+		fail(Code::ValueInVoid, node.getSpan(), "This callable declares no results", t_contract);
 	}
 	if (ei_result.types.size() != returns.size()) {
-		const Code dc_code = returns.size() == 1 && ei_result.types.empty() ? Code::RETURN_TYPE : Code::RESULT_ARITY;
-		fail(dc_code, node.get_span(), std::format("Expected {} result(s), found {}", returns.size(), ei_result.types.size()), t_contract);
+		const Code dc_code = returns.size() == 1 && ei_result.types.empty() ? Code::ReturnType : Code::ResultArity;
+		fail(dc_code, node.getSpan(), std::format("Expected {} result(s), found {}", returns.size(), ei_result.types.size()), t_contract);
 	}
 	const auto *rl_list = dynamic_cast<const ResultListExpression *>(&node);
 	for (std::size_t st_slot = 0; st_slot < returns.size(); ++st_slot) {
 		if (!analyzer.accepts(returns[st_slot], ei_result.types[st_slot])) {
 			if (returns.size() == 1) {
-				fail(Code::RETURN_TYPE, node.get_span(),
+				fail(Code::ReturnType, node.getSpan(),
 				     "Expected " + returns.front().spelling() + ", found " + ei_result.types.front().spelling(), t_contract);
 			}
-			fail(Code::RETURN_TYPE, rl_list ? rl_list->values[st_slot]->get_span() : node.get_span(),
+			fail(Code::ReturnType, rl_list ? rl_list->values[st_slot]->getSpan() : node.getSpan(),
 			     std::format("Expected {} for result {}, found {}", returns[st_slot].spelling(), st_slot + 1, ei_result.types[st_slot].spelling()),
 			     t_contract);
 		}
@@ -241,7 +260,7 @@ void BodyChecker::checkBody (const FunctionBody &body) {
 			fallsThrough &= next;
 		}
 		if (fallsThrough && !returns.empty()) {
-			fail(Code::MISSING_RETURN, block->span, "Not every path returns a value", t_deferredBinding ? t_deferredBinding : &context.name);
+			fail(Code::MissingReturn, block->span, "Not every path returns a value", t_deferredBinding ? t_deferredBinding : &context.name);
 		}
 	} else if (const ExpressionBody *bodyExpr = std::get_if<ExpressionBody>(&body.value)) {
 		checkReturn(*bodyExpr->expression);
@@ -289,7 +308,7 @@ void BodyChecker::typeBody () {
 					                                                                 .mayCallOrMutate = we_effects.sharedFields });
 			}
 			bind(param.name, info.parameters[i], param.isMutable());
-			receiveShape(param.name, info.parameters[i], info.parameters[i], param.name.get_span());
+			receiveShape(param.name, info.parameters[i], info.parameters[i], param.name.getSpan());
 		}
 		if (const auto *cd_constructor = dynamic_cast<const ConstructorDeclaration *>(signature)) {
 			rp_receiverPhase = ReceiverPhase::Delegation;
@@ -309,10 +328,10 @@ void BodyChecker::typeBody () {
 		rp_receiverPhase = ReceiverPhase::Ready;
 		if (const FunctionBody *body = signature->executableBody()) {
 			if (info.inferResult) {
-				const auto &inferred  = std::get<ExpressionBody>(body->value);
-				const ExpressionInfo  ei_result = scalarInfo(*inferred.expression);
-				if (!ei_result.fallsThrough || ei_result.types.front() == ResolvedType(kNull))
-					fail(Code::INVALID_OPERATOR_DECLARATION, inferred.expression->get_span(), "An operator needs an inferable result type",
+				const auto          &inferred  = std::get<ExpressionBody>(body->value);
+				const ExpressionInfo ei_result = scalarInfo(*inferred.expression);
+				if (!ei_result.fallsThrough || ei_result.types.front() == ResolvedType(KNull))
+					fail(Code::InvalidOperatorDeclaration, inferred.expression->getSpan(), "An operator needs an inferable result type",
 					     &context.name);
 				di_signature.returns     = ei_result.types;
 				di_signature.inferResult = false;
@@ -330,9 +349,9 @@ void BodyChecker::typeBody () {
 	const EnumDeclaration  *ed        = nullptr;
 	const Symbol           *container = context.kind == SymbolKind::Type ? &context : owner;
 	if (container && container->kind == SymbolKind::Type) {
-		const auto td = std::get<const TypeDeclaration *>(container->declaration);
-		cd            = dynamic_cast<const ClassDeclaration *>(td);
-		ed            = dynamic_cast<const EnumDeclaration *>(td);
+		const auto *const td = std::get<const TypeDeclaration *>(container->declaration);
+		cd                   = dynamic_cast<const ClassDeclaration *>(td);
+		ed                   = dynamic_cast<const EnumDeclaration *>(td);
 	}
 	if (cd && (context.kind == SymbolKind::Field || context.kind == SymbolKind::Type)) {
 		owner = container;
@@ -342,34 +361,34 @@ void BodyChecker::typeBody () {
 	}
 	if (context.kind == SymbolKind::Type && cd) {
 		rp_receiverPhase = ReceiverPhase::Delegation;
-		const std::vector<CallArgument> v_noArguments;
 		for (std::size_t i = 0; i < cd->parents.size(); ++i) {
+			constexpr std::vector<CallArgument> v_noArguments;
 			const ResolvedType &rt_parent = info.parents[i];
 			if (!asClass(rt_parent.declaration) || rt_parent.declaration == &objectRoot()) continue;
 			const ClassParentClause         &cp_parent   = cd->parents[i];
 			const std::vector<CallArgument> &v_arguments = cp_parent.constructorArguments ? *cp_parent.constructorArguments : v_noArguments;
-			ExpressionInfo                   ei_call     = invoke(cp_parent.type.get_name(), cp_parent.span, v_arguments,
+			ExpressionInfo                   ei_call     = invoke(cp_parent.type.getName(), cp_parent.span, v_arguments,
 			                                                      analyzer.members(rt_parent, rt_parent.name, SymbolKind::Constructor));
 			if (record) bf_facts.parentConstructors.emplace(&cp_parent, std::move(ei_call));
 		}
 	} else if (context.kind == SymbolKind::Field) {
-		if (const auto field = std::get_if<const ClassFieldDeclaration *>(&context.declaration)) {
+		if (const auto *const field = std::get_if<const ClassFieldDeclaration *>(&context.declaration)) {
 			rp_receiverPhase = ReceiverPhase::FieldInitializer;
 			expect(*(*field)->initializer, *info.value);
-		} else if (const auto field = std::get_if<const EnumFieldDeclaration *>(&context.declaration); field && (*field)->defaultValue) {
-			enumValue(**field, *(*field)->defaultValue, nullptr);
+		} else if (const auto *const fieldDecl = std::get_if<const EnumFieldDeclaration *>(&context.declaration); fieldDecl && (*fieldDecl)->defaultValue) {
+			enumValue(**fieldDecl, *(*fieldDecl)->defaultValue, nullptr);
 		}
 	} else if (context.kind == SymbolKind::EnumCase) {
 		const EnumCaseDeclaration &ec = *std::get<const EnumCaseDeclaration *>(context.declaration);
 		if (ec.values.size() > ed->fields.size()) {
-			fail(Code::INVALID_ENUM_MEMBER, ec.name.get_span(), "Too many enum payload values");
+			fail(Code::InvalidEnumMember, ec.name.getSpan(), "Too many enum payload values");
 		}
 		if (record) bf_facts.enumPayloads.try_emplace(&context);
 		for (std::size_t i = 0; i < ed->fields.size(); ++i) {
 			if (i < ec.values.size()) {
 				enumValue(ed->fields[i], *ec.values[i], &ec.name);
 			} else if (!ed->fields[i].defaultValue) {
-				fail(Code::INVALID_ENUM_MEMBER, ec.name.get_span(), "Missing enum payload value", &ed->fields[i].name);
+				fail(Code::InvalidEnumMember, ec.name.getSpan(), "Missing enum payload value", &ed->fields[i].name);
 			}
 			if (record) bf_facts.enumPayloads[&context].push_back((i < ec.values.size() ? ec.values[i] : ed->fields[i].defaultValue).get());
 		}
@@ -393,19 +412,19 @@ void BodyChecker::leaveScope () {
 		const std::function forget = [&] (Narrowing &facts) {
 			std::erase_if(facts, [&] (const Narrowing::value_type &entry) {
 				const Token &t_root   = *entry.first.root;
-				const auto   it_local = m_locals.find(t_root.get_name_key());
+				const auto   it_local = m_locals.find(t_root.getNameKey());
 				return it_local != m_locals.end() && it_local->second.name == &t_root;
 			});
 		};
 		forget(fs_flow.narrowed);
 		for (JumpPaths *jp_edges : { &fs_flow.exits.breaks, &fs_flow.exits.continues })
-			for (JumpPaths::value_type &entry : *jp_edges) forget(entry.second);
+			for (auto &val : *jp_edges | std::views::values) forget(val);
 	}
 	scopes.pop_back();
 }
 
 ExpressionInfo BodyChecker::block (const std::vector<StatementPtr> &statements, const ResultTypes *expected, const bool value,
-                                   std::optional<FloatContext> floats, const ResolvedType *broadcast) {
+                                   const std::optional<FloatContext> floats, const ResolvedType *broadcast) {
 	scopes.emplace_back();
 
 	struct ScopeExit {
@@ -414,9 +433,9 @@ ExpressionInfo BodyChecker::block (const std::vector<StatementPtr> &statements, 
 		~ScopeExit () {
 			checker.leaveScope();
 		}
-	} scopeExit{ *this };
+	} const scopeExit{ *this };
 
-	ExpressionInfo             result;
+	ExpressionInfo             result = {};
 	std::optional<BodyChecker> unreachable;
 	for (const StatementPtr &stmt : statements) {
 		if (!result.fallsThrough) {
@@ -443,7 +462,7 @@ ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTyp
 	std::optional<std::vector<std::optional<ResolvedType>>> opt_metadata;
 	std::optional<Narrowing>                                opt_joined;
 	Exits                                                   exits;
-	const std::function branch = [&] (const std::vector<StatementPtr> &statements, const TokenSpan &span, bool reachable) {
+	const std::function branch = [&] (const std::vector<StatementPtr> &statements, const TokenSpan &span, const bool reachable) {
 		BodyChecker bc_branch   = *this;
 		bc_branch.fs_flow.exits = {};
 		if (!reachable) bc_branch.we_capture = nullptr;
@@ -468,21 +487,21 @@ ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTyp
 		}
 		if (!ei_result.fallsThrough || discard) return;
 		if (statements.empty() || !dynamic_cast<const ExpressionStatement *>(statements.back().get())) {
-			fail(Code::MISSING_BRANCH_VALUE, span, "Conditional branch needs a value");
+			fail(Code::MissingBranchValue, span, "Conditional branch needs a value");
 		}
 		for (std::size_t st_slot = 0; st_slot < ei_result.types.size(); ++st_slot) {
 			const ResolvedType *rt_slot = expected && st_slot < expected->size() && !(*expected)[st_slot].name.empty() ? &(*expected)[st_slot] :
 			                                                                                                             broadcast;
-			if (!rt_slot || !containsNullability(*rt_slot)) checkInferredBinding(ei_result.types[st_slot], statements.back()->get_span());
+			if (!rt_slot || !containsNullability(*rt_slot)) checkInferredBinding(ei_result.types[st_slot], statements.back()->getSpan());
 		}
 		if (!opt_common) {
 			opt_common = ei_result.types;
 			return;
 		}
 		const ResultTypes &v_next  = ei_result.types;
-		const TokenSpan    ts_tail = statements.back()->get_span();
+		const TokenSpan    ts_tail = statements.back()->getSpan();
 		if (v_next.size() != opt_common->size()) {
-			const Code dc_code = v_next.size() > 1 || opt_common->size() > 1 ? Code::BRANCH_RESULT_ARITY : Code::BRANCH_TYPE_MISMATCH;
+			const Code dc_code = v_next.size() > 1 || opt_common->size() > 1 ? Code::BranchResultArity : Code::BranchTypeMismatch;
 			fail(dc_code, ts_tail, std::format("Conditional branches produce {} and {} results", opt_common->size(), v_next.size()));
 		}
 		for (std::size_t st_slot = 0; st_slot < v_next.size(); ++st_slot) {
@@ -492,32 +511,32 @@ ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTyp
 			                              expected && st_slot < expected->size() ? &(*expected)[st_slot] :
 			                                                                       nullptr;
 			if (rt_slot &&
-			    (rt_slot->nullable() || rt_slot->array() || *rt_slot == ResolvedType(kBoolean) || asClass(rt_slot->declaration) ||
+			    (rt_slot->nullable() || rt_slot->array() || *rt_slot == ResolvedType(KBoolean) || asClass(rt_slot->declaration) ||
 			     asInterface(rt_slot->declaration)) &&
 			    analyzer.accepts(*rt_slot, rt_common) && analyzer.accepts(*rt_slot, v_next[st_slot])) {
 				rt_common = *rt_slot;
 			} else {
-				fail(Code::BRANCH_TYPE_MISMATCH, ts_tail,
+				fail(Code::BranchTypeMismatch, ts_tail,
 				     std::format("Conditional result {} has types {} and {}", st_slot + 1, rt_common.spelling(), v_next[st_slot].spelling()));
 			}
 		}
 	};
 	bool b_remaining = true;
-	for (const ConditionalBranch &cb_branch : node.branches) {
+	for (const auto &[condition, statements, span] : node.branches) {
 		BodyChecker bc_test   = *this;
 		bc_test.fs_flow.exits = {};
 		if (!b_remaining) bc_test.we_capture = nullptr;
-		const TestPaths tp_paths = bc_test.test(*cb_branch.condition);
+		const auto [yes, no] = bc_test.test(*condition);
 		if (b_remaining) mergeExits(exits, bc_test.fs_flow.exits);
-		fs_flow.narrowed = tp_paths.yes.facts;
-		branch(cb_branch.statements, cb_branch.span, b_remaining && tp_paths.yes.reachable);
-		fs_flow.narrowed = tp_paths.no.facts;
-		b_remaining &= tp_paths.no.reachable;
+		fs_flow.narrowed = yes.facts;
+		branch(statements, span, b_remaining && yes.reachable);
+		fs_flow.narrowed = no.facts;
+		b_remaining &= no.reachable;
 	}
 	if (node.otherwise) {
 		branch(*node.otherwise, *node.otherwiseSpan, b_remaining);
 	} else if (!discard && (b_remaining || opt_joined)) {
-		fail(Code::MISSING_ELSE, node.get_span(), std::format("A conditional value requires {}", to_string(kElse)));
+		fail(Code::MissingElse, node.getSpan(), std::format("A conditional value requires {}", toString(KElse)));
 	} else if (b_remaining) {
 		join(opt_joined, fs_flow.narrowed);
 	}
@@ -537,44 +556,45 @@ ExpressionInfo BodyChecker::condition (const IfExpression &node, const ResultTyp
 
 void BodyChecker::assignmentTarget (const Token &target) {
 	const ExpressionInfo ei_binding = name(target, NameUse::Assignment);
-	checkFieldWrite(ei_binding, target.get_span());
+	checkFieldWrite(ei_binding, target.getSpan());
 	if (pd_default && readOnlyDefaultRoot(NameExpression(target))) {
-		fail(Code::INVALID_PARAMETER_DEFAULT, target.get_span(), "Parameter defaults can only read the receiver and earlier parameters",
+		fail(Code::InvalidParameterDefault, target.getSpan(), "Parameter defaults can only read the receiver and earlier parameters",
 		     &pd_default->name);
 	}
-	const Binding *b_local = assignmentBinding(target);
-	if (b_local && !b_local->mutableBinding) {
+	if (const Binding *b_local = assignmentBinding(target); b_local && !b_local->mutableBinding) {
 		const CallableSignature *cs_signature = callable(context);
 		const bool        b_parameter = cs_signature && std::ranges::any_of(cs_signature->parameters, [&] (const ParameterDeclaration &parameter) {
                                                  return &parameter.name == b_local->name;
                                          });
-		const std::string s_kind      = b_parameter ? std::format("{} parameter", to_string(kFinal)) : "immutable binding";
-		throw cde::ClothDiagnostic(Code::IMMUTABLE_BINDING, std::format("Cannot reassign {} '{}'", s_kind, target.get_lexeme()),
-		                           { { b_local->name->get_span(), s_kind + " declared here" }, { target.get_span(), "reassigned here" } });
+		const std::string s_kind      = b_parameter ? std::format("{} parameter", toString(KFinal)) : "immutable binding";
+		throw cde::ClothDiagnostic(Code::ImmutableBinding, std::format("Cannot reassign {} '{}'", s_kind, target.getLexeme()),
+		                           { { .span = b_local->name->getSpan(), .text = s_kind + " declared here" },
+		                             { .span = target.getSpan(), .text = "reassigned here" } });
 	}
 	if (!ei_binding.binding && (!ei_binding.symbol || ei_binding.symbol->kind != SymbolKind::Field)) {
-		fail(Code::EXPECTED_BINDING, target.get_span(), "Expected a writable binding");
+		fail(Code::ExpectedBinding, target.getSpan(), "Expected a writable binding");
 	}
 	if (ei_binding.symbol && std::holds_alternative<const EnumFieldDeclaration *>(ei_binding.symbol->declaration)) {
-		fail(Code::INVALID_FIELD_TARGET, target.get_span(), "Enum payload fields are read-only", &ei_binding.symbol->name);
+		fail(Code::InvalidFieldTarget, target.getSpan(), "Enum payload fields are read-only", &ei_binding.symbol->name);
 	}
 }
 
-void BodyChecker::assign (const Token &target, const std::optional<ResolvedType> &value, const Expression *source, std::size_t slot,
+void BodyChecker::assign (const Token &name, const std::optional<ResolvedType> &value, const Expression *source, const std::size_t slot,
                           const std::optional<ResolvedType> &represented) {
-	assignmentTarget(target);
-	const Binding *b_local = local(target.get_name_key());
-	if (b_local) {
-		if (value && b_local->type) require({ *value }, { *b_local->type }, target.get_span());
-		invalidate({ b_local->name });
-		if (represented) fs_flow.narrowed.insert_or_assign({ b_local->name, {}, PlaceFact::RepresentedType }, FlowFact{ *represented });
+	assignmentTarget(name);
+	if (const Binding *b_local = local(name.getNameKey())) {
+		if (value && b_local->type) require({ *value }, { *b_local->type }, name.getSpan());
+		invalidate({ .root = b_local->name });
+		if (represented)
+			fs_flow.narrowed.insert_or_assign({ .root = b_local->name, .path = {}, .fact = PlaceFact::RepresentedType },
+			                                  FlowFact{ .type = *represented });
 		if (b_local->type) {
-			setPresence({ b_local->name }, *b_local->type, value);
-			if (value && source) receiveShape(*b_local->name, *b_local->type, shapeOf(*source, *value, slot), source->get_span());
+			setPresence({ .root = b_local->name }, *b_local->type, value);
+			if (value && source) receiveShape(*b_local->name, *b_local->type, shapeOf(*source, *value, slot), source->getSpan());
 		}
 	} else if (value) {
-		if (const std::optional<TypedPlace> tp_target = locate(NameExpression(target))) {
-			require({ *value }, { tp_target->type }, target.get_span());
+		if (const std::optional<TypedPlace> tp_target = locate(NameExpression(name))) {
+			require({ *value }, { tp_target->type }, name.getSpan());
 			invalidate(tp_target->place);
 		}
 	}
@@ -583,11 +603,11 @@ void BodyChecker::assign (const Token &target, const std::optional<ResolvedType>
 bool BodyChecker::containsNullability (const ResolvedType &type) const {
 	ResolvedType rt_element = type;
 	rt_element.suffixes.clear();
-	return analyzer.mayBeAbsent(rt_element) || std::ranges::find(type.suffixes, to_string(oQuestion)) != type.suffixes.end();
+	return analyzer.mayBeAbsent(rt_element) || std::ranges::find(type.suffixes, toString(OQuestion)) != type.suffixes.end();
 }
 
 void BodyChecker::checkInferredBinding (const ResolvedType &type, const TokenSpan &span) const {
-	if (containsNullability(type)) fail(Code::EXPLICIT_NULLABLE_TYPE, span, "A nullable value requires an explicit destination type");
+	if (containsNullability(type)) fail(Code::ExplicitNullableType, span, "A nullable value requires an explicit destination type");
 }
 
 bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Expression &producer, const std::vector<TypeReference> *annotations,
@@ -595,20 +615,20 @@ bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Ex
 	ResultTypes expected;
 	if (annotations) {
 		if (annotations->size() > 1 && annotations->size() != targets.size())
-			fail(Code::RECEPTION_ANNOTATIONS, producer.get_span(), "Specify one type per result or one shared type for a scalar");
+			fail(Code::ReceptionAnnotations, producer.getSpan(), "Specify one type per result or one shared type for a scalar");
 		for (const TypeReference &annotation : *annotations) {
 			ResolvedType type = bodyType(annotation);
-			if (type.name == to_string(kVoid)) fail(Code::VOID_TYPE, annotation.get_span(), "A binding requires a value type");
+			if (type.name == toString(KVoid)) fail(Code::VoidType, annotation.getSpan(), "A binding requires a value type");
 			expected.push_back(std::move(type));
 		}
 	} else {
 		for (const ReceivingTarget &target : targets) {
 			if (std::holds_alternative<ReceivingTarget::Discard>(target.value))
 				expected.emplace_back();
-			else if (const Binding *binding = assignmentBinding(target.get_token()))
+			else if (const Binding *binding = assignmentBinding(target.getToken()))
 				expected.push_back(binding->type.value_or(ResolvedType{}));
 			else
-				expected.push_back(name(target.get_token(), NameUse::Assignment).types.front());
+				expected.push_back(name(target.getToken(), NameUse::Assignment).types.front());
 		}
 	}
 	const bool           b_shared     = annotations && expected.size() == 1;
@@ -618,7 +638,7 @@ bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Ex
 	if (!result.fallsThrough) {
 		for (std::size_t st_slot = 0; st_slot < targets.size(); ++st_slot) {
 			if (std::holds_alternative<ReceivingTarget::Discard>(targets[st_slot].value)) continue;
-			const Token &t_target = targets[st_slot].get_token();
+			const Token &t_target = targets[st_slot].getToken();
 			if (annotations) {
 				bind(t_target, expected.empty() ? std::nullopt : std::optional{ expected[expected.size() == 1 ? 0 : st_slot] }, mutableBinding);
 			} else {
@@ -627,30 +647,32 @@ bool BodyChecker::receive (const std::vector<ReceivingTarget> &targets, const Ex
 		}
 		return false;
 	}
-	if (result.resultKind() == ResultKind::Empty) fail(Code::VOID_VALUE, producer.get_span(), "Assignment requires a value");
+	if (result.resultKind() == ResultKind::Empty) fail(Code::VoidValue, producer.getSpan(), "Assignment requires a value");
 	const bool broadcast = result.resultKind() == ResultKind::Single;
-	if (!broadcast && result.types.size() != targets.size()) fail(Code::RECEPTION_ARITY, producer.get_span(), "Target count does not match result count");
+	if (!broadcast && result.types.size() != targets.size()) fail(Code::ReceptionArity, producer.getSpan(), "Target count does not match result count");
 	if (annotations && !expected.empty() && ((broadcast && expected.size() > 1) || (!broadcast && expected.size() == 1)))
-		fail(Code::RECEPTION_ANNOTATIONS, producer.get_span(), "Use one shared annotation for a scalar or one annotation per result");
+		fail(Code::ReceptionAnnotations, producer.getSpan(), "Use one shared annotation for a scalar or one annotation per result");
 	const FunctionBlockExpression            *fb_block    = annotations ? dynamic_cast<const FunctionBlockExpression *>(&producer) : nullptr;
 	const std::shared_ptr<const WriteEffects> we_presence = fb_block ? deferredPresenceWrites(*fb_block) : nullptr;
 	for (std::size_t i = 0; i < targets.size(); ++i) {
 		const ResolvedType &actual   = result.types[broadcast ? 0 : i];
 		const ResolvedType *required = expected.empty() ? nullptr : &expected[expected.size() == 1 ? 0 : i];
-		if (required && !required->name.empty()) require({ actual }, { *required }, producer.get_span());
+		if (required && !required->name.empty()) require({ actual }, { *required }, producer.getSpan());
 		if (std::holds_alternative<ReceivingTarget::Discard>(targets[i].value)) continue;
-		const Token &target = targets[i].get_token();
+		const Token &target = targets[i].getToken();
 		if (fb_block) {
-			bindDeferred(target, required ? *required : actual, mutableBinding, { fb_block, broadcast ? 0 : i }, we_presence);
+			bindDeferred(target, required ? *required : actual, mutableBinding, { .block = fb_block, .resultIndex = broadcast ? 0 : i },
+			             we_presence);
 		} else if (annotations) {
 			if (!required) {
 				const auto *rl_values = dynamic_cast<const ResultListExpression *>(&producer);
-				checkInferredBinding(actual, rl_values && !broadcast ? rl_values->values[i]->get_span() : producer.get_span());
+				checkInferredBinding(actual, rl_values && !broadcast ? rl_values->values[i]->getSpan() : producer.getSpan());
 			}
 			bind(target, required ? *required : actual, mutableBinding);
-			receiveShape(target, required ? *required : actual, shapeOf(producer, actual, broadcast ? 0 : i), producer.get_span());
+			receiveShape(target, required ? *required : actual, shapeOf(producer, actual, broadcast ? 0 : i), producer.getSpan());
 			if (const std::optional<ResolvedType> opt_meta = result.representedAt(broadcast ? 0 : i))
-				fs_flow.narrowed.insert_or_assign({ &target, {}, PlaceFact::RepresentedType }, FlowFact{ *opt_meta });
+				fs_flow.narrowed.insert_or_assign({ .root = &target, .path = {}, .fact = PlaceFact::RepresentedType },
+				                                  FlowFact{ .type = *opt_meta });
 			if (required) setPresence({ .root = &target }, *required, actual);
 		} else
 			assign(target, actual, &producer, broadcast ? 0 : i, result.representedAt(broadcast ? 0 : i));
@@ -669,7 +691,7 @@ void BodyChecker::writable (const Expression &target) {
 		const ExpressionInfo &selected = record ? bf_facts.expressions.at(field) : *opt_probe;
 		if (!selected.symbol || selected.symbol->kind != SymbolKind::Field ||
 		    std::holds_alternative<const EnumFieldDeclaration *>(selected.symbol->declaration)) {
-			fail(Code::INVALID_FIELD_TARGET, field->name.get_span(), "Enum cases and payload fields are read-only");
+			fail(Code::InvalidFieldTarget, field->name.getSpan(), "Enum cases and payload fields are read-only");
 		}
 		if (!std::holds_alternative<const StructFieldDeclaration *>(selected.symbol->declaration)) {
 			return;
@@ -677,20 +699,20 @@ void BodyChecker::writable (const Expression &target) {
 		writable(*field->receiver);
 	} else if (const auto *index = dynamic_cast<const IndexExpression *>(&target)) {
 		if (const auto it = bf_facts.expressions.find(&target); record && it != bf_facts.expressions.end() && it->second.indexed)
-			fail(Code::INVALID_INDEX, target.get_span(), "An index getter returns a copy");
+			fail(Code::InvalidIndex, target.getSpan(), "An index getter returns a copy");
 		writable(*index->array);
 	} else if (const auto *name = dynamic_cast<const NameExpression *>(&target)) {
-		if (const Binding *b = local(name->name.get_name_key()); b && (!b->mutableBinding || b->deferred)) {
-			fail(Code::IMMUTABLE_BINDING, name->get_span(), "Cannot modify an immutable value", b->name);
+		if (const Binding *b = local(name->name.getNameKey()); b && (!b->mutableBinding || b->deferred)) {
+			fail(Code::ImmutableBinding, name->getSpan(), "Cannot modify an immutable value", b->name);
 		}
 	} else {
-		fail(Code::INVALID_FIELD_TARGET, target.get_span(), "Assignment needs writable storage");
+		fail(Code::InvalidFieldTarget, target.getSpan(), "Assignment needs writable storage");
 	}
 }
 
 std::optional<ExpressionInfo> BodyChecker::updateOperator (const Statement &statement, const ResolvedType &receiver, const Token &op,
                                                            const ExpressionPtr &rhs) {
-	const std::vector<Candidate> candidates = analyzer.members(receiver, op.get_name_key(), SymbolKind::Operator);
+	const std::vector<Candidate> candidates = analyzer.members(receiver, op.getNameKey(), SymbolKind::Operator);
 	if (candidates.empty()) {
 		return std::nullopt;
 	}
@@ -700,10 +722,10 @@ std::optional<ExpressionInfo> BodyChecker::updateOperator (const Statement &stat
 	}
 	ExpressionInfo selected;
 	try {
-		selected = invoke(op, statement.get_span(), arguments, candidates);
+		selected = invoke(op, statement.getSpan(), arguments, candidates);
 	} catch (const cde::ClothDiagnostic &error) {
-		if (error.get_code() == Code::NO_MATCHING_CALL || error.get_code() == Code::CALL_ARITY) return {};
-		if (error.get_code() == Code::AMBIGUOUS_CALL) fail(Code::OPERATOR_MATCH, op.get_span(), "Ambiguous update operator '" + op.get_lexeme() + "'");
+		if (error.getCode() == Code::NoMatchingCall || error.getCode() == Code::CallArity) return {};
+		if (error.getCode() == Code::AmbiguousCall) fail(Code::OperatorMatch, op.getSpan(), "Ambiguous update operator '" + op.getLexeme() + "'");
 		throw;
 	}
 	if (record) {
@@ -715,30 +737,31 @@ std::optional<ExpressionInfo> BodyChecker::updateOperator (const Statement &stat
 bool BodyChecker::writeMember (const Statement &statement, const ExpressionPtr &target, const Token &op, const ExpressionPtr &rhs,
                                const ExpressionPtr &compound) {
 	if (readOnlyDefaultRoot(*target)) {
-		fail(Code::INVALID_PARAMETER_DEFAULT, target->get_span(), "Parameter defaults can only read the receiver and earlier parameters",
+		fail(Code::InvalidParameterDefault, target->getSpan(), "Parameter defaults can only read the receiver and earlier parameters",
 		     &pd_default->name);
 	}
-	BodyChecker                    bc_store = *this;
+	// The store checker reuses the captured receiver while checking both the target and the write.
 	std::optional<CapturedOperand> opt_array;
+	BodyChecker                    bc_store = *this;
 	if (const auto *index = dynamic_cast<const IndexExpression *>(target.get())) {
 		const ExpressionInfo ei_array = scalarInfo(*index->array);
 		if (ei_array.fallsThrough && !ei_array.types.front().array() && ei_array.types.front().declaration)
 			return writeIndex(statement, target, ei_array, op, rhs, compound);
-		opt_array.emplace(CapturedOperand{ index->array.get(), ei_array, captured });
+		opt_array.emplace(CapturedOperand{ .node = index->array.get(), .value = ei_array, .previous = captured });
 		bc_store.captured = &*opt_array;
 		bc_store.fs_flow  = fs_flow;
 	}
 	const ExpressionInfo  ei_target = bc_store.scalarInfo(*target);
-	const CapturedOperand co_target{ target.get(), ei_target, bc_store.captured };
+	const CapturedOperand co_target{ .node = target.get(), .value = ei_target, .previous = bc_store.captured };
 	bc_store.captured      = &co_target;
 	const bool b_continues = bc_store.writeStorage(statement, target, ei_target, op, rhs, compound);
 	fs_flow                = std::move(bc_store.fs_flow);
 	return b_continues;
 }
 
-bool BodyChecker::writeStorage (const Statement &statement, const ExpressionPtr &target, const ExpressionInfo &ei_target, const Token &op,
+bool BodyChecker::writeStorage (const Statement &statement, const ExpressionPtr &target, const ExpressionInfo &selected, const Token &op,
                                 const ExpressionPtr &rhs, const ExpressionPtr &compound) {
-	if (!ei_target.fallsThrough) {
+	if (!selected.fallsThrough) {
 		if (rhs) {
 			BodyChecker bc_unreachable = *this;
 			bc_unreachable.we_capture  = nullptr;
@@ -746,8 +769,8 @@ bool BodyChecker::writeStorage (const Statement &statement, const ExpressionPtr 
 		}
 		return false;
 	}
-	checkFieldWrite(ei_target, target->get_span());
-	const ResolvedType &rt        = ei_target.types.front();
+	checkFieldWrite(selected, target->getSpan());
+	const ResolvedType &rt        = selected.types.front();
 	const bool          b_element = dynamic_cast<const ElementAssignmentStatement *>(&statement) != nullptr;
 	// An indexed store diagnoses an incompatible value before checking the mutability of its root.
 	const bool b_plainElement = b_element && rhs && !compound;
@@ -764,10 +787,10 @@ bool BodyChecker::writeStorage (const Statement &statement, const ExpressionPtr 
 		const Expression                 &e_value    = compound ? *compound : *rhs;
 		const std::optional<ResolvedType> opt_value  = scalar(e_value, &rt_storage);
 		if (opt_value) {
-			requireStoredValue(rt_storage, *opt_value, rhs->get_span(), b_element ? Code::INVALID_ARRAY : Code::INVALID_STRUCT_FIELD);
+			requireStoredValue(rt_storage, *opt_value, rhs->getSpan(), b_element ? Code::InvalidArray : Code::InvalidStructField);
 			const ResolvedType shape = shapeOf(e_value, *opt_value);
-			const TokenSpan    span  = e_value.get_span();
-			if (!ei_target.arrayShapes.empty()) refineShape(ei_target.arrayShapes.front(), shape, &span);
+			const TokenSpan    span  = e_value.getSpan();
+			if (!selected.arrayShapes.empty()) refineShape(selected.arrayShapes.front(), shape, &span);
 			rowShape(*target, e_value, shape);
 		}
 		if (b_plainElement) writable(*target);
@@ -776,9 +799,10 @@ bool BodyChecker::writeStorage (const Statement &statement, const ExpressionPtr 
 		else
 			invalidateShared();
 		return opt_value.has_value();
-	} else if (!analyzer.numeric(rt)) {
-		requirePresentOperand(rt, target->get_span());
-		fail(Code::UNARY_OPERAND, op.get_span(), "Update needs a numeric target");
+	}
+	if (!analyzer.numeric(rt)) {
+		requirePresentOperand(rt, target->getSpan());
+		fail(Code::UnaryOperand, op.getSpan(), "Update needs a numeric target");
 	}
 	if (tp_target)
 		invalidate(tp_target->place);
@@ -790,10 +814,10 @@ bool BodyChecker::writeStorage (const Statement &statement, const ExpressionPtr 
 void BodyChecker::checkReturnContext (const ReturnStatement &statement) const {
 	if (t_deferredBinding) return;
 	if (pd_default)
-		fail(Code::INVALID_PARAMETER_DEFAULT, statement.span, std::format("'{}' cannot leave a parameter default", to_string(kReturn)),
+		fail(Code::InvalidParameterDefault, statement.span, std::format("'{}' cannot leave a parameter default", toString(KReturn)),
 		     &pd_default->name);
 	if (rp_receiverPhase != ReceiverPhase::Ready || stateSelection(context))
-		fail(Code::PARTIAL_CLASS_INSTANCE, statement.span, std::format("'{}' cannot leave class initialization", to_string(kReturn)));
+		fail(Code::PartialClassInstance, statement.span, std::format("'{}' cannot leave class initialization", toString(KReturn)));
 }
 
 bool BodyChecker::checkStatement (const Statement &node) {
@@ -803,7 +827,7 @@ bool BodyChecker::checkStatement (const Statement &node) {
 	if (const auto *s = dynamic_cast<const ReturnStatement *>(&node)) {
 		checkReturnContext(*s);
 		if (!s->value && !returns.empty()) {
-			fail(Code::RETURN_VALUE_REQUIRED, s->span, "A return value is required", t_deferredBinding);
+			fail(Code::ReturnValueRequired, s->span, "A return value is required", t_deferredBinding);
 		}
 		if (s->value) {
 			if (checkReturn(*s->value)) fs_flow.exits.returned = true;
@@ -818,22 +842,22 @@ bool BodyChecker::checkStatement (const Statement &node) {
 		}
 		if (const auto *fb_block = dynamic_cast<const FunctionBlockExpression *>(s->initializer.get())) {
 			expression(*s->initializer);
-			bindDeferred(s->name, annotation, s->isMutable, { fb_block, 0 }, deferredPresenceWrites(*fb_block));
+			bindDeferred(s->name, annotation, s->isMutable, { .block = fb_block, .resultIndex = 0 }, deferredPresenceWrites(*fb_block));
 			return true;
 		}
-		if (annotation == ResolvedType(kVoid)) fail(Code::VOID_TYPE, s->type->get_span(), "A binding requires a value type");
+		if (annotation == ResolvedType(KVoid)) fail(Code::VoidType, s->type->getSpan(), "A binding requires a value type");
 		const ExpressionInfo              ei_value   = scalarInfo(*s->initializer, annotation ? &*annotation : nullptr);
 		const std::optional<ResolvedType> opt_actual = ei_value.fallsThrough ? std::optional{ ei_value.types.front() } : std::nullopt;
 		if (annotation && opt_actual) {
-			require({ *opt_actual }, { *annotation }, s->initializer->get_span());
+			require({ *opt_actual }, { *annotation }, s->initializer->getSpan());
 		}
-		if (!annotation && opt_actual) checkInferredBinding(*opt_actual, s->initializer->get_span());
+		if (!annotation && opt_actual) checkInferredBinding(*opt_actual, s->initializer->getSpan());
 		bind(s->name, annotation ? annotation : opt_actual, s->isMutable);
-		if (opt_actual)
-			receiveShape(s->name, annotation ? *annotation : *opt_actual, shapeOf(*s->initializer, *opt_actual), s->initializer->get_span());
+		if (opt_actual) receiveShape(s->name, annotation ? *annotation : *opt_actual, shapeOf(*s->initializer, *opt_actual), s->initializer->getSpan());
 		if (ei_value.representedType)
-			fs_flow.narrowed.insert_or_assign({ &s->name, {}, PlaceFact::RepresentedType }, FlowFact{ *ei_value.representedType });
-		if (annotation) setPresence({ &s->name }, *annotation, opt_actual);
+			fs_flow.narrowed.insert_or_assign({ .root = &s->name, .path = {}, .fact = PlaceFact::RepresentedType },
+			                                  FlowFact{ .type = *ei_value.representedType });
+		if (annotation) setPresence({ .root = &s->name }, *annotation, opt_actual);
 		return opt_actual.has_value();
 	}
 	if (const auto *s = dynamic_cast<const BindingGroupDeclaration *>(&node)) {
@@ -845,7 +869,7 @@ bool BodyChecker::checkStatement (const Statement &node) {
 		const std::optional<ResolvedType> opt_type = binding  ? binding->type :
 		                                             tp_field ? tp_field->type :
 		                                                        name(s->name, NameUse::Assignment).types.front();
-		if (const BinaryExpression *compound = s->get_compound()) {
+		if (const BinaryExpression *compound = s->getCompound()) {
 			if (const std::optional<ResolvedType> opt_left = scalar(*compound->left)) {
 				if (const std::optional<ExpressionInfo> opt_update = updateOperator(node, *opt_left, *s->compoundOperator, compound->right)) {
 					assign(s->name, opt_left);
@@ -864,8 +888,8 @@ bool BodyChecker::checkStatement (const Statement &node) {
 		if (!assignmentBinding(s->name) && !locate(*s->target)) name(s->name, NameUse::Assignment);
 		const std::optional<ResolvedType> opt_target = scalar(*s->target);
 		if (opt_target && !updateOperator(node, *opt_target, s->op, nullptr) && !analyzer.numeric(*opt_target)) {
-			requirePresentOperand(*opt_target, s->get_span());
-			fail(Code::UNARY_OPERAND, s->op.get_span(), "Update needs a numeric binding or a matching operator");
+			requirePresentOperand(*opt_target, s->getSpan());
+			fail(Code::UnaryOperand, s->op.getSpan(), "Update needs a numeric binding or a matching operator");
 		}
 		assign(s->name, opt_target);
 		return opt_target.has_value();
@@ -877,7 +901,7 @@ bool BodyChecker::checkStatement (const Statement &node) {
 		return writeMember(node, s->target, s->op, s->value, s->compound);
 	}
 	if (const auto *s = dynamic_cast<const LoopJumpStatement *>(&node)) {
-		if (!lt_loop) fail(Code::INVALID_LOOP_JUMP, s->get_span(), "Loop jump outside a loop");
+		if (!lt_loop) fail(Code::InvalidLoopJump, s->getSpan(), "Loop jump outside a loop");
 		(s->isContinue() ? fs_flow.exits.continues : fs_flow.exits.breaks).emplace(lt_loop, fs_flow.narrowed);
 		if (record) bf_facts.jumpTargets.insert_or_assign(s, lt_loop);
 		return false;
@@ -885,7 +909,7 @@ bool BodyChecker::checkStatement (const Statement &node) {
 	if (const auto *ls_loop = dynamic_cast<const LoopStatement *>(&node)) {
 		return loop(*ls_loop);
 	}
-	fail(Code::INTERNAL, node.get_span(), "Unrecognized statement in semantic analysis");
+	fail(Code::INTERNAL, node.getSpan(), "Unrecognized statement in semantic analysis");
 	return true;
 }
 }

@@ -3,6 +3,9 @@
 CompileFlags:
   Compiler: clang++
 
+Completion:
+  HeaderInsertion: IWYU
+
 Style:
   AngledHeaders:
     - ".*"

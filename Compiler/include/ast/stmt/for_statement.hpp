@@ -19,8 +19,8 @@ struct ForBinding {
 	std::optional<TypeReference> type;
 	Token                        name;
 
-	[[nodiscard]] TokenSpan get_span () const {
-		return TokenSpan::span_through(start.get_span(), name.get_span());
+	[[nodiscard]] TokenSpan getSpan () const {
+		return TokenSpan::spanThrough(start.getSpan(), name.getSpan());
 	}
 };
 
@@ -30,7 +30,7 @@ struct ForSource {
 		TokenSpan                               span;
 
 		[[nodiscard]] bool isInclusive () const {
-			return expression->op.get_operator() == oRangeInclusive;
+			return expression->op.getOperator() == ORangeInclusive;
 		}
 	};
 
@@ -41,11 +41,11 @@ struct ForSource {
 
 	std::variant<Range, Elements> value;
 
-	[[nodiscard]] const Expression &get_expression () const {
+	[[nodiscard]] const Expression &getExpression () const {
 		return std::visit([]<typename Source>(const Source &source) -> const Expression & { return *source.expression; }, value);
 	}
 
-	[[nodiscard]] TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan getSpan () const {
 		return std::visit([]<typename Source>(const Source &source) -> TokenSpan { return source.span; }, value);
 	}
 };
@@ -89,16 +89,16 @@ struct ForStatement : LoopStatement {
 	        body(std::move(body)) {
 	}
 
-	[[nodiscard]] const LoopTargetPtr &get_loop_target () const override {
+	[[nodiscard]] const LoopTargetPtr &getLoopTarget () const override {
 		return loopTarget;
 	}
 
-	[[nodiscard]] TokenSpan get_header_span () const {
-		return TokenSpan::span_through(keyword.get_span(), closing.get_span());
+	[[nodiscard]] TokenSpan getHeaderSpan () const {
+		return TokenSpan::spanThrough(keyword.getSpan(), closing.getSpan());
 	}
 
-	[[nodiscard]] TokenSpan get_span () const override {
-		return TokenSpan::span_through(keyword.get_span(), body.span);
+	[[nodiscard]] TokenSpan getSpan () const override {
+		return TokenSpan::spanThrough(keyword.getSpan(), body.span);
 	}
 };
 

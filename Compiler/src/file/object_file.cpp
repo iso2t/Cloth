@@ -13,18 +13,20 @@
 #include <random>
 #include <span>
 #include <system_error>
+#include <wchar.h>
 
-#include <cde/cloth_diagnostic.hpp>
+#include <diagnostics.hpp>
 #include <file/object_file.hpp>
 #include <file/source_file.hpp>
 #include <semantic/checked_program.hpp>
+#include <semantic/symbol_table.hpp>
 
 namespace cloth {
 namespace {
 namespace fs = std::filesystem;
 
 [[noreturn]] void outputError (const fs::path &output, const std::error_code &error) {
-	throw cde::ClothDiagnostic(cde::DiagnosticCode::OUTPUT_IO, std::format("Could not write object file '{}' ({})", pathUtf8(output), error.message()));
+	throw cde::ClothDiagnostic(cde::DiagnosticCode::OutputIo, std::format("Could not write object file '{}' ({})", pathUtf8(output), error.message()));
 }
 
 void checkDestination (const CheckedProgram &program, const fs::path &output) {
@@ -33,20 +35,20 @@ void checkDestination (const CheckedProgram &program, const fs::path &output) {
 	if (fs_status.type() == fs::file_type::not_found && (!ec || ec == std::errc::no_such_file_or_directory)) return;
 	if (ec) outputError(output, ec);
 	if (!fs::is_regular_file(fs_status))
-		throw cde::ClothDiagnostic(cde::DiagnosticCode::OUTPUT_IO, std::format("Expected a regular file for object output '{}'", pathUtf8(output)));
+		throw cde::ClothDiagnostic(cde::DiagnosticCode::OutputIo, std::format("Expected a regular file for object output '{}'", pathUtf8(output)));
 
 	for (const std::unique_ptr<const SymbolTable> &st_unit : program.units) {
-		const SourceFile *sf_source = st_unit->get_source_unit().get_source();
+		const SourceFile *sf_source = st_unit->getSourceUnit().getSource();
 		if (!sf_source) continue;
-		if (fs::equivalent(output, sf_source->get_path(), ec))
-			throw cde::ClothDiagnostic(cde::DiagnosticCode::OUTPUT_OVERWRITES_SOURCE,
+		if (fs::equivalent(output, sf_source->getPath(), ec))
+			throw cde::ClothDiagnostic(cde::DiagnosticCode::OutputOverwritesSource,
 			                           std::format("Object output '{}' would overwrite source file '{}'", pathUtf8(output),
-			                                       pathUtf8(sf_source->get_path())));
+			                                       pathUtf8(sf_source->getPath())));
 		if (ec) outputError(output, ec);
 	}
 }
 
-void publishObject (const fs::path &output, std::span<const std::byte> bytes) {
+void publishObject (const fs::path &output, const std::span<const std::byte> bytes) {
 	// Use a short sibling name distinct from the destination, even when its filename is at the filesystem limit.
 	const char *s_prefix = output.filename().native().starts_with('.') ? "cloth-" : ".cloth-";
 	unsigned    u_nonce  = std::random_device{}();

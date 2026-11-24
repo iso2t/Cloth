@@ -169,7 +169,7 @@ class Analyzer {
 	[[nodiscard]] ResultTypes  typeBounds (const ResolvedType &parameter) const;
 	[[nodiscard]] ResultTypes  applicationsOf (const ResolvedType &actual, const Symbol &definition) const;
 	[[nodiscard]] bool         supportsEquality (const ResolvedType &type) const;
-	[[nodiscard]] bool         classEqualityMayCall (const ResolvedType &type, Operator operation = oEqual) const;
+	[[nodiscard]] bool         classEqualityMayCall (const ResolvedType &type, Operator operation = OEqual) const;
 	[[nodiscard]] bool         anyReceiverClass (const ResolvedType &type, const std::function<bool(const ResolvedType &)> &matches) const;
 	void                       checkFormatterDefault (const ResolvedType &element, const TokenSpan &receiver, const Token &parameter, bool record);
 	bool                       checkDefaultExpression (const std::function<bool()> &check);
@@ -319,7 +319,7 @@ class Analyzer {
 	void          implementRequirements (const ResolvedType &receiver, const MethodGroup &group, const MethodRef &contract, const MethodGroup &defaults,
 	                                     TypeDispatch &table) const;
 	void          buildStates (const ResolvedType &receiver, TypeDispatch &table) const;
-	void          publishDispatch ();
+	void          publishDispatch () const;
 	void          checkPublicSurface (const Symbol &symbol, const Symbol *exportingHost = nullptr, const DeclarationInfo *specialization = nullptr) const;
 	bool          sameMethod (const MethodRef &left, const MethodRef &right, bool results = false) const;
 	Substitutions methodArguments (const MethodRef &source, const Symbol &target) const;
@@ -418,19 +418,19 @@ class BodyChecker {
 
 	const CapturedOperand *captured      = nullptr;
 	const Expression      *validateAfter = nullptr;
-	IndexedAccess          indexAccess (const ExpressionInfo &operation, const TokenSpan &span);
+	IndexedAccess          indexAccess (const ExpressionInfo &operation, const TokenSpan &span) const;
 	bool writeIndex (const Statement &statement, const ExpressionPtr &target, const ExpressionInfo &array, const Token &op, const ExpressionPtr &rhs,
 	                 const ExpressionPtr &compound);
 	[[nodiscard]] ResolvedType    shapeOf (const Expression &value, const ResolvedType &fallback, std::size_t slot = 0) const;
 	void                          receiveShape (const Token &binding, const ResolvedType &declared, const ResolvedType &shape, const TokenSpan &use);
 	ExpressionInfo                mutateArray (const MemberCallExpression &call, const ExpressionInfo &receiver, ArrayMutation operation);
 	std::optional<ExpressionInfo> builtinCall (const CallSite &call, const TypeArgumentList *typeArguments, const ExpressionInfo *receiver = nullptr);
-	void              checkBuiltinArguments (const CallSite &call, const TypeArgumentList *typeArguments, std::size_t minimum, std::size_t maximum);
-	void              checkArgumentNames (const CallSite &call, std::size_t start);
-	[[noreturn]] void checkBuiltinTypeArguments (const CallSite &call, const TypeArgumentList &arguments);
+	void              checkBuiltinArguments (const CallSite &call, const TypeArgumentList *typeArguments, std::size_t minimum, std::size_t maximum) const;
+	void              checkArgumentNames (const CallSite &call, std::size_t start) const;
+	[[noreturn]] void checkBuiltinTypeArguments (const CallSite &call, const TypeArgumentList &arguments) const;
 	void              checkTypeArguments (const TypeArgumentList &arguments) const;
-	ResolvedType      nonReturningNumericReceiver (const CallSite &call);
-	[[noreturn]] void unknownMember (const MemberCallExpression &call, std::string_view receiver);
+	ResolvedType      nonReturningNumericReceiver (const CallSite &call) const;
+	[[noreturn]] void unknownMember (const MemberCallExpression &call, std::string_view receiver) const;
 	ExpressionInfo    memberCall (const MemberCallExpression &call);
 	void              rowShape (const Expression &target, const Expression &value, const ResolvedType &incoming);
 	void              checkValidatorReceiver (const Expression *receiver, const TokenSpan &use) const;
@@ -556,7 +556,7 @@ class BodyChecker {
 	void                         resolveNames (const Expression &node);
 	void                         resolveNames (const FunctionBody &body);
 	void                         assignmentTarget (const Token &target);
-	std::optional<Candidate>     initialStateTest (const TypeCheckExpression &test, const Token *state);
+	std::optional<Candidate>     initialStateTest (const TypeCheckExpression &test, const Token *state) const;
 	void                         resolveNames (const std::vector<StatementPtr> &statements);
 	void                         resolveNames (const Statement &node);
 	void                         leaveScope ();
@@ -585,9 +585,9 @@ class BodyChecker {
 	[[nodiscard]] bool           hasInstance () const;
 	void                         checkFieldRead (const Symbol &field, const Token &use) const;
 	void                         checkFieldWrite (const ExpressionInfo &target, const TokenSpan &span) const;
-	ResolvedType                 recordSelf (const Expression &node);
+	ResolvedType                 recordSelf (const Expression &node) const;
 	ExpressionInfo               call (const CallExpression &node);
-	std::vector<Candidate>       callCandidates (const CallExpression &node);
+	std::vector<Candidate>       callCandidates (const CallExpression &node) const;
 	static bool                  isSelfReference (const Expression &node);
 	ExpressionInfo               create (const ClassCreationExpression &node);
 	ExpressionInfo               cast (const CastExpression &node);
@@ -607,8 +607,8 @@ class BodyChecker {
 	ExpressionInfo                arrayLiteralComparison (const BinaryExpression &node, const ArrayLiteral *left, const ArrayLiteral *right);
 	std::optional<ExpressionInfo> contextualRangeComparison (const BinaryExpression &node);
 	ExpressionInfo                rangeValue (const BinaryExpression &node, const ResolvedType *endpoint, Code code);
-	std::optional<ResolvedType>   rangeEndpointHint (const Expression &start, const Expression &end);
-	void require (const ResultTypes &actual, const ResultTypes &expected, const TokenSpan &span, Code code = Code::TYPE_MISMATCH) const;
+	std::optional<ResolvedType>   rangeEndpointHint (const Expression &start, const Expression &end) const;
+	void require (const ResultTypes &actual, const ResultTypes &expected, const TokenSpan &span, Code code = Code::TypeMismatch) const;
 	void requireStoredValue (const ResolvedType &expected, const ResolvedType &actual, const TokenSpan &span, Code code) const;
 	bool expect (const Expression &node, const ResolvedType &type);
 	bool checkReturn (const Expression &node);
@@ -616,10 +616,10 @@ class BodyChecker {
 	enum class NameUse { Value, Assignment, Lexical };
 	ExpressionInfo                name (const Token &token, NameUse use = NameUse::Value);
 	bool                          hasValueName (const Token &name) const;
-	std::optional<ResolvedType>   receiverType (const Expression &node, bool forConstruction = false);
+	std::optional<ResolvedType>   receiverType (const Expression &node, bool forConstruction = false) const;
 	std::optional<Receiver>       receiver (const Expression &node);
 	ExpressionInfo                field (const FieldAccessExpression &node);
-	std::optional<Candidate>      stateTarget (const ResolvedType &receiver, const Token &name, const Expression &operand);
+	std::optional<Candidate>      stateTarget (const ResolvedType &receiver, const Token &name, const Expression &operand) const;
 	bool                          statePayload (const ExpressionPtr &payload, const ResolvedType &required, const TokenSpan &span, const Token &state);
 	ExpressionInfo                transition (const Candidate &state, const ExpressionPtr &payload, const TokenSpan &span);
 	ExpressionInfo                typeCheck (const TypeCheckExpression &node);
@@ -627,7 +627,7 @@ class BodyChecker {
 	ExpressionInfo                builtinBinary (const BinaryExpression &node, const ResolvedType *expected, FloatContext floats);
 	ExpressionInfo                elvis (const ElvisExpression &node, const ResultTypes *expected, FloatContext floats);
 	std::optional<ExpressionInfo> binaryOperator (const BinaryExpression &node, const ResolvedType *expected, bool allowContexts, FloatContext floats);
-	std::optional<ExpressionInfo> applyBinaryOperator (const BinaryExpression &node, const ResolvedType &rt_left, const ResolvedType &rt_right,
+	std::optional<ExpressionInfo> applyBinaryOperator (const BinaryExpression &node, const ResolvedType &rtLeft, const ResolvedType &rtRight,
 	                                                   const ResolvedType *expected, bool allowContexts, FloatContext floats);
 	ExpressionInfo                equality (const BinaryExpression &node, const ResolvedType &left, const ResolvedType &right);
 	std::optional<Candidate>      selectOperator (const Token &op, const TokenSpan &span, const ResolvedType &left, const ResolvedType &right,

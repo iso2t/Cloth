@@ -33,7 +33,7 @@ struct InterfaceMethodDeclaration : CallableSignature {
 	        typeParameters(std::move(typeParameters)) {
 	}
 
-	[[nodiscard]] const Token &get_name () const override {
+	[[nodiscard]] const Token &getName () const override {
 		return name;
 	}
 

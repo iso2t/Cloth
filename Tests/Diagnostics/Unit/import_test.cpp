@@ -5,7 +5,6 @@
 
 #include <cde/cloth_diagnostic.hpp>
 #include <cde/diagnostic_code.hpp>
-#include <file/source_file.hpp>
 #include <lexer/lexer.hpp>
 #include <parser/parser.hpp>
 
@@ -21,9 +20,9 @@ TEST (DiagnosticsImports, DuplicateSelectionLabelsBothOccurrences) {
 		p_parser.parse();
 		FAIL() << "Expected a diagnostic for the repeated import selection";
 	} catch (const ClothDiagnostic &cd_error) {
-		EXPECT_EQ(to_string(cd_error.get_code()), "C2010");
-		EXPECT_EQ(cd_error.get_severity(), Severity::Error);
-		const std::vector<SourceLabel> &v_labels = cd_error.get_source_labels();
+		EXPECT_EQ(toString(cd_error.getCode()), "C2010");
+		EXPECT_EQ(cd_error.getSeverity(), Severity::Error);
+		const std::vector<SourceLabel> &v_labels = cd_error.getSourceLabels();
 		ASSERT_EQ(v_labels.size(), 2u);
 
 		const SourceLabel &sl_primary = v_labels[0];
@@ -41,7 +40,7 @@ TEST (DiagnosticsImports, DuplicateSelectionLabelsBothOccurrences) {
 		EXPECT_EQ(sl_related.span.endCol, 20u);
 		ASSERT_NE(sl_primary.span.source, nullptr);
 		EXPECT_EQ(sl_related.span.source, sl_primary.span.source);
-		EXPECT_EQ(sl_primary.span.source->get_contents(), s_source);
+		EXPECT_EQ(sl_primary.span.source->getContents(), s_source);
 	}
 }
 

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <cstddef>
+#include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <ios>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -20,14 +22,14 @@ std::string pathUtf8 (const std::filesystem::path &path) {
 
 SourceFile::SourceFile (std::filesystem::path path) :
         p_path(std::move(path)),
-        s_name(source_name(p_path)),
-        e_extension(source_extension(p_path)),
-        s_contents(read_source(p_path)) {
+        s_name(sourceName(p_path)),
+        e_extension(sourceExtension(p_path)),
+        s_contents(readSource(p_path)) {
 }
 
 SourceFile::SourceFile (std::filesystem::path path, std::string contents, Extension extension) :
         p_path(std::move(path)),
-        s_name(source_name(p_path)),
+        s_name(sourceName(p_path)),
         e_extension(extension),
         s_contents(std::move(contents)) {
 }
@@ -36,18 +38,18 @@ SourceFile::SourceFile (std::filesystem::path path, std::string contents, Extens
  * The two supported file types are dictated here.
  * All other file types are rejected.
  */
-std::string_view to_string (Extension type) {
+std::string_view toString (const Extension type) {
 	switch (type) {
-	case CLOTH_OBJECT:
+	case ClothObject:
 		return "co";
-	case LIBRARY:
+	case Library:
 		return "clib";
 	default:
 		return "UNKNOWN";
 	}
 }
 
-std::string SourceFile::source_name (const std::filesystem::path &path) {
+std::string SourceFile::sourceName (const std::filesystem::path &path) {
 	if (const std::string s_name = pathUtf8(path.stem()); !s_name.empty() || s_name != SEPERATOR) {
 		return s_name;
 	}
@@ -62,11 +64,11 @@ std::string lowercaseExtension (const std::filesystem::path &path) {
 	return s_suffix;
 }
 
-Extension SourceFile::source_extension (const std::filesystem::path &path) {
+Extension SourceFile::sourceExtension (const std::filesystem::path &path) {
 	if (const std::string s_suffix = lowercaseExtension(path); !s_suffix.empty()) {
 		const std::string_view s_spelling = std::string_view{ s_suffix }.substr(1);
-		for (const auto extension : { CLOTH_OBJECT, LIBRARY }) {
-			if (s_spelling == to_string(extension)) {
+		for (const auto extension : { ClothObject, Library }) {
+			if (s_spelling == toString(extension)) {
 				return extension;
 			}
 		}
@@ -75,7 +77,7 @@ Extension SourceFile::source_extension (const std::filesystem::path &path) {
 	throw std::invalid_argument("Unsupported extension for source file '" + pathUtf8(path) + "' (expected .co or .clib)");
 }
 
-std::string SourceFile::read_source (const std::filesystem::path &path) {
+std::string SourceFile::readSource (const std::filesystem::path &path) {
 	if (!std::filesystem::is_regular_file(path)) {
 		throw std::runtime_error("Could not open source file '" + pathUtf8(path) + "': expected a regular file");
 	}
@@ -95,7 +97,7 @@ std::string SourceFile::read_source (const std::filesystem::path &path) {
 	}
 	s_contents.append(c_buffer, static_cast<std::size_t>(ifs_input.gcount()));
 
-	if (const std::size_t st_valid = utf8_valid_prefix_length(s_contents); st_valid != s_contents.size()) {
+	if (const std::size_t st_valid = utf8ValidPrefixLength(s_contents); st_valid != s_contents.size()) {
 		throw std::runtime_error("Invalid UTF-8 in source file '" + pathUtf8(path) + "' at byte " + std::to_string(st_valid + 1));
 	}
 	return s_contents;

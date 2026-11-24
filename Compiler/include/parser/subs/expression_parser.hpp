@@ -27,7 +27,7 @@ class ExpressionParser {
 		Associativity associativity = LEFT;
 	};
 
-	static const std::unordered_map<Operator, OperatorPrecedence> binaryOperators;
+	static const std::unordered_map<Operator, OperatorPrecedence> BINARY_OPERATORS;
 
 	ExpressionPtr parseExpression (int minimumPrecedence = 0, bool stopAtAssignment = false, bool stopAtRange = false, bool allowWhileTrailer = false);
 	ExpressionPtr continueFromPrimary (ExpressionPtr primary, bool allowWhileTrailer);

@@ -10,7 +10,7 @@ namespace cloth {
 
 struct Expression {
 	virtual ~Expression ()                            = default;
-	[[nodiscard]] virtual TokenSpan get_span () const = 0;
+	[[nodiscard]] virtual TokenSpan getSpan () const = 0;
 };
 
 using ExpressionPtr = std::shared_ptr<const Expression>;

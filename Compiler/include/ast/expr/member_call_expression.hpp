@@ -26,7 +26,7 @@ struct MemberCallExpression : CallSite {
 	        typeArguments(std::move(typeArguments)) {
 	}
 
-	[[nodiscard]] TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan getSpan () const override {
 		return span;
 	}
 };

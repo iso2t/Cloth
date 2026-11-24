@@ -31,12 +31,12 @@ class CompilerOptions {
 
 	~CompilerOptions () = default;
 
-	[[nodiscard]] std::vector<CompilerFlag> get_flags () const {
+	[[nodiscard]] std::vector<CompilerFlag> getFlags () const {
 		return v_compilerFlags;
 	}
 
-	void add_flag (const CompilerFlag &flag);
-	void build_defaults ();
+	void addFlag (const CompilerFlag &flag);
+	void buildDefaults ();
 
 	std::optional<std::filesystem::path> p_sourcePath;
 	std::optional<std::filesystem::path> p_objectPath;
@@ -44,11 +44,11 @@ class CompilerOptions {
 	std::filesystem::path                standardLibraryRoot;
 	ProgramKind                          kind = ProgramKind::Library;
 
-	[[nodiscard]] int get_lexer_flag () const {
+	[[nodiscard]] int getLexerFlag () const {
 		return i_lexer;
 	}
 
-	[[nodiscard]] bool is_empty () const;
+	[[nodiscard]] bool isEmpty () const;
 
     private:
 	std::vector<CompilerFlag> v_compilerFlags;

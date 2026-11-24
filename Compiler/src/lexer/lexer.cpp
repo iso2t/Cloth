@@ -10,8 +10,7 @@
 #include <string_view>
 #include <vector>
 
-#include <cde/diagnostic_code.hpp>
-#include <cde/syntax_exception.hpp>
+#include <diagnostics.hpp>
 #include <lexer/lexer.hpp>
 #include <token/numeric_literals.hpp>
 #include <token/token.hpp>
@@ -23,11 +22,11 @@ namespace {
 
 using cde::DiagnosticCode;
 
-const std::string_view S_STRING_QUOTE         = to_string(oDoubleQuotation);
-const std::string_view S_CHARACTER_QUOTE      = to_string(oQuotation);
-const std::string_view S_INTERPOLATION_OPEN   = to_string(oBraceOpen);
-const std::string_view S_INTERPOLATION_CLOSE  = to_string(oBraceClose);
-const std::string      S_INTERPOLATION_PREFIX = std::format("{}{}", to_string(oPound), S_STRING_QUOTE);
+const std::string_view S_STRING_QUOTE         = toString(ODoubleQuotation);
+const std::string_view S_CHARACTER_QUOTE      = toString(OQuotation);
+const std::string_view S_INTERPOLATION_OPEN   = toString(OBraceOpen);
+const std::string_view S_INTERPOLATION_CLOSE  = toString(OBraceClose);
+const std::string      S_INTERPOLATION_PREFIX = std::format("{}{}", toString(OPound), S_STRING_QUOTE);
 
 /**
  * @brief Represents an entry for an operator, including its type and spelling.
@@ -50,9 +49,9 @@ struct OperatorEntry {
 const std::vector<OperatorEntry> V_OPERATORS = [] {
 	std::vector<OperatorEntry> v_entries;
 
-	for (int i_value = oPlus; i_value < oError; ++i_value) {
+	for (int i_value = OPlus; i_value < OError; ++i_value) {
 		if (const auto o_operator = static_cast<Operator>(i_value); isTokenized(o_operator)) {
-			v_entries.push_back({ .op = o_operator, .spelling = to_string(o_operator) });
+			v_entries.push_back({ .op = o_operator, .spelling = toString(o_operator) });
 		}
 	}
 
@@ -65,7 +64,7 @@ const std::vector<OperatorEntry> V_OPERATORS = [] {
 const std::vector<Keyword> V_KEYWORDS = [] {
 	std::vector<Keyword> v_entries;
 
-	for (int i_value = kMod; i_value < kError; ++i_value) {
+	for (int i_value = KMod; i_value < KError; ++i_value) {
 		if (const auto k_keyword = static_cast<Keyword>(i_value); isReserved(k_keyword)) {
 			v_entries.push_back(k_keyword);
 		}
@@ -137,7 +136,7 @@ bool isValidEscape (const char c) {
 } // namespace
 
 Lexer::Lexer (const SourceFile &source, const std::size_t offset) : Lexer(source) {
-	if (offset > source_text().size()) throw std::out_of_range("Lexer offset exceeds the source length");
+	if (offset > sourceText().size()) throw std::out_of_range("Lexer offset exceeds the source length");
 	advanceBytes(offset);
 }
 
@@ -147,7 +146,7 @@ Lexer::Lexer (const SourceFile &source, const std::size_t offset) : Lexer(source
  * @return char The character that was advanced past.
  */
 char Lexer::advance () {
-	const char c = source_text()[st_current++];
+	const char c = sourceText()[st_current++];
 	if (c == '\n') {
 		p_current = { .line = p_current.line + 1, .column = 1 };
 	} else {
@@ -168,11 +167,11 @@ void Lexer::advanceBytes (const std::size_t length) {
  * @return char The current character without advancing the lexer.
  */
 char Lexer::peek () const {
-	return charAt(source_text(), st_current);
+	return charAt(sourceText(), st_current);
 }
 
-bool Lexer::startsWith (std::string_view spelling) const {
-	return std::string_view(source_text()).substr(st_current).starts_with(spelling);
+bool Lexer::startsWith (const std::string_view spelling) const {
+	return std::string_view(sourceText()).substr(st_current).starts_with(spelling);
 }
 
 /**
@@ -182,7 +181,7 @@ bool Lexer::startsWith (std::string_view spelling) const {
  * @return false Otherwise.
  */
 bool Lexer::isAtEnd () const {
-	return st_current >= source_text().size();
+	return st_current >= sourceText().size();
 }
 
 /**
@@ -202,7 +201,7 @@ void Lexer::scan () {
 		scanToken();
 	}
 
-	if (v_tokens.empty() || v_tokens.back().get_type() != TokenType::EndOfFile) {
+	if (v_tokens.empty() || v_tokens.back().getType() != TokenType::EndOfFile) {
 		addToken(TokenType::EndOfFile, spanFrom(p_current), "");
 	}
 }
@@ -229,7 +228,7 @@ TokenSpan Lexer::span () const {
 	return spanFrom(p_start);
 }
 
-TokenSpan Lexer::spanFrom (Position start) const {
+TokenSpan Lexer::spanFrom (const Position start) const {
 	return { .startLine = start.line, .startCol = start.column, .endLine = p_current.line, .endCol = p_current.column, .source = p_source };
 }
 
@@ -240,7 +239,7 @@ TokenSpan Lexer::spanFrom (Position start) const {
  * operator matches.
  */
 Operator Lexer::matchOperator () {
-	const std::string_view s_remaining = std::string_view{ source_text() }.substr(st_current);
+	const std::string_view s_remaining = std::string_view{ sourceText() }.substr(st_current);
 
 	for (const auto &[op, spelling] : V_OPERATORS) {
 		if (!s_remaining.starts_with(spelling)) {
@@ -248,8 +247,8 @@ Operator Lexer::matchOperator () {
 		}
 
 		// A nullable type followed by provider access begins with the same bytes as the fallback operator.
-		if (op == oElvis && s_remaining.substr(to_string(oQuestion).size()).starts_with(to_string(oColonColon))) continue;
-		if (op == oUnderscore && identifierPartLength(s_remaining, spelling.size()) != 0) {
+		if (op == OElvis && s_remaining.substr(toString(OQuestion).size()).starts_with(toString(OColonColon))) continue;
+		if (op == OUnderscore && identifierPartLength(s_remaining, spelling.size()) != 0) {
 			continue;
 		}
 
@@ -259,7 +258,7 @@ Operator Lexer::matchOperator () {
 		return op;
 	}
 
-	return oError;
+	return OError;
 }
 
 /**
@@ -268,11 +267,11 @@ Operator Lexer::matchOperator () {
  * @return void
  */
 void Lexer::scanToken () {
-	const std::string_view s_remaining = std::string_view{ source_text() }.substr(st_current);
+	const std::string_view s_remaining = std::string_view{ sourceText() }.substr(st_current);
 
 	if (s_remaining.starts_with(S_INTERPOLATION_PREFIX)) {
 		advanceBytes(S_INTERPOLATION_PREFIX.size());
-		addToken(TokenType::InterpolationStart, span(), source_text().substr(st_start, st_current - st_start));
+		addToken(TokenType::InterpolationStart, span(), sourceText().substr(st_start, st_current - st_start));
 		interpolatedString();
 		return;
 	}
@@ -299,8 +298,8 @@ void Lexer::scanToken () {
 		return;
 	}
 
-	if (const auto op = matchOperator(); op != oError) {
-		v_tokens.emplace_back(source_text().substr(st_start, st_current - st_start), op, span());
+	if (const auto op = matchOperator(); op != OError) {
+		v_tokens.emplace_back(sourceText().substr(st_start, st_current - st_start), op, span());
 		return;
 	}
 
@@ -324,14 +323,14 @@ void Lexer::scanToken () {
 		addToken(TokenType::NewLine, span(), "\n");
 		return;
 	default: {
-		const std::size_t st_size = utf8_scalar_length(s_remaining);
+		const std::size_t st_size = utf8ScalarLength(s_remaining);
 		if (st_size > 1) {
-			const char32_t c32_scalar = utf8_scalar_value(s_remaining.substr(0, st_size));
+			const char32_t c32_scalar = utf8ScalarValue(s_remaining.substr(0, st_size));
 			advanceBytes(st_size - 1);
-			throw cde::SyntaxException{ DiagnosticCode::UNEXPECTED_CHARACTER,
+			throw cde::SyntaxException{ DiagnosticCode::UnexpectedCharacter,
 				                    std::format("Unexpected character U+{:04X}", static_cast<unsigned>(c32_scalar)), span() };
 		}
-		throw cde::SyntaxException{ st_size == 0 ? DiagnosticCode::INVALID_UNICODE : DiagnosticCode::UNEXPECTED_CHARACTER,
+		throw cde::SyntaxException{ st_size == 0 ? DiagnosticCode::InvalidUnicode : DiagnosticCode::UnexpectedCharacter,
 			                    std::format("Unexpected byte 0x{:02X}", static_cast<unsigned char>(c_character)), span() };
 	}
 	}
@@ -348,7 +347,7 @@ bool Lexer::skipComments () {
 		return false;
 	}
 
-	switch (charAt(source_text(), st_current + 1)) {
+	switch (charAt(sourceText(), st_current + 1)) {
 	case '/':
 		advance();
 		advance();
@@ -362,14 +361,14 @@ bool Lexer::skipComments () {
 		advance();
 		const TokenSpan ts_opening = span();
 		while (!isAtEnd()) {
-			if (peek() == '*' && charAt(source_text(), st_current + 1) == '/') {
+			if (peek() == '*' && charAt(sourceText(), st_current + 1) == '/') {
 				advance();
 				advance();
 				return true;
 			}
 			advance();
 		}
-		throw cde::SyntaxException{ DiagnosticCode::UNTERMINATED_COMMENT, "Unterminated block comment", ts_opening };
+		throw cde::SyntaxException{ DiagnosticCode::UnterminatedComment, "Unterminated block comment", ts_opening };
 	}
 
 	default:
@@ -386,7 +385,7 @@ bool Lexer::skipComments () {
  * tokens.
  */
 void Lexer::number () {
-	const std::string_view s_source  = source_text();
+	const std::string_view s_source  = sourceText();
 	const int              i_radix   = integerLiteralRadix(s_source.substr(st_current));
 	bool                   b_isFloat = false;
 
@@ -435,11 +434,11 @@ void Lexer::number () {
 		invalidNumber(i_radix == 10 ? "Invalid numeric suffix" : std::format("Invalid base-{} digit or forbidden suffix", i_radix));
 	}
 
-	addToken(b_isFloat ? TokenType::FloatingPointLiteral : TokenType::IntegerLiteral, span(), source_text().substr(st_start, st_current - st_start));
+	addToken(b_isFloat ? TokenType::FloatingPointLiteral : TokenType::IntegerLiteral, span(), sourceText().substr(st_start, st_current - st_start));
 }
 
 void Lexer::consumeNumericDigits (const int radix) {
-	const std::string_view s_source = source_text();
+	const std::string_view s_source = sourceText();
 	for (std::size_t st_length = radixDigitLength(s_source, st_current, radix); st_length != 0; st_length = radixDigitLength(s_source, st_current, radix)) {
 		advanceBytes(st_length);
 		if (peek() == '_') {
@@ -453,18 +452,18 @@ void Lexer::consumeNumericDigits (const int radix) {
 
 void Lexer::invalidNumber (std::string_view reason) {
 	consumeIdentifierParts();
-	throw cde::SyntaxException{ cde::DiagnosticCode::INVALID_NUMERIC_LITERAL,
-		                    std::format("Invalid numeric literal '{}': {}", source_text().substr(st_start, st_current - st_start), reason), span() };
+	throw cde::SyntaxException{ DiagnosticCode::InvalidNumericLiteral,
+		                    std::format("Invalid numeric literal '{}': {}", sourceText().substr(st_start, st_current - st_start), reason), span() };
 }
 
 void Lexer::invalidNumericSeparator () const {
 	TokenSpan ts_separator = spanFrom(p_current);
 	++ts_separator.endCol;
-	throw cde::SyntaxException{ cde::DiagnosticCode::INVALID_SEPARATOR, "Numeric separators must appear between digits", ts_separator };
+	throw cde::SyntaxException{ DiagnosticCode::InvalidSeparator, "Numeric separators must appear between digits", ts_separator };
 }
 
 void Lexer::consumeIdentifierParts () {
-	const std::string_view s_source = source_text();
+	const std::string_view s_source = sourceText();
 	for (std::size_t st_length = identifierPartLength(s_source, st_current); st_length != 0; st_length = identifierPartLength(s_source, st_current)) {
 		advanceBytes(st_length);
 	}
@@ -482,8 +481,8 @@ void Lexer::consumeIdentifierParts () {
 void Lexer::identifier () {
 	consumeIdentifierParts();
 
-	const std::string s_text      = source_text().substr(st_start, st_current - st_start);
-	const bool        b_isKeyword = std::ranges::any_of(V_KEYWORDS, [&s_text] (const Keyword keyword) { return to_string(keyword) == s_text; });
+	const std::string s_text      = sourceText().substr(st_start, st_current - st_start);
+	const bool        b_isKeyword = std::ranges::any_of(V_KEYWORDS, [&s_text] (const Keyword keyword) { return toString(keyword) == s_text; });
 
 	addToken(b_isKeyword ? TokenType::Keyword : TokenType::Identifier, span(), s_text);
 }
@@ -501,7 +500,7 @@ void Lexer::interpolatedString () {
                 st_start = st_current;
                 p_start  = p_current;
 	};
-	const auto emit = [this] (const TokenType type) { addToken(type, span(), source_text().substr(st_start, st_current - st_start)); };
+	const auto emit = [this] (const TokenType type) { addToken(type, span(), sourceText().substr(st_start, st_current - st_start)); };
 
 	mark();
 	while (!isAtEnd()) {
@@ -513,17 +512,16 @@ void Lexer::interpolatedString () {
 			return;
 		}
 
-		const bool b_open = startsWith(S_INTERPOLATION_OPEN);
-		if (b_open || startsWith(S_INTERPOLATION_CLOSE)) {
+		if (const bool b_open = startsWith(S_INTERPOLATION_OPEN); b_open || startsWith(S_INTERPOLATION_CLOSE)) {
 			const std::string_view s_brace = b_open ? S_INTERPOLATION_OPEN : S_INTERPOLATION_CLOSE;
-			if (std::string_view(source_text()).substr(st_current + s_brace.size()).starts_with(s_brace)) {
+			if (std::string_view(sourceText()).substr(st_current + s_brace.size()).starts_with(s_brace)) {
 				advanceBytes(2 * s_brace.size());
 				continue;
 			}
 			if (!b_open) {
 				mark();
 				advanceBytes(s_brace.size());
-				throw cde::SyntaxException{ DiagnosticCode::UNMATCHED_INTERPOLATION_BRACE,
+				throw cde::SyntaxException{ DiagnosticCode::UnmatchedInterpolationBrace,
 					                    std::format("Expected '{0}{0}' for a literal closing brace", s_brace), span() };
 			}
 
@@ -546,7 +544,7 @@ void Lexer::interpolatedString () {
 				scanToken();
 			}
 			if (isAtEnd()) {
-				throw cde::SyntaxException{ DiagnosticCode::UNTERMINATED_INTERPOLATION, "Unterminated interpolation", ts_hole };
+				throw cde::SyntaxException{ DiagnosticCode::UnterminatedInterpolation, "Unterminated interpolation", ts_hole };
 			}
 
 			advanceBytes(S_INTERPOLATION_CLOSE.size());
@@ -558,7 +556,7 @@ void Lexer::interpolatedString () {
 		advanceStringCharacter("interpolated string");
 	}
 
-	throw cde::SyntaxException{ DiagnosticCode::UNTERMINATED_STRING, "Unterminated interpolated string", ts_opening };
+	throw cde::SyntaxException{ DiagnosticCode::UnterminatedString, "Unterminated interpolated string", ts_opening };
 }
 
 /**
@@ -573,14 +571,14 @@ void Lexer::rawString () {
 	while (!isAtEnd()) {
 		if (startsWith(rawStringDelimiter())) {
 			advanceBytes(rawStringDelimiter().size());
-			addToken(TokenType::RawStringLiteral, span(), source_text().substr(st_start, st_current - st_start));
+			addToken(TokenType::RawStringLiteral, span(), sourceText().substr(st_start, st_current - st_start));
 			return;
 		}
 
 		advanceStringScalar();
 	}
 
-	throw cde::SyntaxException{ DiagnosticCode::UNTERMINATED_RAW_STRING, "Unterminated raw string", ts_opening };
+	throw cde::SyntaxException{ DiagnosticCode::UnterminatedRawString, "Unterminated raw string", ts_opening };
 }
 
 /**
@@ -592,22 +590,22 @@ void Lexer::rawString () {
  * value.
  */
 void Lexer::advanceStringScalar () {
-	const std::size_t st_length = utf8_scalar_length(std::string_view{ source_text() }.substr(st_current));
+	const std::size_t st_length = utf8ScalarLength(std::string_view{ sourceText() }.substr(st_current));
 	if (st_length == 0) {
 		const Position p_byte = p_current;
 		advance();
-		throw cde::SyntaxException{ DiagnosticCode::INVALID_UNICODE, "Invalid UTF-8 in literal", spanFrom(p_byte) };
+		throw cde::SyntaxException{ DiagnosticCode::InvalidUnicode, "Invalid UTF-8 in literal", spanFrom(p_byte) };
 	}
 	advanceBytes(st_length);
 }
 
-void Lexer::advanceEscape (Position start, std::string_view kind) {
+void Lexer::advanceEscape (const Position start, std::string_view kind) {
 	if (isValidEscape(peek())) {
 		advance();
 		return;
 	}
 	advanceStringScalar();
-	throw cde::SyntaxException{ DiagnosticCode::INVALID_ESCAPE, std::format("Invalid escape in {}", kind), spanFrom(start) };
+	throw cde::SyntaxException{ DiagnosticCode::InvalidEscape, std::format("Invalid escape in {}", kind), spanFrom(start) };
 }
 
 void Lexer::advanceStringCharacter (std::string_view kind) {
@@ -620,7 +618,7 @@ void Lexer::advanceStringCharacter (std::string_view kind) {
 	if (isLineBreak(peek())) {
 		const Position p_newline = p_current;
 		if (advance() == '\r' && peek() == '\n') advance();
-		throw cde::SyntaxException{ DiagnosticCode::MULTILINE_STRING, std::format("Newline in {}", kind), spanFrom(p_newline) };
+		throw cde::SyntaxException{ DiagnosticCode::MultilineString, std::format("Newline in {}", kind), spanFrom(p_newline) };
 	}
 	if (b_escape)
 		advanceEscape(p_startChar, kind);
@@ -641,14 +639,14 @@ void Lexer::string () {
 	while (!isAtEnd()) {
 		if (startsWith(S_STRING_QUOTE)) {
 			advanceBytes(S_STRING_QUOTE.size());
-			addToken(TokenType::StringLiteral, span(), source_text().substr(st_start, st_current - st_start));
+			addToken(TokenType::StringLiteral, span(), sourceText().substr(st_start, st_current - st_start));
 			return;
 		}
 
 		advanceStringCharacter("string literal");
 	}
 
-	throw cde::SyntaxException{ DiagnosticCode::UNTERMINATED_STRING, "Unterminated string literal", ts_opening };
+	throw cde::SyntaxException{ DiagnosticCode::UnterminatedString, "Unterminated string literal", ts_opening };
 }
 
 /**
@@ -663,19 +661,19 @@ void Lexer::string () {
 void Lexer::character () {
 	const TokenSpan ts_opening = span();
 	if (isAtEnd() || isLineBreak(peek())) {
-		throw cde::SyntaxException{ DiagnosticCode::UNTERMINATED_CHARACTER, "Unterminated character literal", ts_opening };
+		throw cde::SyntaxException{ DiagnosticCode::UnterminatedCharacter, "Unterminated character literal", ts_opening };
 	}
 
 	if (startsWith(S_CHARACTER_QUOTE)) {
 		advanceBytes(S_CHARACTER_QUOTE.size());
-		throw cde::SyntaxException{ DiagnosticCode::EMPTY_CHARACTER, "Empty character literal", span() };
+		throw cde::SyntaxException{ DiagnosticCode::EmptyCharacter, "Empty character literal", span() };
 	}
 
 	if (peek() == '\\') {
 		const Position p_escapeStart = p_current;
 		advance();
 		if (isAtEnd()) {
-			throw cde::SyntaxException{ DiagnosticCode::UNTERMINATED_CHARACTER, "Unterminated character literal", ts_opening };
+			throw cde::SyntaxException{ DiagnosticCode::UnterminatedCharacter, "Unterminated character literal", ts_opening };
 		}
 		advanceEscape(p_escapeStart, "character literal");
 	} else {
@@ -683,11 +681,11 @@ void Lexer::character () {
 	}
 
 	if (!startsWith(S_CHARACTER_QUOTE)) {
-		throw cde::SyntaxException{ DiagnosticCode::INVALID_CHARACTER_LENGTH, "Character literal must contain exactly one character", span() };
+		throw cde::SyntaxException{ DiagnosticCode::InvalidCharacterLength, "Character literal must contain exactly one character", span() };
 	}
 
 	advanceBytes(S_CHARACTER_QUOTE.size());
-	addToken(TokenType::CharacterLiteral, span(), source_text().substr(st_start, st_current - st_start));
+	addToken(TokenType::CharacterLiteral, span(), sourceText().substr(st_start, st_current - st_start));
 }
 
 }

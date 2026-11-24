@@ -14,8 +14,7 @@
 #include <ast/decl/declarations.hpp>
 #include <ast/type/type_parameters.hpp>
 #include <ast/type/type_reference.hpp>
-#include <cde/generic_errors.hpp>
-#include <cde/syntax_errors.hpp>
+#include <diagnostics.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/function_parser.hpp>
@@ -26,20 +25,20 @@ namespace cloth {
 namespace {
 
 constexpr std::array PRIMITIVE_TYPES{
-	kInteger, kFloat, kBoolean, kString, kCharacter, kVoid, kTypeinfo, kUsize, kIsize,
+	KInteger, KFloat, KBoolean, KString, KCharacter, KVoid, KTypeinfo, KUsize, KIsize,
 };
 
 bool isPrimitiveType (std::string_view lexeme) {
-	return std::ranges::any_of(PRIMITIVE_TYPES, [lexeme] (const Keyword keyword) -> bool { return lexeme == to_string(keyword); });
+	return std::ranges::any_of(PRIMITIVE_TYPES, [lexeme] (const Keyword keyword) -> bool { return lexeme == toString(keyword); });
 }
 
 bool isTypeName (const Token &token) {
-	return token.get_type() == TokenType::Identifier || (token.get_type() == TokenType::Keyword && isPrimitiveType(token.get_lexeme()));
+	return token.getType() == TokenType::Identifier || (token.getType() == TokenType::Keyword && isPrimitiveType(token.getLexeme()));
 }
 
 bool touches (const Token &token, const Token &next) {
-	const TokenSpan ts_token = token.get_span();
-	const TokenSpan ts_next  = next.get_span();
+	const TokenSpan ts_token = token.getSpan();
+	const TokenSpan ts_next  = next.getSpan();
 	return ts_token.endLine == ts_next.startLine && ts_token.endCol == ts_next.startCol;
 }
 
@@ -48,7 +47,7 @@ bool touches (const Token &token, const Token &next) {
 TypeParser::ParentType TypeParser::parseParent (const std::string_view description) {
 	const Token t_separator = p_parser.advance();
 	p_parser.skipNewLines();
-	if (const Token t_next = p_parser.peek(); t_next.get_type() != TokenType::Identifier) {
+	if (const Token t_next = p_parser.peek(); t_next.getType() != TokenType::Identifier) {
 		throw cde::SyntaxErrors::expected(std::string(description), t_next);
 	}
 	TypeReference tr_type = parse();
@@ -59,7 +58,7 @@ TypeParser::ParentType TypeParser::parseParent (const std::string_view descripti
 }
 
 std::optional<TypeParameterList> TypeParser::parseTypeParameters () {
-	if (!at(oLess)) {
+	if (!at(OLess)) {
 		return std::nullopt;
 	}
 	const Token t_opening = p_parser.advance();
@@ -69,27 +68,27 @@ std::optional<TypeParameterList> TypeParser::parseTypeParameters () {
 		const Token t_name = p_parser.expect(TokenType::Identifier, "a type parameter name");
 		p_parser.skipNewLines();
 		std::vector<TypeParameterBound> v_bounds;
-		if (at(oColon)) {
+		if (at(OColon)) {
 			v_bounds = parseBounds();
 		}
 		std::optional<TypeReference> opt_defaultType;
-		if (at(oAssign)) {
+		if (at(OAssign)) {
 			p_parser.advance();
 			p_parser.skipNewLines();
 			opt_defaultType = parse(/*inCast=*/false, /*allowArrays=*/true);
 		}
 		v_parameters.push_back({ .name = t_name, .bounds = std::move(v_bounds), .defaultType = std::move(opt_defaultType) });
 		p_parser.skipNewLines();
-		if (at(oElvis)) {
-			throw cde::GenericErrors::syntax(std::format("Type defaults written with '{}'", to_string(oElvis)), p_parser.peek());
+		if (at(OElvis)) {
+			throw cde::GenericErrors::syntax(std::format("Type defaults written with '{}'", toString(OElvis)), p_parser.peek());
 		}
-		if (at(oGreater)) {
+		if (at(OGreater)) {
 			break;
 		}
-		p_parser.expect(oComma);
+		p_parser.expect(OComma);
 		p_parser.skipNewLines();
 	}
-	return TypeParameterList{ .opening = t_opening, .parameters = std::move(v_parameters), .closing = p_parser.expect(oGreater) };
+	return TypeParameterList{ .opening = t_opening, .parameters = std::move(v_parameters), .closing = p_parser.expect(OGreater) };
 }
 
 std::vector<TypeParameterBound> TypeParser::parseBounds () {
@@ -97,23 +96,23 @@ std::vector<TypeParameterBound> TypeParser::parseBounds () {
 	do {
 		p_parser.advance();
 		p_parser.skipNewLines();
-		if (p_parser.atKeyword(kNew)) {
+		if (p_parser.atKeyword(KNew)) {
 			const Token                       t_keyword    = p_parser.advance();
 			std::vector<ParameterDeclaration> v_parameters = p_parser.p_functionParser.parseParameters();
-			const TokenSpan                   ts_span      = TokenSpan::span_through(t_keyword.get_span(), p_parser.previous().get_span());
+			const TokenSpan                   ts_span      = TokenSpan::spanThrough(t_keyword.getSpan(), p_parser.previous().getSpan());
 			v_bounds.push_back({ ConstructorBound{ ConstructorGuaranteeDeclaration(t_keyword, std::move(v_parameters), ts_span) } });
 		} else {
 			v_bounds.push_back({ parse(/*inCast=*/false, /*allowArrays=*/true) });
 		}
 		p_parser.skipNewLines();
-	} while (at(oAmpersand));
+	} while (at(OAmpersand));
 	return v_bounds;
 }
 
 TypeArgumentList TypeParser::arguments () {
-	const Token t_opening = p_parser.expect(oLess);
+	const Token t_opening = p_parser.expect(OLess);
 	if (i_argumentDepth >= MAX_TYPE_ARG_NESTING) {
-		throw cde::GenericErrors::nesting(t_opening.get_span(), MAX_TYPE_ARG_NESTING);
+		throw cde::GenericErrors::nesting(t_opening.getSpan(), MAX_TYPE_ARG_NESTING);
 	}
 
 	struct ArgumentDepth {
@@ -128,32 +127,32 @@ TypeArgumentList TypeParser::arguments () {
 	const ArgumentDepth ad_scope{ i_argumentDepth };
 
 	p_parser.skipNewLines();
-	if (at(oGreater)) {
-		return { t_opening, {}, p_parser.advance() };
+	if (at(OGreater)) {
+		return { .opening = t_opening, .arguments = {}, .closing = p_parser.advance() };
 	}
 	std::vector<TypeReference> v_arguments;
 	while (true) {
-		if (p_parser.atKeyword(kOpt)) {
-			throw cde::GenericErrors::argument(std::format("Omission-only '{}' wrappers are not value type arguments", to_string(kOpt)),
-			                                   p_parser.peek().get_span());
+		if (p_parser.atKeyword(KOpt)) {
+			throw cde::GenericErrors::argument(std::format("Omission-only '{}' wrappers are not value type arguments", toString(KOpt)),
+			                                   p_parser.peek().getSpan());
 		}
-		if (at(oUnderscore)) {
+		if (at(OUnderscore)) {
 			v_arguments.emplace_back(p_parser.advance());
 		} else {
 			v_arguments.push_back(parse(/*inCast=*/false, /*allowArrays=*/true));
 		}
 		p_parser.skipNewLines();
-		if (at(oGreater)) {
+		if (at(OGreater)) {
 			break;
 		}
-		p_parser.expect(oComma);
+		p_parser.expect(OComma);
 		p_parser.skipNewLines();
 	}
-	return { t_opening, std::move(v_arguments), p_parser.expect(oGreater) };
+	return { .opening = t_opening, .arguments = std::move(v_arguments), .closing = p_parser.expect(OGreater) };
 }
 
 std::optional<int> TypeParser::angleListEnd (const int start) const {
-	if (!at(oLess, start)) {
+	if (!at(OLess, start)) {
 		return std::nullopt;
 	}
 
@@ -162,22 +161,22 @@ std::optional<int> TypeParser::angleListEnd (const int start) const {
 	int i_depth  = 0;
 	while (true) {
 		const Token        t_token  = p_parser.peek(i_offset++);
-		const std::string &s_lexeme = t_token.get_lexeme();
-		if (s_lexeme == to_string(oLess)) {
+		const std::string &s_lexeme = t_token.getLexeme();
+		if (s_lexeme == toString(OLess)) {
 			++i_depth;
 			continue;
 		}
-		if (s_lexeme == to_string(oGreater)) {
+		if (s_lexeme == toString(OGreater)) {
 			if (--i_depth == 0) {
 				return i_offset;
 			}
 			continue;
 		}
-		const TokenType tt_type     = t_token.get_type();
+		const TokenType tt_type     = t_token.getType();
 		const bool      b_typeToken = tt_type == TokenType::Identifier || tt_type == TokenType::Keyword || tt_type == TokenType::IntegerLiteral ||
 		                         tt_type == TokenType::NewLine;
-		const bool b_punctuation = s_lexeme == to_string(oComma) || s_lexeme == to_string(oDot) || s_lexeme == to_string(oQuestion) ||
-		                           s_lexeme == to_string(oBracketOpen) || s_lexeme == to_string(oBracketClose) || s_lexeme == to_string(oUnderscore);
+		const bool b_punctuation = s_lexeme == toString(OComma) || s_lexeme == toString(ODot) || s_lexeme == toString(OQuestion) ||
+		                           s_lexeme == toString(OBracketOpen) || s_lexeme == toString(OBracketClose) || s_lexeme == toString(OUnderscore);
 		if (!b_typeToken && !b_punctuation) {
 			return std::nullopt;
 		}
@@ -190,9 +189,8 @@ std::optional<int> TypeParser::applicationEnd (const int start) const {
 }
 
 bool TypeParser::startsCallTypeArguments (const int nameOffset) const {
-	const Token t_name    = p_parser.peek(nameOffset);
-	const Token t_opening = p_parser.peek(nameOffset + 1);
-	if (t_name.get_type() != TokenType::Identifier || !touches(t_name, t_opening)) {
+	const Token t_name = p_parser.peek(nameOffset);
+	if (const Token t_opening = p_parser.peek(nameOffset + 1); t_name.getType() != TokenType::Identifier || !touches(t_name, t_opening)) {
 		return false;
 	}
 	const std::optional<int> opt_end = angleListEnd(nameOffset + 1);
@@ -200,24 +198,24 @@ bool TypeParser::startsCallTypeArguments (const int nameOffset) const {
 		return false;
 	}
 	const Token t_arguments = p_parser.peek(*opt_end);
-	return t_arguments.get_lexeme() == to_string(oParenOpen) && touches(p_parser.peek(*opt_end - 1), t_arguments);
+	return t_arguments.getLexeme() == toString(OParenOpen) && touches(p_parser.peek(*opt_end - 1), t_arguments);
 }
 
 std::optional<int> TypeParser::suffixEnd (const int start) const {
 	int i_offset = start;
 	while (true) {
-		if (at(oQuestion, i_offset)) {
+		if (at(OQuestion, i_offset)) {
 			++i_offset;
 			continue;
 		}
-		if (!at(oBracketOpen, i_offset)) {
+		if (!at(OBracketOpen, i_offset)) {
 			return i_offset;
 		}
 		++i_offset;
-		if (p_parser.peek(i_offset).get_type() == TokenType::IntegerLiteral) {
+		if (p_parser.peek(i_offset).getType() == TokenType::IntegerLiteral) {
 			++i_offset;
 		}
-		if (!at(oBracketClose, i_offset)) {
+		if (!at(OBracketClose, i_offset)) {
 			return std::nullopt;
 		}
 		++i_offset;
@@ -225,42 +223,42 @@ std::optional<int> TypeParser::suffixEnd (const int start) const {
 }
 
 bool TypeParser::startsNamedTypeReceiver () const {
-	if (p_parser.peek().get_type() != TokenType::Identifier) {
+	if (p_parser.peek().getType() != TokenType::Identifier) {
 		return false;
 	}
 	const int          i_offset = nameEnd();
 	std::optional<int> opt_end;
-	if (at(oLess, i_offset)) {
+	if (at(OLess, i_offset)) {
 		opt_end = applicationEnd(i_offset);
-	} else if (at(oQuestion, i_offset) || (at(oBracketOpen, i_offset) && at(oBracketClose, i_offset + 1))) {
+	} else if (at(OQuestion, i_offset) || (at(OBracketOpen, i_offset) && at(OBracketClose, i_offset + 1))) {
 		opt_end = suffixEnd(i_offset);
 	}
-	return opt_end && at(oColonColon, *opt_end);
+	return opt_end && at(OColonColon, *opt_end);
 }
 
 bool TypeParser::startsQualifiedTypeCheck () const {
-	if (p_parser.peek().get_type() != TokenType::Identifier) {
+	if (p_parser.peek().getType() != TokenType::Identifier) {
 		return false;
 	}
 	const int i_offset = nameEnd();
 	if (i_offset == 1 || startsNamedTypeReceiver() || startsCallTypeArguments(i_offset - 1)) {
 		return false;
 	}
-	if (at(oLess, i_offset)) {
+	if (at(OLess, i_offset)) {
 		const std::optional<int> opt_end = applicationEnd(i_offset);
 		return opt_end && typeCanEndAt(*opt_end);
 	}
-	return at(oQuestion, i_offset);
+	return at(OQuestion, i_offset);
 }
 
-std::optional<int> TypeParser::typedTargetEnd (int start) const {
-	const int   i_name = p_parser.atKeyword(kUnsigned, start) ? start + 1 : start;
+std::optional<int> TypeParser::typedTargetEnd (const int start) const {
+	const int   i_name = p_parser.atKeyword(KUnsigned, start) ? start + 1 : start;
 	const Token t_name = p_parser.peek(i_name);
 	if (!isTypeName(t_name)) {
 		return std::nullopt;
 	}
-	const int                i_end      = t_name.get_type() == TokenType::Identifier ? nameEnd(i_name) : i_name + 1;
-	const std::optional<int> opt_target = at(oLess, i_end) ? applicationEnd(i_end) : suffixEnd(i_end);
+	const int                i_end      = t_name.getType() == TokenType::Identifier ? nameEnd(i_name) : i_name + 1;
+	const std::optional<int> opt_target = at(OLess, i_end) ? applicationEnd(i_end) : suffixEnd(i_end);
 	if (!opt_target || !Parser::isReceivingTarget(p_parser.peek(*opt_target))) {
 		return std::nullopt;
 	}
@@ -269,20 +267,20 @@ std::optional<int> TypeParser::typedTargetEnd (int start) const {
 
 int TypeParser::nameEnd (const int start) const {
 	int i_offset = start + 1;
-	while (at(oDot, i_offset) && p_parser.peek(i_offset + 1).get_type() == TokenType::Identifier) {
+	while (at(ODot, i_offset) && p_parser.peek(i_offset + 1).getType() == TokenType::Identifier) {
 		i_offset += 2;
 	}
 	return i_offset;
 }
 
 bool TypeParser::typeCanEndAt (const int offset) const {
-	const TokenType tt_type = p_parser.peek(offset).get_type();
-	return tt_type == TokenType::Operator || tt_type == TokenType::EndOfFile || tt_type == TokenType::NewLine || p_parser.atKeyword(kIs, offset);
+	const TokenType tt_type = p_parser.peek(offset).getType();
+	return tt_type == TokenType::Operator || tt_type == TokenType::EndOfFile || tt_type == TokenType::NewLine || p_parser.atKeyword(KIs, offset);
 }
 
 TypeReference TypeParser::parse (bool inCast, bool allowArrays) {
-	const TokenSpan ts_start   = p_parser.peek().get_span();
-	const bool      b_unsigned = p_parser.atKeyword(kUnsigned);
+	const TokenSpan ts_start   = p_parser.peek().getSpan();
+	const bool      b_unsigned = p_parser.atKeyword(KUnsigned);
 	if (b_unsigned) {
 		p_parser.advance();
 	}
@@ -291,13 +289,12 @@ TypeReference TypeParser::parse (bool inCast, bool allowArrays) {
 	std::optional<TypeArgumentList> opt_application;
 	std::optional<Token>            opt_width;
 	// In a cast, a following '<' may start a comparison.
-	if (at(oLess)) {
-		if (t_name.get_type() == TokenType::Identifier) {
-			const std::optional<int> opt_end = inCast ? applicationEnd(0) : std::nullopt;
-			if (!inCast || (opt_end && typeCanEndAt(*opt_end))) {
+	if (at(OLess)) {
+		if (t_name.getType() == TokenType::Identifier) {
+			if (const std::optional<int> opt_end = inCast ? applicationEnd(0) : std::nullopt; !inCast || (opt_end && typeCanEndAt(*opt_end))) {
 				opt_application = arguments();
 			}
-		} else if (!inCast || (isWidthToken(p_parser.peek(1)) && at(oGreater, 2))) {
+		} else if (!inCast || (isWidthToken(p_parser.peek(1)) && at(OGreater, 2))) {
 			opt_width = p_parser.p_delimitedParser.angles([this] () -> Token {
 				return isWidthToken(p_parser.peek()) ? p_parser.advance() : p_parser.expect(TokenType::IntegerLiteral, "a numeric type width");
 			});
@@ -308,14 +305,14 @@ TypeReference TypeParser::parse (bool inCast, bool allowArrays) {
 	std::vector<TokenSpan>                v_arraySuffixes;
 	std::vector<std::optional<Token>>     vopt_arraySizes;
 	std::vector<std::optional<TokenSpan>> vopt_arrayNullability;
-	while (allowArrays && at(oBracketOpen)) {
+	while (allowArrays && at(OBracketOpen)) {
 		const Token t_opening = p_parser.advance();
-		vopt_arraySizes.push_back(p_parser.peek().get_type() == TokenType::IntegerLiteral ? std::make_optional(p_parser.advance()) : std::nullopt);
-		const Token t_closing = p_parser.expect(oBracketClose);
-		v_arraySuffixes.push_back(TokenSpan::span_through(t_opening.get_span(), t_closing.get_span()));
+		vopt_arraySizes.push_back(p_parser.peek().getType() == TokenType::IntegerLiteral ? std::make_optional(p_parser.advance()) : std::nullopt);
+		const Token t_closing = p_parser.expect(OBracketClose);
+		v_arraySuffixes.push_back(TokenSpan::spanThrough(t_opening.getSpan(), t_closing.getSpan()));
 		vopt_arrayNullability.push_back(nullableMarker());
 	}
-	const TokenSpan ts_span = TokenSpan::span_through(ts_start, p_parser.previous().get_span());
+	const TokenSpan ts_span = TokenSpan::spanThrough(ts_start, p_parser.previous().getSpan());
 	return TypeReference(t_name, b_unsigned, std::move(opt_width), ts_span, std::move(v_arraySuffixes), std::move(vopt_arraySizes), opt_nullable,
 	                     std::move(vopt_arrayNullability), std::move(opt_application));
 }
@@ -325,38 +322,38 @@ Token TypeParser::parseName () const {
 		throw cde::SyntaxErrors::expected("a type name", t_token);
 	}
 	const Token t_first = p_parser.advance();
-	if (t_first.get_type() != TokenType::Identifier || !at(oDot)) {
+	if (t_first.getType() != TokenType::Identifier || !at(ODot)) {
 		return t_first;
 	}
-	std::string s_spelling = t_first.get_lexeme();
-	while (at(oDot)) {
-		s_spelling += p_parser.advance().get_lexeme();
-		s_spelling += p_parser.expect(TokenType::Identifier, "a nested type name").get_lexeme();
+	std::string s_spelling = t_first.getLexeme();
+	while (at(ODot)) {
+		s_spelling += p_parser.advance().getLexeme();
+		s_spelling += p_parser.expect(TokenType::Identifier, "a nested type name").getLexeme();
 	}
-	return { std::move(s_spelling), t_first.get_type(), TokenSpan::span_through(t_first.get_span(), p_parser.previous().get_span()) };
+	return { std::move(s_spelling), t_first.getType(), TokenSpan::spanThrough(t_first.getSpan(), p_parser.previous().getSpan()) };
 }
 
 std::optional<TokenSpan> TypeParser::nullableMarker () const {
-	if (!at(oQuestion)) {
+	if (!at(OQuestion)) {
 		return std::nullopt;
 	}
-	TokenSpan ts_marker = p_parser.advance().get_span();
-	if (at(oQuestion)) {
-		throw cde::SyntaxErrors::expected(std::format("only one '{}' at this type position", to_string(oQuestion)), p_parser.peek());
+	TokenSpan ts_marker = p_parser.advance().getSpan();
+	if (at(OQuestion)) {
+		throw cde::SyntaxErrors::expected(std::format("only one '{}' at this type position", toString(OQuestion)), p_parser.peek());
 	}
 	return ts_marker;
 }
 
 bool TypeParser::isWidthToken (const Token &token) const {
-	return token.get_type() == TokenType::IntegerLiteral || (p_parser.b_allowInferredOperatorWidth && token.get_lexeme() == to_string(kAuto));
+	return token.getType() == TokenType::IntegerLiteral || (p_parser.b_allowInferredOperatorWidth && token.getLexeme() == toString(KAuto));
 }
 
 bool TypeParser::startsTypeReceiver (const Token &token) {
-	return token.get_type() == TokenType::Keyword && (token.get_lexeme() == to_string(kUnsigned) || isPrimitiveType(token.get_lexeme()));
+	return token.getType() == TokenType::Keyword && (token.getLexeme() == toString(KUnsigned) || isPrimitiveType(token.getLexeme()));
 }
 
 bool TypeParser::at (const Operator op, const int offset) const {
-	return p_parser.peek(offset).get_lexeme() == to_string(op);
+	return p_parser.peek(offset).getLexeme() == toString(op);
 }
 
 }

@@ -12,7 +12,7 @@ class ForLoopParser : public LoopParser {
     public:
 	using LoopParser::LoopParser;
 
-	ForStatement parseFor (bool allowWhileTrailer = false);
+	ForStatement parseFor (bool allowWhileTrailer = false) const;
 
     private:
 	ForStepper parseForStepper (const Token &counter) const;

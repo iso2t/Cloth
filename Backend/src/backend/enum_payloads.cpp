@@ -3,14 +3,23 @@
 #include <backend/enum_payloads.hpp>
 #include <backend/nullable_value.hpp>
 #include <backend/scalar_lowering.hpp>
+#include <backend/value_types.hpp>
 
+#include <cstddef>
 #include <string>
+#include <variant>
 #include <vector>
 
+#include <ast/expr/expression.hpp>
 #include <ast/expr/expressions.hpp>
 #include <ast/expr/struct_expressions.hpp>
-#include <cde/cloth_diagnostic.hpp>
+#include <diagnostics.hpp>
+#include <llvm-c/Core.h>
 #include <llvm-c/Target.h>
+#include <llvm-c/Types.h>
+#include <semantic/checked_program.hpp>
+#include <semantic/symbol_table.hpp>
+#include <token/token.hpp>
 
 namespace backend::detail {
 
@@ -41,6 +50,7 @@ LLVMValueRef EnumPayloads::constant (const cloth::Expression &value, const cloth
 		if (sl_literal->fields.empty()) return LLVMConstNull(ty_value);
 		const cloth::StructLayout &sl_layout = cp_program.structLayouts.at(destination);
 		std::vector<LLVMValueRef>  v_fields;
+		v_fields.reserve(sl_literal->fields.size());
 		for (std::size_t st_index = 0; st_index < sl_literal->fields.size(); ++st_index)
 			v_fields.push_back(constant(*sl_literal->fields[st_index], sl_layout.fields.at(st_index).type));
 		return LLVMConstNamedStruct(ty_value, v_fields.data(), static_cast<unsigned>(v_fields.size()));
@@ -48,8 +58,8 @@ LLVMValueRef EnumPayloads::constant (const cloth::Expression &value, const cloth
 	if (const auto *ce_cast = dynamic_cast<const cloth::CastExpression *>(&value);
 	    ce_cast && !ei_value.symbol && ei_value.types == cp_program.expressions.at(ce_cast->operand.get()).types)
 		return constant(*ce_cast->operand, destination);
-	throw cde::ClothDiagnostic(cde::DiagnosticCode::UNSUPPORTED_LOWERING, "LLVM lowering requires a constant value for this enum payload",
-	                           { { value.get_span(), "unsupported payload initializer" } });
+	throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedLowering, "LLVM lowering requires a constant value for this enum payload",
+	                           { { .span = value.getSpan(), .text = "unsupported payload initializer" } });
 }
 
 LLVMValueRef EnumPayloads::table (const cloth::Symbol &field, const cloth::TokenSpan &use) {
@@ -58,14 +68,14 @@ LLVMValueRef EnumPayloads::table (const cloth::Symbol &field, const cloth::Token
 	const cloth::ResolvedType    &rt_field = di_field.value.value();
 	const LLVMTypeRef             ty_field = vt_types.get(rt_field);
 	if (!ty_field)
-		throw cde::ClothDiagnostic(cde::DiagnosticCode::UNSUPPORTED_LOWERING,
+		throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedLowering,
 		                           "LLVM lowering does not support enum payload type '" + rt_field.spelling() + "'",
-		                           { { use, "unsupported enum payload field" } });
+		                           { { .span = use, .text = "unsupported enum payload field" } });
 
 	std::vector<LLVMValueRef> v_values;
 	for (const cloth::Expression *e_value : cp_program.enumFieldValues(field)) v_values.push_back(constant(*e_value, rt_field));
 	const LLVMValueRef ir_values = LLVMConstArray2(ty_field, v_values.data(), v_values.size());
-	const std::string  s_name    = "cloth.enum." + di_field.owner->name.get_name_key() + "." + field.name.get_name_key();
+	const std::string  s_name    = "cloth.enum." + di_field.owner->name.getNameKey() + "." + field.name.getNameKey();
 	const LLVMValueRef ir_table  = LLVMAddGlobal(mod_module, LLVMTypeOf(ir_values), s_name.c_str());
 	LLVMSetLinkage(ir_table, LLVMPrivateLinkage);
 	LLVMSetGlobalConstant(ir_table, true);

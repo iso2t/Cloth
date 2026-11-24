@@ -11,7 +11,7 @@
 #include <ast/decl/struct_declaration.hpp>
 #include <ast/type/type_parameters.hpp>
 #include <ast/type/type_reference.hpp>
-#include <cde/syntax_errors.hpp>
+#include <diagnostics.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/function_parser.hpp>
@@ -38,18 +38,18 @@ StructDeclaration StructParser::parse (const Token &keyword, std::optional<Token
 		}
 		if (!v_fields.empty() && !atEnd()) {
 			rejectFunction();
-			p_parser.expect(oSemicolon);
+			p_parser.expect(OSemicolon);
 			p_parser.skipNewLines();
 			rejectFunction();
 			if (!atMember() && !p_parser.startsTypeDeclaration()) {
-				throw cde::SyntaxErrors::expected(std::format("a '{}', '{}', or '{}' declaration after the fields", to_string(kMt),
-				                                              to_string(kOperator), to_string(kTypeDef)),
+				throw cde::SyntaxErrors::expected(std::format("a '{}', '{}', or '{}' declaration after the fields", toString(KMt),
+				                                              toString(KOperator), toString(KTypeDef)),
 				                                  p_parser.peek());
 			}
 		}
 		v_methods = parseMembers(v_nestedTypes);
 	});
-	const TokenSpan ts_span = TokenSpan::span_through((visibility ? *visibility : keyword).get_span(), p_parser.previous().get_span());
+	const TokenSpan ts_span = TokenSpan::spanThrough((visibility ? *visibility : keyword).getSpan(), p_parser.previous().getSpan());
 	return { keyword,
 		 t_name,
 		 std::move(v_fields),
@@ -62,10 +62,10 @@ StructDeclaration StructParser::parse (const Token &keyword, std::optional<Token
 
 std::vector<StructFieldDeclaration> StructParser::parseFields () const {
 	return p_parser.p_delimitedParser.commaSeparated(
-	        oBraceClose,
+	        OBraceClose,
 	        [this] () -> bool {
 		        return p_parser.isSemiColon(p_parser.peek()) || atMember() || p_parser.startsTypeDeclaration() ||
-		               p_parser.atKeyword(kFn, memberOffset());
+		               p_parser.atKeyword(KFn, memberOffset());
 	        },
 	        [this] () -> StructFieldDeclaration {
 		        rejectFunction();
@@ -85,22 +85,22 @@ std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDecla
 		}
 		rejectFunction();
 		std::optional<Token> opt_visibility = p_parser.parseVisibility();
-		if (p_parser.atKeyword(kMt)) {
+		if (p_parser.atKeyword(KMt)) {
 			v_methods.push_back(p_parser.p_functionParser.parseMethod(std::move(opt_visibility), std::nullopt, std::nullopt,
 			                                                          /*allowIntrinsic=*/false,
 			                                                          /*allowTypeParameters=*/true));
-		} else if (p_parser.atKeyword(kOperator)) {
+		} else if (p_parser.atKeyword(KOperator)) {
 			v_methods.push_back(p_parser.p_functionParser.parseOperator(std::move(opt_visibility)));
 		} else {
-			throw cde::SyntaxErrors::expected(std::format("a '{}' or '{}' declaration", to_string(kMt), to_string(kOperator)), p_parser.peek());
+			throw cde::SyntaxErrors::expected(std::format("a '{}' or '{}' declaration", toString(KMt), toString(KOperator)), p_parser.peek());
 		}
-		const bool b_hasEquals = v_methods.back().body.get_equals() != nullptr;
+		const bool b_hasEquals = v_methods.back().body.getEquals() != nullptr;
 		rejectFunction();
 		if (const Token t_next = p_parser.peek(); b_hasEquals && p_parser.isSemiColon(t_next)) {
 			p_parser.advance();
-		} else if (t_next.get_lexeme() != to_string(oBraceClose) && t_next.get_type() != TokenType::NewLine) {
+		} else if (t_next.getLexeme() != toString(OBraceClose) && t_next.getType() != TokenType::NewLine) {
 			if (!b_hasEquals) {
-				throw cde::SyntaxErrors::expected(std::format("a newline or '{}' after a brace-bodied method", to_string(oBraceClose)), t_next);
+				throw cde::SyntaxErrors::expected(std::format("a newline or '{}' after a brace-bodied method", toString(OBraceClose)), t_next);
 			}
 			throw cde::SyntaxErrors::newline(t_next);
 		}
@@ -110,22 +110,22 @@ std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDecla
 }
 
 void StructParser::rejectFunction () const {
-	if (const int i_offset = memberOffset(); p_parser.atKeyword(kFn, i_offset)) {
+	if (const int i_offset = memberOffset(); p_parser.atKeyword(KFn, i_offset)) {
 		throw cde::SyntaxErrors::functionInType(p_parser.peek(i_offset));
 	}
 }
 
 int StructParser::memberOffset () const {
-	return p_parser.atKeyword(kPublic) ? 1 : 0;
+	return p_parser.atKeyword(KPublic) ? 1 : 0;
 }
 
 bool StructParser::atMember () const {
 	const int i_offset = memberOffset();
-	return p_parser.atKeyword(kMt, i_offset) || p_parser.atKeyword(kOperator, i_offset);
+	return p_parser.atKeyword(KMt, i_offset) || p_parser.atKeyword(KOperator, i_offset);
 }
 
 bool StructParser::atEnd () const {
-	return p_parser.peek().get_lexeme() == to_string(oBraceClose);
+	return p_parser.peek().getLexeme() == toString(OBraceClose);
 }
 
 }

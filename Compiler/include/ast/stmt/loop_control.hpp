@@ -22,7 +22,7 @@ struct LoopBody {
 };
 
 struct LoopStatement : Statement {
-	[[nodiscard]] virtual const LoopTargetPtr &get_loop_target () const = 0;
+	[[nodiscard]] virtual const LoopTargetPtr &getLoopTarget () const = 0;
 };
 
 struct LoopJumpStatement : Statement {
@@ -32,11 +32,11 @@ struct LoopJumpStatement : Statement {
 	}
 
 	[[nodiscard]] bool isContinue () const {
-		return keyword.get_lexeme() == to_string(kContinue);
+		return keyword.getLexeme() == toString(KContinue);
 	}
 
-	[[nodiscard]] TokenSpan get_span () const override {
-		return keyword.get_span();
+	[[nodiscard]] TokenSpan getSpan () const override {
+		return keyword.getSpan();
 	}
 };
 

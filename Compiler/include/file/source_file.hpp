@@ -10,34 +10,34 @@ namespace cloth {
 
 #define SEPERATOR "."
 
-enum Extension { CLOTH_OBJECT, LIBRARY };
+enum Extension { ClothObject, Library };
 
-std::string_view to_string (Extension type);
+std::string_view toString (Extension type);
 std::string      pathUtf8 (const std::filesystem::path &path);
 std::string      lowercaseExtension (const std::filesystem::path &path);
 
 class SourceFile {
     public:
 	explicit SourceFile (std::filesystem::path path);
-	SourceFile (std::filesystem::path path, std::string contents, Extension extension = CLOTH_OBJECT);
+	SourceFile (std::filesystem::path path, std::string contents, Extension extension = ClothObject);
 
-	[[nodiscard]] std::string get_name () const {
+	[[nodiscard]] std::string getName () const {
 		return s_name;
 	}
 
-	[[nodiscard]] const std::filesystem::path &get_path () const noexcept {
+	[[nodiscard]] const std::filesystem::path &getPath () const noexcept {
 		return p_path;
 	}
 
-	[[nodiscard]] const std::string &get_contents () const & noexcept {
+	[[nodiscard]] const std::string &getContents () const & noexcept {
 		return s_contents;
 	}
 
-	[[nodiscard]] std::string get_contents () const && {
+	[[nodiscard]] std::string getContents () const && {
 		return s_contents;
 	}
 
-	[[nodiscard]] Extension get_extension () const {
+	[[nodiscard]] Extension getExtension () const {
 		return e_extension;
 	}
 
@@ -47,9 +47,9 @@ class SourceFile {
 	Extension             e_extension;
 	std::string           s_contents;
 
-	static std::string source_name (const std::filesystem::path &path);
-	static Extension   source_extension (const std::filesystem::path &path);
-	static std::string read_source (const std::filesystem::path &path);
+	static std::string sourceName (const std::filesystem::path &path);
+	static Extension   sourceExtension (const std::filesystem::path &path);
+	static std::string readSource (const std::filesystem::path &path);
 };
 
 }

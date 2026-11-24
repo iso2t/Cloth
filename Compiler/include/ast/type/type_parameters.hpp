@@ -16,7 +16,7 @@ namespace cloth {
 struct ConstructorBound {
 	ConstructorGuaranteeDeclaration declaration;
 
-	[[nodiscard]] TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan getSpan () const {
 		return declaration.span;
 	}
 };
@@ -24,8 +24,8 @@ struct ConstructorBound {
 struct TypeParameterBound {
 	std::variant<ConstructorBound, TypeReference> value;
 
-	[[nodiscard]] TokenSpan get_span () const {
-		return std::visit([]<typename Bound>(const Bound &bound) -> TokenSpan { return bound.get_span(); }, value);
+	[[nodiscard]] TokenSpan getSpan () const {
+		return std::visit([]<typename Bound>(const Bound &bound) -> TokenSpan { return bound.getSpan(); }, value);
 	}
 };
 
@@ -34,18 +34,18 @@ struct TypeParameterDeclaration {
 	std::vector<TypeParameterBound> bounds      = {};
 	std::optional<TypeReference>    defaultType = std::nullopt;
 
-	[[nodiscard]] TokenSpan get_span () const {
-		TokenSpan ts_name = name.get_span();
+	[[nodiscard]] TokenSpan getSpan () const {
+		TokenSpan ts_name = name.getSpan();
 		if (defaultType) {
-			return TokenSpan::span_through(ts_name, defaultType->get_span());
+			return TokenSpan::spanThrough(ts_name, defaultType->getSpan());
 		}
 		if (!bounds.empty()) {
-			return TokenSpan::span_through(ts_name, bounds.back().get_span());
+			return TokenSpan::spanThrough(ts_name, bounds.back().getSpan());
 		}
 		return ts_name;
 	}
 
-	[[nodiscard]] std::vector<TypeReference> get_type_bounds () const {
+	[[nodiscard]] std::vector<TypeReference> getTypeBounds () const {
 		std::vector<TypeReference> v_typeBounds;
 		for (const TypeParameterBound &tpb_bound : bounds) {
 			if (const TypeReference *tr_reference = std::get_if<TypeReference>(&tpb_bound.value)) {
@@ -61,8 +61,8 @@ struct TypeParameterList {
 	std::vector<TypeParameterDeclaration> parameters;
 	Token                                 closing;
 
-	[[nodiscard]] TokenSpan get_span () const {
-		return TokenSpan::span_through(opening.get_span(), closing.get_span());
+	[[nodiscard]] TokenSpan getSpan () const {
+		return TokenSpan::spanThrough(opening.getSpan(), closing.getSpan());
 	}
 };
 

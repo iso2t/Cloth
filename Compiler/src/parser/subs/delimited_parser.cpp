@@ -11,7 +11,7 @@ void DelimitedParser::expect (const Operator op) const {
 }
 
 bool DelimitedParser::at (const Operator op) const {
-	return p_parser.peek().get_lexeme() == to_string(op);
+	return p_parser.peek().getLexeme() == toString(op);
 }
 
 void DelimitedParser::skipNewLines () const {

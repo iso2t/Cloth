@@ -53,7 +53,7 @@ TopLevelStateDeclaration::TopLevelStateDeclaration (const Token &keyword, std::o
 
 StateMethodContractDeclaration::StateMethodContractDeclaration (const Token &keyword, std::optional<Token> visibility, const Token &name,
                                                                 std::vector<TypeReference> returnTypes, std::vector<ParameterDeclaration> parameters,
-                                                                TokenSpan span, std::optional<TypeParameterList> typeParameters) :
+                                                                const TokenSpan& span, std::optional<TypeParameterList> typeParameters) :
         CallableSignature(keyword, std::move(parameters), span, std::move(returnTypes), std::move(visibility)),
         name(name),
         typeParameters(std::move(typeParameters)) {
@@ -66,7 +66,7 @@ StateInitializerDeclaration::StateInitializerDeclaration (const Token &keyword, 
 }
 
 StateActivationDeclaration::StateActivationDeclaration (const Token &name, StateInitializerDeclaration initializer) :
-        CallableSignature(initializer.keyword, {}, initializer.get_span(), {}, initializer.visibility),
+        CallableSignature(initializer.keyword, {}, initializer.getSpan(), {}, initializer.visibility),
         name(name),
         initializer(std::move(initializer)) {
 }
@@ -77,7 +77,7 @@ StateInitialPayloadDeclaration::StateInitialPayloadDeclaration (const Token &nam
         prefix(std::move(prefix)) {
 }
 
-const ExpressionPtr &StateInitialPayloadDeclaration::get_expression () const {
+const ExpressionPtr &StateInitialPayloadDeclaration::getExpression () const {
 	if (!prefix.payload) {
 		throw std::logic_error("Initial state payload is missing.");
 	}

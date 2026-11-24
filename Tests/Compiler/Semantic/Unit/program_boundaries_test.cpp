@@ -1,10 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <cstddef>
 #include <filesystem>
 #include <set>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "cde/cloth_diagnostic.hpp"
+#include "cde/diagnostic_code.hpp"
 #include "checked_program_test.hpp"
+#include "gtest/gtest.h"
+#include "lexer/lexer.hpp"
+#include "semantic/checked_program.hpp"
+#include "semantic/program_kind.hpp"
+#include "semantic/symbol_table.hpp"
+#include "semantic/target_layout.hpp"
 
 namespace cloth::test {
 namespace {
@@ -24,14 +35,14 @@ std::vector<cde::SourceLabel> entryError (const std::string &source, Code expect
 		ADD_FAILURE() << "Expected an entry diagnostic";
 		return {};
 	} catch (const cde::ClothDiagnostic &error) {
-		EXPECT_EQ(error.get_code(), expected) << error.what();
-		for (const cde::SourceLabel &sl_label : error.get_source_labels()) {
+		EXPECT_EQ(error.getCode(), expected) << error.what();
+		for (const cde::SourceLabel &sl_label : error.getSourceLabels()) {
 			EXPECT_NE(sl_label.span.source, nullptr);
 			if (sl_label.span.source) {
-				EXPECT_EQ(sl_label.span.source->get_path(), "entry.co");
+				EXPECT_EQ(sl_label.span.source->getPath(), "entry.co");
 			}
 		}
-		return error.get_source_labels();
+		return error.getSourceLabels();
 	}
 }
 
@@ -40,36 +51,36 @@ TEST (SemanticProgram, EntryBelongsToTheExecutableAndBodiesAreAlwaysChecked) {
 	EXPECT_EQ(checkEntry("fn main(int arg) {}\nfn main() {}", ProgramKind::Library).entryPoint, nullptr);
 	const CheckedProgram cp_program = checkEntry("typedef<class> App { mt main() {} }\nfn main() {}");
 	EXPECT_EQ(cp_program.kind, ProgramKind::Executable);
-	EXPECT_EQ(cp_program.entryPoint, &cp_program.units.front()->get_globals().at("main").front());
-	entryError("typedef<class> App { mt main() {} }", Code::MISSING_MAIN);
-	entryError("fn main() {}\nfn<int> main() = 0", Code::DUPLICATE_FUNCTION);
-	entryError("fn<int> broken() = true", Code::RETURN_TYPE);
-	expectError("fn<int> broken() = true", Code::RETURN_TYPE);
+	EXPECT_EQ(cp_program.entryPoint, &cp_program.units.front()->getGlobals().at("main").front());
+	entryError("typedef<class> App { mt main() {} }", Code::MissingMain);
+	entryError("fn main() {}\nfn<int> main() = 0", Code::DuplicateFunction);
+	entryError("fn<int> broken() = true", Code::ReturnType);
+	expectError("fn<int> broken() = true", Code::ReturnType);
 }
 
 TEST (SemanticProgram, EntryDiagnosticsRetainTheEofAndDeclarationSpans) {
-	const std::vector<cde::SourceLabel> v_empty = entryError("", Code::MISSING_MAIN);
+	const std::vector<cde::SourceLabel> v_empty = entryError("", Code::MissingMain);
 	ASSERT_EQ(v_empty.size(), 1u);
-	EXPECT_EQ(v_empty.front().span.to_string(), "1:1-1:1");
-	const std::vector<cde::SourceLabel> v_eof = entryError("fn helper() {}\r\n", Code::MISSING_MAIN);
+	EXPECT_EQ(v_empty.front().span.toString(), "1:1-1:1");
+	const std::vector<cde::SourceLabel> v_eof = entryError("fn helper() {}\r\n", Code::MissingMain);
 	ASSERT_EQ(v_eof.size(), 1u);
-	EXPECT_EQ(v_eof.front().span.to_string(), "2:1-2:1");
-	const std::vector<cde::SourceLabel> v_mains = entryError("fn main() {}\nfn main(string[] args) {}\nfn main(int n) {}", Code::DUPLICATE_MAIN);
+	EXPECT_EQ(v_eof.front().span.toString(), "2:1-2:1");
+	const std::vector<cde::SourceLabel> v_mains = entryError("fn main() {}\nfn main(string[] args) {}\nfn main(int n) {}", Code::DuplicateMain);
 	ASSERT_EQ(v_mains.size(), 3u);
 	for (std::size_t st_index = 0; st_index < v_mains.size(); ++st_index) {
 		EXPECT_EQ(v_mains[st_index].span.startLine, st_index + 1);
 		EXPECT_EQ(v_mains[st_index].span.startCol, 4u);
 		EXPECT_EQ(v_mains[st_index].span.endCol, 8u);
 	}
-	const std::vector<cde::SourceLabel> v_generic = entryError("fn main<T>() {}", Code::INVALID_MAIN_PARAMETERS);
+	const std::vector<cde::SourceLabel> v_generic = entryError("fn main<T>() {}", Code::InvalidMainParameters);
 	ASSERT_EQ(v_generic.size(), 1u);
-	EXPECT_EQ(v_generic.front().span.to_string(), "1:8-1:11");
-	const std::vector<cde::SourceLabel> v_params = entryError("fn main(int n) {}", Code::INVALID_MAIN_PARAMETERS);
+	EXPECT_EQ(v_generic.front().span.toString(), "1:8-1:11");
+	const std::vector<cde::SourceLabel> v_params = entryError("fn main(int n) {}", Code::InvalidMainParameters);
 	ASSERT_EQ(v_params.size(), 1u);
-	EXPECT_EQ(v_params.front().span.to_string(), "1:4-1:8");
-	const std::vector<cde::SourceLabel> v_returns = entryError("fn<int, bool> main(int arg) = 1, true", Code::INVALID_MAIN_RETURN);
+	EXPECT_EQ(v_params.front().span.toString(), "1:4-1:8");
+	const std::vector<cde::SourceLabel> v_returns = entryError("fn<int, bool> main(int arg) = 1, true", Code::InvalidMainReturn);
 	ASSERT_EQ(v_returns.size(), 1u);
-	EXPECT_EQ(v_returns.front().span.to_string(), "1:4-1:13");
+	EXPECT_EQ(v_returns.front().span.toString(), "1:4-1:13");
 }
 
 TEST (SemanticProgram, StartupArgumentsAndSignedExitTypes) {
@@ -78,23 +89,23 @@ TEST (SemanticProgram, StartupArgumentsAndSignedExitTypes) {
 		ASSERT_NE(cp_program.entryPoint, nullptr);
 	}
 	for (const char *s_params : { "string args", "string[][] args", "string?[] args", "string?[]? args", "string[2] args", "string[] args, int count" })
-		entryError(std::string("fn main(") + s_params + ") {}", Code::INVALID_MAIN_PARAMETERS);
+		entryError(std::string("fn main(") + s_params + ") {}", Code::InvalidMainParameters);
 	for (const unsigned u_bits : { 32u, 64u }) {
 		for (const char *s_type : { "int", "int<8>", "int<16>", "int<32>", "int<64>", "isize" }) {
 			const CheckedProgram cp_program =
-			        checkEntry(std::string("fn<") + s_type + "> main() = 0", ProgramKind::Executable, TargetLayout{ u_bits });
+			        checkEntry(std::string("fn<") + s_type + "> main() = 0", ProgramKind::Executable, TargetLayout{ .sizeBits=u_bits });
 			ASSERT_NE(cp_program.entryPoint, nullptr);
 		}
 	}
 	EXPECT_NE(checkEntry("fn<void> main() {}").entryPoint, nullptr);
 	for (const char *s_type : { "usize", "unsigned int<8>", "int?", "bool", "float", "int[]" }) {
 		const std::string s_typeName(s_type);
-		entryError("fn<" + s_typeName + "> main() = main()", Code::INVALID_MAIN_RETURN);
+		entryError("fn<" + s_typeName + "> main() = main()", Code::InvalidMainReturn);
 	}
 }
 
 const ExpressionInfo &bodyCall (const CheckedProgram &program, const char *name) {
-	const Symbol &sym_caller = program.units.front()->get_globals().at(name).front();
+	const Symbol &sym_caller = program.units.front()->getGlobals().at(name).front();
 	return program.expressions.at(&bodyExpression(sym_caller));
 }
 
@@ -105,7 +116,7 @@ TEST (SemanticProgram, IntrinsicsFollowSelectedOverloadsAndSpecializedMethods) {
 	std::set<LibraryIntrinsic> s_bound;
 	for (const decltype(cp_program.declarations)::value_type &entry : cp_program.declarations) {
 		if (entry.second.intrinsic) {
-			EXPECT_TRUE(s_bound.insert(*entry.second.intrinsic).second) << entry.first->name.get_lexeme();
+			EXPECT_TRUE(s_bound.insert(*entry.second.intrinsic).second) << entry.first->name.getLexeme();
 		}
 	}
 	EXPECT_EQ(s_bound, (std::set{ LibraryIntrinsic::DecodeUtf8, LibraryIntrinsic::FileOpen, LibraryIntrinsic::FileRead, LibraryIntrinsic::OwnershipAcquire,
@@ -128,22 +139,22 @@ TEST (SemanticProgram, IntrinsicsFollowSelectedOverloadsAndSpecializedMethods) {
 	EXPECT_EQ(ei_acquire.symbol->visibility, Visibility::Private);
 	ASSERT_EQ(ei_acquire.instance->signature.parameters.size(), 1u);
 	ASSERT_NE(ei_acquire.instance->signature.parameters.front().declaration, nullptr);
-	EXPECT_EQ(ei_acquire.instance->signature.parameters.front().declaration->name.get_lexeme(), "Object");
+	EXPECT_EQ(ei_acquire.instance->signature.parameters.front().declaration->name.getLexeme(), "Object");
 }
 
 TEST (SemanticProgram, OwnershipObjectIsTheBuiltInReferenceRoot) {
 	const CheckedProgram cp_program = checkSource("typedef<class> Item\ntypedef<interface> View {}\ntypedef<class> Rooted : Object()\n"
 	                                              "fn<Object> item(Item v) = v\nfn<Object> view(View v) = v");
-	const SymbolScope   &ss_globals = cp_program.units.front()->get_globals();
+	const SymbolScope   &ss_globals = cp_program.units.front()->getGlobals();
 	const ResolvedType  &rt_root    = cp_program.declarations.at(&ss_globals.at("item").front()).returns.front();
 	EXPECT_EQ(cp_program.declarations.at(&ss_globals.at("Item").front()).parents, ResultTypes{ rt_root });
 	EXPECT_EQ(cp_program.declarations.at(&ss_globals.at("Rooted").front()).parents, ResultTypes{ rt_root });
 	EXPECT_TRUE(cp_program.parentConstructors.empty());
-	expectError("typedef<class> Object", Code::INVALID_CLASS_MEMBER);
-	expectError("fn<Object> make() = Object::new", Code::INVALID_CLASS_LIFECYCLE);
-	expectError("typedef<class> Child : Object(1)", Code::INVALID_CLASS_MEMBER);
-	expectError("fn<Object> box(int n) = n", Code::RETURN_TYPE);
-	expectError("typedef<struct> Item {}\nfn<Object> box(Item v) = v", Code::RETURN_TYPE);
+	expectError("typedef<class> Object", Code::InvalidClassMember);
+	expectError("fn<Object> make() = Object::new", Code::InvalidClassLifecycle);
+	expectError("typedef<class> Child : Object(1)", Code::InvalidClassMember);
+	expectError("fn<Object> box(int n) = n", Code::ReturnType);
+	expectError("typedef<struct> Item {}\nfn<Object> box(Item v) = v", Code::ReturnType);
 }
 
 }

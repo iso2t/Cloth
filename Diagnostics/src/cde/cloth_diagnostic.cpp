@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
-#include <cde/cloth_diagnostic.hpp>
+#include <diagnostics.hpp>
 
 namespace cde {
 

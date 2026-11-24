@@ -32,9 +32,9 @@ struct ClassParameterDeclaration {
 	std::optional<Token> fieldKeyword = std::nullopt;
 	std::optional<Token> visibility   = std::nullopt;
 
-	[[nodiscard]] TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan getSpan () const {
 		const std::optional<Token> &opt_modifier = visibility ? visibility : fieldKeyword;
-		return opt_modifier ? TokenSpan::span_through(opt_modifier->get_span(), parameter.span) : parameter.span;
+		return opt_modifier ? TokenSpan::spanThrough(opt_modifier->getSpan(), parameter.span) : parameter.span;
 	}
 };
 
@@ -53,7 +53,7 @@ struct ConstructorDeclaration : CallableDeclaration {
 	ConstructorDeclaration (const Token &name, std::vector<ParameterDeclaration> parameters, ConstructorDelegation delegation, BlockBody body,
 	                        const std::optional<Token> &visibility = std::nullopt);
 
-	static std::vector<TypeReference> get_return_types () {
+	static std::vector<TypeReference> getReturnTypes () {
 		return {};
 	}
 };
@@ -61,11 +61,11 @@ struct ConstructorDeclaration : CallableDeclaration {
 struct DestructorDeclaration : CallableDeclaration {
 	DestructorDeclaration (const Token &op, const Token &name, BlockBody body, const std::optional<Token> &visibility = std::nullopt);
 
-	[[nodiscard]] const Token &get_operator () const {
+	[[nodiscard]] const Token &getOperator () const {
 		return keyword;
 	}
 
-	static std::vector<TypeReference> get_return_types () {
+	static std::vector<TypeReference> getReturnTypes () {
 		return {};
 	}
 };
@@ -73,11 +73,11 @@ struct DestructorDeclaration : CallableDeclaration {
 struct ClassMember {
 	std::variant<ClassFieldDeclaration, ConstructorDeclaration, DestructorDeclaration, StateClassMemberPtr, MethodDeclaration> value;
 
-	[[nodiscard]] TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan getSpan () const {
 		return std::visit(
 		        []<typename Member>(const Member &member) -> TokenSpan {
 			        if constexpr (std::is_same_v<Member, StateClassMemberPtr>) {
-				        return member->get_span();
+				        return member->getSpan();
 			        } else {
 				        return member.span;
 			        }
@@ -105,7 +105,7 @@ struct PrimaryConstructorDeclaration : CallableDeclaration {
 
 	explicit PrimaryConstructorDeclaration (std::shared_ptr<const ClassDeclaration> owner);
 
-	static std::vector<TypeReference> get_return_types () {
+	static std::vector<TypeReference> getReturnTypes () {
 		return {};
 	}
 };

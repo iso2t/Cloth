@@ -28,7 +28,7 @@ FieldWriteStatement::FieldWriteStatement (ExpressionPtr target, const Token &op,
 
 std::pair<ExpressionPtr, ExpressionPtr> updateOperands (const Statement &statement) {
 	if (const auto *as_assignment = dynamic_cast<const AssignmentStatement *>(&statement)) {
-		const BinaryExpression *be_compound = as_assignment->get_compound();
+		const BinaryExpression *be_compound = as_assignment->getCompound();
 		if (!be_compound) {
 			throw std::logic_error("Expected a compound assignment.");
 		}

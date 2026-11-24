@@ -10,7 +10,7 @@ namespace cloth {
 
 struct Statement {
 	virtual ~Statement ()                             = default;
-	[[nodiscard]] virtual TokenSpan get_span () const = 0;
+	[[nodiscard]] virtual TokenSpan getSpan () const = 0;
 };
 
 using StatementPtr = std::shared_ptr<const Statement>;

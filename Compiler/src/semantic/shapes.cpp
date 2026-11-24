@@ -2,17 +2,27 @@
 
 // See Documentation/language/types/Arrays.rst
 
-#include <algorithm>
+#include <cstddef>
 #include <format>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
+#include <ast/expr/expression.hpp>
+#include <ast/expr/expressions.hpp>
+#include <ast/expr/member_call_expression.hpp>
+#include <semantic/checked_program.hpp>
 #include <semantic/checker.hpp>
+#include <token/token.hpp>
 
 namespace cloth::semantic {
 namespace {
 std::vector<std::size_t> dimensions (const ResolvedType &type) {
 	std::vector<std::size_t> result;
 	for (std::size_t st_dimension = type.suffixes.size(); st_dimension-- > 0;)
-		if (type.suffixes[st_dimension] != to_string(oQuestion)) result.push_back(st_dimension);
+		if (type.suffixes[st_dimension] != toString(OQuestion)) result.push_back(st_dimension);
 	return result;
 }
 }
@@ -28,7 +38,7 @@ ResolvedType comparisonShape (ResolvedType type, const ArrayLiteral *literal) {
 	bool b_forget = !literal;
 	for (std::size_t st_suffix = type.suffixes.size(); st_suffix-- > 0;) {
 		std::string &s_suffix = type.suffixes[st_suffix];
-		if (s_suffix == to_string(oQuestion)) {
+		if (s_suffix == toString(OQuestion)) {
 			std::erase_if(v_rows, [] (const Expression *row) { return dynamic_cast<const NullLiteral *>(row); });
 			continue;
 		}
@@ -60,7 +70,7 @@ ResolvedType refineShape (ResolvedType target, const ResolvedType &source, const
 		if (s_extent == s_unknown)
 			s_extent = s_incoming;
 		else if (use && s_incoming != s_unknown && s_extent != s_incoming)
-			fail(Code::INVALID_ARRAY, *use, std::format("Array dimension {} requires {}, found {}", st_dimension + 1, s_extent, s_incoming));
+			fail(Code::InvalidArray, *use, std::format("Array dimension {} requires {}, found {}", st_dimension + 1, s_extent, s_incoming));
 	}
 	return target;
 }
@@ -83,14 +93,15 @@ ResolvedType BodyChecker::shapeOf (const Expression &value, const ResolvedType &
 
 void BodyChecker::receiveShape (const Token &binding, const ResolvedType &declared, const ResolvedType &shape, const TokenSpan &use) {
 	if (!hasArrayShape(declared)) return;
-	const StoragePlace              sp_retained{ &binding, {}, PlaceFact::RetainedShape }, sp_current{ &binding, {}, PlaceFact::CurrentShape };
-	const auto it_shape = fs_flow.narrowed.find(sp_retained);
+	const StoragePlace sp_retained{ .root = &binding, .path = {}, .fact = PlaceFact::RetainedShape },
+	        sp_current{ .root = &binding, .path = {}, .fact = PlaceFact::CurrentShape };
+	const auto         it_shape    = fs_flow.narrowed.find(sp_retained);
 	const ResolvedType rt_current  = refineShape(it_shape == fs_flow.narrowed.end() ? declared : it_shape->second.type, shape, record ? &use : nullptr);
 	ResolvedType       rt_retained = rt_current;
 	const std::size_t  st_outer    = dimensions(declared).front();
 	rt_retained.suffixes[st_outer] = declared.suffixes[st_outer];
-	fs_flow.narrowed.insert_or_assign(sp_retained, FlowFact{ rt_retained });
-	fs_flow.narrowed.insert_or_assign(sp_current, FlowFact{ rt_current });
+	fs_flow.narrowed.insert_or_assign(sp_retained, FlowFact{ .type = rt_retained });
+	fs_flow.narrowed.insert_or_assign(sp_current, FlowFact{ .type = rt_current });
 	// A dynamic inner extent is captured at initialization and compared on subsequent stores at runtime.
 	if (record) bf_facts.arrayConstraints.try_emplace(&binding, rt_retained);
 }
@@ -102,19 +113,19 @@ void BodyChecker::rowShape (const Expression &target, const Expression &value, c
 		++st_depth;
 		e_root = index->array.get();
 	}
-	const auto *name    = dynamic_cast<const NameExpression *>(e_root);
-	const Binding        *binding = name ? local(name->name.get_name_key()) : nullptr;
+	const auto    *name    = dynamic_cast<const NameExpression *>(e_root);
+	const Binding *binding = name ? local(name->name.getNameKey()) : nullptr;
 	if (!st_depth || !binding || !binding->type || !hasArrayShape(incoming)) return;
 	const std::vector<std::size_t> v_axes = dimensions(*binding->type);
 	if (st_depth >= v_axes.size()) return;
-	const StoragePlace              sp_key     = StoragePlace{ binding->name, {}, PlaceFact::CurrentShape };
-	const auto it_current = fs_flow.narrowed.find(sp_key);
-	ResolvedType                    shape      = it_current == fs_flow.narrowed.end() ? *binding->type : it_current->second.type;
-	const std::vector<std::size_t>  v_rowAxes  = dimensions(incoming);
+	const StoragePlace             sp_key     = StoragePlace{ .root = binding->name, .path = {}, .fact = PlaceFact::CurrentShape };
+	const auto                     it_current = fs_flow.narrowed.find(sp_key);
+	ResolvedType                   shape      = it_current == fs_flow.narrowed.end() ? *binding->type : it_current->second.type;
+	const std::vector<std::size_t> v_rowAxes  = dimensions(incoming);
 	if (st_depth + v_rowAxes.size() != v_axes.size()) return;
 	for (std::size_t st_dimension = 0; st_dimension < v_rowAxes.size(); ++st_dimension)
 		shape.suffixes[v_axes[st_depth + st_dimension]] = incoming.suffixes[v_rowAxes[st_dimension]];
-	receiveShape(*binding->name, *binding->type, shape, value.get_span());
+	receiveShape(*binding->name, *binding->type, shape, value.getSpan());
 }
 
 std::optional<ArrayMutation> arrayMutationNamed (std::string_view name) {
@@ -137,10 +148,10 @@ ExpressionInfo BodyChecker::mutateArray (const MemberCallExpression &call, const
 	const std::size_t st_arity = b_clear ? 0u : b_insert ? 2u : 1u;
 	checkBuiltinArguments(call, call.typeArguments ? &*call.typeArguments : nullptr, st_arity, st_arity);
 	if (rt_array.suffixes.back() != arraySuffix())
-		fail(Code::INVALID_ARRAY_MUTATION, call.name.get_span(), "Changing array storage requires a growable array");
+		fail(Code::InvalidArrayMutation, call.name.getSpan(), "Changing array storage requires a growable array");
 	if (!b_reserve && dynamic_cast<const IndexExpression *>(call.receiver.get()))
-		fail(Code::INVALID_ARRAY_MUTATION, call.receiver->get_span(), "An embedded row must retain its rectangular shape");
-	checkFieldWrite(receiver, call.receiver->get_span());
+		fail(Code::InvalidArrayMutation, call.receiver->getSpan(), "An embedded row must retain its rectangular shape");
+	checkFieldWrite(receiver, call.receiver->getSpan());
 	if (locate(*call.receiver)) writable(*call.receiver);
 	const ReceiverProofs       v_proofs    = receiverProofs(call.suppliedArguments.empty() ? nullptr : call.receiver.get());
 	ResolvedType               rt_shape    = shapeOf(*call.receiver, rt_array);
@@ -149,15 +160,15 @@ ExpressionInfo BodyChecker::mutateArray (const MemberCallExpression &call, const
 	for (std::size_t st_index = 0; st_index < call.suppliedArguments.size(); ++st_index) {
 		const CallArgument               &ca_arg       = call.suppliedArguments[st_index];
 		const bool                        b_element    = b_add && st_index + 1 == call.suppliedArguments.size();
-		const ResolvedType                rt_parameter = b_element ? rt_element : ResolvedType(kUsize);
+		const ResolvedType                rt_parameter = b_element ? rt_element : ResolvedType(KUsize);
 		BodyChecker                      &bc_operand   = onPath(b_continues, opt_unreachable);
 		const std::optional<ResolvedType> opt_actual   = bc_operand.scalar(*ca_arg.expression, &rt_parameter);
 		if (opt_actual) {
 			if (!analyzer.accepts(rt_parameter, *opt_actual))
-				fail(Code::INVALID_BUILTIN_ARGUMENT, ca_arg.get_span(),
-				     std::format("'{}' requires {}, got {}", call.name.get_lexeme(), rt_parameter.spelling(), opt_actual->spelling()));
+				fail(Code::InvalidBuiltinArgument, ca_arg.getSpan(),
+				     std::format("'{}' requires {}, got {}", call.name.getLexeme(), rt_parameter.spelling(), opt_actual->spelling()));
 			if (b_element && hasArrayShape(rt_element)) {
-				const TokenSpan   ts_argument = ca_arg.get_span();
+				const TokenSpan   ts_argument = ca_arg.getSpan();
 				const std::string s_outer     = rt_shape.suffixes.back();
 				rt_shape = refineShape(rt_shape.element(), bc_operand.shapeOf(*ca_arg.expression, *opt_actual), &ts_argument);
 				rt_shape.suffixes.push_back(s_outer);
@@ -175,8 +186,8 @@ ExpressionInfo BodyChecker::mutateArray (const MemberCallExpression &call, const
 		if (opt_place) {
 			invalidate(opt_place->place, true);
 			if (opt_place->place.path.empty()) {
-				if (we_capture) we_capture->places.insert({ opt_place->place.root, {}, PlaceFact::CurrentShape });
-				receiveShape(*opt_place->place.root, rt_array, rt_shape, call.get_span());
+				if (we_capture) we_capture->places.insert({ .root = opt_place->place.root, .path = {}, .fact = PlaceFact::CurrentShape });
+				receiveShape(*opt_place->place.root, rt_array, rt_shape, call.getSpan());
 			}
 		}
 		if (!opt_place || sharedPlace(opt_place->place)) forgetShared(true);

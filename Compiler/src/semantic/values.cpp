@@ -3,9 +3,27 @@
 // See Documentation/language/expressions/Access.rst
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <exception>
 #include <format>
+#include <functional>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
+#include <ast/decl/enum_declaration.hpp>
+#include <ast/expr/expression.hpp>
+#include <ast/expr/expressions.hpp>
+#include <ast/expr/provider_expressions.hpp>
+#include <ast/expr/struct_expressions.hpp>
+#include <diagnostics.hpp>
+#include <semantic/checked_program.hpp>
 #include <semantic/checker.hpp>
+#include <semantic/symbol_table.hpp>
+#include <token/token.hpp>
 
 namespace cloth::semantic {
 namespace {
@@ -28,7 +46,7 @@ template <typename Visit> void enumConstant (const Expression &expression, const
 }
 
 IntegerConstant countConstant (std::uint64_t value) {
-	IntegerConstant result{ { static_cast<std::uint32_t>(value) } };
+	IntegerConstant result{ .magnitude = { static_cast<std::uint32_t>(value) } };
 	if (value >> 32) result.magnitude.push_back(static_cast<std::uint32_t>(value >> 32));
 	return result;
 }
@@ -48,12 +66,12 @@ ResolvedType formatElement (ResolvedType type) {
 
 bool hasStorageSize (const Analyzer &analyzer, const ResolvedType &type) {
 	const ResolvedType rt_payload = type.nullable() ? type.element() : type;
-	return rt_payload.integer() || rt_payload.floating() || rt_payload == ResolvedType(kBoolean) || rt_payload == ResolvedType(kCharacter) ||
-	       (type.nullable() && (analyzer.referenceType(rt_payload) || enumeration(rt_payload) || rt_payload == ResolvedType(kTypeinfo)));
+	return rt_payload.integer() || rt_payload.floating() || rt_payload == ResolvedType(KBoolean) || rt_payload == ResolvedType(KCharacter) ||
+	       (type.nullable() && (analyzer.referenceType(rt_payload) || enumeration(rt_payload) || rt_payload == ResolvedType(KTypeinfo)));
 }
 
 [[noreturn]] void invalidDefaultFormatter (const TokenSpan &receiver, const Token &parameter) {
-	fail(Code::INVALID_PARAMETER_DEFAULT, receiver, "A default cannot call a formatter through a read-only receiver", &parameter);
+	fail(Code::InvalidParameterDefault, receiver, "A default cannot call a formatter through a read-only receiver", &parameter);
 }
 }
 
@@ -82,7 +100,7 @@ void Analyzer::checkFormatterDefault (const ResolvedType &element, const TokenSp
 	if (v_bounds.empty()) return;
 	if (hasFormatterClass(v_bounds)) invalidDefaultFormatter(receiver, parameter);
 	// Later bodies and generic instances can introduce another formatter for these bounds.
-	if (record) v_formatterDefaults.push_back({ std::move(v_bounds), receiver, &parameter, {} });
+	if (record) v_formatterDefaults.push_back({ .bounds = std::move(v_bounds), .receiver = receiver, .parameter = &parameter, .followingError = {} });
 }
 
 bool Analyzer::checkDefaultExpression (const std::function<bool()> &check) {
@@ -106,13 +124,14 @@ void Analyzer::checkFormatterDefaults () const {
 
 std::optional<ProviderSelection> BodyChecker::textConversion (const ResolvedType &type) const {
 	const ResolvedType           rt_element = formatElement(type);
-	ProviderSelection            ps_format{ ProviderKind::Format, type, false };
+	ProviderSelection            ps_format{ .kind = ProviderKind::Format, .receiver = type, .typeReceiver = false };
 	const std::vector<Candidate> v_providers = dataProviders(analyzer, rt_element, provider::S_STRING);
 	for (const Candidate &c_formatter : v_providers) {
 		if (!analyzer.declarations.at(c_formatter.symbol).parameters.empty()) continue;
 		const Symbol *sym_owner  = analyzer.declarations.at(c_formatter.symbol).owner;
 		ps_format.callsFormatter = true;
-		ps_format.formatter      = MethodRef{ c_formatter.symbol, analyzer.substitute(analyzer.ownerType(*sym_owner), c_formatter.arguments) };
+		ps_format.formatter =
+		        MethodRef{ .symbol = c_formatter.symbol, .owner = analyzer.substitute(analyzer.ownerType(*sym_owner), c_formatter.arguments) };
 		return ps_format;
 	}
 	if (analyzer.referenceType(rt_element)) {
@@ -121,8 +140,8 @@ std::optional<ProviderSelection> BodyChecker::textConversion (const ResolvedType
 		});
 		return ps_format;
 	}
-	if (enumeration(rt_element) || analyzer.numeric(rt_element) || rt_element == ResolvedType(kBoolean) || rt_element == ResolvedType(kCharacter) ||
-	    rt_element == ResolvedType(kString) || rt_element == ResolvedType(kTypeinfo) || rt_element == ResolvedType(kNull))
+	if (enumeration(rt_element) || analyzer.numeric(rt_element) || rt_element == ResolvedType(KBoolean) || rt_element == ResolvedType(KCharacter) ||
+	    rt_element == ResolvedType(KString) || rt_element == ResolvedType(KTypeinfo) || rt_element == ResolvedType(KNull))
 		return ps_format;
 	return {};
 }
@@ -130,20 +149,20 @@ std::optional<ProviderSelection> BodyChecker::textConversion (const ResolvedType
 bool BodyChecker::formatterMayRun (const Expression &receiver, const ResolvedType &type, bool declared) {
 	if (!readOnlyDefaultRoot(receiver)) return true;
 	const ResolvedType rt_element = formatElement(type);
-	if (declared && !rt_element.parameter) invalidDefaultFormatter(receiver.get_span(), pd_default->name);
-	analyzer.checkFormatterDefault(rt_element, receiver.get_span(), pd_default->name, record);
+	if (declared && !rt_element.parameter) invalidDefaultFormatter(receiver.getSpan(), pd_default->name);
+	analyzer.checkFormatterDefault(rt_element, receiver.getSpan(), pd_default->name, record);
 	return false;
 }
 
 void BodyChecker::applyTextConversion (const Expression &receiver, ProviderSelection &format) {
 	if (!format.callsFormatter) return;
 	if (!formatterMayRun(receiver, format.receiver, format.formatter.has_value())) {
-		format = ProviderSelection{ ProviderKind::Format, format.receiver, false };
+		format = ProviderSelection{ .kind = ProviderKind::Format, .receiver = format.receiver, .typeReceiver = false };
 		return;
 	}
 	if (record && format.formatter) {
 		format.formatterInstance =
-		        analyzer.useCallable(*format.formatter->symbol, analyzer.argumentsOf(format.formatter->owner), context, receiver.get_span());
+		        analyzer.useCallable(*format.formatter->symbol, analyzer.argumentsOf(format.formatter->owner), context, receiver.getSpan());
 	}
 	invalidateShared();
 }
@@ -157,54 +176,56 @@ bool BodyChecker::bindText (const Expression &operand, const ResolvedType &type)
 }
 
 void BodyChecker::enumValue (const EnumFieldDeclaration &field, const Expression &value, const Token *caseName) {
-	const std::string   subject = std::format("{} for '{}{}{}'", caseName ? "Case '" + caseName->get_lexeme() + "'" : "Default", owner->name.get_lexeme(),
-	                                          to_string(oDot), field.name.get_lexeme());
+	const std::string   subject = std::format("{} for '{}{}{}'", caseName ? "Case '" + caseName->getLexeme() + "'" : "Default", owner->name.getLexeme(),
+	                                          toString(ODot), field.name.getLexeme());
 	const std::function error   = [&] (const Expression &expression, std::string message, Code code) {
-                std::vector<cde::SourceLabel> v_labels{ { expression.get_span(), message }, { field.type.get_span(), "payload field type declared here" } };
-                if (caseName) v_labels.push_back({ caseName->get_span(), "enum case declared here" });
+                std::vector<cde::SourceLabel> v_labels{ { .span = expression.getSpan(), .text = message },
+			                                  { .span = field.type.getSpan(), .text = "payload field type declared here" } };
+                if (caseName) v_labels.push_back({ .span = caseName->getSpan(), .text = "enum case declared here" });
                 throw cde::ClothDiagnostic(code, subject + " " + message, std::move(v_labels));
 	};
 	enumConstant(value, [&] (const Expression &expression, bool valid) {
-		if (!valid) error(expression, "requires a constant literal or explicit cast", Code::INVALID_ENUM_MEMBER);
+		if (!valid) error(expression, "requires a constant literal or explicit cast", Code::InvalidEnumMember);
 	});
 	const ResolvedType                rt_required = bodyType(field.type);
 	const std::optional<ResolvedType> opt_actual  = scalar(value, &rt_required);
 	if (!opt_actual || !analyzer.accepts(rt_required, *opt_actual))
-		error(value, "requires " + rt_required.spelling() + ", found " + (opt_actual ? opt_actual->spelling() : "no value"), Code::INVALID_ENUM_MEMBER);
+		error(value, "requires " + rt_required.spelling() + ", found " + (opt_actual ? opt_actual->spelling() : "no value"), Code::InvalidEnumMember);
 	if (record)
 		enumConstant(value, [&] (const Expression &expression, bool) {
 			if (bf_facts.expressions.at(&expression).invalidNumericCast)
-				error(expression, "contains a numeric conversion outside the destination type", Code::INVALID_CAST);
+				error(expression, "contains a numeric conversion outside the destination type", Code::InvalidCast);
 		});
 }
 
 ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node) {
 	std::optional<Receiver> opt_receiver = receiver(*node.receiver);
 	if (!opt_receiver || !opt_receiver->fallsThrough) return ExpressionInfo::never();
-	const std::string  &s_name = node.name.get_name_key();
+	const std::string  &s_name = node.name.getNameKey();
 	const ResolvedType &type   = opt_receiver->type;
-	if (type == ResolvedType(kNull))
-		throw IntrinsicDiagnostic(Code::EXPLICIT_NULLABLE_TYPE, "A provider needs a typed receiver",
-		                          { { node.receiver->get_span(), "no payload type" } });
+	if (type == ResolvedType(KNull))
+		throw IntrinsicDiagnostic(Code::ExplicitNullableType, "A provider needs a typed receiver",
+		                          { { .span = node.receiver->getSpan(), .text = "no payload type" } });
 	const std::function rejectForm = [&] {
-		fail(Code::INVALID_PROVIDER_RECEIVER, node.name.get_span(), "Provider '" + node.name.get_lexeme() + "' is unavailable on this receiver form");
+		fail(Code::InvalidProviderReceiver, node.name.getSpan(), "Provider '" + node.name.getLexeme() + "' is unavailable on this receiver form");
 	};
 	const std::function requirePresent = [&] {
 		if (type.nullable() && !opt_receiver->isType)
-			fail(Code::NULLABLE_PAYLOAD_ACCESS, node.name.get_span(), "Provider '" + node.name.get_lexeme() + "' requires a present value");
+			fail(Code::NullablePayloadAccess, node.name.getSpan(), "Provider '" + node.name.getLexeme() + "' requires a present value");
 	};
 	const std::function selection = [&] (ProviderKind kind, ResolvedType result) {
-		return ExpressionInfo{ .types = { std::move(result) }, .provider = ProviderSelection{ kind, type, opt_receiver->isType } };
+		return ExpressionInfo{ .types    = { std::move(result) },
+			               .provider = ProviderSelection{ .kind = kind, .receiver = type, .typeReceiver = opt_receiver->isType } };
 	};
 	const std::vector<Candidate> v_candidates = dataProviders(analyzer, type, s_name);
 	if (!v_candidates.empty()) {
 		if (opt_receiver->isType) rejectForm();
 		if (s_name == provider::S_STRING && !formatterMayRun(*node.receiver, type, true)) {
 			// A bound can declare the provider even when no class satisfies the whole intersection.
-			bindCall(node.name, node.get_span(), {}, v_candidates);
-			return selection(ProviderKind::Format, ResolvedType(kString));
+			bindCall(node.name, node.getSpan(), {}, v_candidates);
+			return selection(ProviderKind::Format, ResolvedType(KString));
 		}
-		ExpressionInfo result = invoke(node.name, node.get_span(), {}, v_candidates);
+		ExpressionInfo result = invoke(node.name, node.getSpan(), {}, v_candidates);
 		mutatingReceiver(*node.receiver, type);
 		return result;
 	}
@@ -219,7 +240,7 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 	}
 	const ResolvedType payload = type.nullable() ? type.element() : type;
 	if (s_name == provider::S_TYPE) {
-		ExpressionInfo result  = selection(ProviderKind::Type, ResolvedType(kTypeinfo));
+		ExpressionInfo result  = selection(ProviderKind::Type, ResolvedType(KTypeinfo));
 		result.representedType = type;
 		return result;
 	}
@@ -233,20 +254,20 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 	if (s_name == provider::S_SIZE) {
 		if (payload.array()) {
 			requirePresent();
-			ExpressionInfo result = selection(ProviderKind::ArraySize, ResolvedType(kUsize));
+			ExpressionInfo result = selection(ProviderKind::ArraySize, ResolvedType(KUsize));
 			if (const std::optional<std::uint64_t> opt_extent = payload.arrayExtent())
 				result.numericConstant = countConstant(*opt_extent);
 			else if (opt_receiver->isType)
 				rejectForm();
 			return result;
 		}
-		if (payload == ResolvedType(kString)) {
+		if (payload == ResolvedType(KString)) {
 			requirePresent();
 			if (opt_receiver->isType) rejectForm();
-			return selection(ProviderKind::StringSize, ResolvedType(kUsize));
+			return selection(ProviderKind::StringSize, ResolvedType(KUsize));
 		}
 		if (hasStorageSize(analyzer, type)) {
-			ExpressionInfo result = selection(ProviderKind::StorageSize, ResolvedType(kUsize));
+			ExpressionInfo result = selection(ProviderKind::StorageSize, ResolvedType(KUsize));
 			if (!type.nullable()) result.numericConstant = countConstant(analyzer.program.storageLayout(type).value().size);
 			return result;
 		}
@@ -256,21 +277,21 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 			if (opt_receiver->isType) rejectForm();
 			requirePresent();
 			applyTextConversion(*node.receiver, *opt_format);
-			return { .types = { ResolvedType(kString) }, .provider = opt_format };
+			return { .types = { ResolvedType(KString) }, .provider = opt_format };
 		}
 	}
 	if (const EnumDeclaration *ed_enum = enumeration(payload); ed_enum && (s_name == provider::S_NAME || s_name == provider::S_VALUES)) {
 		requirePresent();
 		if (s_name == provider::S_NAME) {
 			if (opt_receiver->isType) rejectForm();
-			return selection(ProviderKind::EnumName, ResolvedType(kString));
+			return selection(ProviderKind::EnumName, ResolvedType(KString));
 		}
 		if (!opt_receiver->isType) rejectForm();
 		ResolvedType values = payload;
 		values.suffixes.push_back(arraySuffix(std::to_string(ed_enum->cases.size())));
 		return selection(ProviderKind::EnumValues, std::move(values));
 	}
-	if (payload == ResolvedType(kTypeinfo)) {
+	if (payload == ResolvedType(KTypeinfo)) {
 		using namespace provider;
 		static constexpr std::pair<std::string_view, MetadataQuery> V_QUERIES[] = {
 			{ S_ELEMENT, MetadataQuery::Element },       { S_EXTENT, MetadataQuery::Extent },
@@ -285,7 +306,7 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 			const MetadataQuery mq_query  = mq_entry.second;
 			const bool          b_element = mq_query == MetadataQuery::Element;
 			const bool          b_count = mq_query == MetadataQuery::Extent || mq_query == MetadataQuery::Width || mq_query == MetadataQuery::Rank;
-			ExpressionInfo      ei_result = selection(ProviderKind::Metadata, ResolvedType(b_element ? kTypeinfo : b_count ? kUsize : kBoolean));
+			ExpressionInfo      ei_result = selection(ProviderKind::Metadata, ResolvedType(b_element ? KTypeinfo : b_count ? KUsize : KBoolean));
 			ei_result.provider->metadata  = mq_query;
 			if (opt_receiver->represented) {
 				const ResolvedType rt_subject = opt_receiver->represented->nullable() ? opt_receiver->represented->element() :
@@ -298,14 +319,14 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 				else if (mq_query == MetadataQuery::Width && !rt_subject.integer() && !rt_subject.floating())
 					s_requirement = "an integer or floating-point type";
 				if (!s_requirement.empty())
-					fail(Code::INVALID_METADATA_ACCESS, node.name.get_span(),
-					     std::format("Type metadata {}{} requires {}, got '{}'", to_string(oColonColon), s_name, s_requirement,
+					fail(Code::InvalidMetadataAccess, node.name.getSpan(),
+					     std::format("Type metadata {}{} requires {}, got '{}'", toString(OColonColon), s_name, s_requirement,
 					                 rt_subject.spelling()));
 				if (b_element) ei_result.representedType = rt_subject.element();
 			}
 			return ei_result;
 		}
 	}
-	fail(Code::UNKNOWN_PROVIDER, node.name.get_span(), "Unknown provider '" + node.name.get_lexeme() + "' on " + type.spelling());
+	fail(Code::UnknownProvider, node.name.getSpan(), "Unknown provider '" + node.name.getLexeme() + "' on " + type.spelling());
 }
 }

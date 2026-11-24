@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <algorithm>
+#include <cstddef>
 #include <format>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include <token/token.hpp>
 #include <util/unicode_identifier.hpp>
@@ -21,7 +24,7 @@ Token::Token (std::string lexeme, TokenType type, TokenSpan span) : t_span(std::
 	}
 }
 
-std::string_view to_string (const TokenType type) {
+std::string_view toString (const TokenType type) {
 	switch (type) {
 	case TokenType::EndOfFile:
 		return "EndOfFile";
@@ -59,105 +62,105 @@ std::string_view to_string (const TokenType type) {
 	return "Invalid";
 }
 
-std::string_view to_string (const Keyword keyword) {
+std::string_view toString (const Keyword keyword) {
 	switch (keyword) {
-	case kMod:
+	case KMod:
 		return "mod";
-	case kDef:
+	case KDef:
 		return "def";
-	case kTypeDef:
+	case KTypeDef:
 		return "typedef";
-	case kUsing:
+	case KUsing:
 		return "using";
-	case kSelf:
+	case KSelf:
 		return "self";
-	case kReturn:
+	case KReturn:
 		return "return";
-	case kConst:
+	case KConst:
 		return "const";
-	case kDefault:
+	case KDefault:
 		return "default";
-	case kInterop:
+	case KInterop:
 		return "interop";
-	case kNew:
+	case KNew:
 		return "new";
-	case kDelete:
+	case KDelete:
 		return "delete";
-	case kFinal:
+	case KFinal:
 		return "final";
-	case kOpt:
+	case KOpt:
 		return "opt";
-	case kClass:
+	case KClass:
 		return "class";
-	case kStruct:
+	case KStruct:
 		return "struct";
-	case kEnum:
+	case KEnum:
 		return "enum";
-	case kInterface:
+	case KInterface:
 		return "interface";
-	case kMt:
+	case KMt:
 		return "mt";
-	case kOverride:
+	case KOverride:
 		return "override";
-	case kVirtual:
+	case KVirtual:
 		return "virtual";
-	case kOperator:
+	case KOperator:
 		return "operator";
-	case kRange:
+	case KRange:
 		return "range";
-	case kAuto:
+	case KAuto:
 		return "auto";
-	case kFn:
+	case KFn:
 		return "fn";
-	case kPublic:
+	case KPublic:
 		return "pub";
-	case kBoolean:
+	case KBoolean:
 		return "bool";
-	case kString:
+	case KString:
 		return "string";
-	case kFloat:
+	case KFloat:
 		return "float";
-	case kInteger:
+	case KInteger:
 		return "int";
-	case kCharacter:
+	case KCharacter:
 		return "char";
-	case kVoid:
+	case KVoid:
 		return "void";
-	case kTypeinfo:
+	case KTypeinfo:
 		return "typeinfo";
-	case kState:
+	case KState:
 		return "state";
-	case kTrue:
+	case KTrue:
 		return "true";
-	case kFalse:
+	case KFalse:
 		return "false";
-	case kNull:
+	case KNull:
 		return "null";
-	case kUnsigned:
+	case KUnsigned:
 		return "unsigned";
-	case kUsize:
+	case KUsize:
 		return "usize";
-	case kIsize:
+	case KIsize:
 		return "isize";
-	case kInit:
+	case KInit:
 		return "init";
-	case kIf:
+	case KIf:
 		return "if";
-	case kElse:
+	case KElse:
 		return "else";
-	case kIs:
+	case KIs:
 		return "is";
-	case kFor:
+	case KFor:
 		return "for";
-	case kWhile:
+	case KWhile:
 		return "while";
-	case kDo:
+	case KDo:
 		return "do";
-	case kContinue:
+	case KContinue:
 		return "continue";
-	case kBreak:
+	case KBreak:
 		return "break";
-	case kIntrinsic:
+	case KIntrinsic:
 		return "intrinsic";
 	default:
 		return "error";
@@ -165,14 +168,14 @@ std::string_view to_string (const Keyword keyword) {
 	return "";
 }
 
-std::string to_stringmulti (const std::vector<Keyword> &keywords) {
+std::string toStringmulti (const std::vector<Keyword> &keywords) {
 	if (keywords.empty()) {
 		return {};
 	}
 
 	std::size_t st_total = keywords.size() - 1;
 	for (const Keyword k_keyword : keywords) {
-		st_total += to_string(k_keyword).size();
+		st_total += toString(k_keyword).size();
 	}
 
 	std::string s_result;
@@ -181,14 +184,14 @@ std::string to_stringmulti (const std::vector<Keyword> &keywords) {
 		if (!s_result.empty()) {
 			s_result += ' ';
 		}
-		s_result += to_string(k_keyword);
+		s_result += toString(k_keyword);
 	}
 
 	return s_result;
 }
 
 bool isReserved (Keyword keyword) {
-	return keyword != kRange && keyword != kAuto && keyword != kIntrinsic && keyword != kError;
+	return keyword != KRange && keyword != KAuto && keyword != KIntrinsic && keyword != KError;
 }
 
 namespace {
@@ -200,120 +203,120 @@ struct OperatorInfo {
 };
 
 constexpr std::pair<Operator, Operator> COMPOUND_ASSIGNMENTS[] = {
-	{ oPlusEqual, oPlus }, { oMinusEqual, oMinus }, { oMulEqual, oMul }, { oDivEqual, oDiv }, { oModEqual, oMod },
+	{ OPlusEqual, OPlus }, { OMinusEqual, OMinus }, { OMulEqual, OMul }, { ODivEqual, ODiv }, { OModEqual, OMod },
 };
 
-OperatorInfo operator_info (Operator op) {
+OperatorInfo operatorInfo (Operator op) {
 	switch (op) {
-	case oPlus:
-		return { "+", "PLUS" };
-	case oPlusPlus:
-		return { "++", "PLUS_PLUS" };
-	case oPlusEqual:
-		return { "+=", "PLUS_EQUAL" };
-	case oMinus:
-		return { "-", "MINUS" };
-	case oMinusMinus:
-		return { "--", "MINUS_MINUS" };
-	case oMinusEqual:
-		return { "-=", "MINUS_EQUAL" };
-	case oMul:
-		return { "*", "MULTIPLY" };
-	case oMulMul:
-		return { "**", "MUL_MUL" };
-	case oMulEqual:
-		return { "*=", "MUL_EQUAL" };
-	case oDiv:
-		return { "/", "DIVIDE" };
-	case oDivEqual:
-		return { "/=", "DIV_EQUAL" };
-	case oMod:
-		return { "%", "MODULO" };
-	case oModEqual:
-		return { "%=", "MOD_EQUAL" };
-	case oAssign:
-		return { "=", "ASSIGN" };
-	case oFinalAssign:
-		return { ":=", "FINAL_ASSIGN" };
-	case oEqual:
-		return { "==", "EQUAL" };
-	case oIdentity:
-		return { "===", "IDENTITY" };
-	case oNotEqual:
-		return { "!=", "NOT_EQUAL" };
-	case oNot:
-		return { "!", "NOT" };
-	case oAnd:
-		return { "&&", "AND" };
-	case oAmpersand:
-		return { "&", "AMPERSAND" };
-	case oOr:
-		return { "||", "OR" };
-	case oGreater:
-		return { ">", "GREATER" };
-	case oLess:
-		return { "<", "LESS" };
-	case oGreaterEqual:
-		return { ">=", "GREATER_EQUAL" };
-	case oLessEqual:
-		return { "<=", "LESS_EQUAL" };
-	case oPointerRight:
-		return { "->", "POINTER_RIGHT" };
-	case oPointerLeft:
-		return { "<-", "POINTER_LEFT" };
-	case oQuestion:
-		return { "?", "QUESTION" };
-	case oSafeDot:
-		return { "?.", "SAFE_DOT" };
-	case oElvis:
-		return { "?:", "ELVIS" };
-	case oRange:
-		return { "..", "RANGE" };
-	case oRangeInclusive:
-		return { "..=", "RANGE_INCLUSIVE" };
-	case oParenOpen:
-		return { "(", "PAREN_OPEN" };
-	case oParenClose:
-		return { ")", "PAREN_CLOSE" };
-	case oBraceOpen:
-		return { "{", "BRACE_OPEN" };
-	case oBraceClose:
-		return { "}", "BRACE_CLOSE" };
-	case oBracketOpen:
-		return { "[", "BRACKET_OPEN" };
-	case oBracketClose:
-		return { "]", "BRACKET_CLOSE" };
-	case oComma:
-		return { ",", "COMMA" };
-	case oDot:
-		return { ".", "DOT" };
-	case oColon:
-		return { ":", "COLON" };
-	case oBacktick:
-		return { "`", "BACKTICK" };
-	case oQuotation:
-		return { "'", "QUOTATION" };
-	case oDoubleQuotation:
-		return { "\"", "DOUBLE_QUOTATION" };
-	case oTilde:
-		return { "~", "TILDE" };
-	case oPound:
-		return { "#", "POUND" };
-	case oColonColon:
-		return { "::", "COLON_COLON" };
-	case oSemicolon:
-		return { ";", "SEMICOLON" };
-	case oUnderscore:
-		return { "_", "UNDERSCORE" };
-	case oIndexRead:
-		return { "[]", "INDEX_READ", false };
-	case oIndexValidate:
-		return { "[]?", "INDEX_VALIDATE", false };
-	case oIndexWrite:
-		return { "[]=", "INDEX_WRITE", false };
-	case oForeach:
-		return { "foreach", "FOREACH", false };
-	case oError:
+	case OPlus:
+		return { .spelling="+", .name="PLUS" };
+	case OPlusPlus:
+		return { .spelling="++", .name="PLUS_PLUS" };
+	case OPlusEqual:
+		return { .spelling="+=", .name="PLUS_EQUAL" };
+	case OMinus:
+		return { .spelling="-", .name="MINUS" };
+	case OMinusMinus:
+		return { .spelling="--", .name="MINUS_MINUS" };
+	case OMinusEqual:
+		return { .spelling="-=", .name="MINUS_EQUAL" };
+	case OMul:
+		return { .spelling="*", .name="MULTIPLY" };
+	case OMulMul:
+		return { .spelling="**", .name="MUL_MUL" };
+	case OMulEqual:
+		return { .spelling="*=", .name="MUL_EQUAL" };
+	case ODiv:
+		return { .spelling="/", .name="DIVIDE" };
+	case ODivEqual:
+		return { .spelling="/=", .name="DIV_EQUAL" };
+	case OMod:
+		return { .spelling="%", .name="MODULO" };
+	case OModEqual:
+		return { .spelling="%=", .name="MOD_EQUAL" };
+	case OAssign:
+		return { .spelling="=", .name="ASSIGN" };
+	case OFinalAssign:
+		return { .spelling=":=", .name="FINAL_ASSIGN" };
+	case OEqual:
+		return { .spelling="==", .name="EQUAL" };
+	case OIdentity:
+		return { .spelling="===", .name="IDENTITY" };
+	case ONotEqual:
+		return { .spelling="!=", .name="NOT_EQUAL" };
+	case ONot:
+		return { .spelling="!", .name="NOT" };
+	case OAnd:
+		return { .spelling="&&", .name="AND" };
+	case OAmpersand:
+		return { .spelling="&", .name="AMPERSAND" };
+	case OOr:
+		return { .spelling="||", .name="OR" };
+	case OGreater:
+		return { .spelling=">", .name="GREATER" };
+	case OLess:
+		return { .spelling="<", .name="LESS" };
+	case OGreaterEqual:
+		return { .spelling=">=", .name="GREATER_EQUAL" };
+	case OLessEqual:
+		return { .spelling="<=", .name="LESS_EQUAL" };
+	case OPointerRight:
+		return { .spelling="->", .name="POINTER_RIGHT" };
+	case OPointerLeft:
+		return { .spelling="<-", .name="POINTER_LEFT" };
+	case OQuestion:
+		return { .spelling="?", .name="QUESTION" };
+	case OSafeDot:
+		return { .spelling="?.", .name="SAFE_DOT" };
+	case OElvis:
+		return { .spelling="?:", .name="ELVIS" };
+	case ORange:
+		return { .spelling="..", .name="RANGE" };
+	case ORangeInclusive:
+		return { .spelling="..=", .name="RANGE_INCLUSIVE" };
+	case OParenOpen:
+		return { .spelling="(", .name="PAREN_OPEN" };
+	case OParenClose:
+		return { .spelling=")", .name="PAREN_CLOSE" };
+	case OBraceOpen:
+		return { .spelling="{", .name="BRACE_OPEN" };
+	case OBraceClose:
+		return { .spelling="}", .name="BRACE_CLOSE" };
+	case OBracketOpen:
+		return { .spelling="[", .name="BRACKET_OPEN" };
+	case OBracketClose:
+		return { .spelling="]", .name="BRACKET_CLOSE" };
+	case OComma:
+		return { .spelling=",", .name="COMMA" };
+	case ODot:
+		return { .spelling=".", .name="DOT" };
+	case OColon:
+		return { .spelling=":", .name="COLON" };
+	case OBacktick:
+		return { .spelling="`", .name="BACKTICK" };
+	case OQuotation:
+		return { .spelling="'", .name="QUOTATION" };
+	case ODoubleQuotation:
+		return { .spelling="\"", .name="DOUBLE_QUOTATION" };
+	case OTilde:
+		return { .spelling="~", .name="TILDE" };
+	case OPound:
+		return { .spelling="#", .name="POUND" };
+	case OColonColon:
+		return { .spelling="::", .name="COLON_COLON" };
+	case OSemicolon:
+		return { .spelling=";", .name="SEMICOLON" };
+	case OUnderscore:
+		return { .spelling="_", .name="UNDERSCORE" };
+	case OIndexRead:
+		return { .spelling="[]", .name="INDEX_READ", .tokenized=false };
+	case OIndexValidate:
+		return { .spelling="[]?", .name="INDEX_VALIDATE", .tokenized=false };
+	case OIndexWrite:
+		return { .spelling="[]=", .name="INDEX_WRITE", .tokenized=false };
+	case OForeach:
+		return { .spelling="foreach", .name="FOREACH", .tokenized=false };
+	case OError:
 		break;
 	}
 	return { .spelling = "error", .name = "ERROR", .tokenized = false };
@@ -321,21 +324,21 @@ OperatorInfo operator_info (Operator op) {
 
 }
 
-std::string_view to_string (Operator op) {
-	return operator_info(op).spelling;
+std::string_view toString (Operator op) {
+	return operatorInfo(op).spelling;
 }
 
 std::string_view rawStringDelimiter () {
-	static const std::string S_DELIMITER = std::format("{0}{0}{0}", to_string(oDoubleQuotation));
+	static const std::string S_DELIMITER = std::format("{0}{0}{0}", toString(ODoubleQuotation));
 	return S_DELIMITER;
 }
 
 std::optional<Operator> fromCharacter (const std::string_view spelling) {
 	static const std::unordered_map<std::string_view, Operator> M_OPERATORS = [] {
 		std::unordered_map<std::string_view, Operator> m_operators;
-		for (int i_value = oPlus; i_value < oError; ++i_value) {
+		for (int i_value = OPlus; i_value < OError; ++i_value) {
 			const auto o_operator = static_cast<Operator>(i_value);
-			m_operators.emplace(to_string(o_operator), o_operator);
+			m_operators.emplace(toString(o_operator), o_operator);
 		}
 		return m_operators;
 	}();
@@ -345,37 +348,37 @@ std::optional<Operator> fromCharacter (const std::string_view spelling) {
 }
 
 bool isTokenized (const Operator op) {
-	return operator_info(op).tokenized;
+	return operatorInfo(op).tokenized;
 }
 
 bool isNumericPrefix (Operator op) {
-	return op == oPlus || op == oMinus || op == oTilde;
+	return op == OPlus || op == OMinus || op == OTilde;
 }
 
 bool isUpdate (Operator op) {
-	return op == oPlusPlus || op == oMinusMinus ||
+	return op == OPlusPlus || op == OMinusMinus ||
 	       std::ranges::any_of(COMPOUND_ASSIGNMENTS, [op] (const std::pair<Operator, Operator> &assignment) { return assignment.first == op; });
 }
 
 bool isEquality (Operator op) {
-	return op == oEqual || op == oNotEqual || op == oIdentity;
+	return op == OEqual || op == ONotEqual || op == OIdentity;
 }
 
 bool isComparison (Operator op) {
-	return isEquality(op) || op == oLess || op == oGreater || op == oLessEqual || op == oGreaterEqual;
+	return isEquality(op) || op == OLess || op == OGreater || op == OLessEqual || op == OGreaterEqual;
 }
 
-Operator compound_assignment_base (std::string_view spelling) {
+Operator compoundAssignmentBase (std::string_view spelling) {
 	for (const std::pair<Operator, Operator> &oo_assignment : COMPOUND_ASSIGNMENTS) {
-		if (spelling == to_string(oo_assignment.first)) {
+		if (spelling == toString(oo_assignment.first)) {
 			return oo_assignment.second;
 		}
 	}
 	throw std::logic_error("Not a compound assignment: " + std::string(spelling));
 }
 
-std::string_view operator_name (Operator op) {
-	return operator_info(op).name;
+std::string_view operatorName (Operator op) {
+	return operatorInfo(op).name;
 }
 
 }

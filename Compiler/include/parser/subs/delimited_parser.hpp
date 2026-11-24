@@ -25,26 +25,26 @@ class DelimitedParser {
 			std::forward<ParseContents>(parseContents)();
 			expect(close);
 		} else {
-			ParsedContents pc_contents = std::forward<ParseContents>(parseContents)();
+			ParsedContents const pc_contents = std::forward<ParseContents>(parseContents)();
 			expect(close);
 			return pc_contents;
 		}
 	}
 
 	template <typename ParseContents> std::invoke_result_t<ParseContents> angles (ParseContents &&parseContents) {
-		return parse(oLess, oGreater, std::forward<ParseContents>(parseContents));
+		return parse(OLess, OGreater, std::forward<ParseContents>(parseContents));
 	}
 
 	template <typename ParseContents> std::invoke_result_t<ParseContents> parentheses (ParseContents &&parseContents) {
-		return parse(oParenOpen, oParenClose, std::forward<ParseContents>(parseContents));
+		return parse(OParenOpen, OParenClose, std::forward<ParseContents>(parseContents));
 	}
 
 	template <typename ParseContents> std::invoke_result_t<ParseContents> brackets (ParseContents &&parseContents) {
-		return parse(oBracketOpen, oBracketClose, std::forward<ParseContents>(parseContents));
+		return parse(OBracketOpen, OBracketClose, std::forward<ParseContents>(parseContents));
 	}
 
 	template <typename ParseContents> std::invoke_result_t<ParseContents> braces (ParseContents &&parseContents) {
-		return parse(oBraceOpen, oBraceClose, std::forward<ParseContents>(parseContents));
+		return parse(OBraceOpen, OBraceClose, std::forward<ParseContents>(parseContents));
 	}
 
 	/** Parses zero or more items and leaves the closing token for the caller. */
@@ -67,7 +67,7 @@ class DelimitedParser {
 			if (at(close) || endAfterItem()) {
 				break;
 			}
-			expect(oComma);
+			expect(OComma);
 			skipNewLines();
 		}
 		return v_items;

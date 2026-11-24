@@ -19,8 +19,8 @@ struct StructFieldDeclaration {
 	Token                name;
 	std::optional<Token> visibility = std::nullopt;
 
-	[[nodiscard]] TokenSpan get_span () const {
-		return TokenSpan::span_through(visibility ? visibility->get_span() : type.get_span(), name.get_span());
+	[[nodiscard]] TokenSpan getSpan () const {
+		return TokenSpan::spanThrough(visibility ? visibility->getSpan() : type.getSpan(), name.getSpan());
 	}
 };
 
@@ -41,7 +41,7 @@ struct MethodDeclaration : CallableDeclaration, StateMember {
 	                   const std::optional<TokenSpan> &overridePrefix = std::nullopt, const std::optional<TokenSpan> &virtualPrefix = std::nullopt,
 	                   std::optional<TypeParameterList> typeParameters = std::nullopt) :
 	        CallableDeclaration(keyword, name, std::move(parameters), std::move(body),
-	                            visibility ? visibility->get_span() : virtualPrefix.value_or(overridePrefix.value_or(keyword.get_span())),
+	                            visibility ? visibility->getSpan() : virtualPrefix.value_or(overridePrefix.value_or(keyword.getSpan())),
 	                            std::move(returnTypes), visibility),
 	        operatorMember(std::move(operatorMember)),
 	        overridePrefix(overridePrefix),
@@ -49,7 +49,7 @@ struct MethodDeclaration : CallableDeclaration, StateMember {
 	        typeParameters(std::move(typeParameters)) {
 	}
 
-	[[nodiscard]] TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan getSpan () const override {
 		return span;
 	}
 };

@@ -13,8 +13,7 @@
 #include <ast/decl/struct_declaration.hpp>
 #include <ast/expr/expression.hpp>
 #include <ast/type/type_reference.hpp>
-#include <cde/generic_errors.hpp>
-#include <cde/syntax_errors.hpp>
+#include <diagnostics.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/enum_parser.hpp>
@@ -27,13 +26,13 @@ namespace cloth {
 
 EnumDeclaration EnumParser::parse (const Token &keyword, std::optional<Token> visibility) const {
 	const Token t_name = p_parser.expect(TokenType::Identifier, "an enum name");
-	if (at(oLess)) {
+	if (at(OLess)) {
 		throw cde::GenericErrors::syntax("Enum type parameters", p_parser.peek());
 	}
 	std::vector<EnumFieldDeclaration> v_fields;
-	if (at(oParenOpen)) {
+	if (at(OParenOpen)) {
 		v_fields = p_parser.p_delimitedParser.parentheses([this] () -> std::vector<EnumFieldDeclaration> {
-			return p_parser.p_delimitedParser.commaSeparated(oParenClose, [this] () -> EnumFieldDeclaration { return parseField(); });
+			return p_parser.p_delimitedParser.commaSeparated(OParenClose, [this] () -> EnumFieldDeclaration { return parseField(); });
 		});
 	}
 
@@ -47,25 +46,25 @@ EnumDeclaration EnumParser::parse (const Token &keyword, std::optional<Token> vi
 			v_nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 		}
 		v_cases = p_parser.p_delimitedParser.commaSeparated(
-		        oBraceClose, [this] () -> bool { return at(oSemicolon) || p_parser.startsTypeDeclaration(); },
+		        OBraceClose, [this] () -> bool { return at(OSemicolon) || p_parser.startsTypeDeclaration(); },
 		        [this] () -> EnumCaseDeclaration { return parseCase(); });
 		if (v_cases.empty()) {
 			throw cde::SyntaxErrors::expected("at least one enum case", p_parser.peek());
 		}
-		if (!at(oBraceClose)) {
-			p_parser.expect(oSemicolon);
+		if (!at(OBraceClose)) {
+			p_parser.expect(OSemicolon);
 			p_parser.skipNewLines();
 			v_operators = parseMembers(v_nestedTypes);
 		}
 	});
-	const TokenSpan ts_span = TokenSpan::span_through((visibility ? *visibility : keyword).get_span(), p_parser.previous().get_span());
+	const TokenSpan ts_span = TokenSpan::spanThrough((visibility ? *visibility : keyword).getSpan(), p_parser.previous().getSpan());
 	return { keyword, t_name, std::move(visibility), std::move(v_fields), std::move(v_cases), std::move(v_operators), ts_span, std::move(v_nestedTypes) };
 }
 
 EnumFieldDeclaration EnumParser::parseField () const {
 	std::optional<Token> opt_visibility = p_parser.parseVisibility();
-	if (!p_parser.atKeyword(kDef)) {
-		throw cde::SyntaxErrors::expected(std::format("'{}' for an enum payload field", to_string(kDef)), p_parser.peek());
+	if (!p_parser.atKeyword(KDef)) {
+		throw cde::SyntaxErrors::expected(std::format("'{}' for an enum payload field", toString(KDef)), p_parser.peek());
 	}
 	p_parser.advance();
 	TypeReference tr_type = p_parser.p_delimitedParser.angles([this] () -> TypeReference {
@@ -76,7 +75,7 @@ EnumFieldDeclaration EnumParser::parseField () const {
 	});
 	const Token   t_name  = p_parser.expect(TokenType::Identifier, "an enum payload field name");
 	ExpressionPtr ep_defaultValue;
-	if (at(oAssign)) {
+	if (at(OAssign)) {
 		p_parser.advance();
 		ep_defaultValue = value();
 	}
@@ -87,9 +86,9 @@ EnumCaseDeclaration EnumParser::parseCase () const {
 	std::optional<Token>       opt_visibility = p_parser.parseVisibility();
 	const Token                t_name         = p_parser.expect(TokenType::Identifier, "an enum case");
 	std::vector<ExpressionPtr> v_values;
-	if (at(oParenOpen)) {
+	if (at(OParenOpen)) {
 		v_values = p_parser.p_delimitedParser.parentheses([this] () -> std::vector<ExpressionPtr> {
-			return p_parser.p_delimitedParser.commaSeparated(oParenClose, [this] () -> ExpressionPtr { return value(); });
+			return p_parser.p_delimitedParser.commaSeparated(OParenClose, [this] () -> ExpressionPtr { return value(); });
 		});
 	}
 	return { .name = t_name, .values = std::move(v_values), .visibility = std::move(opt_visibility) };
@@ -97,19 +96,19 @@ EnumCaseDeclaration EnumParser::parseCase () const {
 
 std::vector<MethodDeclaration> EnumParser::parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) const {
 	std::vector<MethodDeclaration> v_operators;
-	while (!at(oBraceClose)) {
+	while (!at(OBraceClose)) {
 		if (p_parser.startsTypeDeclaration()) {
 			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}
 		std::optional<Token> opt_visibility = p_parser.parseVisibility();
-		if (!p_parser.atKeyword(kOperator)) {
-			throw cde::SyntaxErrors::expected(std::format("an '{}' declaration", to_string(kOperator)), p_parser.peek());
+		if (!p_parser.atKeyword(KOperator)) {
+			throw cde::SyntaxErrors::expected(std::format("an '{}' declaration", toString(KOperator)), p_parser.peek());
 		}
 		v_operators.push_back(p_parser.p_functionParser.parseOperator(std::move(opt_visibility)));
-		if (std::holds_alternative<ExpressionBody>(v_operators.back().body.value) && at(oSemicolon)) {
+		if (std::holds_alternative<ExpressionBody>(v_operators.back().body.value) && at(OSemicolon)) {
 			p_parser.advance();
-		} else if (!at(oBraceClose) && p_parser.peek().get_type() != TokenType::NewLine) {
+		} else if (!at(OBraceClose) && p_parser.peek().getType() != TokenType::NewLine) {
 			throw cde::SyntaxErrors::newline(p_parser.peek());
 		}
 		p_parser.skipNewLines();
@@ -122,7 +121,7 @@ ExpressionPtr EnumParser::value () const {
 }
 
 bool EnumParser::at (const Operator op) const {
-	return p_parser.peek().get_lexeme() == to_string(op);
+	return p_parser.peek().getLexeme() == toString(op);
 }
 
 }

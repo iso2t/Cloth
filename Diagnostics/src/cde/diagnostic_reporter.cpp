@@ -28,6 +28,7 @@
 #include <musubi.h>
 
 #include <cde/cloth_diagnostic.hpp>
+#include <cde/diagnostic_code.hpp>
 #include <cde/diagnostic_reporter.hpp>
 #include <file/source_file.hpp>
 
@@ -39,7 +40,7 @@ struct TerminalStyle {
 	bool color;
 };
 
-TerminalStyle terminal_style (const std::ostream &output) {
+TerminalStyle terminalStyle (const std::ostream &output) {
 	if (const char *s_term = std::getenv("TERM"); &output != &std::cerr || (s_term && std::string_view(s_term) == "dumb")) {
 		return {};
 	}
@@ -47,11 +48,14 @@ TerminalStyle terminal_style (const std::ostream &output) {
 	const char *s_noColor = std::getenv("NO_COLOR");
 	const bool  b_color   = !s_noColor || !*s_noColor;
 #ifdef _WIN32
-	DWORD mode;
+	// MinGW's console headers require the types supplied by <windows.h>.
+	// NOLINTBEGIN(misc-include-cleaner)
+	DWORD mode = 0;
 	if (!GetConsoleMode(GetStdHandle(STD_ERROR_HANDLE), &mode)) {
 		return {};
 	}
-	return { GetConsoleOutputCP() == CP_UTF8, b_color && (mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0 };
+	return { .unicode = GetConsoleOutputCP() == CP_UTF8, .color = b_color && (mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0 };
+	// NOLINTEND(misc-include-cleaner)
 #else
 	if (!isatty(STDERR_FILENO)) {
 		return {};
@@ -70,18 +74,18 @@ struct ReportLevel {
 	std::string_view name;
 };
 
-ReportLevel report_level (Severity severity) {
+ReportLevel reportLevel (Severity severity) {
 	switch (severity) {
 	case Severity::Warning:
-		return { MU_WARNING, "Warning" };
+		return { .level=MU_WARNING, .name="Warning" };
 	case Severity::Information:
-		return { MU_CUSTOM_LEVEL, "Information" };
+		return { .level=MU_CUSTOM_LEVEL, .name="Information" };
 	case Severity::Hint:
-		return { MU_CUSTOM_LEVEL, "Hint" };
+		return { .level=MU_CUSTOM_LEVEL, .name="Hint" };
 	case Severity::Error:
-		return { MU_ERROR, "Error" };
+		return { .level=MU_ERROR, .name="Error" };
 	}
-	return { MU_ERROR, "Error" };
+	return { .level=MU_ERROR, .name="Error" };
 }
 
 struct SourceLine {
@@ -97,10 +101,10 @@ struct DisplaySource {
 	mu_Id                   id;
 
 	DisplaySource (const cloth::SourceFile &source, mu_Id id) : id(id) {
-		const auto s_path = source.get_path().u8string();
+		const auto s_path = source.getPath().u8string();
 		name.assign(s_path.begin(), s_path.end());
 
-		const std::string_view input = source.get_contents();
+		const std::string_view input = source.getContents();
 		text.reserve(input.size());
 		std::size_t start = 0;
 		for (;;) {
@@ -110,7 +114,7 @@ struct DisplaySource {
 			if (crlf) {
 				line.remove_suffix(1);
 			}
-			lines.push_back({ text.size(), line.size(), crlf });
+			lines.push_back({ .offset=text.size(), .length=line.size(), .crlf=crlf });
 			text.append(line);
 
 			if (newline == std::string_view::npos) {
@@ -121,7 +125,7 @@ struct DisplaySource {
 		}
 	}
 
-	[[nodiscard]] std::optional<std::size_t> byte_offset (const std::size_t line, const std::size_t column) const {
+	[[nodiscard]] std::optional<std::size_t> byteOffset (const std::size_t line, const std::size_t column) const {
 		if (line == 0 || line > lines.size() || column == 0) {
 			return std::nullopt;
 		}
@@ -145,7 +149,7 @@ mu_Slice slice (std::string_view text) {
 
 using SourceCache = std::unique_ptr<mu_Cache, decltype(&mu_delcache)>;
 
-bool add_source (SourceCache &cache, std::string_view text, std::string_view name) {
+bool addSource (SourceCache &cache, std::string_view text, std::string_view name) {
 	mu_Cache   *updated = cache.get();
 	const auto *source  = mu_addmemory(&updated, slice(text), slice(name));
 	if (updated && updated != cache.get()) {
@@ -156,7 +160,7 @@ bool add_source (SourceCache &cache, std::string_view text, std::string_view nam
 	return source != nullptr;
 }
 
-int append_output (void *output, const char *text, std::size_t length) noexcept {
+int appendOutput (void *output, const char *text, std::size_t length) noexcept {
 	try {
 		static_cast<std::string *>(output)->append(text, length);
 		return MU_OK;
@@ -170,7 +174,7 @@ std::optional<std::string> render (const ClothDiagnostic &diagnostic, const std:
 	std::string                                                  output;
 	mu_Config                                                    config;
 	SourceCache                                                  cache(nullptr, mu_delcache);
-	std::unique_ptr<mu_Report, decltype(&mu_delete)>             report(mu_new(nullptr, nullptr), mu_delete);
+	std::unique_ptr<mu_Report, decltype(&mu_delete)>             const report(mu_new(nullptr, nullptr), mu_delete);
 	if (!report) {
 		return std::nullopt;
 	}
@@ -180,11 +184,11 @@ std::optional<std::string> render (const ClothDiagnostic &diagnostic, const std:
 	config.color      = style.color ? mu_default_color : nullptr;
 	config.index_type = MU_INDEX_BYTE;
 	mu_config(report.get(), &config);
-	mu_title(report.get(), level.level, slice(level.name), slice(diagnostic.get_message()));
+	mu_title(report.get(), level.level, slice(level.name), slice(diagnostic.getMessage()));
 	mu_code(report.get(), slice(code));
 
 	bool first_label = true;
-	for (const auto &label : diagnostic.get_source_labels()) {
+	for (const auto &label : diagnostic.getSourceLabels()) {
 		const auto &span = label.span;
 		if (!span.source) {
 			continue;
@@ -192,12 +196,12 @@ std::optional<std::string> render (const ClothDiagnostic &diagnostic, const std:
 
 		const auto [entry, inserted] = sources.try_emplace(span.source.get(), *span.source, static_cast<mu_Id>(sources.size()));
 		const auto &source           = entry->second;
-		if (inserted && !add_source(cache, source.text, source.name)) {
+		if (inserted && !addSource(cache, source.text, source.name)) {
 			return std::nullopt;
 		}
 
-		const auto start = source.byte_offset(span.startLine, span.startCol);
-		const auto end   = source.byte_offset(span.endLine, span.endCol);
+		const auto start = source.byteOffset(span.startLine, span.startCol);
+		const auto end   = source.byteOffset(span.endLine, span.endCol);
 		if (!start || !end || *start > *end) {
 			continue;
 		}
@@ -210,13 +214,13 @@ std::optional<std::string> render (const ClothDiagnostic &diagnostic, const std:
 	}
 
 	// Musubi requires an initialized cache, including for reports without labels.
-	if (!cache && !add_source(cache, "", "")) {
+	if (!cache && !addSource(cache, "", "")) {
 		return std::nullopt;
 	}
-	if (const auto &guidance = diagnostic.get_guidance()) {
+	if (const auto &guidance = diagnostic.getGuidance()) {
 		mu_help(report.get(), slice(*guidance));
 	}
-	mu_writer(report.get(), append_output, &output);
+	mu_writer(report.get(), appendOutput, &output);
 	if (mu_render(report.get(), cache.get()) != MU_OK) {
 		return std::nullopt;
 	}
@@ -226,15 +230,15 @@ std::optional<std::string> render (const ClothDiagnostic &diagnostic, const std:
 }
 
 void DiagnosticReporter::report (const ClothDiagnostic &diagnostic) const {
-	const auto code  = to_string(diagnostic.get_code());
-	const auto level = report_level(diagnostic.get_severity());
-	if (const auto output = render(diagnostic, code, level, terminal_style(os_output))) {
+	const auto code  = toString(diagnostic.getCode());
+	const auto level = reportLevel(diagnostic.getSeverity());
+	if (const auto output = render(diagnostic, code, level, terminalStyle(os_output))) {
 		os_output << *output;
 		return;
 	}
 
-	os_output << '[' << code << "] " << level.name << ": " << diagnostic.get_message() << '\n';
-	if (const auto &guidance = diagnostic.get_guidance()) {
+	os_output << '[' << code << "] " << level.name << ": " << diagnostic.getMessage() << '\n';
+	if (const auto &guidance = diagnostic.getGuidance()) {
 		os_output << "Help: " << *guidance << '\n';
 	}
 }

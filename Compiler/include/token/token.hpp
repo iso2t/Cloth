@@ -22,12 +22,12 @@ struct TokenSpan {
 	size_t                            endCol;
 	std::shared_ptr<const SourceFile> source = nullptr;
 
-	[[nodiscard]] std::string to_string () const {
+	[[nodiscard]] std::string toString () const {
 		return std::to_string(startLine) + ":" + std::to_string(startCol) + "-" + std::to_string(endLine) + ":" + std::to_string(endCol);
 	}
 
-	static TokenSpan span_through (const TokenSpan &start, const TokenSpan &end) {
-		return { start.startLine, start.startCol, end.endLine, end.endCol, start.source == end.source ? start.source : nullptr };
+	static TokenSpan spanThrough (const TokenSpan &start, const TokenSpan &end) {
+		return { .startLine=start.startLine, .startCol=start.startCol, .endLine=end.endLine, .endCol=end.endCol, .source=start.source == end.source ? start.source : nullptr };
 	}
 };
 
@@ -53,155 +53,155 @@ enum class TokenType {
 };
 
 enum Keyword {
-	kMod,
-	kDef,
-	kTypeDef,
-	kUsing,
-	kSelf,
-	kReturn,
-	kConst,
-	kDefault,
-	kInterop,
+	KMod,
+	KDef,
+	KTypeDef,
+	KUsing,
+	KSelf,
+	KReturn,
+	KConst,
+	KDefault,
+	KInterop,
 
-	kNew,
-	kDelete,
-	kFinal,
-	kOpt,
+	KNew,
+	KDelete,
+	KFinal,
+	KOpt,
 
-	kClass,
-	kStruct,
-	kEnum,
-	kInterface,
+	KClass,
+	KStruct,
+	KEnum,
+	KInterface,
 
-	kMt,
-	kOverride,
-	kVirtual,
-	kOperator,
-	kAuto,
-	kRange,
-	kFn,
-	kPublic,
+	KMt,
+	KOverride,
+	KVirtual,
+	KOperator,
+	KAuto,
+	KRange,
+	KFn,
+	KPublic,
 
-	kBoolean,
-	kString,
-	kFloat,
-	kInteger,
-	kCharacter,
-	kVoid,
-	kTypeinfo,
-	kState,
-	kTrue,
-	kFalse,
-	kNull,
-	kUnsigned,
-	kUsize,
-	kIsize,
+	KBoolean,
+	KString,
+	KFloat,
+	KInteger,
+	KCharacter,
+	KVoid,
+	KTypeinfo,
+	KState,
+	KTrue,
+	KFalse,
+	KNull,
+	KUnsigned,
+	KUsize,
+	KIsize,
 
-	kInit,
+	KInit,
 
-	kIf,
-	kElse,
-	kIs,
+	KIf,
+	KElse,
+	KIs,
 
-	kFor,
-	kWhile,
-	kDo,
-	kContinue,
-	kBreak,
+	KFor,
+	KWhile,
+	KDo,
+	KContinue,
+	KBreak,
 
-	kIntrinsic,
-	kError
+	KIntrinsic,
+	KError
 
 };
 
 enum Operator {
-	oPlus,
-	oPlusPlus,
-	oPlusEqual,
+	OPlus,
+	OPlusPlus,
+	OPlusEqual,
 
-	oMinus,
-	oMinusMinus,
-	oMinusEqual,
+	OMinus,
+	OMinusMinus,
+	OMinusEqual,
 
-	oMul,
-	oMulMul,
-	oMulEqual,
-	oDiv,
-	oDivEqual,
-	oMod,
-	oModEqual,
+	OMul,
+	OMulMul,
+	OMulEqual,
+	ODiv,
+	ODivEqual,
+	OMod,
+	OModEqual,
 
-	oAssign,
-	oFinalAssign,
+	OAssign,
+	OFinalAssign,
 
-	oEqual,
-	oIdentity,
-	oNotEqual,
-	oNot,
-	oAnd,
-	oAmpersand,
-	oOr,
+	OEqual,
+	OIdentity,
+	ONotEqual,
+	ONot,
+	OAnd,
+	OAmpersand,
+	OOr,
 
-	oGreater,
-	oLess,
-	oGreaterEqual,
-	oLessEqual,
+	OGreater,
+	OLess,
+	OGreaterEqual,
+	OLessEqual,
 
-	oPointerRight,
-	oPointerLeft,
+	OPointerRight,
+	OPointerLeft,
 
-	oQuestion,
-	oSafeDot,
-	oElvis,
-	oRange,
-	oRangeInclusive,
+	OQuestion,
+	OSafeDot,
+	OElvis,
+	ORange,
+	ORangeInclusive,
 
-	oParenOpen,
-	oParenClose,
-	oBraceOpen,
-	oBraceClose,
-	oBracketOpen,
-	oBracketClose,
+	OParenOpen,
+	OParenClose,
+	OBraceOpen,
+	OBraceClose,
+	OBracketOpen,
+	OBracketClose,
 
-	oComma,
-	oDot,
-	oColon,
-	oBacktick,
-	oQuotation,
-	oDoubleQuotation,
-	oTilde,
-	oPound,
-	oColonColon,
-	oSemicolon,
-	oUnderscore,
+	OComma,
+	ODot,
+	OColon,
+	OBacktick,
+	OQuotation,
+	ODoubleQuotation,
+	OTilde,
+	OPound,
+	OColonColon,
+	OSemicolon,
+	OUnderscore,
 
-	oIndexRead,
-	oIndexValidate,
-	oIndexWrite,
-	oForeach,
+	OIndexRead,
+	OIndexValidate,
+	OIndexWrite,
+	OForeach,
 
-	oError
+	OError
 };
 
-std::string_view        to_string (Keyword keyword);
-std::string             to_stringmulti (const std::vector<Keyword> &keywords);
+std::string_view        toString (Keyword keyword);
+std::string             toStringmulti (const std::vector<Keyword> &keywords);
 bool                    isReserved (Keyword keyword);
-std::string_view        to_string (Operator op);
-std::string_view        operator_name (Operator op);
+std::string_view        toString (Operator op);
+std::string_view        operatorName (Operator op);
 std::optional<Operator> fromCharacter (std::string_view spelling);
 bool                    isTokenized (Operator op);
 bool                    isNumericPrefix (Operator op);
 bool                    isUpdate (Operator op);
 bool                    isEquality (Operator op);
 bool                    isComparison (Operator op);
-Operator                compound_assignment_base (std::string_view spelling);
-std::string_view        to_string (TokenType type);
+Operator                compoundAssignmentBase (std::string_view spelling);
+std::string_view        toString (TokenType type);
 std::string_view        rawStringDelimiter ();
 
 class Token {
 	TokenSpan                          t_span;
 	TokenType                          t_type;
-	Operator                           o_operator = oError;
+	Operator                           o_operator = OError;
 	std::string                        s_lexeme;
 	std::shared_ptr<const std::string> p_normalizedName;
 
@@ -217,41 +217,41 @@ class Token {
 
 	Token (const Token &other) = default;
 
-	[[nodiscard]] const std::string &get_lexeme () const {
+	[[nodiscard]] const std::string &getLexeme () const {
 		return s_lexeme;
 	}
 
 	// Name comparisons use NFC. The lexeme and span keep the spelling as written.
-	[[nodiscard]] const std::string &get_name_key () const {
+	[[nodiscard]] const std::string &getNameKey () const {
 		return p_normalizedName ? *p_normalizedName : s_lexeme;
 	}
 
-	[[nodiscard]] TokenSpan get_span () const {
+	[[nodiscard]] TokenSpan getSpan () const {
 		return t_span;
 	}
 
-	[[nodiscard]] TokenType get_type () const {
+	[[nodiscard]] TokenType getType () const {
 		return t_type;
 	}
 
-	[[nodiscard]] Operator get_operator () const {
-		if (o_operator == oError && t_type == TokenType::Operator) {
-			return fromCharacter(s_lexeme).value_or(oError);
+	[[nodiscard]] Operator getOperator () const {
+		if (o_operator == OError && t_type == TokenType::Operator) {
+			return fromCharacter(s_lexeme).value_or(OError);
 		}
 		return o_operator;
 	}
 
-	[[nodiscard]] std::string_view type_name () const {
-		return o_operator == oError ? cloth::to_string(t_type) : operator_name(o_operator);
+	[[nodiscard]] std::string_view typeName () const {
+		return o_operator == OError ? cloth::toString(t_type) : operatorName(o_operator);
 	}
 
-	[[nodiscard]] std::string to_string () const {
-		return "{ l: " + s_lexeme + " t: " + std::string(type_name()) + " s: " + t_span.to_string() + " }";
+	[[nodiscard]] std::string toString () const {
+		return "{ l: " + s_lexeme + " t: " + std::string(typeName()) + " s: " + t_span.toString() + " }";
 	}
 
 	// Allows printing directly with std::cout << token
 	friend std::ostream &operator<<(std::ostream &os, const Token &token) {
-		return os << token.to_string();
+		return os << token.toString();
 	}
 };
 

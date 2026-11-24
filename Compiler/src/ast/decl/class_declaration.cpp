@@ -28,12 +28,12 @@ std::vector<ParameterDeclaration> collectPrimaryParameters (const ClassDeclarati
 
 ConstructorDeclaration::ConstructorDeclaration (const Token &name, std::vector<ParameterDeclaration> parameters, ConstructorDelegation delegation,
                                                 BlockBody body, const std::optional<Token> &visibility) :
-        CallableDeclaration(name, name, std::move(parameters), FunctionBody{ std::move(body) }, (visibility ? *visibility : name).get_span(), {}, visibility),
+        CallableDeclaration(name, name, std::move(parameters), FunctionBody{ std::move(body) }, (visibility ? *visibility : name).getSpan(), {}, visibility),
         delegation(std::move(delegation)) {
 }
 
 DestructorDeclaration::DestructorDeclaration (const Token &op, const Token &name, BlockBody body, const std::optional<Token> &visibility) :
-        CallableDeclaration(op, name, {}, FunctionBody{ std::move(body) }, (visibility ? *visibility : op).get_span(), {}, visibility) {
+        CallableDeclaration(op, name, {}, FunctionBody{ std::move(body) }, (visibility ? *visibility : op).getSpan(), {}, visibility) {
 }
 
 ClassDeclaration::ClassDeclaration (const Token &keyword, const Token &name, std::optional<Token> visibility, std::optional<Token> finalKeyword,
@@ -50,8 +50,8 @@ ClassDeclaration::ClassDeclaration (const Token &keyword, const Token &name, std
 }
 
 PrimaryConstructorDeclaration::PrimaryConstructorDeclaration (std::shared_ptr<const ClassDeclaration> owner) :
-        CallableDeclaration(owner->keyword, owner->name, collectPrimaryParameters(*owner), FunctionBody{ BlockBody{ owner->name.get_span() } },
-                            owner->name.get_span()),
+        CallableDeclaration(owner->keyword, owner->name, collectPrimaryParameters(*owner), FunctionBody{ BlockBody{ .span=owner->name.getSpan() } },
+                            owner->name.getSpan()),
         owner(std::move(owner)) {
 }
 

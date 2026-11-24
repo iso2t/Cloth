@@ -3,7 +3,17 @@
 #include <filesystem>
 #include <string>
 
+#include "ast/decl/declarations.hpp"
+#include "ast/expr/expressions.hpp"
+#include "cde/cloth_diagnostic.hpp"
+#include "cde/diagnostic_code.hpp"
 #include "checked_program_test.hpp"
+#include "gtest/gtest.h"
+#include "lexer/lexer.hpp"
+#include "semantic/checked_program.hpp"
+#include "semantic/program_kind.hpp"
+#include "semantic/symbol_table.hpp"
+#include "token/token.hpp"
 
 namespace cloth::test {
 namespace {
@@ -42,12 +52,12 @@ void expectOwnershipError (const std::string &body, const std::string &message, 
 		checkOwnership(body);
 		FAIL() << "Expected an ownership diagnostic";
 	} catch (const cde::ClothDiagnostic &error) {
-		ASSERT_EQ(error.get_code(), Code::INVALID_COLLECTION_OWNERSHIP) << error.what();
+		ASSERT_EQ(error.getCode(), Code::InvalidCollectionOwnership) << error.what();
 		EXPECT_NE(std::string(error.what()).find(message), std::string::npos);
-		ASSERT_EQ(error.get_source_labels().size(), acquisition ? 2u : 1u);
-		EXPECT_EQ(error.get_source_labels().front().text, "invalid ownership operation");
+		ASSERT_EQ(error.getSourceLabels().size(), acquisition ? 2u : 1u);
+		EXPECT_EQ(error.getSourceLabels().front().text, "invalid ownership operation");
 		if (acquisition) {
-			EXPECT_EQ(error.get_source_labels().back().text, "ownership acquired here");
+			EXPECT_EQ(error.getSourceLabels().back().text, "ownership acquired here");
 		}
 	}
 }
@@ -55,7 +65,7 @@ void expectOwnershipError (const std::string &body, const std::string &message, 
 TEST (SemanticOwnership, StdlibIndexReadUsesThePrivateBoundsCheck) {
 	Lexer                 l_lexer{ SourceFile(P_SEMANTIC / "owning-list.co") };
 	const CheckedProgram  cp_program(SymbolTable(Parser(l_lexer).parse()), {}, P_STDLIB, ProgramKind::Executable);
-	const Symbol         &sym_read = cp_program.units.front()->get_globals().at("readAt").front();
+	const Symbol         &sym_read = cp_program.units.front()->getGlobals().at("readAt").front();
 	const ExpressionInfo &ei_read  = cp_program.expressions.at(&bodyExpression(sym_read));
 	ASSERT_TRUE(ei_read.indexed);
 	const IndexedAccess &ia_index = *ei_read.indexed;
@@ -63,8 +73,8 @@ TEST (SemanticOwnership, StdlibIndexReadUsesThePrivateBoundsCheck) {
 	ASSERT_NE(ia_index.validatorInstance, nullptr);
 	EXPECT_EQ(ia_index.validator->visibility, Visibility::Private);
 
-	const BinaryExpression &be_bounds = dynamic_cast<const BinaryExpression &>(bodyExpression(*ia_index.validator));
-	EXPECT_EQ(be_bounds.op.get_operator(), oLess);
+	const auto &be_bounds = dynamic_cast<const BinaryExpression &>(bodyExpression(*ia_index.validator));
+	EXPECT_EQ(be_bounds.op.getOperator(), OLess);
 	const BodyFacts         &bf_validator = ia_index.validatorInstance->body;
 	const CallableSignature &cs_validator = *std::get<const CallableSignature *>(ia_index.validator->declaration);
 	EXPECT_EQ(bf_validator.expressions.at(be_bounds.left.get()).binding, &cs_validator.parameters.front().name);
@@ -121,7 +131,7 @@ TEST (SemanticOwnership, CleanupDeletesDirectAndNestedEntriesInOrder) {
 			checkOwnership(s_body);
 			FAIL() << s_body;
 		} catch (const cde::ClothDiagnostic &error) {
-			EXPECT_EQ(error.get_code(), Code::DELETED_CLASS_ACCESS) << error.what();
+			EXPECT_EQ(error.getCode(), Code::DeletedClassAccess) << error.what();
 		}
 	}
 	// The first entry is opaque and its destructor can release the nested child.

@@ -10,15 +10,16 @@
 #include <file/source_file.hpp>
 #include <lexer/lexer.hpp>
 #include <token/token.hpp>
+#include "cde/diagnostic_code.hpp"
 
 namespace cloth {
 namespace {
 
 void expectToken (const Token &token, TokenType type, std::string_view spelling, std::size_t startColumn, std::size_t endColumn) {
 	SCOPED_TRACE(::testing::Message() << "Token at column " << startColumn);
-	EXPECT_EQ(token.get_type(), type);
-	EXPECT_EQ(token.get_lexeme(), spelling);
-	const TokenSpan ts_span = token.get_span();
+	EXPECT_EQ(token.getType(), type);
+	EXPECT_EQ(token.getLexeme(), spelling);
+	const TokenSpan ts_span = token.getSpan();
 	EXPECT_EQ(ts_span.startLine, 1u);
 	EXPECT_EQ(ts_span.startCol, startColumn);
 	EXPECT_EQ(ts_span.endLine, 1u);
@@ -61,10 +62,10 @@ TEST (LexerIdentifiers, UnicodeStartsContinuationsAndOriginalByteSpans) {
 	expectToken(v_tokens[0], TokenType::Identifier, "計算", 1, 7);
 	expectToken(v_tokens[1], TokenType::Identifier, "_\U00010400\u0662", 8, 15);
 	expectToken(v_tokens[2], TokenType::Identifier, "e\u0301", 16, 19);
-	EXPECT_EQ(v_tokens[2].get_name_key(), "\u00e9");
+	EXPECT_EQ(v_tokens[2].getNameKey(), "\u00e9");
 	expectToken(v_tokens[3], TokenType::Identifier, "fn\u0301", 20, 24);
 	expectToken(v_tokens[4], TokenType::Operator, "_", 25, 26);
-	EXPECT_EQ(v_tokens[4].get_operator(), oUnderscore);
+	EXPECT_EQ(v_tokens[4].getOperator(), OUnderscore);
 }
 
 TEST (LexerIdentifiers, RejectsInvalidStartsAndCharactersOutsideTheProfile) {
@@ -85,28 +86,28 @@ TEST (LexerDiagnostics, RetainsSourceAndLabelsOffendingBytes) {
 	};
 
 	const ErrorCase cases[] = {
-		{ "$", DiagnosticCode::UNEXPECTED_CHARACTER, "1:1-1:2" },
-		{ "計算 \U0001F408", DiagnosticCode::UNEXPECTED_CHARACTER, "1:8-1:12" },
-		{ "\n/* comment\n", DiagnosticCode::UNTERMINATED_COMMENT, "2:1-2:3" },
-		{ "1__2", DiagnosticCode::INVALID_SEPARATOR, "1:2-1:3" },
-		{ "\"missing", DiagnosticCode::UNTERMINATED_STRING, "1:1-1:2" },
-		{ "\"\\", DiagnosticCode::UNTERMINATED_STRING, "1:1-1:2" },
-		{ R"co(#"{1}tail)co", DiagnosticCode::UNTERMINATED_STRING, "1:1-1:3" },
-		{ "\"\"\"\nraw", DiagnosticCode::UNTERMINATED_RAW_STRING, "1:1-1:4" },
-		{ "\"\\é\"", DiagnosticCode::INVALID_ESCAPE, "1:2-1:5" },
-		{ R"co(#"text\q")co", DiagnosticCode::INVALID_ESCAPE, "1:7-1:9" },
-		{ "'\\q'", DiagnosticCode::INVALID_ESCAPE, "1:2-1:4" },
-		{ "\"a\n", DiagnosticCode::MULTILINE_STRING, "1:3-2:1" },
-		{ "#\"\\\r\n", DiagnosticCode::MULTILINE_STRING, "1:4-2:1" },
-		{ "\"\xFF", DiagnosticCode::INVALID_UNICODE, "1:2-1:3" },
-		{ "x\xF0\x80", DiagnosticCode::INVALID_UNICODE, "1:2-1:3" },
-		{ "'", DiagnosticCode::UNTERMINATED_CHARACTER, "1:1-1:2" },
-		{ "'\\", DiagnosticCode::UNTERMINATED_CHARACTER, "1:1-1:2" },
-		{ "''", DiagnosticCode::EMPTY_CHARACTER, "1:1-1:3" },
-		{ "'ab'", DiagnosticCode::INVALID_CHARACTER_LENGTH, "1:1-1:3" },
-		{ R"co(#"a {#"b {1)co", DiagnosticCode::UNTERMINATED_INTERPOLATION, "1:10-1:11" },
-		{ R"co(#"ok })co", DiagnosticCode::UNMATCHED_INTERPOLATION_BRACE, "1:6-1:7" },
-		{ "0b2", DiagnosticCode::INVALID_NUMERIC_LITERAL, "1:1-1:4" },
+		{ .source="$", .code=DiagnosticCode::UnexpectedCharacter, .span="1:1-1:2" },
+		{ .source="計算 \U0001F408", .code=DiagnosticCode::UnexpectedCharacter, .span="1:8-1:12" },
+		{ .source="\n/* comment\n", .code=DiagnosticCode::UnterminatedComment, .span="2:1-2:3" },
+		{ .source="1__2", .code=DiagnosticCode::InvalidSeparator, .span="1:2-1:3" },
+		{ .source="\"missing", .code=DiagnosticCode::UnterminatedString, .span="1:1-1:2" },
+		{ .source="\"\\", .code=DiagnosticCode::UnterminatedString, .span="1:1-1:2" },
+		{ .source=R"co(#"{1}tail)co", .code=DiagnosticCode::UnterminatedString, .span="1:1-1:3" },
+		{ .source="\"\"\"\nraw", .code=DiagnosticCode::UnterminatedRawString, .span="1:1-1:4" },
+		{ .source="\"\\é\"", .code=DiagnosticCode::InvalidEscape, .span="1:2-1:5" },
+		{ .source=R"co(#"text\q")co", .code=DiagnosticCode::InvalidEscape, .span="1:7-1:9" },
+		{ .source="'\\q'", .code=DiagnosticCode::InvalidEscape, .span="1:2-1:4" },
+		{ .source="\"a\n", .code=DiagnosticCode::MultilineString, .span="1:3-2:1" },
+		{ .source="#\"\\\r\n", .code=DiagnosticCode::MultilineString, .span="1:4-2:1" },
+		{ .source="\"\xFF", .code=DiagnosticCode::InvalidUnicode, .span="1:2-1:3" },
+		{ .source="x\xF0\x80", .code=DiagnosticCode::InvalidUnicode, .span="1:2-1:3" },
+		{ .source="'", .code=DiagnosticCode::UnterminatedCharacter, .span="1:1-1:2" },
+		{ .source="'\\", .code=DiagnosticCode::UnterminatedCharacter, .span="1:1-1:2" },
+		{ .source="''", .code=DiagnosticCode::EmptyCharacter, .span="1:1-1:3" },
+		{ .source="'ab'", .code=DiagnosticCode::InvalidCharacterLength, .span="1:1-1:3" },
+		{ .source=R"co(#"a {#"b {1)co", .code=DiagnosticCode::UnterminatedInterpolation, .span="1:10-1:11" },
+		{ .source=R"co(#"ok })co", .code=DiagnosticCode::UnmatchedInterpolationBrace, .span="1:6-1:7" },
+		{ .source="0b2", .code=DiagnosticCode::InvalidNumericLiteral, .span="1:1-1:4" },
 	};
 	for (const ErrorCase &test : cases) {
 		SCOPED_TRACE(test.source);
@@ -114,13 +115,13 @@ TEST (LexerDiagnostics, RetainsSourceAndLabelsOffendingBytes) {
 			Lexer{ SourceFile{ "fixture.co", std::string(test.source) } }.scan();
 			FAIL() << "Expected a lexer diagnostic";
 		} catch (const cde::SyntaxException &error) {
-			EXPECT_EQ(error.get_code(), test.code);
-			ASSERT_EQ(error.get_source_labels().size(), 1u);
-			const TokenSpan &ts_primary = error.get_source_labels().front().span;
+			EXPECT_EQ(error.getCode(), test.code);
+			ASSERT_EQ(error.getSourceLabels().size(), 1u);
+			const TokenSpan &ts_primary = error.getSourceLabels().front().span;
 			ASSERT_NE(ts_primary.source, nullptr);
-			EXPECT_EQ(ts_primary.source->get_path(), "fixture.co");
-			EXPECT_EQ(ts_primary.source->get_contents(), test.source);
-			EXPECT_EQ(ts_primary.to_string(), test.span);
+			EXPECT_EQ(ts_primary.source->getPath(), "fixture.co");
+			EXPECT_EQ(ts_primary.source->getContents(), test.source);
+			EXPECT_EQ(ts_primary.toString(), test.span);
 		}
 	}
 }
@@ -132,13 +133,13 @@ TEST (LexerDiagnostics, OffsetScanUsesOriginalFileCoordinates) {
 		Lexer{ sf_file, s_prefix.size() }.scan();
 		FAIL() << "Expected a lexer diagnostic";
 	} catch (const cde::SyntaxException &error) {
-		ASSERT_EQ(error.get_code(), cde::DiagnosticCode::UNEXPECTED_CHARACTER);
-		ASSERT_EQ(error.get_source_labels().size(), 1u);
-		const TokenSpan &ts_primary = error.get_source_labels().front().span;
+		ASSERT_EQ(error.getCode(), cde::DiagnosticCode::UnexpectedCharacter);
+		ASSERT_EQ(error.getSourceLabels().size(), 1u);
+		const TokenSpan &ts_primary = error.getSourceLabels().front().span;
 		ASSERT_NE(ts_primary.source, nullptr);
-		EXPECT_EQ(ts_primary.source->get_path(), sf_file.get_path());
-		EXPECT_EQ(ts_primary.source->get_contents(), sf_file.get_contents());
-		EXPECT_EQ(ts_primary.to_string(), "2:8-2:12");
+		EXPECT_EQ(ts_primary.source->getPath(), sf_file.getPath());
+		EXPECT_EQ(ts_primary.source->getContents(), sf_file.getContents());
+		EXPECT_EQ(ts_primary.toString(), "2:8-2:12");
 	}
 }
 
@@ -178,9 +179,9 @@ TEST (LexerSpans, ValidEscapesInEachLiteralKind) {
 }
 
 TEST (LexerKeywords, JoinsKeywordSpellingsInSourceOrder) {
-	EXPECT_TRUE(to_stringmulti({}).empty());
-	EXPECT_EQ(to_stringmulti({ kPublic }), "pub");
-	EXPECT_EQ(to_stringmulti({ kPublic, kFinal, kTypeDef }), "pub final typedef");
+	EXPECT_TRUE(toStringmulti({}).empty());
+	EXPECT_EQ(toStringmulti({ KPublic }), "pub");
+	EXPECT_EQ(toStringmulti({ KPublic, KFinal, KTypeDef }), "pub final typedef");
 }
 
 TEST (LexerKeywords, ContextualWordsRemainIdentifiers) {
@@ -196,15 +197,15 @@ TEST (LexerOperators, ResolvesBothScannedAndSynthesizedOperators) {
 	Lexer                    l_lexer("+");
 	const std::vector<Token> v_tokens = l_lexer.scanTokens();
 	ASSERT_EQ(v_tokens.size(), 2u);
-	EXPECT_EQ(v_tokens.front().get_operator(), oPlus);
+	EXPECT_EQ(v_tokens.front().getOperator(), OPlus);
 
-	const TokenSpan ts_span{ 1, 1, 1, 2 };
+	const TokenSpan ts_span{ .startLine=1, .startCol=1, .endLine=1, .endCol=2 };
 	const Token     t_operator("+", TokenType::Operator, ts_span);
-	EXPECT_EQ(t_operator.get_lexeme(), "+");
-	EXPECT_EQ(t_operator.get_operator(), oPlus);
+	EXPECT_EQ(t_operator.getLexeme(), "+");
+	EXPECT_EQ(t_operator.getOperator(), OPlus);
 	const Token t_name("longIdentifier", TokenType::Identifier, ts_span);
-	EXPECT_EQ(t_name.get_lexeme(), "longIdentifier");
-	EXPECT_EQ(t_name.get_operator(), oError);
+	EXPECT_EQ(t_name.getLexeme(), "longIdentifier");
+	EXPECT_EQ(t_name.getOperator(), OError);
 }
 
 }

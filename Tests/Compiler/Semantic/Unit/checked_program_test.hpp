@@ -22,9 +22,9 @@ inline void expectError (const std::string &source, cde::DiagnosticCode code) {
 		checkSource(source);
 		FAIL() << "Expected a semantic diagnostic";
 	} catch (const cde::ClothDiagnostic &error) {
-		EXPECT_EQ(error.get_code(), code) << error.what();
-		ASSERT_FALSE(error.get_source_labels().empty());
-		EXPECT_NE(error.get_source_labels().front().span.source, nullptr);
+		EXPECT_EQ(error.getCode(), code) << error.what();
+		ASSERT_FALSE(error.getSourceLabels().empty());
+		EXPECT_NE(error.getSourceLabels().front().span.source, nullptr);
 	}
 }
 

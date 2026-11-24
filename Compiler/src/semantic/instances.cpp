@@ -4,14 +4,29 @@
 
 #include <algorithm>
 #include <compare>
+#include <cstddef>
+#include <deque>
 #include <format>
 #include <functional>
+#include <map>
+#include <optional>
+#include <set>
 #include <stdexcept>
+#include <string>
 #include <tuple>
 #include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
 
-#include <ast/decl/struct_declaration.hpp>
+#include <ast/decl/declarations.hpp>
+#include <ast/type/type_parameters.hpp>
+#include <diagnostics.hpp>
+#include <file/source_file.hpp>
+#include <semantic/checked_program.hpp>
 #include <semantic/checker.hpp>
+#include <semantic/symbol_table.hpp>
+#include <token/token.hpp>
 
 namespace cloth {
 
@@ -40,7 +55,7 @@ struct StorageTypeOrder {
 	std::tuple<std::size_t, std::size_t, std::size_t> position (const ResolvedType &type) const {
 		if (!type.declaration && !type.parameter) return {};
 		const Symbol   &sym_owner = type.parameter ? *parameterOwners.at(type.parameter) : *type.declaration;
-		const TokenSpan ts_name   = (type.parameter ? type.parameter->name : sym_owner.name).get_span();
+		const TokenSpan ts_name   = (type.parameter ? type.parameter->name : sym_owner.name).getSpan();
 		return { declarations.at(&sym_owner).file, ts_name.startLine, ts_name.startCol };
 	}
 
@@ -98,7 +113,7 @@ const GenericInstance *Analyzer::useCallable (const Symbol &symbol, const Substi
 	} else if (!isTemplate(symbol) || dynamic_cast<const ConstructorGuaranteeDeclaration *>(callable(symbol))) {
 		return nullptr;
 	}
-	InstanceKey ik_key{ &symbol, std::nullopt, {}, operatorWidth };
+	InstanceKey ik_key{ .declaration = &symbol, .receiver = std::nullopt, .arguments = {}, .operatorWidth = operatorWidth };
 	if (const Symbol *sym_owner = instanceOwner(symbol))
 		ik_key.receiver = substitute(ownerType(*sym_owner), arguments);
 	else if (standaloneState(symbol)) {
@@ -115,9 +130,9 @@ const GenericInstance *Analyzer::useCallable (const Symbol &symbol, const Substi
 void Analyzer::useDispatch (const CallDispatch &dispatch, const Substitutions &arguments, const Symbol &context, const TokenSpan &where) {
 	const TypeParameterList *tpl_parameters = typeParameters(*dispatch.contract.symbol);
 	if (!tpl_parameters || (iw_active ? !iw_active->instance : isTemplate(context) || (rt_activeAttachment && rt_activeAttachment->dependent()))) return;
-	InstanceKey ik_key{ dispatch.contract.symbol, dispatch.receiver, {} };
+	InstanceKey ik_key{ .declaration = dispatch.contract.symbol, .receiver = dispatch.receiver, .arguments = {} };
 	for (const TypeParameterDeclaration &tp_parameter : tpl_parameters->parameters) ik_key.arguments.push_back(arguments.at(&tp_parameter));
-	const std::pair<DispatchUses::iterator, bool> it_use = m_dispatchUses.try_emplace(std::move(ik_key), DispatchUse{ dispatch, where });
+	const std::pair<DispatchUses::iterator, bool> it_use = m_dispatchUses.try_emplace(std::move(ik_key), DispatchUse{ .call = dispatch, .where = where });
 	if (it_use.second) {
 		for (const ResolvedType &rt_receiver : s_receivers) instantiateTargets(it_use.first->first, it_use.first->second, rt_receiver);
 	}
@@ -133,7 +148,7 @@ void Analyzer::instantiateTargets (const InstanceKey &key, const DispatchUse &us
 	if (!accepts(use.call.receiver, receiver)) return;
 	const TypeDispatch                          &td_table    = dispatchFor(receiver);
 	const std::function<void(const MethodRef &)> instantiate = [&] (const MethodRef &body) {
-		enqueue({ body.symbol, body.owner, key.arguments }, use.where, false);
+		enqueue({ .declaration = body.symbol, .receiver = body.owner, .arguments = key.arguments }, use.where, false);
 	};
 	if (use.call.kind == DispatchKind::Interface) {
 		const ResolvedType &rt_view = asInterface(use.call.receiver.declaration) ? use.call.receiver : use.call.contract.owner;
@@ -156,24 +171,26 @@ void Analyzer::instantiateTargets (const InstanceKey &key, const DispatchUse &us
 const GenericInstance *Analyzer::guaranteeOwner (const Symbol &guarantee, const Substitutions &arguments, const Symbol &context, const TokenSpan &where) {
 	const Symbol &sym_owner = *declarations.at(&guarantee).owner;
 	if (sym_owner.kind != SymbolKind::Type) return useCallable(sym_owner, arguments, context, where);
-	return useInstance({ &sym_owner, std::nullopt, substitute(ownerType(sym_owner), arguments).arguments() }, context, where);
+	return useInstance({ .declaration = &sym_owner, .receiver = std::nullopt, .arguments = substitute(ownerType(sym_owner), arguments).arguments() },
+	                   context, where);
 }
 
 void Analyzer::useType (const ResolvedType &type, const Symbol &context, const TokenSpan &where) {
-	type.visitApplications([&] (const ResolvedType &rt_type) {
-		useFormatterClass(rt_type);
-		if (rt_type.declaration) useInstance({ rt_type.declaration, std::nullopt, rt_type.arguments() }, context, where);
+	type.visitApplications([&] (const ResolvedType &rtType) {
+		useFormatterClass(rtType);
+		if (rtType.declaration)
+			useInstance({ .declaration = rtType.declaration, .receiver = std::nullopt, .arguments = rtType.arguments() }, context, where);
 	});
 }
 
 const GenericInstance *Analyzer::useInstance (InstanceKey key, const Symbol &context, const TokenSpan &where) {
 	if (!iw_active && (isTemplate(context) || (rt_activeAttachment && rt_activeAttachment->dependent()))) {
-		m_uses[&context].push_back({ std::move(key), where });
+		m_uses[&context].push_back({ .key = std::move(key), .where = where });
 		return nullptr;
 	}
 	const bool b_symbolic = iw_active && !iw_active->instance;
 	if (!b_symbolic && dependsOnTypeParameter(key)) {
-		fail(Code::GENERIC_INFERENCE_FAILED, where, "Cannot determine the type arguments of '" + key.declaration->name.get_lexeme() + "'",
+		fail(Code::GenericInferenceFailed, where, "Cannot determine the type arguments of '" + key.declaration->name.getLexeme() + "'",
 		     &key.declaration->name);
 	}
 	return enqueue(std::move(key), where, b_symbolic);
@@ -181,15 +198,15 @@ const GenericInstance *Analyzer::useInstance (InstanceKey key, const Symbol &con
 
 std::optional<GenericLimit> genericLimit (unsigned nesting, std::size_t depth, std::size_t count, bool symbolic) {
 	if (nesting > MAX_TYPE_ARG_NESTING)
-		return GenericLimit{ Code::GENERIC_SUBSTITUTION_NESTING,
-			             std::format("Generic type argument nesting limit exceeded ({})", MAX_TYPE_ARG_NESTING) };
+		return GenericLimit{ .code    = Code::GenericSubstitutionNesting,
+			             .message = std::format("Generic type argument nesting limit exceeded ({})", MAX_TYPE_ARG_NESTING) };
 	if (depth > MAX_GENERIC_DEPENDENCIES)
-		return GenericLimit{ symbolic ? Code::GENERIC_TEMPLATE_DEPENDENCY_LIMIT : Code::GENERIC_DEPENDENCY_LIMIT,
-			             std::format("Generic {} dependency limit exceeded ({})", symbolic ? "template analysis" : "instantiation",
-			                         MAX_GENERIC_DEPENDENCIES) };
+		return GenericLimit{ .code    = symbolic ? Code::GenericTemplateDependencyLimit : Code::GenericDependencyLimit,
+			             .message = std::format("Generic {} dependency limit exceeded ({})", symbolic ? "template analysis" : "instantiation",
+			                                    MAX_GENERIC_DEPENDENCIES) };
 	if (count >= MAX_GENERIC_INSTANCES)
-		return GenericLimit{ symbolic ? Code::GENERIC_TEMPLATE_INSTANCE_LIMIT : Code::GENERIC_INSTANCE_LIMIT,
-			             std::format("Too many {} generic instances ({})", symbolic ? "symbolic" : "distinct", MAX_GENERIC_INSTANCES) };
+		return GenericLimit{ .code    = symbolic ? Code::GenericTemplateInstanceLimit : Code::GenericInstanceLimit,
+			             .message = std::format("Too many {} generic instances ({})", symbolic ? "symbolic" : "distinct", MAX_GENERIC_INSTANCES) };
 	return {};
 }
 
@@ -198,10 +215,10 @@ void failGenericLimit (const GenericLimit &limit, const Token &declaration, cons
 	std::set<std::tuple<const SourceFile *, std::size_t, std::size_t, std::size_t, std::size_t>> s_labeled;
 	const std::function                                                                          add = [&] (const TokenSpan &span, std::string text) {
                 if (s_labeled.emplace(span.source.get(), span.startLine, span.startCol, span.endLine, span.endCol).second)
-                        v_labels.push_back({ span, std::move(text) });
+                        v_labels.push_back({ .span = span, .text = std::move(text) });
 	};
 	add(use, "this application exceeds the generic resource limit");
-	add(declaration.get_span(), "generic template declared here");
+	add(declaration.getSpan(), "generic template declared here");
 	for (std::size_t st_index = 0; st_index < ancestry.size(); ++st_index) {
 		const GenericDependency &gd_step = ancestry[ancestry.size() - st_index - 1];
 		add(gd_step.use, std::format("dependency {}: '{}' required here", st_index + 1, gd_step.name));
@@ -210,7 +227,7 @@ void failGenericLimit (const GenericLimit &limit, const Token &declaration, cons
 }
 
 const GenericInstance *Analyzer::enqueue (InstanceKey key, const TokenSpan &where, bool symbolic) {
-	const InstanceKey *ik_stored;
+	const InstanceKey *ik_stored   = nullptr;
 	GenericInstance   *gi_instance = nullptr;
 	if (symbolic) {
 		const std::pair<std::set<InstanceKey>::iterator, bool> it_entry = s_templates.emplace(std::move(key));
@@ -234,11 +251,12 @@ const GenericInstance *Analyzer::enqueue (InstanceKey key, const TokenSpan &wher
 	if (const std::optional<GenericLimit> opt_limit = genericLimit(u_depth, st_depth, b_charged ? st_count : 0, b_open)) {
 		std::vector<GenericDependency> v_ancestry;
 		for (const InstanceWork *iw_step = iw_active; iw_step; iw_step = iw_step->parent)
-			if (!iw_step->key.arguments.empty()) v_ancestry.push_back({ iw_step->where, iw_step->key.declaration->name.get_lexeme() });
+			if (!iw_step->key.arguments.empty())
+				v_ancestry.push_back({ .use = iw_step->where, .name = iw_step->key.declaration->name.getLexeme() });
 		failGenericLimit(*opt_limit, sym_declaration.name, where, v_ancestry);
 	}
 	st_count += b_charged;
-	(symbolic ? q_templates : q_instances).push_back({ *ik_stored, gi_instance, iw_active, where, st_depth });
+	(symbolic ? q_templates : q_instances).push_back({ .key = *ik_stored, .instance = gi_instance, .parent = iw_active, .where = where, .depth = st_depth });
 	return gi_instance;
 }
 
@@ -247,15 +265,15 @@ void Analyzer::collectSignature (const Symbol &symbol) {
 	useDeclaredBounds(symbol, {});
 	if (const CallableSignature *cs_signature = callable(symbol)) {
 		for (std::size_t st_index = 0; st_index < di_info.parameters.size(); ++st_index) {
-			useType(di_info.parameters[st_index], symbol, cs_signature->parameters[st_index].type.get_span());
+			useType(di_info.parameters[st_index], symbol, cs_signature->parameters[st_index].type.getSpan());
 		}
 		for (std::size_t st_index = 0; st_index < di_info.returns.size(); ++st_index) {
 			useType(di_info.returns[st_index], symbol,
-			        st_index < cs_signature->returnTypes.size() ? cs_signature->returnTypes[st_index].get_span() : symbol.name.get_span());
+			        st_index < cs_signature->returnTypes.size() ? cs_signature->returnTypes[st_index].getSpan() : symbol.name.getSpan());
 		}
 	}
-	if (di_info.value) useType(*di_info.value, symbol, symbol.name.get_span());
-	for (const ResolvedType &rt_parent : di_info.parents) useType(rt_parent, symbol, symbol.name.get_span());
+	if (di_info.value) useType(*di_info.value, symbol, symbol.name.getSpan());
+	for (const ResolvedType &rt_parent : di_info.parents) useType(rt_parent, symbol, symbol.name.getSpan());
 }
 
 void Analyzer::useDeclaredBounds (const Symbol &symbol, const Substitutions &arguments) {
@@ -264,11 +282,11 @@ void Analyzer::useDeclaredBounds (const Symbol &symbol, const Substitutions &arg
 	for (const TypeParameterDeclaration &tp_parameter : tpl_parameters->parameters) {
 		for (const TypeParameterBound &tp_bound : tp_parameter.bounds) {
 			if (const TypeReference *tr_bound = std::get_if<TypeReference>(&tp_bound.value)) {
-				useType(substitute(type(*tr_bound, symbol), arguments), symbol, tr_bound->get_span());
+				useType(substitute(type(*tr_bound, symbol), arguments), symbol, tr_bound->getSpan());
 			}
 		}
 		if (tp_parameter.defaultType) {
-			useType(substitute(type(*tp_parameter.defaultType, symbol), arguments), symbol, tp_parameter.defaultType->get_span());
+			useType(substitute(type(*tp_parameter.defaultType, symbol), arguments), symbol, tp_parameter.defaultType->getSpan());
 		}
 	}
 }
@@ -286,7 +304,7 @@ void Analyzer::visitTypeMembers (const ResolvedType &type, const Substitutions &
 			if (sym_member.kind == SymbolKind::Field) {
 				DeclarationInfo di_field = specialize(declarations.at(&sym_member), arguments);
 				ResolvedType    rt_field = *di_field.value;
-				if (iw_active) useType(rt_field, sym_member, sym_member.name.get_span());
+				if (iw_active) useType(rt_field, sym_member, sym_member.name.getSpan());
 				if (instance) {
 					instance->fields.emplace(&sym_member, rt_field);
 					BodyChecker(*this, sym_member, instance->body, arguments, di_field).check();
@@ -294,13 +312,13 @@ void Analyzer::visitTypeMembers (const ResolvedType &type, const Substitutions &
 				if (v_fields) v_fields->emplace_back(std::move(rt_field), &sym_member);
 			} else if (iw_active && !typeParameters(sym_member) &&
 			           (callable(sym_member) || sym_member.kind == SymbolKind::State || sym_member.kind == SymbolKind::StateAttachment)) {
-				useCallable(sym_member, arguments, sym_member, sym_member.name.get_span());
+				useCallable(sym_member, arguments, sym_member, sym_member.name.getSpan());
 			}
 		}
 	}
 	if (v_fields) {
 		std::ranges::sort(*v_fields, {}, [] (const StorageFields::value_type &field) {
-			const TokenSpan ts_field = field.symbol->name.get_span();
+			const TokenSpan ts_field = field.symbol->name.getSpan();
 			return std::pair{ ts_field.startLine, ts_field.startCol };
 		});
 	}
@@ -321,8 +339,8 @@ bool Analyzer::hasConstructorProof (const ResolvedType &type, const ResultTypes 
 	const Substitutions m_arguments = instanceArguments(iw_active->key);
 	for (const Substitutions::value_type &entry : m_arguments) {
 		if (entry.second != type) continue;
-		const ParameterContract          pc_contract     = parameterContract(*entry.first);
-		const auto it_requirements = m_guarantees.find(pc_contract.parameter);
+		const ParameterContract pc_contract     = parameterContract(*entry.first);
+		const auto              it_requirements = m_guarantees.find(pc_contract.parameter);
 		if (it_requirements == m_guarantees.end()) continue;
 		for (const Symbol *sym_requirement : it_requirements->second) {
 			if (specialize(specialize(declarations.at(sym_requirement), pc_contract.arguments), m_arguments).parameters == parameters) return true;
@@ -356,7 +374,8 @@ void Analyzer::completeInstance (const InstanceWork &work) {
 				if (ss_state.owner != rt_type || ss_state.definition == ss_state.selection) continue;
 				for (const SymbolScope::value_type &entry : ss_state.definition->members) {
 					for (const Symbol &sym_member : entry.second) {
-						if (!typeParameters(sym_member)) enqueue({ &sym_member, rt_type, {} }, work.where, false);
+						if (!typeParameters(sym_member))
+							enqueue({ .declaration = &sym_member, .receiver = rt_type, .arguments = {} }, work.where, false);
 					}
 				}
 			}
@@ -364,7 +383,7 @@ void Analyzer::completeInstance (const InstanceWork &work) {
 	} else if (sym_declaration.kind == SymbolKind::State) {
 		for (const SymbolScope::value_type &entry : sym_declaration.members) {
 			for (const Symbol &sym_member : entry.second) {
-				if (!typeParameters(sym_member)) useCallable(sym_member, m_arguments, sym_member, sym_member.name.get_span());
+				if (!typeParameters(sym_member)) useCallable(sym_member, m_arguments, sym_member, sym_member.name.getSpan());
 			}
 		}
 	}
@@ -420,7 +439,7 @@ void Analyzer::checkStorage () const {
 	std::vector<const Layout *> v_roots, v_postorder;
 	v_roots.reserve(m_storage.size());
 	for (const Layout &layout : m_storage) v_roots.push_back(&layout);
-	const StorageTypeOrder compare{ declarations, m_genericOwners };
+	const StorageTypeOrder compare{ .declarations = declarations, .parameterOwners = m_genericOwners };
 	std::ranges::sort(v_roots, [&] (const Layout *left, const Layout *right) { return compare(left->first, right->first) < 0; });
 
 	// Only a type already on the current field path makes the layout recursive.
@@ -429,7 +448,7 @@ void Analyzer::checkStorage () const {
 	for (const Layout *root : v_roots) {
 		if (s_done.contains(root)) continue;
 		s_active.insert(root);
-		v_path.push_back({ root });
+		v_path.push_back({ .node = root });
 		while (!v_path.empty()) {
 			StorageVisit &sv_current = v_path.back();
 			const Layout *sl_node    = sv_current.node;
@@ -450,17 +469,17 @@ void Analyzer::checkStorage () const {
 			if (s_done.contains(sl_child)) continue;
 			if (!s_active.insert(sl_child).second) {
 				const Token &t_name = rt_nested.declaration->name;
-				fail(Code::RECURSIVE_STRUCT, field.symbol->name.get_span(),
-				     std::format("Recursive storage in {} '{}'", to_string(kStruct), t_name.get_lexeme()), &t_name);
+				fail(Code::RecursiveStruct, field.symbol->name.getSpan(),
+				     std::format("Recursive storage in {} '{}'", toString(KStruct), t_name.getLexeme()), &t_name);
 			}
-			v_path.push_back({ sl_child });
+			v_path.push_back({ .node = sl_child });
 		}
 	}
 	for (const Layout *sl_struct : v_postorder) layoutStruct(sl_struct->first, sl_struct->second);
 	for (const ArrayAllocation &aa_literal : v_arrayLiterals) {
 		if (!program.arrayDataLayout(aa_literal.type, aa_literal.count))
-			fail(Code::INVALID_ARRAY, aa_literal.where,
-			     std::format("Array element storage exceeds {} on a {}-bit target", to_string(kUsize), program.layout.sizeBits));
+			fail(Code::InvalidArray, aa_literal.where,
+			     std::format("Array element storage exceeds {} on a {}-bit target", toString(KUsize), program.layout.sizeBits));
 	}
 }
 
@@ -468,16 +487,16 @@ void Analyzer::checkInstances () {
 	for (const Symbol *sym_declaration : v_order) {
 		const TypeParameterList *tpl_parameters = typeParameters(*sym_declaration);
 		if (tpl_parameters) {
-			InstanceKey ik_key{ sym_declaration, std::nullopt, {} };
+			InstanceKey ik_key{ .declaration = sym_declaration, .receiver = std::nullopt, .arguments = {} };
 			for (const TypeParameterDeclaration &tp_parameter : tpl_parameters->parameters) {
-				ResolvedType rt_argument(tp_parameter.name.get_name_key());
+				ResolvedType rt_argument(tp_parameter.name.getNameKey());
 				rt_argument.parameter = &tp_parameter;
 				ik_key.arguments.push_back(std::move(rt_argument));
 			}
 			if (callable(*sym_declaration)) {
 				if (const Symbol *sym_owner = instanceOwner(*sym_declaration)) ik_key.receiver = ownerType(*sym_owner);
 			}
-			enqueue(std::move(ik_key), sym_declaration->name.get_span(), true);
+			enqueue(std::move(ik_key), sym_declaration->name.getSpan(), true);
 		} else if (asStruct(sym_declaration)) {
 			visitTypeMembers(ownerType(*sym_declaration), {}, nullptr);
 		} else if (asClass(sym_declaration)) {
@@ -486,8 +505,9 @@ void Analyzer::checkInstances () {
 	}
 	// A map entry is the provisional identity. Each new entry appends one job, including calls discovered in another body.
 	for (std::deque<InstanceWork> *q_work : { &q_templates, &q_instances }) {
-		for (std::size_t st_next = 0; st_next < q_work->size(); ++st_next) {
-			iw_active = &(*q_work)[st_next];
+		std::size_t next = 0;
+		while (next < q_work->size()) {
+			iw_active = &(*q_work)[next++];
 			completeInstance(*iw_active);
 		}
 	}

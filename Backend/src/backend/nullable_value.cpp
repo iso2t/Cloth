@@ -3,6 +3,8 @@
 // See Documentation/compiler/storage/Aggregates.rst
 
 #include <backend/nullable_value.hpp>
+#include <llvm-c/Core.h>
+#include <llvm-c/Types.h>
 
 namespace backend::detail::nullable {
 namespace {

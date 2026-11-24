@@ -22,7 +22,7 @@ struct ClassCreationExpression : CallSite {
 	        span(span) {
 	}
 
-	[[nodiscard]] TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan getSpan () const override {
 		return span;
 	}
 };
@@ -34,8 +34,8 @@ struct ClassDeletionExpression : Expression {
 	ClassDeletionExpression (ExpressionPtr receiver, const Token &keyword) : receiver(std::move(receiver)), keyword(keyword) {
 	}
 
-	[[nodiscard]] TokenSpan get_span () const override {
-		return TokenSpan::span_through(receiver->get_span(), keyword.get_span());
+	[[nodiscard]] TokenSpan getSpan () const override {
+		return TokenSpan::spanThrough(receiver->getSpan(), keyword.getSpan());
 	}
 };
 
@@ -55,7 +55,7 @@ struct StateTransitionExpression : Expression {
 	        span(std::move(span)) {
 	}
 
-	[[nodiscard]] TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan getSpan () const override {
 		return span;
 	}
 };
@@ -74,7 +74,7 @@ struct ConstructorDelegation : CallSite {
 	        ConstructorDelegation(name, std::move(suppliedArguments), span, TypeReference(name)) {
 	}
 
-	[[nodiscard]] TokenSpan get_span () const override {
+	[[nodiscard]] TokenSpan getSpan () const override {
 		return span;
 	}
 };

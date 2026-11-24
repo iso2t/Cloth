@@ -9,13 +9,16 @@
 #include <vector>
 
 #include <ast/decl/class_declaration.hpp>
+#include <ast/decl/declarations.hpp>
 #include <ast/decl/enum_declaration.hpp>
 #include <ast/decl/function_declaration.hpp>
 #include <ast/decl/interface_declaration.hpp>
 #include <ast/decl/state_declaration.hpp>
 #include <ast/decl/struct_declaration.hpp>
-#include <cde/declaration_errors.hpp>
+#include <ast/source_unit.hpp>
+#include <diagnostics.hpp>
 #include <semantic/symbol_table.hpp>
+#include <token/token.hpp>
 
 namespace cloth {
 namespace {
@@ -26,9 +29,9 @@ bool allowsOverloads (SymbolKind kind) {
 }
 
 Symbol &declare (SymbolScope &scope, SymbolKind kind, const Token &name, const std::optional<Token> &visibility, SymbolDeclaration declaration) {
-	std::vector<Symbol> &v_symbols = scope[name.get_name_key()];
+	std::vector<Symbol> &v_symbols = scope[name.getNameKey()];
 	if (!allowsOverloads(kind)) {
-		const std::vector<Symbol>::const_iterator it_previous = std::ranges::find(v_symbols, kind, &Symbol::kind);
+		const auto it_previous = std::ranges::find(v_symbols, kind, &Symbol::kind);
 		if (it_previous != v_symbols.end()) {
 			throw cde::DeclarationErrors::duplicate(it_previous->name, name);
 		}
@@ -37,7 +40,7 @@ Symbol &declare (SymbolScope &scope, SymbolKind kind, const Token &name, const s
 }
 
 void collectCallable (SymbolScope &scope, SymbolKind kind, const CallableSignature &callable) {
-	declare(scope, kind, callable.get_name(), callable.visibility, &callable);
+	declare(scope, kind, callable.getName(), callable.visibility, &callable);
 }
 
 void collectMethod (SymbolScope &scope, const MethodDeclaration &method) {
@@ -46,20 +49,20 @@ void collectMethod (SymbolScope &scope, const MethodDeclaration &method) {
 
 void collectStateMembers (SymbolScope &scope, const StateBodyDeclaration &state) {
 	for (const StateMemberPtr &smp_member : state.members) {
-		if (const MethodDeclaration *md_method = dynamic_cast<const MethodDeclaration *>(smp_member.get())) {
+		if (const auto *md_method = dynamic_cast<const MethodDeclaration *>(smp_member.get())) {
 			collectMethod(scope, *md_method);
 		} else {
-			const StateInitializerDeclaration &sid_initializer = dynamic_cast<const StateInitializerDeclaration &>(*smp_member);
+			const auto &sid_initializer = dynamic_cast<const StateInitializerDeclaration &>(*smp_member);
 			declare(scope, SymbolKind::StateInitializer, sid_initializer.keyword, sid_initializer.visibility, &sid_initializer);
 		}
 	}
 }
 
 void collectClassState (SymbolScope &scope, const StateClassMember &member) {
-	if (const NestedStateDeclaration *nsd_state = dynamic_cast<const NestedStateDeclaration *>(&member)) {
+	if (const auto *nsd_state = dynamic_cast<const NestedStateDeclaration *>(&member)) {
 		Symbol &sym_state = declare(scope, SymbolKind::State, nsd_state->name, nsd_state->visibility, nsd_state);
 		collectStateMembers(sym_state.members, *nsd_state);
-	} else if (const StateAttachmentDeclaration *sad_attachment = dynamic_cast<const StateAttachmentDeclaration *>(&member)) {
+	} else if (const auto *sad_attachment = dynamic_cast<const StateAttachmentDeclaration *>(&member)) {
 		declare(scope, SymbolKind::StateAttachment, sad_attachment->name, sad_attachment->visibility, sad_attachment);
 	} else {
 		collectCallable(scope, SymbolKind::StateMethodContract, dynamic_cast<const StateMethodContractDeclaration &>(member));
@@ -83,10 +86,10 @@ void collectClassMembers (SymbolScope &scope, const ClassDeclaration &type) {
 		} else if (const ConstructorDeclaration *cd_constructor = std::get_if<ConstructorDeclaration>(&cm_member.value)) {
 			collectCallable(scope, SymbolKind::Constructor, *cd_constructor);
 		} else if (const DestructorDeclaration *dd_destructor = std::get_if<DestructorDeclaration>(&cm_member.value)) {
-			const Token &t_tilde = dd_destructor->get_operator();
+			const Token &t_tilde = dd_destructor->getOperator();
 			const Token &t_type  = dd_destructor->name;
-			const Token  t_name(t_tilde.get_lexeme() + t_type.get_lexeme(), TokenType::Identifier,
-			                    TokenSpan::span_through(t_tilde.get_span(), t_type.get_span()));
+			const Token  t_name(t_tilde.getLexeme() + t_type.getLexeme(), TokenType::Identifier,
+			                    TokenSpan::spanThrough(t_tilde.getSpan(), t_type.getSpan()));
 			declare(scope, SymbolKind::Destructor, t_name, dd_destructor->visibility, dd_destructor);
 		} else {
 			collectClassState(scope, *std::get<StateClassMemberPtr>(cm_member.value));
@@ -98,13 +101,13 @@ void collectClassMembers (SymbolScope &scope, const ClassDeclaration &type) {
 
 SymbolTable::SymbolTable (SourceUnit source) : su_source(std::move(source)) {
 	for (const DeclarationPtr &dp_declaration : su_source.declarations) {
-		if (const FunctionDeclaration *fd_function = dynamic_cast<const FunctionDeclaration *>(dp_declaration.get())) {
+		if (const auto *fd_function = dynamic_cast<const FunctionDeclaration *>(dp_declaration.get())) {
 			collectCallable(ss_globals, SymbolKind::Function, *fd_function);
 		} else if (const TypeDeclarationPtr tdp_type = std::dynamic_pointer_cast<const TypeDeclaration>(dp_declaration)) {
 			collectType(ss_globals, tdp_type);
 		} else {
-			const TopLevelStateDeclaration &tsd_state = dynamic_cast<const TopLevelStateDeclaration &>(*dp_declaration);
-			Symbol                         &sym_state = declare(ss_globals, SymbolKind::State, tsd_state.name, tsd_state.visibility, &tsd_state);
+			const auto &tsd_state = dynamic_cast<const TopLevelStateDeclaration &>(*dp_declaration);
+			Symbol     &sym_state = declare(ss_globals, SymbolKind::State, tsd_state.name, tsd_state.visibility, &tsd_state);
 			collectStateMembers(sym_state.members, tsd_state);
 			for (const TypeDeclarationPtr &tdp_nested : tsd_state.nestedTypes) {
 				collectType(sym_state.members, tdp_nested);
@@ -120,14 +123,14 @@ void SymbolTable::collectType (SymbolScope &scope, const TypeDeclarationPtr &typ
 		        *v_primaryConstructors.emplace_back(std::make_shared<PrimaryConstructorDeclaration>(cdp_class));
 		collectCallable(ss_members, SymbolKind::Constructor, pcd_primary);
 		collectClassMembers(ss_members, *cdp_class);
-	} else if (const StructDeclaration *sd_struct = dynamic_cast<const StructDeclaration *>(type.get())) {
+	} else if (const auto *sd_struct = dynamic_cast<const StructDeclaration *>(type.get())) {
 		for (const StructFieldDeclaration &sfd_field : sd_struct->fields) {
 			declare(ss_members, SymbolKind::Field, sfd_field.name, sfd_field.visibility, &sfd_field);
 		}
 		for (const MethodDeclaration &md_method : sd_struct->methods) {
 			collectMethod(ss_members, md_method);
 		}
-	} else if (const EnumDeclaration *ed_enum = dynamic_cast<const EnumDeclaration *>(type.get())) {
+	} else if (const auto *ed_enum = dynamic_cast<const EnumDeclaration *>(type.get())) {
 		for (const EnumFieldDeclaration &efd_field : ed_enum->fields) {
 			declare(ss_members, SymbolKind::Field, efd_field.name, efd_field.visibility, &efd_field);
 		}
@@ -140,7 +143,7 @@ void SymbolTable::collectType (SymbolScope &scope, const TypeDeclarationPtr &typ
 			collectMethod(ss_members, md_operator);
 		}
 	} else {
-		const InterfaceDeclaration &id_interface = dynamic_cast<const InterfaceDeclaration &>(*type);
+		const auto &id_interface = dynamic_cast<const InterfaceDeclaration &>(*type);
 		for (const InterfaceMethodDeclaration &imd_method : id_interface.methods) {
 			collectCallable(ss_members, SymbolKind::Method, imd_method);
 		}

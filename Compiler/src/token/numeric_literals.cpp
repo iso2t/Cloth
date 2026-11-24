@@ -9,8 +9,9 @@
 #include <string_view>
 #include <system_error>
 
-#include <cde/syntax_errors.hpp>
+#include <diagnostics.hpp>
 #include <token/numeric_literals.hpp>
+#include <token/token.hpp>
 #include <util/utf8.hpp>
 
 namespace cloth {
@@ -56,11 +57,11 @@ DecimalDigit decimalDigit (const std::string_view text) {
 	if (const auto c_first = static_cast<unsigned char>(text.front()); c_first < 0x80) {
 		return c_first >= '0' && c_first <= '9' ? DecimalDigit{ .ascii = static_cast<char>(c_first), .length = 1 } : DecimalDigit{};
 	}
-	const std::size_t st_length = utf8_scalar_length(text);
+	const std::size_t st_length = utf8ScalarLength(text);
 	if (st_length == 0 || st_length > 3) {
 		return {};
 	}
-	const char32_t c32_digit = utf8_scalar_value(text.substr(0, st_length));
+	const char32_t c32_digit = utf8ScalarValue(text.substr(0, st_length));
 	for (const char32_t c32_zero : DECIMAL_ZEROES) {
 		if (c32_digit >= c32_zero && c32_digit <= c32_zero + 9) {
 			return { .ascii = static_cast<char>('0' + (c32_digit - c32_zero)), .length = st_length };
@@ -83,10 +84,10 @@ int integerLiteralRadix (const std::string_view spelling) {
 }
 
 IntegerValue integerLiteralValue (const Token &token) {
-	if (token.get_type() != TokenType::IntegerLiteral) {
+	if (token.getType() != TokenType::IntegerLiteral) {
 		throw cde::SyntaxErrors::number(token, /*floating=*/false);
 	}
-	std::string_view s_spelling = token.get_lexeme();
+	std::string_view s_spelling = token.getLexeme();
 	const int        i_radix    = integerLiteralRadix(s_spelling);
 	if (i_radix != 10) {
 		s_spelling.remove_prefix(2);
@@ -103,7 +104,7 @@ IntegerValue integerLiteralValue (const Token &token) {
 	while (!s_remaining.empty()) {
 		const std::size_t st_length = std::min(s_remaining.size(), DIGITS_PER_CHUNK);
 		const char       *c_end     = s_remaining.data() + st_length;
-		std::uint32_t     u32_chunk;
+		std::uint32_t     u32_chunk = 0;
 		if (const auto [ptr, ec] = std::from_chars(s_remaining.data(), c_end, u32_chunk, i_radix); ec != std::errc{} || ptr != c_end) {
 			throw cde::SyntaxErrors::number(token, /*floating=*/false);
 		}
@@ -131,10 +132,10 @@ IntegerValue integerLiteralValue (const Token &token) {
 }
 
 std::string floatingLiteralText (const Token &token) {
-	if (token.get_type() != TokenType::FloatingPointLiteral) {
+	if (token.getType() != TokenType::FloatingPointLiteral) {
 		throw cde::SyntaxErrors::number(token, /*floating=*/true);
 	}
-	std::string_view s_spelling = token.get_lexeme();
+	std::string_view s_spelling = token.getLexeme();
 	if (s_spelling.ends_with('f') || s_spelling.ends_with('F')) {
 		s_spelling.remove_suffix(1);
 	}

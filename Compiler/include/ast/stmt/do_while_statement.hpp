@@ -29,16 +29,16 @@ struct DoWhileStatement : LoopStatement {
 	        closing(closing) {
 	}
 
-	[[nodiscard]] const LoopTargetPtr &get_loop_target () const override {
+	[[nodiscard]] const LoopTargetPtr &getLoopTarget () const override {
 		return loopTarget;
 	}
 
-	[[nodiscard]] TokenSpan get_condition_span () const {
-		return TokenSpan::span_through(whileKeyword.get_span(), closing.get_span());
+	[[nodiscard]] TokenSpan getConditionSpan () const {
+		return TokenSpan::spanThrough(whileKeyword.getSpan(), closing.getSpan());
 	}
 
-	[[nodiscard]] TokenSpan get_span () const override {
-		return TokenSpan::span_through(keyword.get_span(), closing.get_span());
+	[[nodiscard]] TokenSpan getSpan () const override {
+		return TokenSpan::spanThrough(keyword.getSpan(), closing.getSpan());
 	}
 };
 

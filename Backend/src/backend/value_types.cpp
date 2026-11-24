@@ -13,8 +13,13 @@
 #include <optional>
 #include <vector>
 
-#include <cde/cloth_diagnostic.hpp>
+#include <diagnostics.hpp>
+#include <llvm-c/Core.h>
 #include <llvm-c/Target.h>
+#include <llvm-c/Types.h>
+#include <semantic/checked_program.hpp>
+#include <semantic/target_layout.hpp>
+#include <token/token.hpp>
 
 namespace backend::detail {
 
@@ -51,10 +56,10 @@ LLVMTypeRef ValueTypes::localType (const cloth::ResolvedType &type) {
 	if (!ty_element || !opt_data) return nullptr;
 	const LLVMTypeRef          ty_buffer = LLVMArrayType2(ty_element, *opt_count);
 	const LLVMTargetDataRef    td_target = LLVMGetModuleDataLayout(mod_module);
-	const cloth::StorageLayout sl_actual{ LLVMABISizeOfType(td_target, ty_buffer), LLVMABIAlignmentOfType(td_target, ty_buffer) };
+	const cloth::StorageLayout sl_actual{ .size = LLVMABISizeOfType(td_target, ty_buffer), .alignment = LLVMABIAlignmentOfType(td_target, ty_buffer) };
 	if (sl_actual != *opt_data)
 		throw cde::ClothDiagnostic(
-		        cde::DiagnosticCode::ABI_LAYOUT,
+		        cde::DiagnosticCode::AbiLayout,
 		        std::format("LLVM gives the data buffer for '{}' size {} and alignment {}. The checked layout requires size {} and alignment {}",
 		                    type.spelling(), sl_actual.size, sl_actual.alignment, opt_data->size, opt_data->alignment));
 	return ty_buffer;
@@ -72,7 +77,7 @@ LLVMTypeRef ValueTypes::get (const cloth::ResolvedType &type) {
 		return ty_endpoint ? IntegerRange::type(ty_endpoint) : nullptr;
 	}
 	// An untyped null carries no data until a surrounding expression supplies the nullable type.
-	if (type == cloth::ResolvedType(cloth::kNull)) return LLVMStructTypeInContext(ctx_context, nullptr, 0, false);
+	if (type == cloth::ResolvedType(cloth::KNull)) return LLVMStructTypeInContext(ctx_context, nullptr, 0, false);
 	const auto it_layout = cp_program.structLayouts.find(type);
 	if (it_layout == cp_program.structLayouts.end()) return nullptr;
 	const cloth::StructLayout &sl_layout = it_layout->second;
@@ -92,21 +97,21 @@ LLVMTypeRef ValueTypes::get (const cloth::ResolvedType &type) {
 	const LLVMTargetDataRef    td_target = LLVMGetModuleDataLayout(mod_module);
 	const cloth::StorageLayout sl_actual{ .size = LLVMABISizeOfType(td_target, ty_struct), .alignment = LLVMABIAlignmentOfType(td_target, ty_struct) };
 	if (sl_actual != sl_layout.storage) {
-		throw cde::ClothDiagnostic(cde::DiagnosticCode::ABI_LAYOUT,
+		throw cde::ClothDiagnostic(cde::DiagnosticCode::AbiLayout,
 		                           std::format("LLVM gives '{}' size {} and alignment {}. The checked layout requires size {} and alignment {}",
 		                                       type.spelling(), sl_actual.size, sl_actual.alignment, sl_layout.storage.size,
 		                                       sl_layout.storage.alignment),
-		                           { { type.declaration->name.get_span(), "struct layout mismatch" } });
+		                           { { .span = type.declaration->name.getSpan(), .text = "struct layout mismatch" } });
 	}
 	for (std::size_t st_index = 0; st_index < sl_layout.fields.size(); ++st_index) {
 		const cloth::Symbol &sym_field    = *sl_layout.fields[st_index].symbol;
 		const std::uint64_t  u64_actual   = LLVMOffsetOfElement(td_target, ty_struct, static_cast<unsigned>(st_index));
 		const std::uint64_t  u64_expected = sl_layout.fieldOffsets.at(&sym_field);
 		if (u64_actual != u64_expected) {
-			throw cde::ClothDiagnostic(cde::DiagnosticCode::ABI_LAYOUT,
+			throw cde::ClothDiagnostic(cde::DiagnosticCode::AbiLayout,
 			                           std::format("LLVM places field '{}' at byte {}. The checked layout requires byte {}",
-			                                       sym_field.name.get_lexeme(), u64_actual, u64_expected),
-			                           { { sym_field.name.get_span(), "field offset mismatch" } });
+			                                       sym_field.name.getLexeme(), u64_actual, u64_expected),
+			                           { { .span = sym_field.name.getSpan(), .text = "field offset mismatch" } });
 		}
 	}
 	m_structs.emplace(&sl_layout, ty_struct);

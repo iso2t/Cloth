@@ -34,23 +34,23 @@ class ClothDiagnostic : public std::exception {
 		return s_message.c_str();
 	}
 
-	[[nodiscard]] DiagnosticCode get_code () const noexcept {
+	[[nodiscard]] DiagnosticCode getCode () const noexcept {
 		return d_code;
 	}
 
-	[[nodiscard]] Severity get_severity () const noexcept {
+	[[nodiscard]] Severity getSeverity () const noexcept {
 		return e_severity;
 	}
 
-	[[nodiscard]] const std::string &get_message () const noexcept {
+	[[nodiscard]] const std::string &getMessage () const noexcept {
 		return s_message;
 	}
 
-	[[nodiscard]] const std::vector<SourceLabel> &get_source_labels () const noexcept {
+	[[nodiscard]] const std::vector<SourceLabel> &getSourceLabels () const noexcept {
 		return v_labels;
 	}
 
-	[[nodiscard]] const std::optional<std::string> &get_guidance () const noexcept {
+	[[nodiscard]] const std::optional<std::string> &getGuidance () const noexcept {
 		return opt_guidance;
 	}
 

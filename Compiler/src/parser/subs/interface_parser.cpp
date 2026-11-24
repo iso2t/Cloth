@@ -12,7 +12,7 @@
 #include <ast/decl/interface_declaration.hpp>
 #include <ast/type/type_parameters.hpp>
 #include <ast/type/type_reference.hpp>
-#include <cde/syntax_errors.hpp>
+#include <diagnostics.hpp>
 #include <parser/parser.hpp>
 #include <parser/subs/delimited_parser.hpp>
 #include <parser/subs/function_parser.hpp>
@@ -31,7 +31,7 @@ InterfaceDeclaration InterfaceParser::parse (const Token &keyword, const Token &
 	p_parser.skipNewLines();
 	std::vector<InterfaceMethodDeclaration> v_methods =
 	        p_parser.p_delimitedParser.braces([this, &v_nestedTypes] () -> std::vector<InterfaceMethodDeclaration> { return parseMembers(v_nestedTypes); });
-	const TokenSpan ts_span = TokenSpan::span_through((visibility ? *visibility : keyword).get_span(), p_parser.previous().get_span());
+	const TokenSpan ts_span = TokenSpan::spanThrough((visibility ? *visibility : keyword).getSpan(), p_parser.previous().getSpan());
 	return { keyword,
 		 kind,
 		 t_name,
@@ -46,26 +46,26 @@ InterfaceDeclaration InterfaceParser::parse (const Token &keyword, const Token &
 std::vector<InterfaceMethodDeclaration> InterfaceParser::parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) const {
 	std::vector<InterfaceMethodDeclaration> v_methods;
 	p_parser.skipNewLines();
-	while (p_parser.peek().get_lexeme() != to_string(oBraceClose)) {
+	while (p_parser.peek().getLexeme() != toString(OBraceClose)) {
 		if (p_parser.startsTypeDeclaration()) {
 			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}
 		std::optional<Token> opt_visibility = p_parser.parseVisibility();
-		if (p_parser.atKeyword(kFn)) {
+		if (p_parser.atKeyword(KFn)) {
 			throw cde::SyntaxErrors::functionInType(p_parser.peek());
 		}
-		if (!p_parser.atKeyword(kMt)) {
-			throw cde::SyntaxErrors::expected(std::format("an interface '{}' declaration", to_string(kMt)), p_parser.peek());
+		if (!p_parser.atKeyword(KMt)) {
+			throw cde::SyntaxErrors::expected(std::format("an interface '{}' declaration", toString(KMt)), p_parser.peek());
 		}
 		v_methods.push_back(p_parser.p_functionParser.parseInterfaceMethod(std::move(opt_visibility)));
 		const FunctionBody *fb_body = v_methods.back().executableBody();
 		const bool          b_block = fb_body && std::holds_alternative<BlockBody>(fb_body->value);
 		if (const Token t_next = p_parser.peek(); !b_block && p_parser.isSemiColon(t_next)) {
 			p_parser.advance();
-		} else if (t_next.get_type() != TokenType::NewLine && t_next.get_lexeme() != to_string(oBraceClose)) {
+		} else if (t_next.getType() != TokenType::NewLine && t_next.getLexeme() != toString(OBraceClose)) {
 			if (b_block) {
-				throw cde::SyntaxErrors::expected(std::format("a newline or '{}' after a block default", to_string(oBraceClose)), t_next);
+				throw cde::SyntaxErrors::expected(std::format("a newline or '{}' after a block default", toString(OBraceClose)), t_next);
 			}
 			throw cde::SyntaxErrors::newline(t_next);
 		}
