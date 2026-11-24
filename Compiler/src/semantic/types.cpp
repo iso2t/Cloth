@@ -137,7 +137,7 @@ ResolvedType Analyzer::substitute (ResolvedType type, const Substitutions &argum
 	using Replacements = std::map<const TypeArguments *, std::shared_ptr<const TypeArguments>>;
 	Replacements                                    m_replaced;
 	const std::function<ResolvedType(ResolvedType)> replace = [&] (ResolvedType rt_type) {
-		if (const Substitutions::const_iterator it_argument = arguments.find(rt_type.parameter); it_argument != arguments.end()) {
+		if (const auto it_argument = arguments.find(rt_type.parameter); it_argument != arguments.end()) {
 			ResolvedType rt_result = it_argument->second;
 			if (rt_type.projectedSuffixes) {
 				rt_result = boundShape(rt_result);
@@ -433,7 +433,7 @@ std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_
 		if (receiver.parameter) {
 			const ParameterContract pc_contract = parameterContract(*receiver.parameter);
 			if (kind == SymbolKind::Constructor) {
-				const Guarantees::const_iterator guarantees = m_guarantees.find(pc_contract.parameter);
+				const auto guarantees = m_guarantees.find(pc_contract.parameter);
 				if (guarantees != m_guarantees.end()) {
 					for (const Symbol *sym : guarantees->second) {
 						v_members.push_back({ sym, pc_contract.arguments });
@@ -511,7 +511,7 @@ std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_
 	std::vector<Candidate> unique;
 	for (const Candidate &candidate : v_members) {
 		const DeclarationInfo                 &current  = declarations.at(candidate.symbol);
-		const std::vector<Candidate>::iterator it_prior = std::ranges::find_if(unique, [&] (const Candidate &prior) {
+		const auto it_prior = std::ranges::find_if(unique, [&] (const Candidate &prior) {
 			if (prior.symbol == candidate.symbol) {
 				return prior.arguments == candidate.arguments;
 			}
@@ -676,7 +676,7 @@ bool Analyzer::supportsEquality (const ResolvedType &type) const {
 bool Analyzer::classEqualityMayCall (const ResolvedType &type, Operator operation) const {
 	const std::function hasEquality = [&] (const ResolvedType &owner) {
 		for (const Candidate &c_op : members(owner, to_string(operation), SymbolKind::Operator)) {
-			const MethodDeclaration &md_equal = dynamic_cast<const MethodDeclaration &>(*callable(*c_op.symbol));
+			const auto &md_equal = dynamic_cast<const MethodDeclaration &>(*callable(*c_op.symbol));
 			const OperatorMember    &om_form  = *md_equal.operatorMember;
 			if (!om_form.provider && !om_form.selector && !om_form.rightReceiver && md_equal.parameters.size() == 1 &&
 			    c_op.symbol->visibility == Visibility::Public &&
@@ -919,7 +919,7 @@ void Analyzer::checkPublicSurface (const Symbol &symbol, const Symbol *exporting
 		if (cs_method->returnTypes.empty()) {
 			for (const ResolvedType &rt_result : di_info.returns) expose(rt_result, nullptr, symbol.name.get_span());
 		}
-		if (const MethodDeclaration *md_method = dynamic_cast<const MethodDeclaration *>(cs_method);
+		if (const auto *md_method = dynamic_cast<const MethodDeclaration *>(cs_method);
 		    md_method && md_method->operatorMember && md_method->operatorMember->selector)
 			written(*md_method->operatorMember->selector);
 	} else if (symbol.kind == SymbolKind::Field) {
@@ -931,7 +931,7 @@ void Analyzer::checkPublicSurface (const Symbol &symbol, const Symbol *exporting
 	} else if (symbol.kind == SymbolKind::State) {
 		const StateBodyDeclaration &sd_state = *std::get<const StateBodyDeclaration *>(symbol.declaration);
 		written(sd_state.payloadType);
-		if (const TopLevelStateDeclaration *ts_state = dynamic_cast<const TopLevelStateDeclaration *>(&sd_state)) written(ts_state->host);
+		if (const auto *ts_state = dynamic_cast<const TopLevelStateDeclaration *>(&sd_state)) written(ts_state->host);
 	} else if (symbol.kind == SymbolKind::StateAttachment) {
 		expose(*di_info.value, nullptr, symbol.name.get_span());
 	}
@@ -984,7 +984,7 @@ void Analyzer::checkDeclaredBounds (const TypeParameterDeclaration &parameter, c
 				fail(Code::INVALID_GENERIC_BOUND, tp_bound.get_span(), "Duplicate constructor bound", it_previous.first->second);
 			t_present = &t_keyword;
 		} else {
-			const TypeReference &tr_bound    = std::get<TypeReference>(tp_bound.value);
+			const auto &tr_bound    = std::get<TypeReference>(tp_bound.value);
 			const ResolvedType   rt_required = type(tr_bound, symbol);
 			const ResolvedType   rt_payload  = rt_required.nullable() ? rt_required.element() : rt_required;
 			if (rt_payload.array() || (sym_number && rt_payload.declaration == sym_number)) {

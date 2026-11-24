@@ -371,6 +371,34 @@ fn<bool> overloaded(Cursor cur) = (cur .. 2) == 1)");
 	EXPECT_EQ(cp_program.expressions.at(be_overloaded.right.get()).types.front().width, 8u);
 }
 
+TEST (SemanticValues, NullableRangeEqualityRequiresMatchingEndpointTypes) {
+	const CheckedProgram cp_program = checkSource(R"(fn<bool> both(range<int<65>>? left, range<int<65>>? right) = left == right
+fn<bool> mixed(range<int<65>> left, range<int<65>>? right) = left != right)");
+	EXPECT_EQ(returned(cp_program, "both").range, RangeOperation::Equal);
+	EXPECT_EQ(returned(cp_program, "mixed").range, RangeOperation::Equal);
+	expectError("fn<bool> f(range<int<65>>? a, range<int<64>>? b) = a == b", Code::INCOMPARABLE_TYPES);
+	expectError("fn<bool> f(range<int>? a, range<unsigned int>? b) = a != b", Code::INCOMPARABLE_TYPES);
+}
+
+TEST (SemanticValues, ColonSelectsValueMembershipOrAnExplicitOperator) {
+	const CheckedProgram cp_program = checkSource(R"(typedef<struct> Bag { pub operator :(int n, self) = true }
+fn<bool> stored(int<8> n, range<int<8>> bounds) = n : bounds
+fn<bool> inlineRange(float<16> n) = n : 0.0..1.0
+fn<bool> custom(int n, Bag bag) = n : bag
+fn<bool> typeTest(int n) = n is int)");
+	EXPECT_EQ(returned(cp_program, "stored").range, RangeOperation::Membership);
+	EXPECT_EQ(returned(cp_program, "inlineRange").range, RangeOperation::Membership);
+	EXPECT_EQ(returned(cp_program, "typeTest").testedType, ResolvedType(kInteger));
+	const Symbol &sym_bag = cp_program.units.front()->get_globals().at("Bag").front();
+	EXPECT_EQ(returned(cp_program, "custom").argumentContract, &sym_bag.members.at(std::string(to_string(oColon))).front());
+	EXPECT_FALSE(returned(cp_program, "custom").range);
+	expectError("fn<bool> f(range<int> r) = r : 16", Code::INVALID_RANGE_MEMBERSHIP);
+	expectError("fn<bool> f(range<int> a, range<int> b) = a : b", Code::INVALID_RANGE_MEMBERSHIP);
+	expectError("fn<bool> f(int n) = n : 16", Code::INVALID_RANGE_MEMBERSHIP);
+	expectError("fn<bool> f(int<8> n, range<int<16>> r) = n : r", Code::INVALID_RANGE_MEMBERSHIP);
+	expectError("fn<bool> f(range<int>? r) = 16 : r", Code::NULLABLE_PAYLOAD_ACCESS);
+}
+
 TEST (SemanticValues, RangeMembershipValidatesExactTypesAndTargetLimits) {
 	const std::string s_endpoint = "fn<bool> f(float<16> x, float<64> high) = x == 0.0..high";
 	try {

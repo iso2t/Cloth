@@ -216,7 +216,7 @@ void BodyChecker::checkBuiltinTypeArguments (const CallSite &call, const TypeArg
 
 void BodyChecker::checkBuiltinArguments (const CallSite &call, const TypeArgumentList *typeArguments, std::size_t minimum, std::size_t maximum) {
 	if (typeArguments) checkBuiltinTypeArguments(call, *typeArguments);
-	const std::vector<CallArgument>::const_iterator it_label =
+	const auto it_label =
 	        std::ranges::find_if(call.suppliedArguments, [] (const CallArgument &argument) { return argument.label.has_value(); });
 	const std::size_t st_supplied = call.suppliedArguments.size();
 	if (it_label == call.suppliedArguments.end() && st_supplied >= minimum && st_supplied <= maximum) return;

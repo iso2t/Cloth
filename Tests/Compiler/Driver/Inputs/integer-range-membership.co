@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    def numbers := 13..16
+    def inclusive := 13..=16
+    if (!(13 : numbers) || 16 : numbers) return 1
+    if (!(16 : inclusive) || 17 : inclusive) return 2
+    return 42
+}

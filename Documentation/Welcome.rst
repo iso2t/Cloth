@@ -5,8 +5,8 @@ Welcome!
 
 Hello Weavers! This is the main documentation for the Cloth compiler project.
 
-The Cloth compiler is the core of the Cloth programming language. Cloth is defined
-as a modern, strongly-typed object-oriented language aimed at low level systems work
+The Cloth compiler is the core of the Cloth programming language. Cloth is a modern,
+strongly-typed object-oriented language aimed at low level systems work
 with an upfront a high level type system. It feels somewhat familiar to C-style
 languages with inspirations taken from many languages, including C, C++, Java, Kotlin,
 and Go.

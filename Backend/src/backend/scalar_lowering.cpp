@@ -233,6 +233,13 @@ LLVMValueRef ScalarLowering::checkedArrayIndex (LLVMValueRef index, bool isUnsig
 	return LLVMBuildIntCast2(ir_builder, ir_index, type(cloth::ResolvedType(cloth::kUsize)), false, "");
 }
 
+LLVMValueRef ScalarLowering::withinRangeEnd (LLVMValueRef value, LLVMValueRef end, LLVMValueRef inclusive, const cloth::ResolvedType &type) const {
+	if (LLVMIsAConstantInt(inclusive)) return compare(LLVMIsNull(inclusive) ? cloth::oLess : cloth::oLessEqual, value, end, type);
+	const LLVMValueRef ir_before = compare(cloth::oLess, value, end, type);
+	const LLVMValueRef ir_atEnd  = compare(cloth::oEqual, value, end, type);
+	return LLVMBuildOr(ir_builder, ir_before, LLVMBuildAnd(ir_builder, inclusive, ir_atEnd, ""), "");
+}
+
 IntegerRangeStep ScalarLowering::integerRangeStep (cloth::Operator op, LLVMValueRef current, LLVMValueRef amount, const cloth::ResolvedType &type) const {
 	const LLVMValueRef ir_true = LLVMConstAllOnes(LLVMInt1TypeInContext(LLVMGetModuleContext(mod_module)));
 	std::string_view   sv_intrinsic;
@@ -392,13 +399,10 @@ LLVMValueRef ScalarLowering::integerPower (LLVMValueRef base, LLVMValueRef expon
 LLVMValueRef ScalarLowering::compare (cloth::Operator op, LLVMValueRef left, LLVMValueRef right, const cloth::ResolvedType &operandType) const {
 	if (operandType.nullable()) {
 		if (op != cloth::oEqual && op != cloth::oNotEqual) throw std::logic_error("Invalid nullable scalar comparison");
-		const LLVMValueRef ir_leftPresent  = predicate(nullable::presence(ir_builder, left));
-		const LLVMValueRef ir_rightPresent = predicate(nullable::presence(ir_builder, right));
-		const LLVMValueRef ir_presenceTest = LLVMBuildICmp(ir_builder, integerPredicate(op, false), ir_leftPresent, ir_rightPresent, "");
-		const LLVMValueRef ir_payloadTest =
-		        compare(op, nullable::payload(ir_builder, left), nullable::payload(ir_builder, right), operandType.element());
-		// The payload comparison contributes to the result only when both elements are present.
-		return LLVMBuildSelect(ir_builder, LLVMBuildAnd(ir_builder, ir_leftPresent, ir_rightPresent, ""), ir_payloadTest, ir_presenceTest, "");
+		const LLVMValueRef ir_payloadsEqual =
+		        compare(cloth::oEqual, nullable::payload(ir_builder, left), nullable::payload(ir_builder, right), operandType.element());
+		const LLVMValueRef ir_equal = nullable::equal(ir_builder, left, right, ir_payloadsEqual);
+		return op == cloth::oNotEqual ? LLVMBuildNot(ir_builder, ir_equal, "") : ir_equal;
 	}
 	if (operandType.floating()) {
 		if (operandType.width == 16) {

@@ -20,7 +20,7 @@ unsigned classDepth (const Analyzer &analyzer, const Symbol *type) {
 	while (type) {
 		++u_depth;
 		const ResultTypes                &v_parents = analyzer.declarations.at(type).parents;
-		const ResultTypes::const_iterator it_base =
+		const auto it_base =
 		        std::ranges::find_if(v_parents, [] (const ResolvedType &parent) { return asClass(parent.declaration); });
 		type = it_base == v_parents.end() ? nullptr : it_base->declaration;
 	}
@@ -49,8 +49,8 @@ bool StoragePlace::covers (const StoragePlace &proof, bool descendantsOnly) cons
 }
 
 void BodyChecker::intersect (Narrowing &facts, const Narrowing &other) {
-	for (Narrowing::iterator it = facts.begin(); it != facts.end();) {
-		const Narrowing::const_iterator peer    = other.find(it->first);
+	for (auto it = facts.begin(); it != facts.end();) {
+		const auto peer    = other.find(it->first);
 		const bool                      b_shape = it->first.fact == PlaceFact::CurrentShape || it->first.fact == PlaceFact::RetainedShape;
 		if (peer == other.end() || (!b_shape && it->second.type != peer->second.type))
 			it = facts.erase(it);
@@ -103,7 +103,7 @@ void BodyChecker::finishStatement (const Statement &node, bool b_normal, const E
 std::optional<BodyChecker::TypedPlace> BodyChecker::locate (const Expression &expression) const {
 	std::optional<TypedPlace> tp_receiver;
 	const Token              *t_field  = nullptr;
-	const IndexExpression    *ie_index = dynamic_cast<const IndexExpression *>(&expression);
+	const auto    *ie_index = dynamic_cast<const IndexExpression *>(&expression);
 	if (const auto *ne_name = dynamic_cast<const NameExpression *>(&expression)) {
 		if (const Binding *b_local = local(ne_name->name.get_name_key())) {
 			if (!b_local->type || b_local->deferred) return std::nullopt;
@@ -126,7 +126,7 @@ std::optional<BodyChecker::TypedPlace> BodyChecker::locate (const Expression &ex
 	if (ie_index) {
 		// An overloaded getter produces a value rather than an address into array storage.
 		if (!rt_receiver.array()) return std::nullopt;
-		const IntegerLiteral *il_index = dynamic_cast<const IntegerLiteral *>(ie_index->index.get());
+		const auto *il_index = dynamic_cast<const IntegerLiteral *>(ie_index->index.get());
 		tp_receiver->place.path.emplace_back(il_index ? il_index->value : IntegerValue{});
 		tp_receiver->type = rt_receiver.element();
 		return tp_receiver;
@@ -146,9 +146,9 @@ BodyChecker::ReceiverProofs BodyChecker::receiverProofs (const Expression *recei
 		const std::optional<TypedPlace> tp_part = locate(*receiver);
 		if (tp_part && tp_part->type.nullable() && fs_flow.narrowed.contains(tp_part->place))
 			v_proofs.push_back({ tp_part->place, receiver->get_span() });
-		if (const FieldAccessExpression *fa_field = dynamic_cast<const FieldAccessExpression *>(receiver))
+		if (const auto *fa_field = dynamic_cast<const FieldAccessExpression *>(receiver))
 			receiver = fa_field->receiver.get();
-		else if (const IndexExpression *ie_index = dynamic_cast<const IndexExpression *>(receiver))
+		else if (const auto *ie_index = dynamic_cast<const IndexExpression *>(receiver))
 			receiver = ie_index->array.get();
 		else
 			break;
@@ -172,14 +172,14 @@ void BodyChecker::assumePresent (const Expression &source) {
 }
 
 ResolvedType BodyChecker::readType (const StoragePlace &place, const ResolvedType &declared) const {
-	const Narrowing::const_iterator it_fact = fs_flow.narrowed.find(place);
+	const auto it_fact = fs_flow.narrowed.find(place);
 	if (it_fact == fs_flow.narrowed.end()) return declared;
 	const FlowFact &ff_proof = it_fact->second;
 	if (ff_proof.nominalTests.empty()) return ff_proof.type;
 	ResolvedType rt_view = ff_proof.type;
 	if (rt_view.parameter) {
 		const ResultTypes                 v_bounds = analyzer.typeBounds(rt_view);
-		const ResultTypes::const_iterator it_class =
+		const auto it_class =
 		        std::ranges::find_if(v_bounds, [] (const ResolvedType &bound) { return asClass(bound.declaration); });
 		if (!v_bounds.empty()) rt_view = it_class == v_bounds.end() ? v_bounds.front() : *it_class;
 	}
@@ -366,8 +366,9 @@ bool BodyChecker::loop (const LoopStatement &node) {
 		} else if (opt_source->array()) {
 			opt_element = opt_source->element();
 			if (record) bf_facts.iterations[fs_for] = { IterationKind::Array, *opt_element };
-		} else if (opt_source->name == to_string(kRange) && !opt_source->declaration && !opt_source->arguments().empty()) {
-			opt_element = opt_source->arguments().front();
+		} else if (const ResolvedType *rt_endpoint = rangeEndpoint(*opt_source)) {
+			requirePresentOperand(*opt_source, source.get_span());
+			opt_element = *rt_endpoint;
 			if (record) bf_facts.iterations[fs_for] = { IterationKind::Range, *opt_element };
 		} else {
 			const std::vector<Candidate> group = analyzer.members(*opt_source, to_string(oForeach), SymbolKind::Operator);

@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<int> trace(final int n) {
+    println(n)
+    return n
+}
+
+fn<bool> contains(final bool inclusive, final int<65> n) {
+    def bounds := if (inclusive) int<65>::min..=0 else int<65>::min..0
+    return n : bounds
+}
+
+fn<int> stopAtStart(final bool stop) {
+    def inside := trace(7) : (if (stop) { return 42 } else 7)..trace(90)
+    return if (inside) 1 else 2
+}
+
+fn<int> stopBeforeMember(final bool stop) {
+    def inside := (trace(8)..(if (stop) { return 42 } else 9)) == trace(91)
+    return if (inside) 1 else 2
+}
+
+pub fn<int> main() {
+    if (contains(false, 0) || !contains(true, 0) || !contains(false, -1)) return 1
+    def high := unsigned int<65>::max
+    if (high : 0..high || !(high : 0..=high)) return 2
+    if (usize::max : usize::max..usize::max || !(usize::max : usize::max..=usize::max)) return 3
+    if (14 : 16..13 || 14 : 16..=13) return 4
+    if (!(10 + 4 : 12 + 1..15 + 1 && true)) return 5
+
+    def numbers := 13..16
+    if (!(numbers == 13) || 13 != numbers || !(16 != numbers) || numbers == 16) return 6
+    if (!(14 is int) || !(13 is numbers) || 16 is numbers) return 7
+    if (!(trace(2) : trace(1)..trace(3))) return 8
+    if ((trace(4)..=trace(6)) != trace(5)) return 9
+    if (stopAtStart(true) != 42 || stopBeforeMember(true) != 42) return 10
+    return 42
+}

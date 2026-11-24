@@ -80,6 +80,11 @@ struct TypeArguments {
 	bool        dependent;
 };
 
+namespace semantic {
+// A range or nullable range carries its checked endpoint as its single type argument.
+const ResolvedType *rangeEndpoint (const ResolvedType &type);
+}
+
 enum class LibraryIntrinsic {
 	DecodeUtf8,
 	FileOpen,

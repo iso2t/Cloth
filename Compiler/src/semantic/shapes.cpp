@@ -37,7 +37,7 @@ ResolvedType comparisonShape (ResolvedType type, const ArrayLiteral *literal) {
 		if (b_forget) continue;
 		std::vector<const Expression *> v_elements;
 		for (const Expression *e_row : v_rows) {
-			const ArrayLiteral *al_row = dynamic_cast<const ArrayLiteral *>(e_row);
+			const auto *al_row = dynamic_cast<const ArrayLiteral *>(e_row);
 			if (!al_row) {
 				b_forget = true;
 				break;
@@ -75,7 +75,7 @@ ResolvedType commonShape (ResolvedType left, const ResolvedType &right) {
 
 ResolvedType BodyChecker::shapeOf (const Expression &value, const ResolvedType &fallback, std::size_t slot) const {
 	if (record) {
-		const decltype(bf_facts.expressions)::const_iterator it_shape = bf_facts.expressions.find(&value);
+		const auto it_shape = bf_facts.expressions.find(&value);
 		if (it_shape != bf_facts.expressions.end() && slot < it_shape->second.arrayShapes.size()) return it_shape->second.arrayShapes[slot];
 	}
 	return fallback;
@@ -84,7 +84,7 @@ ResolvedType BodyChecker::shapeOf (const Expression &value, const ResolvedType &
 void BodyChecker::receiveShape (const Token &binding, const ResolvedType &declared, const ResolvedType &shape, const TokenSpan &use) {
 	if (!hasArrayShape(declared)) return;
 	const StoragePlace              sp_retained{ &binding, {}, PlaceFact::RetainedShape }, sp_current{ &binding, {}, PlaceFact::CurrentShape };
-	const Narrowing::const_iterator it_shape = fs_flow.narrowed.find(sp_retained);
+	const auto it_shape = fs_flow.narrowed.find(sp_retained);
 	const ResolvedType rt_current  = refineShape(it_shape == fs_flow.narrowed.end() ? declared : it_shape->second.type, shape, record ? &use : nullptr);
 	ResolvedType       rt_retained = rt_current;
 	const std::size_t  st_outer    = dimensions(declared).front();
@@ -98,17 +98,17 @@ void BodyChecker::receiveShape (const Token &binding, const ResolvedType &declar
 void BodyChecker::rowShape (const Expression &target, const Expression &value, const ResolvedType &incoming) {
 	const Expression *e_root   = &target;
 	std::size_t       st_depth = 0;
-	while (const IndexExpression *index = dynamic_cast<const IndexExpression *>(e_root)) {
+	while (const auto *index = dynamic_cast<const IndexExpression *>(e_root)) {
 		++st_depth;
 		e_root = index->array.get();
 	}
-	const NameExpression *name    = dynamic_cast<const NameExpression *>(e_root);
+	const auto *name    = dynamic_cast<const NameExpression *>(e_root);
 	const Binding        *binding = name ? local(name->name.get_name_key()) : nullptr;
 	if (!st_depth || !binding || !binding->type || !hasArrayShape(incoming)) return;
 	const std::vector<std::size_t> v_axes = dimensions(*binding->type);
 	if (st_depth >= v_axes.size()) return;
 	const StoragePlace              sp_key     = StoragePlace{ binding->name, {}, PlaceFact::CurrentShape };
-	const Narrowing::const_iterator it_current = fs_flow.narrowed.find(sp_key);
+	const auto it_current = fs_flow.narrowed.find(sp_key);
 	ResolvedType                    shape      = it_current == fs_flow.narrowed.end() ? *binding->type : it_current->second.type;
 	const std::vector<std::size_t>  v_rowAxes  = dimensions(incoming);
 	if (st_depth + v_rowAxes.size() != v_axes.size()) return;

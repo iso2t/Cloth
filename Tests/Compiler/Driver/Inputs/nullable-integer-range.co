@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    range<int>? missing = null
+    range<int>? empty = 13..13
+    if (missing == null && empty != null) return 42
+    return 1
+}

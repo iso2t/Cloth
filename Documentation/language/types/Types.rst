@@ -67,6 +67,11 @@ checks for absence. A present ``false``, ``0.0``, or ``'\0'`` keeps its
 value. The same rule applies to the first enum case and to a struct
 whose fields are all zero.
 
+An empty range is also a present value. With ``range<int>? bounds = 13..13``,
+``bounds != null`` is true even though a loop over those bounds visits no
+integers. Assigning ``null`` makes the range absent. See the
+`nullable range example <../../../Tests/Compiler/Driver/Inputs/nullable-integer-range.co>`_.
+
 Use ``value ?: fallback`` to supply a value when the left operand is
 absent. For evaluation order, see `Evaluation and updates
 <../expressions/Operators.rst#evaluation-and-updates>`_. For the position

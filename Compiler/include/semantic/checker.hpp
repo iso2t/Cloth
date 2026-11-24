@@ -66,7 +66,6 @@ bool                         builtinNeverReturns (std::string_view name);
 bool                         checksNumericMethod (std::string_view name);
 bool                         hasArrayShape (const ResolvedType &type);
 bool                         usesBooleanArgumentConversion (const ResolvedType &parameter, const ResolvedType &argument);
-const ResolvedType          *rangeEndpoint (const ResolvedType &type);
 void                         requireRangeMember (const Expression &member, const ResolvedType &actual, const ResolvedType &endpoint);
 ResolvedType                 comparisonShape (ResolvedType type, const ArrayLiteral *literal = nullptr);
 ResolvedType                 refineShape (ResolvedType target, const ResolvedType &source, const TokenSpan *use = nullptr);

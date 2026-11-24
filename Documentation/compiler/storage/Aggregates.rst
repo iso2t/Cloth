@@ -38,6 +38,12 @@ below are measured from the beginning of ``Sample``. See the
 
 ``Sample`` occupies 6 bytes with 2-byte alignment.
 
+An integer range field stores the start, end, and one-byte end-inclusion
+flag inline. In a ``range<int<12>>`` field these start at offsets 0, 2,
+and 4 within the field. Its size is 6 bytes with 2-byte alignment.
+In a ``range<int<12>>?`` field, a separate presence byte occupies
+offset 0 and the range starts at offset 2, giving a total of 8 bytes.
+
 Enum tags and nullable values
 -----------------------------
 

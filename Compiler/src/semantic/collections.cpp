@@ -11,7 +11,7 @@ namespace cloth::semantic {
 
 const Symbol *Analyzer::indexValidator (const Symbol &operation) const {
 	const DeclarationInfo            &di_signature  = declarations.at(&operation);
-	const SymbolScope::const_iterator it_validators = di_signature.owner->members.find(to_string(oIndexValidate));
+	const auto it_validators = di_signature.owner->members.find(to_string(oIndexValidate));
 	if (it_validators == di_signature.owner->members.end() || di_signature.parameters.empty()) return nullptr;
 	for (const Symbol &sym_candidate : it_validators->second) {
 		const ResultTypes &parameters = declarations.at(&sym_candidate).parameters;
@@ -48,7 +48,7 @@ void Analyzer::checkCollectionOperator (const Symbol &operation) const {
 	const Operator op = operation.name.get_operator();
 	if (op != oIndexRead && op != oIndexWrite && op != oIndexValidate && op != oForeach) return;
 	const DeclarationInfo   &di_operator   = declarations.at(&operation);
-	const MethodDeclaration &md_operator   = dynamic_cast<const MethodDeclaration &>(*callable(operation));
+	const auto &md_operator   = dynamic_cast<const MethodDeclaration &>(*callable(operation));
 	const OperatorMember    &om_form       = *md_operator.operatorMember;
 	const bool               b_invalidForm = om_form.provider || om_form.selector || om_form.rightReceiver || typeParameters(operation) ||
 	                           std::ranges::any_of(md_operator.parameters, &ParameterDeclaration::isOptional);
@@ -68,7 +68,7 @@ void Analyzer::checkCollectionOperator (const Symbol &operation) const {
 
 void BodyChecker::checkValidatorReceiver (const Expression *receiver, const TokenSpan &use) const {
 	if (context.kind != SymbolKind::Operator || context.name.get_operator() != oIndexValidate) return;
-	const NameExpression *name = dynamic_cast<const NameExpression *>(receiver);
+	const auto *name = dynamic_cast<const NameExpression *>(receiver);
 	if (!receiver || (name && name->name.get_lexeme() == to_string(kSelf)))
 		fail(Code::INVALID_OPERATOR_DECLARATION, use, "An index validator can only read its receiver", &context.name);
 }
@@ -81,7 +81,7 @@ IndexedAccess BodyChecker::indexAccess (const ExpressionInfo &operation, const T
 
 bool BodyChecker::writeIndex (const Statement &statement, const ExpressionPtr &target, const ExpressionInfo &array, const Token &op, const ExpressionPtr &rhs,
                               const ExpressionPtr &compound) {
-	const IndexExpression &index    = static_cast<const IndexExpression &>(*target);
+	const auto &index    = static_cast<const IndexExpression &>(*target);
 	const ResolvedType    &receiver = array.types.front();
 	checkFieldWrite(array, target->get_span());
 	checkValidatorReceiver(index.array.get(), target->get_span());

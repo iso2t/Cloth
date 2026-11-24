@@ -90,6 +90,7 @@ const std::unordered_map<Operator, ExpressionParser::OperatorPrecedence> Express
 	{ oEqual, { .precedence = 5 } },
 	{ oNotEqual, { .precedence = 5 } },
 	{ oIdentity, { .precedence = 5 } },
+	{ oColon, { .precedence = TYPE_CHECK_PRECEDENCE } },
 	{ oLess, { .precedence = 7 } },
 	{ oGreater, { .precedence = 7 } },
 	{ oLessEqual, { .precedence = 7 } },

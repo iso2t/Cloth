@@ -32,6 +32,7 @@ class ScalarLowering {
 	LLVMValueRef               compare (cloth::Operator op, LLVMValueRef left, LLVMValueRef right, const cloth::ResolvedType &operandType) const;
 	LLVMValueRef               binary (cloth::Operator op, LLVMValueRef left, LLVMValueRef right, const cloth::ResolvedType &operandType) const;
 
+	LLVMValueRef     withinRangeEnd (LLVMValueRef value, LLVMValueRef end, LLVMValueRef inclusive, const cloth::ResolvedType &type) const;
 	IntegerRangeStep integerRangeStep (cloth::Operator op, LLVMValueRef current, LLVMValueRef amount, const cloth::ResolvedType &type) const;
 	void             guardRangeProgress (LLVMValueRef unchanged, LLVMValueRef canContinue) const;
 

@@ -38,4 +38,13 @@ LLVMValueRef payload (LLVMBuilderRef builder, LLVMValueRef value) {
 LLVMValueRef payloadAddress (LLVMBuilderRef builder, LLVMTypeRef payloadType, LLVMValueRef address) {
 	return LLVMBuildStructGEP2(builder, type(payloadType), address, PAYLOAD, "");
 }
+
+LLVMValueRef equal (LLVMBuilderRef builder, LLVMValueRef left, LLVMValueRef right, LLVMValueRef payloadsEqual) {
+	const LLVMValueRef ir_leftPresent  = LLVMBuildIsNotNull(builder, presence(builder, left), "");
+	const LLVMValueRef ir_rightPresent = LLVMBuildIsNotNull(builder, presence(builder, right), "");
+	const LLVMValueRef ir_bothPresent  = LLVMBuildAnd(builder, ir_leftPresent, ir_rightPresent, "");
+	const LLVMValueRef ir_samePresence = LLVMBuildICmp(builder, LLVMIntEQ, ir_leftPresent, ir_rightPresent, "");
+	// An absent payload can be poison. Only select the payload comparison when both values are present.
+	return LLVMBuildSelect(builder, ir_bothPresent, payloadsEqual, ir_samePresence, "");
+}
 }

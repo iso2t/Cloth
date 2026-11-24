@@ -48,10 +48,9 @@ next condition check. See the `while examples
 Integer ranges
 --------------
 
-A ``for`` loop evaluates the start and end of its range once, from left
-to right. ``start..end`` excludes the end and ``start..=end`` includes
-it. The default step adds one. With reversed bounds the default loop
-skips the body.
+Constructing a range evaluates its start and end once, from left to
+right. ``start..end`` excludes the end and ``start..=end`` includes it.
+The default loop step adds one. With reversed bounds it skips the body.
 
 .. code-block:: text
 
@@ -61,6 +60,18 @@ skips the body.
 The loop adds 13, 14, and 15. Using ``13..=15`` gives the same sum, 42.
 See the `half-open example <../../../Tests/Compiler/Driver/Inputs/integer-range-loop.co>`_
 and the `inclusive example <../../../Tests/Compiler/Driver/Inputs/inclusive-integer-range-loop.co>`_.
+
+A local captures both endpoints and whether the end is included. Each
+loop over the local starts again at the captured start, even if a variable
+used to compute an endpoint has since changed. In the `stored range example
+<../../../Tests/Compiler/Driver/Inputs/stored-integer-range-loop.co>`_,
+``def numbers := 13..16`` gives a sum of 42. Changing the initializer to
+``13..=16`` includes 16 and gives 58.
+
+For a nullable range, check ``bounds != null`` before using it as a loop
+source, or supply a fallback range with ``?:``. A guarded loop can use
+``for (int n <- bounds)`` inside the present branch. See
+`Nullable values <../types/Types.rst#nullable-values>`_.
 
 Explicit steps
 ~~~~~~~~~~~~~~
@@ -72,8 +83,9 @@ the counter value the body left behind. An empty range skips the step,
 as does a ``break`` or ``return`` from the body.
 
 The source checker also accepts floating-point ranges, for example
-``for (float n <- 0.0 .. 1.0) {}``. Native range loops use integer
-counters. For storing a range or testing membership without a loop, see
+``for (float n <- 0.0 .. 1.0) {}``. See `native loop sources
+<../../compiler/driver/Objects.rst#loop-sources>`_ for the forms that
+compile to an object. For storing a range or testing membership, see
 `Ranges and membership <../expressions/Operators.rst#ranges-and-membership>`_.
 
 Each example adds the values it visits and returns 42.
@@ -199,7 +211,7 @@ the configured standard library. To build a snapshot in traversal order,
 see the `custom collection example <../../../Stdlib/cloth/collections/README.md#snapshot>`_.
 
 For the loop sources accepted by ``--emit-object``, see the `object-file
-guide <../../compiler/driver/Objects.rst#entry-point-and-output>`_.
+guide <../../compiler/driver/Objects.rst#loop-sources>`_.
 
 Break and continue
 ------------------

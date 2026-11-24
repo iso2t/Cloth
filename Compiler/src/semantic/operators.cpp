@@ -77,7 +77,7 @@ DeclarationInfo Analyzer::widthSignature (const Symbol &symbol, const Substituti
 		di_signature.returns = { *di_signature.value };
 	} else if (di_signature.inferResult) {
 		const InstanceKey                                        ik_key{ &symbol, substitute(ownerType(*di_signature.owner), arguments), {}, width };
-		const std::map<InstanceKey, ResultTypes>::const_iterator it_cached = m_widthResults.find(ik_key);
+		const auto it_cached = m_widthResults.find(ik_key);
 		if (it_cached != m_widthResults.end()) {
 			di_signature.returns     = it_cached->second;
 			di_signature.inferResult = false;
@@ -157,7 +157,7 @@ void Analyzer::resolveOperator (const Symbol &operation, const MethodDeclaration
 	std::optional<ResolvedType> opt_fixed;
 	if (b_cast && !om_form.provider)
 		opt_fixed = di_signature.value;
-	else if ((!om_form.selector && (o_op == oNot || isComparison(o_op) || o_op == oIndexValidate)) || b_is)
+	else if ((!om_form.selector && (o_op == oNot || isComparison(o_op) || o_op == oColon || o_op == oIndexValidate)) || b_is)
 		opt_fixed = ResolvedType(kBoolean);
 	else if (om_form.provider && method.name.get_name_key() == provider::S_STRING)
 		opt_fixed = ResolvedType(kString);
@@ -275,7 +275,7 @@ std::optional<ExpressionInfo> BodyChecker::binaryOperator (const BinaryExpressio
                 const bool b_cache = operatorProbes && !captured && !b_inferenceDefaults &&
                                      (dynamic_cast<const BinaryExpression *>(&operand) || dynamic_cast<const ElvisExpression *>(&operand));
                 if (b_cache) {
-                        const OperatorProbes::const_iterator it_probe = operatorProbes->find(&operand);
+                        const auto it_probe = operatorProbes->find(&operand);
                         if (it_probe != operatorProbes->end() && it_probe->second.before == bc_probe.fs_flow) {
                                 bc_probe.fs_flow = it_probe->second.after;
                                 return it_probe->second.type;
@@ -382,6 +382,9 @@ ExpressionInfo BodyChecker::equality (const BinaryExpression &node, const Resolv
 		fail(Code::INCOMPARABLE_TYPES, node.op.get_span(), "Cannot compare " + left.spelling() + " with " + right.spelling());
 	};
 	const ResolvedType *rt_leftEndpoint = rangeEndpoint(left), *rt_rightEndpoint = rangeEndpoint(right);
+	if (o_op == oColon && (rt_leftEndpoint || !rt_rightEndpoint || left == ResolvedType(kNull)))
+		fail(Code::INVALID_RANGE_MEMBERSHIP, node.op.get_span(),
+		     std::format("Operator '{}' requires a numeric value on the left and a range on the right", to_string(o_op)));
 	if (o_op != oIdentity && (rt_leftEndpoint || rt_rightEndpoint) && left != ResolvedType(kNull) && right != ResolvedType(kNull)) {
 		if (rt_leftEndpoint && rt_rightEndpoint) {
 			if (*rt_leftEndpoint != *rt_rightEndpoint) incomparable();
@@ -419,7 +422,7 @@ ExpressionInfo BodyChecker::equality (const BinaryExpression &node, const Resolv
 		ei_result.checkedIdentity = analyzer.hasMultipleTypeBounds(rt_left) || analyzer.hasMultipleTypeBounds(rt_right);
 		if (!m_arguments.empty()) {
 			const BodyFacts                                    &bf_open = openFacts();
-			const decltype(bf_open.expressions)::const_iterator it_open = bf_open.expressions.find(&node);
+			const auto it_open = bf_open.expressions.find(&node);
 			if (it_open != bf_open.expressions.end()) ei_result.checkedIdentity |= it_open->second.checkedIdentity;
 		}
 		return ei_result;

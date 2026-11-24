@@ -15,8 +15,6 @@ Entry point and output
 For native code, ``main`` takes no parameters and returns a signed
 32-bit ``int``. Its body can be an expression or a block with
 `conditionals and loops <../../language/statements/ControlFlow.rst>`_.
-For native ``for`` loops, the source must be a built-in integer range
-or a one-dimensional fixed-size array with a supported element type.
 When checking an executable without writing an object, Cloth accepts
 additional `entry-point signatures <../Flags.rst#program-kind>`_.
 
@@ -74,20 +72,50 @@ Local values
 
 The scalar types accepted for helper arguments can also be stored in
 locals, including nullable values. A struct local can contain these
-types and other supported structs, including nullable fields. Native
-enum payload reads support integer, boolean, character, and floating-point
-constants, their nullable forms, and structs composed of supported fields.
-A nullable enum field can default to ``null``. For byte sizes and field
-offsets, see `Aggregate storage layout <../storage/Aggregates.rst>`_.
+types, integer ranges, and other supported structs. Each field can be
+nullable. Native enum payload reads support integer, boolean, character,
+and floating-point constants, their nullable forms, and structs built
+from those constants. A nullable enum field can default to ``null``.
+For field assignment and copying, see `Structs
+<../../language/types/Declarations.rst#structs>`_. For byte sizes and
+field offsets, see `Aggregate storage layout <../storage/Aggregates.rst>`_.
 
 Fixed-size arrays
 -----------------
 
 Native code supports one-dimensional fixed-size array locals. ``==`` and
-``!=`` compare arrays of integers, booleans, characters, floats, and enums
-that use built-in equality. The elements can be nullable, as in
-``int?[2]``. For copying, indexing, and updates, see the language
-reference on `arrays <../../language/types/Arrays.rst>`_.
+``!=`` compare arrays of integers, booleans, characters, floats, integer
+ranges, and enums that use built-in equality. The elements can be nullable,
+as in ``int?[2]`` and ``range<int>?[3]``. See `array equality
+<../../language/expressions/Operators.rst#array-equality>`_ for comparison
+rules and `arrays <../../language/types/Arrays.rst>`_ for copying, indexing,
+and updates.
+
+.. _integer-range-membership:
+
+Integer range comparisons
+-------------------------
+
+Native code supports ``value : range`` and compares integer ranges with
+``==`` and ``!=``, including when either or both operands are nullable.
+Ranges can be written inline or stored in locals and struct fields.
+Their endpoints can be signed or unsigned integers of any Cloth width,
+including ``isize`` and ``usize``. See `Ranges and membership
+<../../language/expressions/Operators.rst#ranges-and-membership>`_.
+
+Test a nullable range with ``bounds == null`` or ``bounds != null``, or
+use ``?:`` to select a fallback range. The `nullable range example
+<../../../Tests/Compiler/Driver/Inputs/nullable-integer-range.co>`_ returns 42.
+
+Loop sources
+------------
+
+Native ``for`` loops accept integer ranges and one-dimensional fixed-size
+arrays with supported element types. Write ``for (int n <- 13..16)`` to
+iterate a range directly, or bind ``def numbers := 13..16`` and use
+``for (int n <- numbers)`` for each traversal. The `stored range example
+<../../../Tests/Compiler/Driver/Inputs/stored-integer-range-loop.co>`_
+compiles to an object and returns 42 when linked and run.
 
 Source checks and native code
 -----------------------------

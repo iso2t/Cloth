@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <backend/backend.hpp>
+#include <backend/integer_range.hpp>
 #include <backend/lowered_module.hpp>
 #include <backend/nullable_value.hpp>
 #include <backend/scalar_lowering.hpp>
@@ -301,6 +302,38 @@ fn<int> sized(final bool flag, final usize n) {
 	}
 }
 
+TEST (BackendLowering, StructRangeFieldsUseInlineStorageOnBothTargets) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(typedef<struct> Window {
+    pub bool marked, pub range<int<12>> span, pub range<usize>? bounds, pub bool tail
+}
+fn<int> main() { Window window = {true, -3..=2, null, false}; return if (window.marked) 42 else 1 })",
+		                                                    { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const LLVMModuleRef     mod_module  = lm_module.get();
+		const LLVMContextRef    ctx_context = LLVMGetModuleContext(mod_module);
+		const LLVMTargetDataRef td_layout   = LLVMGetModuleDataLayout(mod_module);
+		const LLVMValueRef      fn_main     = LLVMGetNamedFunction(mod_module, "main");
+		ASSERT_NE(fn_main, nullptr);
+		const LLVMValueRef ir_slot = LLVMGetFirstInstruction(LLVMGetEntryBasicBlock(fn_main));
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_slot), LLVMAlloca);
+		const LLVMTypeRef ty_struct = LLVMGetAllocatedType(ir_slot);
+		ASSERT_EQ(LLVMGetTypeKind(ty_struct), LLVMStructTypeKind);
+		ASSERT_EQ(LLVMCountStructElementTypes(ty_struct), 4u);
+		const LLVMTypeRef ty_span      = backend::detail::IntegerRange::type(LLVMIntTypeInContext(ctx_context, 12));
+		const LLVMTypeRef ty_wordRange = backend::detail::IntegerRange::type(LLVMIntTypeInContext(ctx_context, u_bits));
+		EXPECT_EQ(LLVMStructGetTypeAtIndex(ty_struct, 1), ty_span);
+		EXPECT_EQ(LLVMStructGetTypeAtIndex(ty_struct, 2), backend::detail::nullable::type(ty_wordRange));
+		const unsigned u_word = u_bits / CHAR_BIT;
+		EXPECT_EQ(LLVMOffsetOfElement(td_layout, ty_struct, 1), 2u);
+		EXPECT_EQ(LLVMOffsetOfElement(td_layout, ty_struct, 2), 8u);
+		EXPECT_EQ(LLVMOffsetOfElement(td_layout, ty_struct, 3), 8u + 4u * u_word);
+		EXPECT_EQ(LLVMABIAlignmentOfType(td_layout, ty_struct), u_word);
+		EXPECT_EQ(LLVMABISizeOfType(td_layout, ty_struct), 8u + 5u * u_word);
+	}
+}
+
 TEST (BackendLowering, NullableStructLocalsUseTheCheckedPayloadAlignment) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
@@ -522,6 +555,20 @@ TEST (BackendLowering, AbsentScalarEqualityIgnoresTheUnusedPayload) {
 		EXPECT_EQ(sl_scalars.compare(cloth::oEqual, ir_present, ir_absentPoison, rt_type), LLVMConstNull(ty_bool));
 		EXPECT_EQ(sl_scalars.compare(cloth::oNotEqual, ir_absentPoison, ir_present, rt_type), LLVMConstAllOnes(ty_bool));
 	}
+}
+
+TEST (BackendLowering, AbsentRangeElementsIgnoreTheUnusedEndpointsAndInclusionFlag) {
+	const std::unique_ptr<LLVMOpaqueContext, decltype(&LLVMContextDispose)> ctx_context(LLVMContextCreate(), LLVMContextDispose);
+	const std::unique_ptr<LLVMOpaqueBuilder, decltype(&LLVMDisposeBuilder)> ir_builder(LLVMCreateBuilderInContext(ctx_context.get()), LLVMDisposeBuilder);
+	const LLVMTypeRef  ty_range  = backend::detail::IntegerRange::type(LLVMIntTypeInContext(ctx_context.get(), 65));
+	const LLVMTypeRef  ty_bool   = LLVMInt1TypeInContext(ctx_context.get());
+	const LLVMValueRef ir_absent = LLVMConstNull(backend::detail::nullable::type(ty_range));
+	const LLVMValueRef ir_absentPoison =
+	        backend::detail::nullable::pack(ir_builder.get(), LLVMGetPoison(ty_range), LLVMConstNull(LLVMInt8TypeInContext(ctx_context.get())));
+	const LLVMValueRef ir_presentEmpty = backend::detail::nullable::presentConstant(LLVMConstNull(ty_range));
+	EXPECT_EQ(backend::detail::IntegerRange::equalPacked(ir_builder.get(), ir_absentPoison, ir_absent, true), LLVMConstAllOnes(ty_bool));
+	EXPECT_EQ(backend::detail::IntegerRange::equalPacked(ir_builder.get(), ir_absentPoison, ir_presentEmpty, true), LLVMConstNull(ty_bool));
+	EXPECT_EQ(backend::detail::IntegerRange::equalPacked(ir_builder.get(), ir_presentEmpty, ir_absentPoison, true), LLVMConstNull(ty_bool));
 }
 
 TEST (BackendLowering, FixedArrayLayoutMatchesEverySupportedIntegerWidth) {
@@ -1011,6 +1058,127 @@ fn<int> unsignedInclusive(final usize first, final usize last) { for (def n <- f
 				}
 			}
 			EXPECT_EQ(u_increments, 1u);
+		}
+	}
+}
+
+TEST (BackendLowering, InlineIntegerMembershipComparesAtTheCheckedWidth) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = if (signedMember(0, -1, 1) && unsignedMember(1, 0, 1)) 42 else 0
+fn<bool> signedMember(final int<65> n, final int<65> low, final int<65> high) = n : low..high
+fn<bool> unsignedMember(final usize n, final usize low, final usize high) = low..=high == n)",
+		                                                    { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		for (const bool b_signed : { true, false }) {
+			const LLVMValueRef fn_member = LLVMGetNamedFunction(lm_module.get(), b_signed ? "cloth.signedMember" : "cloth.unsignedMember");
+			ASSERT_NE(fn_member, nullptr);
+			std::vector<LLVMIntPredicate> v_predicates;
+			for (LLVMValueRef ir = LLVMGetFirstInstruction(LLVMGetEntryBasicBlock(fn_member)); ir; ir = LLVMGetNextInstruction(ir)) {
+				const LLVMOpcode op = LLVMGetInstructionOpcode(ir);
+				EXPECT_NE(op, LLVMInsertValue);
+				EXPECT_NE(op, LLVMExtractValue);
+				if (op != LLVMICmp) continue;
+				v_predicates.push_back(LLVMGetICmpPredicate(ir));
+				EXPECT_EQ(LLVMGetIntTypeWidth(LLVMTypeOf(LLVMGetOperand(ir, 0))), b_signed ? 65u : u_bits);
+			}
+			EXPECT_EQ(v_predicates, (std::vector<LLVMIntPredicate>{ b_signed ? LLVMIntSLE : LLVMIntULE, b_signed ? LLVMIntSLT : LLVMIntULE }));
+		}
+	}
+}
+
+TEST (BackendLowering, RangeEqualityComparesBothEndpointsAtTheirFullWidth) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = if (wide(0, 1, 0, 1) && word(0, 1, 1, 0)) 42 else 1
+fn<bool> wide(final int<65> start, final int<65> end, final int<65> otherStart, final int<65> otherEnd) = start..=end == otherStart..=otherEnd
+fn<bool> word(final usize start, final usize end, final usize otherStart, final usize otherEnd) = start..end != otherStart..otherEnd)",
+		                                                    { u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		for (const auto &[s_name, u_width] : { std::pair{ "cloth.wide", 65u }, std::pair{ "cloth.word", u_bits } }) {
+			const LLVMValueRef fn_compare = LLVMGetNamedFunction(lm_module.get(), s_name);
+			ASSERT_NE(fn_compare, nullptr);
+			unsigned u_comparisons = 0;
+			for (LLVMValueRef ir = LLVMGetFirstInstruction(LLVMGetEntryBasicBlock(fn_compare)); ir; ir = LLVMGetNextInstruction(ir)) {
+				if (LLVMGetInstructionOpcode(ir) != LLVMICmp) continue;
+				EXPECT_EQ(LLVMGetICmpPredicate(ir), LLVMIntEQ);
+				EXPECT_EQ(LLVMGetIntTypeWidth(LLVMTypeOf(LLVMGetOperand(ir, 0))), u_width);
+				++u_comparisons;
+			}
+			EXPECT_EQ(u_comparisons, 2u);
+		}
+	}
+}
+
+TEST (BackendLowering, StoredIntegerRangesUseTheCheckedEndpointAndFlagLayout) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const cloth::CheckedProgram  cp_program = checkProgram(R"(fn<int> main() {
+    def small := int<1>::min..int<1>::max
+    def narrow := int<12>::min..=int<12>::max
+    def wide := int<65>::min..=int<65>::max
+    def largest := int<65536>::min..int<65536>::max
+    def word := usize::min..=usize::max
+    return 42
+})",
+		                                                       { u_bits });
+		const backend::LoweredModule lm_module(cp_program);
+		ASSERT_NO_THROW(lm_module.verify());
+		backend::detail::ValueTypes vt_types(lm_module.get(), cp_program);
+		const LLVMTargetDataRef     td_target = LLVMGetModuleDataLayout(lm_module.get());
+		ASSERT_EQ(cp_program.localTypes.size(), 5u);
+		for (const auto &[name, range] : cp_program.localTypes) {
+			SCOPED_TRACE(range.spelling());
+			const cloth::ResolvedType *rt_endpoint = cloth::semantic::rangeEndpoint(range);
+			ASSERT_NE(rt_endpoint, nullptr);
+			const LLVMTypeRef ty_endpoint = vt_types.get(*rt_endpoint);
+			const LLVMTypeRef ty_range    = vt_types.localType(range);
+			ASSERT_NE(ty_range, nullptr);
+			ASSERT_EQ(LLVMCountStructElementTypes(ty_range), 3u);
+			EXPECT_EQ(LLVMStructGetTypeAtIndex(ty_range, 0), ty_endpoint);
+			EXPECT_EQ(LLVMStructGetTypeAtIndex(ty_range, 1), ty_endpoint);
+			EXPECT_EQ(LLVMGetIntTypeWidth(LLVMStructGetTypeAtIndex(ty_range, 2)), 8u);
+			const auto sl_endpoint = cp_program.storageLayout(*rt_endpoint).value();
+			const auto sl_range    = cp_program.storageLayout(range).value();
+			EXPECT_EQ(LLVMOffsetOfElement(td_target, ty_range, 1), sl_endpoint.size);
+			EXPECT_EQ(LLVMOffsetOfElement(td_target, ty_range, 2), 2 * sl_endpoint.size);
+			EXPECT_EQ(LLVMABISizeOfType(td_target, ty_range), sl_range.size);
+			EXPECT_EQ(LLVMABIAlignmentOfType(td_target, ty_range), sl_range.alignment);
+		}
+	}
+}
+
+TEST (BackendLowering, NullableIntegerRangeLocalsAlignTheRangeAfterThePresenceByte) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const cloth::CheckedProgram  cp_program = checkProgram(R"(fn<int> main() {
+    range<int<1>>? bit = null
+    range<unsigned int<12>>? small = 0..0
+    range<int<65>>? wide = -1..=0
+    range<unsigned int<65536>>? largest = null
+    range<usize>? word = 0..0
+    return 42
+})",
+		                                                       { u_bits });
+		const backend::LoweredModule lm_module(cp_program);
+		ASSERT_NO_THROW(lm_module.verify());
+		backend::detail::ValueTypes vt_types(lm_module.get(), cp_program);
+		const LLVMTargetDataRef     td_target = LLVMGetModuleDataLayout(lm_module.get());
+		ASSERT_EQ(cp_program.localTypes.size(), 5u);
+		for (const auto &[name, range] : cp_program.localTypes) {
+			SCOPED_TRACE(range.spelling());
+			const LLVMTypeRef ty_nullable = vt_types.localType(range);
+			ASSERT_NE(ty_nullable, nullptr);
+			ASSERT_EQ(LLVMGetTypeKind(ty_nullable), LLVMStructTypeKind);
+			ASSERT_EQ(LLVMCountStructElementTypes(ty_nullable), 2u);
+			EXPECT_EQ(LLVMStructGetTypeAtIndex(ty_nullable, 0), LLVMInt8TypeInContext(LLVMGetModuleContext(lm_module.get())));
+			EXPECT_EQ(LLVMStructGetTypeAtIndex(ty_nullable, 1), vt_types.localType(range.element()));
+			const cloth::StorageLayout sl_range    = cp_program.storageLayout(range.element()).value();
+			const cloth::StorageLayout sl_nullable = cp_program.storageLayout(range).value();
+			EXPECT_EQ(LLVMOffsetOfElement(td_target, ty_nullable, 0), 0u);
+			EXPECT_EQ(LLVMOffsetOfElement(td_target, ty_nullable, 1), sl_range.alignment);
+			EXPECT_EQ(LLVMABISizeOfType(td_target, ty_nullable), sl_nullable.size);
+			EXPECT_EQ(LLVMABIAlignmentOfType(td_target, ty_nullable), sl_nullable.alignment);
 		}
 	}
 }

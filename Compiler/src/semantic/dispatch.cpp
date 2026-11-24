@@ -96,7 +96,7 @@ bool Analyzer::sameMethodBounds (const MethodRef &left, const MethodRef &right, 
 			if (const TypeReference *tr_type = std::get_if<TypeReference>(&tp_bound.value)) {
 				s_bounds.emplace(resolve(*tr_type));
 			} else {
-				const ConstructorBound &cb_bound = std::get<ConstructorBound>(tp_bound.value);
+				const auto &cb_bound = std::get<ConstructorBound>(tp_bound.value);
 				ConstructorShape        cs_shape;
 				for (const ParameterDeclaration &pd_param : cb_bound.declaration.parameters) {
 					cs_shape.parameters.push_back(resolve(pd_param.type));
@@ -132,13 +132,13 @@ bool Analyzer::sameTypeDefaults (const MethodRef &left, const MethodRef &right) 
 
 Analyzer::ParameterContract Analyzer::parameterContract (const TypeParameterDeclaration &parameter) const {
 	if (rt_activeAttachment) {
-		const std::map<const Symbol *, ParameterContracts>::const_iterator it_host = m_attachmentContracts.find(rt_activeAttachment->declaration);
+		const auto it_host = m_attachmentContracts.find(rt_activeAttachment->declaration);
 		if (it_host != m_attachmentContracts.end()) {
-			const ParameterContracts::const_iterator it_origin = it_host->second.find(&parameter);
+			const auto it_origin = it_host->second.find(&parameter);
 			if (it_origin != it_host->second.end()) return it_origin->second;
 		}
 	}
-	const ParameterContracts::const_iterator it_origin = m_parameterContracts.find(&parameter);
+	const auto it_origin = m_parameterContracts.find(&parameter);
 	return it_origin == m_parameterContracts.end() ? ParameterContract{ &parameter, {} } : it_origin->second;
 }
 
@@ -160,7 +160,7 @@ void Analyzer::inheritMethodBounds (const MethodRef &body, const MethodRef &cont
 }
 
 const TypeDispatch &Analyzer::dispatchFor (const ResolvedType &receiver) const {
-	const std::map<ResolvedType, TypeDispatch>::const_iterator it_cached = m_dispatch.find(receiver);
+	const auto it_cached = m_dispatch.find(receiver);
 	if (it_cached != m_dispatch.end()) return it_cached->second;
 	const ResolvedType rt_declaration = ownerType(*receiver.declaration);
 	if (receiver != rt_declaration) {
@@ -188,7 +188,7 @@ const TypeDispatch &Analyzer::dispatchFor (const ResolvedType &receiver) const {
 			td_table.stateMethods = td_parent.stateMethods;
 		}
 		for (const ResolvedType &rt_view : td_parent.interfaces) {
-			const ResultTypes::const_iterator it_prior = std::ranges::find(td_table.interfaces, rt_view.declaration, &ResolvedType::declaration);
+			const auto it_prior = std::ranges::find(td_table.interfaces, rt_view.declaration, &ResolvedType::declaration);
 			if (it_prior == td_table.interfaces.end())
 				td_table.interfaces.push_back(rt_view);
 			else if (*it_prior != rt_view) {
@@ -219,7 +219,7 @@ void Analyzer::buildMethods (const ResolvedType &receiver, TypeDispatch &table) 
 					continue;
 				}
 				std::vector<MethodGroup>                &v_groups = m_groups[entry.first];
-				const std::vector<MethodGroup>::iterator it_group =
+				const auto it_group =
 				        std::ranges::find_if(v_groups, [&] (const MethodGroup &group) { return sameMethod(group.front(), mr_method); });
 				if (it_group == v_groups.end())
 					v_groups.push_back({ mr_method });
@@ -244,7 +244,7 @@ void Analyzer::buildMethods (const ResolvedType &receiver, TypeDispatch &table) 
 void Analyzer::addClassMethod (const MethodRef &method, const MethodGroups &requirements, TypeDispatch &table) const {
 	const Symbol                           &sym_method = *method.symbol;
 	const MethodDeclaration                &md_method  = classMethod(method);
-	const std::vector<MethodSlot>::iterator it_base =
+	const auto it_base =
 	        std::ranges::find_if(table.methods, [&] (const MethodSlot &slot) { return sameMethod(slot.contract, method); });
 	if (it_base != table.methods.end() && it_base->kind == DispatchKind::Virtual) {
 		const Symbol &sym_root = *it_base->contract.symbol;
@@ -271,10 +271,10 @@ void Analyzer::addClassMethod (const MethodRef &method, const MethodGroups &requ
 	if (md_method.virtualPrefix && sym_method.visibility != Visibility::Public)
 		fail(Code::INVALID_VIRTUAL_METHOD, sym_method.name.get_span(), std::format("A virtual method requires {}", to_string(kPublic)));
 	if (md_method.overridePrefix) {
-		const MethodGroups::const_iterator it_groups = requirements.find(sym_method.name.get_name_key());
+		const auto it_groups = requirements.find(sym_method.name.get_name_key());
 		if (it_groups == requirements.end() ||
 		    std::ranges::none_of(it_groups->second, [&] (const MethodGroup &group) { return sameMethod(group.front(), method); })) {
-			const std::vector<MethodSlot>::const_iterator it_named = std::ranges::find_if(table.methods, [&] (const MethodSlot &slot) {
+			const auto it_named = std::ranges::find_if(table.methods, [&] (const MethodSlot &slot) {
 				return slot.contract.symbol->name.get_name_key() == sym_method.name.get_name_key();
 			});
 			fail(typeParameters(sym_method) ? Code::INVALID_VIRTUAL_METHOD : Code::INVALID_INTERFACE_OVERRIDE, sym_method.name.get_span(),
@@ -339,7 +339,7 @@ void Analyzer::mergeRequirements (const ResolvedType &receiver, const MethodGrou
 void Analyzer::implementRequirements (const ResolvedType &receiver, const MethodGroup &group, const MethodRef &contract, const MethodGroup &defaults,
                                       TypeDispatch &table) const {
 	const Symbol                           &sym_owner = *receiver.declaration;
-	const std::vector<MethodSlot>::iterator it_class  = std::ranges::find_if(table.methods, [&] (const MethodSlot &slot) {
+	const auto it_class  = std::ranges::find_if(table.methods, [&] (const MethodSlot &slot) {
                 return slot.kind != DispatchKind::Interface && sameMethod(slot.contract, contract);
         });
 	std::optional<MethodRef>                opt_target;
@@ -441,7 +441,7 @@ void Analyzer::buildStates (const ResolvedType &receiver, TypeDispatch &table) c
 							     "Declare state method type defaults on the host contract");
 					}
 				}
-				std::vector<StateMethod>::iterator it_contract = std::ranges::find_if(table.stateMethods, [&] (const StateMethod &method) {
+				auto it_contract = std::ranges::find_if(table.stateMethods, [&] (const StateMethod &method) {
 					return sameMethod(method.contract, mr_body);
 				});
 				if (it_contract == table.stateMethods.end()) {

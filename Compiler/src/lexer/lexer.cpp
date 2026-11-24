@@ -66,7 +66,7 @@ const std::vector<Keyword> V_KEYWORDS = [] {
 	std::vector<Keyword> v_entries;
 
 	for (int i_value = kMod; i_value < kError; ++i_value) {
-		if (const Keyword k_keyword = static_cast<Keyword>(i_value); isReserved(k_keyword)) {
+		if (const auto k_keyword = static_cast<Keyword>(i_value); isReserved(k_keyword)) {
 			v_entries.push_back(k_keyword);
 		}
 	}

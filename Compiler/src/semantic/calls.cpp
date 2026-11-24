@@ -81,7 +81,7 @@ PlacementResult placeArguments (const std::vector<CallArgument> &arguments, cons
 			++st_positional;
 			continue;
 		}
-		const std::vector<ParameterDeclaration>::const_iterator it_parameter = std::ranges::find_if(
+		const auto it_parameter = std::ranges::find_if(
 		        v_parameters, [&] (const ParameterDeclaration &parameter) { return parameter.name.get_name_key() == opt_label->get_name_key(); });
 		if (it_parameter == v_parameters.end()) {
 			return BindingProblem{ opt_label->get_span(), "Unknown argument label '" + opt_label->get_lexeme() + "'", &symbol.name };
@@ -191,7 +191,7 @@ std::vector<PlacedCandidate> bindCandidates (const Token &name, const TokenSpan 
 		b_generic |= tpl_parameters != nullptr;
 		if (written && !acceptsTypeArgumentCount(tpl_parameters, written->arguments.size())) continue;
 		PlacementResult pr_result = placeArguments(arguments, *c_candidate.symbol, span);
-		if (ArgumentPlacement *ap_placement = std::get_if<ArgumentPlacement>(&pr_result)) {
+		if (auto *ap_placement = std::get_if<ArgumentPlacement>(&pr_result)) {
 			v_placed.push_back({ &c_candidate, std::move(*ap_placement), tpl_parameters });
 		} else {
 			if (!opt_firstProblem) opt_firstProblem = std::get<BindingProblem>(std::move(pr_result));
@@ -247,7 +247,7 @@ bool inferCall (const Analyzer &analyzer, const PlacedCandidate &placed, const S
 	}
 	try {
 		for (const TypeParameterDeclaration &tp_parameter : v_parameters) {
-			const EvidenceSpans::const_iterator it_span = in_match.spans.find(&tp_parameter);
+			const auto it_span = in_match.spans.find(&tp_parameter);
 			analyzer.checkBounds(tp_parameter, arguments, context, it_span == in_match.spans.end() ? span : it_span->second);
 		}
 	} catch (const cde::ClothDiagnostic &error) {
@@ -327,7 +327,7 @@ std::vector<Candidate> BodyChecker::methodCandidates (const MemberCallExpression
 	if (!m_arguments.empty()) {
 		using Facts                             = std::unordered_map<const Expression *, ExpressionInfo>;
 		const Facts                &m_open      = openFacts().expressions;
-		const Facts::const_iterator it_receiver = m_open.find(site.receiver.get()), it_call = m_open.find(&site);
+		const auto it_receiver = m_open.find(site.receiver.get()), it_call = m_open.find(&site);
 		if (it_receiver != m_open.end() && it_call != m_open.end() && it_call->second.argumentContract && it_receiver->second.types.size() == 1 &&
 		    it_receiver->second.types.front().parameter) {
 			return { analyzer.boundMethod(it_call->second, receiver, v_candidates, m_arguments) };
@@ -365,7 +365,7 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 	const std::string &spelling = name.get_lexeme();
 	if (group.empty()) unknownName(name);
 	std::vector<PlacedCandidate>                 v_placed = bindCandidates(name, span, arguments, group, validateArgumentLabels(arguments), typeArguments);
-	const std::vector<PlacedCandidate>::iterator it_firstGeneric =
+	const auto it_firstGeneric =
 	        std::stable_partition(v_placed.begin(), v_placed.end(), [] (const PlacedCandidate &placed) { return !placed.parameters; });
 	const bool                               b_singleTemplate = v_placed.end() - it_firstGeneric == 1;
 	std::vector<std::optional<ResolvedType>> explicitTypes;
@@ -467,7 +467,7 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
                 }
                 v_contextual.clear();
 	};
-	for (std::vector<PlacedCandidate>::iterator it_placed = v_placed.begin(); it_placed != v_placed.end(); ++it_placed) {
+	for (auto it_placed = v_placed.begin(); it_placed != v_placed.end(); ++it_placed) {
 		if (it_placed == it_firstGeneric) {
 			tryContextual();
 			if (!matches.empty()) break;

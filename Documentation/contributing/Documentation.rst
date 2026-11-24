@@ -15,13 +15,22 @@ Choose a page
 * **Write a Cloth program.** A first-program walkthrough shows the source,
   how to run it, and the expected result. Explain language rules in the
   language reference, as in `Calls and results <../language/expressions/Calls.rst>`_.
-* **Use the compiler.** Show the command a task needs in its walkthrough.
-  Keep the full description of an option such as ``--emit-object`` in the
-  `compiler flags reference <../compiler/Flags.rst>`_.
+* **Use the compiler.** Describe each option's spelling, arguments, defaults,
+  and valid combinations in the `compiler flags reference <../compiler/Flags.rst>`_.
+  Put commands, supported native features, and link dependencies for
+  ``--emit-object`` in the `object-file guide <../compiler/driver/Objects.rst>`_.
+* **Maintain the compiler.** Describe the facts a pass produces or consumes,
+  the implementation that owns them, and the tests that exercise the contract
+  in the `compiler internals chapters <../compiler/index.rst#for-compiler-contributors>`_.
+  The `compiler overview <../../Compiler/README.rst>`_ links to those chapters.
 * **Contribute to Cloth.** Put workflows such as testing and submitting
   changes with the `contributor guides <../Welcome.rst#contributing>`_.
-  Explain how a subsystem works in its component overview, as in the
-  `compiler README <../../Compiler/README.rst>`_.
+
+For a range step, a programmer needs to know when the assignment runs
+and which counter value the body sees next. A maintainer needs to know
+which LLVM block supplies that value on the back edge. See `Explicit
+steps <../language/statements/ControlFlow.rst#explicit-steps>`_ and
+`Backend control flow <../compiler/internals/Backend.rst#control-flow-and-effects>`_.
 
 Review the layout
 -----------------

@@ -3,11 +3,105 @@
 Checks: >
   -*,
   clang-diagnostic-*,
+  bugprone-dangling-handle,
+  bugprone-implicit-widening-of-multiplication-result,
+  bugprone-suspicious-include,
+  bugprone-unchecked-optional-access,
+  bugprone-use-after-move,
+  cppcoreguidelines-init-variables,
+  cppcoreguidelines-prefer-member-initializer,
+  misc-const-correctness,
+  misc-include-cleaner,
+  misc-unused-parameters,
+  misc-unused-using-decls,
+  modernize-loop-convert,
   modernize-use-auto,
+  modernize-use-designated-initializers,
+  modernize-use-emplace,
   modernize-use-nullptr,
   modernize-use-override,
   performance-for-range-copy,
+  performance-inefficient-vector-operation,
+  performance-move-const-arg,
   performance-unnecessary-copy-initialization,
+  performance-unnecessary-value-param,
   readability-container-size-empty,
+  readability-identifier-naming,
+  readability-make-member-function-const,
+  readability-qualified-auto,
   readability-redundant-control-flow
-HeaderFilterRegex: '\.hpp$'
+
+# WarningsAsErrors: '*'
+HeaderFilterRegex: '\.(h|hpp)$'
+
+CheckOptions:
+  # --- Designated Initializers ---
+  - key: modernize-use-designated-initializers.IgnoreMacros
+    value: 'true'
+  - key: modernize-use-designated-initializers.IgnoreSingleElementAggregates
+    value: 'true'
+  - key: modernize-use-designated-initializers.RestrictToPODTypes
+    value: 'false'
+  - key: modernize-use-designated-initializers.StrictCppStandardCompliance
+    value: 'true'
+
+  # --- Auto Tuning (restricts auto to iterators, casts, and new expressions) ---
+  - key: modernize-use-auto.MinTypeNameLength
+    value: '5'
+  - key: modernize-use-auto.RemoveStars
+    value: 'false'
+
+  # --- Misc Checks ---
+  - key: misc-const-correctness.AnalyzeValues
+    value: 'true'
+  - key: misc-const-correctness.AnalyzeReferences
+    value: 'true'
+  - key: misc-unused-parameters.StrictMode
+    value: 'true'
+
+  # --- Naming Conventions ---
+  # Types & Enums -> PascalCase
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.TypeAliasCase
+    value: CamelCase
+  - key: readability-identifier-naming.TypedefCase
+    value: CamelCase
+  - key: readability-identifier-naming.TemplateParameterCase
+    value: CamelCase
+
+  # Functions & Methods -> lowerCamelCase
+  - key: readability-identifier-naming.FunctionCase
+    value: camelBack
+  - key: readability-identifier-naming.MethodCase
+    value: camelBack
+
+  # Parameters -> lowerCamelCase (no type prefix)
+  - key: readability-identifier-naming.ParameterCase
+    value: camelBack
+
+  # Macros & Namespace/Global Constants -> UPPER_SNAKE_CASE
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.NamespaceConstantCase
+    value: UPPER_CASE
+
+  # Locals & Members -> optional <prefix>_ followed by lowerCamelCase
+  - key: readability-identifier-naming.LocalVariableIgnoredRegexp
+    value: '^([a-z0-9]+_)?[a-z][a-zA-Z0-9]*$'
+  - key: readability-identifier-naming.LocalConstantIgnoredRegexp
+    value: '^([a-z0-9]+_)?[a-z][a-zA-Z0-9]*$'
+  - key: readability-identifier-naming.MemberIgnoredRegexp
+    value: '^([a-z0-9]+_)?[a-z][a-zA-Z0-9]*$'
+  - key: readability-identifier-naming.PrivateMemberIgnoredRegexp
+    value: '^([a-z0-9]+_)?[a-z][a-zA-Z0-9]*$'
+  - key: readability-identifier-naming.PublicMemberIgnoredRegexp
+    value: '^([a-z0-9]+_)?[a-z][a-zA-Z0-9]*$'

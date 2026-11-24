@@ -103,7 +103,7 @@ std::optional<StorageLayout> CheckedProgram::storageLayout (const ResolvedType &
 		if (!ss_range.append(*opt_endpoint) || !ss_range.append(*opt_endpoint) || !ss_range.append(layout.integerStorage(8))) return {};
 		return ss_range.finish();
 	}
-	const std::map<ResolvedType, StructLayout>::const_iterator it_struct = structLayouts.find(type);
+	const auto it_struct = structLayouts.find(type);
 	if (it_struct == structLayouts.end()) return {};
 	return it_struct->second.storage;
 }

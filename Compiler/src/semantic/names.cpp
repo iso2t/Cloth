@@ -27,7 +27,7 @@ void Analyzer::useWidthAnnotation (const TypeReference &reference, const Symbol 
 bool Analyzer::usesSpecializedDeclarations () const {
 	return !m_genericOwners.empty() || b_hasTypeApplications || std::ranges::any_of(v_order, [&] (const Symbol *symbol) {
 		const DeclarationInfo   &di_info   = declarations.at(symbol);
-		const MethodDeclaration *md_method = dynamic_cast<const MethodDeclaration *>(callable(*symbol));
+		const auto *md_method = dynamic_cast<const MethodDeclaration *>(callable(*symbol));
 		return asInterface(symbol) || di_info.parents.size() > 1 || (symbol->kind == SymbolKind::State && !di_info.owner) ||
 		       (md_method && md_method->virtualPrefix);
 	});
@@ -51,7 +51,7 @@ void BodyChecker::resolveDeclarationNames () {
 			}
 			bind(pd_parameter.name, {}, pd_parameter.isMutable());
 		}
-		if (const ConstructorDeclaration *cd_constructor = dynamic_cast<const ConstructorDeclaration *>(cs_callable)) {
+		if (const auto *cd_constructor = dynamic_cast<const ConstructorDeclaration *>(cs_callable)) {
 			rp_receiverPhase = ReceiverPhase::Delegation;
 			for (const CallArgument &ca_argument : cd_constructor->delegation.suppliedArguments) resolveNames(*ca_argument.expression);
 		}
@@ -93,12 +93,12 @@ void BodyChecker::resolveNames (const std::vector<StatementPtr> &statements) {
 }
 
 void BodyChecker::resolveNames (const Statement &node) {
-	if (const BindingDeclaration *bd_local = dynamic_cast<const BindingDeclaration *>(&node)) {
+	if (const auto *bd_local = dynamic_cast<const BindingDeclaration *>(&node)) {
 		checkBindingName(bd_local->name);
 		if (bd_local->type) analyzer.useWidthAnnotation(*bd_local->type, context);
 		resolveNames(*bd_local->initializer);
 		bind(bd_local->name, {}, bd_local->isMutable, dynamic_cast<const FunctionBlockExpression *>(bd_local->initializer.get()) != nullptr);
-	} else if (const BindingGroupDeclaration *bg_group = dynamic_cast<const BindingGroupDeclaration *>(&node)) {
+	} else if (const auto *bg_group = dynamic_cast<const BindingGroupDeclaration *>(&node)) {
 		std::map<std::string_view, const Token *> m_names;
 		for (const ReceivingTarget &rt_target : bg_group->targets) {
 			if (const ReceivingTarget::Named *nt_name = std::get_if<ReceivingTarget::Named>(&rt_target.value)) {
@@ -115,24 +115,24 @@ void BodyChecker::resolveNames (const Statement &node) {
 		for (const ReceivingTarget &rt_target : bg_group->targets)
 			if (const ReceivingTarget::Named *nt_name = std::get_if<ReceivingTarget::Named>(&rt_target.value))
 				bind(nt_name->token, {}, bg_group->isMutable, b_deferred);
-	} else if (const ExpressionStatement *es_value = dynamic_cast<const ExpressionStatement *>(&node)) {
+	} else if (const auto *es_value = dynamic_cast<const ExpressionStatement *>(&node)) {
 		resolveNames(*es_value->expression);
-	} else if (const ReturnStatement *rs_return = dynamic_cast<const ReturnStatement *>(&node)) {
+	} else if (const auto *rs_return = dynamic_cast<const ReturnStatement *>(&node)) {
 		checkReturnContext(*rs_return);
 		if (rs_return->value) resolveNames(*rs_return->value);
-	} else if (const AssignmentStatement *as_write = dynamic_cast<const AssignmentStatement *>(&node)) {
+	} else if (const auto *as_write = dynamic_cast<const AssignmentStatement *>(&node)) {
 		assignmentTarget(as_write->name);
 		resolveNames(*as_write->value);
-	} else if (const MultiAssignmentStatement *ma_group = dynamic_cast<const MultiAssignmentStatement *>(&node)) {
+	} else if (const auto *ma_group = dynamic_cast<const MultiAssignmentStatement *>(&node)) {
 		for (const ReceivingTarget &rt_target : ma_group->targets) {
 			if (const ReceivingTarget::Named *nt_name = std::get_if<ReceivingTarget::Named>(&rt_target.value)) {
 				assignmentTarget(nt_name->token);
 			}
 		}
 		resolveNames(*ma_group->value);
-	} else if (const LoopStatement *ls_loop = dynamic_cast<const LoopStatement *>(&node)) {
+	} else if (const auto *ls_loop = dynamic_cast<const LoopStatement *>(&node)) {
 		const LoopTarget *lt_previous = std::exchange(lt_loop, ls_loop->get_loop_target().get());
-		if (const ForStatement *fs_for = dynamic_cast<const ForStatement *>(&node)) {
+		if (const auto *fs_for = dynamic_cast<const ForStatement *>(&node)) {
 			resolveNames(fs_for->source.get_expression());
 			if (fs_for->binding.type) analyzer.useWidthAnnotation(*fs_for->binding.type, context);
 			scopes.emplace_back();
@@ -143,18 +143,18 @@ void BodyChecker::resolveNames (const Statement &node) {
 			}
 			resolveNames(fs_for->body.statements);
 			scopes.pop_back();
-		} else if (const WhileStatement *ws_while = dynamic_cast<const WhileStatement *>(&node)) {
+		} else if (const auto *ws_while = dynamic_cast<const WhileStatement *>(&node)) {
 			resolveNames(*ws_while->condition);
 			resolveNames(ws_while->body.statements);
 		} else {
-			const DoWhileStatement &ds_do = static_cast<const DoWhileStatement &>(node);
+			const auto &ds_do = static_cast<const DoWhileStatement &>(node);
 			resolveNames(ds_do.body.statements);
 			resolveNames(*ds_do.condition);
 		}
 		lt_loop = lt_previous;
-	} else if (const UpdateStatement *us_update = dynamic_cast<const UpdateStatement *>(&node)) {
+	} else if (const auto *us_update = dynamic_cast<const UpdateStatement *>(&node)) {
 		assignmentTarget(us_update->name);
-	} else if (const LoopJumpStatement *lj_jump = dynamic_cast<const LoopJumpStatement *>(&node)) {
+	} else if (const auto *lj_jump = dynamic_cast<const LoopJumpStatement *>(&node)) {
 		if (!lt_loop)
 			throw cde::ClothDiagnostic(Code::INVALID_LOOP_JUMP, std::format("'{}' requires an enclosing loop body", lj_jump->keyword.get_lexeme()),
 			                           { { lj_jump->keyword.get_span(), "here" } });
@@ -196,12 +196,12 @@ void BodyChecker::resolveCallName (const CallExpression &call) {
 }
 
 void BodyChecker::resolveNames (const Expression &node) {
-	if (const NameExpression *ne_name = dynamic_cast<const NameExpression *>(&node)) {
+	if (const auto *ne_name = dynamic_cast<const NameExpression *>(&node)) {
 		name(ne_name->name, NameUse::Lexical);
-	} else if (const CallSite *cs_call = dynamic_cast<const CallSite *>(&node)) {
-		if (const CallExpression *ce_call = dynamic_cast<const CallExpression *>(&node)) {
+	} else if (const auto *cs_call = dynamic_cast<const CallSite *>(&node)) {
+		if (const auto *ce_call = dynamic_cast<const CallExpression *>(&node)) {
 			resolveCallName(*ce_call);
-		} else if (const MemberCallExpression *mc_call = dynamic_cast<const MemberCallExpression *>(&node)) {
+		} else if (const auto *mc_call = dynamic_cast<const MemberCallExpression *>(&node)) {
 			resolveNames(*mc_call->receiver);
 			if (mc_call->typeArguments) checkTypeArguments(*mc_call->typeArguments);
 			if (isSelfReference(*mc_call->receiver)) {
@@ -212,27 +212,27 @@ void BodyChecker::resolveNames (const Expression &node) {
 					                           { { mc_call->name.get_span(), "here" } });
 				validateArgumentLabels(cs_call->suppliedArguments);
 			}
-		} else if (const ClassCreationExpression *ce_new = dynamic_cast<const ClassCreationExpression *>(&node)) {
+		} else if (const auto *ce_new = dynamic_cast<const ClassCreationExpression *>(&node)) {
 			const std::optional<ResolvedType> opt_type = receiverType(*ce_new->receiver, true);
 			if (!opt_type || (!opt_type->parameter && !asClass(opt_type->declaration)))
 				fail(Code::INVALID_CLASS_LIFECYCLE, ce_new->receiver->get_span(), "Construction requires a class type");
 			validateArgumentLabels(cs_call->suppliedArguments);
-		} else if (const StateCallExpression *sc_state = dynamic_cast<const StateCallExpression *>(&node)) {
+		} else if (const auto *sc_state = dynamic_cast<const StateCallExpression *>(&node)) {
 			validateArgumentLabels(cs_call->suppliedArguments);
 			resolveNames(*sc_state->receiver);
 			if (sc_state->typeArguments) checkTypeArguments(*sc_state->typeArguments);
 		}
 		for (const CallArgument &ca_argument : cs_call->suppliedArguments) resolveNames(*ca_argument.expression);
-	} else if (const FieldAccessExpression *fa_field = dynamic_cast<const FieldAccessExpression *>(&node)) {
+	} else if (const auto *fa_field = dynamic_cast<const FieldAccessExpression *>(&node)) {
 		if (isSelfReference(*fa_field->receiver) || receiverType(*fa_field->receiver))
 			field(*fa_field);
 		else
 			resolveNames(*fa_field->receiver);
-	} else if (const CastExpression *ce_cast = dynamic_cast<const CastExpression *>(&node)) {
+	} else if (const auto *ce_cast = dynamic_cast<const CastExpression *>(&node)) {
 		resolveNames(*ce_cast->operand);
 		const Token *t_name = ce_cast->target.get_bare_identifier();
 		if (!t_name || !analyzer.hasStateName(context, t_name->get_name_key())) analyzer.useWidthAnnotation(ce_cast->target, context);
-	} else if (const TypeCheckExpression *tc_test = dynamic_cast<const TypeCheckExpression *>(&node)) {
+	} else if (const auto *tc_test = dynamic_cast<const TypeCheckExpression *>(&node)) {
 		const Token *t_name = tc_test->target.get_bare_identifier();
 		if (t_name && !tc_test->valueCandidate && !hasValueName(*t_name) && !analyzer.hasTypeName(context, *t_name) &&
 		    initialStateTest(*tc_test, t_name))
@@ -242,11 +242,11 @@ void BodyChecker::resolveNames (const Expression &node) {
 			resolveNames(*tc_test->valueCandidate);
 		else if (!t_name || (!hasValueName(*t_name) && !analyzer.hasStateName(context, t_name->get_name_key())))
 			analyzer.useWidthAnnotation(tc_test->target, context);
-	} else if (const TypeReceiverExpression *tr_type = dynamic_cast<const TypeReceiverExpression *>(&node)) {
+	} else if (const auto *tr_type = dynamic_cast<const TypeReceiverExpression *>(&node)) {
 		analyzer.useWidthAnnotation(tr_type->annotation, context);
-	} else if (const ProviderAccessExpression *pa_provider = dynamic_cast<const ProviderAccessExpression *>(&node)) {
+	} else if (const auto *pa_provider = dynamic_cast<const ProviderAccessExpression *>(&node)) {
 		if (!receiverType(*pa_provider->receiver)) resolveNames(*pa_provider->receiver);
-	} else if (const FunctionBlockExpression *fb_block = dynamic_cast<const FunctionBlockExpression *>(&node)) {
+	} else if (const auto *fb_block = dynamic_cast<const FunctionBlockExpression *>(&node)) {
 		if (fb_block->declaration.returnTypes.empty())
 			fail(Code::BLOCK_RETURN_TYPE_REQUIRED, node.get_span(), "A deferred binding requires a result type");
 		for (const TypeReference &tr_result : fb_block->declaration.returnTypes) analyzer.useWidthAnnotation(tr_result, context);

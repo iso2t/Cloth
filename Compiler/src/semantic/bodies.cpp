@@ -63,7 +63,7 @@ void duplicateBinding (const Token &name, const Token &previous) {
 }
 
 void BodyChecker::checkBindingName (const Token &name) const {
-	const std::map<std::string, Binding>::const_iterator it_bound = scopes.back().find(name.get_name_key());
+	const auto it_bound = scopes.back().find(name.get_name_key());
 	if (it_bound != scopes.back().end()) duplicateBinding(name, *it_bound->second.name);
 }
 
@@ -138,7 +138,7 @@ const BodyFacts &BodyChecker::openFacts () const {
 std::optional<ResolvedType> BodyChecker::receiverClassBound (const Expression &receiver, const ResolvedType &actual) const {
 	if (m_arguments.empty()) return {};
 	const ExpressionFacts                &ef_open = openFacts().expressions;
-	const ExpressionFacts::const_iterator it_open = ef_open.find(&receiver);
+	const auto it_open = ef_open.find(&receiver);
 	if (it_open == ef_open.end() || it_open->second.types.size() != 1) return {};
 	const ResolvedType &rt_open      = it_open->second.types.front();
 	const ResolvedType  rt_parameter = rt_open.nullable() ? rt_open.element() : rt_open;
@@ -309,7 +309,7 @@ void BodyChecker::typeBody () {
 		rp_receiverPhase = ReceiverPhase::Ready;
 		if (const FunctionBody *body = signature->executableBody()) {
 			if (info.inferResult) {
-				const ExpressionBody &inferred  = std::get<ExpressionBody>(body->value);
+				const auto &inferred  = std::get<ExpressionBody>(body->value);
 				const ExpressionInfo  ei_result = scalarInfo(*inferred.expression);
 				if (!ei_result.fallsThrough || ei_result.types.front() == ResolvedType(kNull))
 					fail(Code::INVALID_OPERATOR_DECLARATION, inferred.expression->get_span(), "An operator needs an inferable result type",
@@ -816,7 +816,7 @@ bool BodyChecker::checkStatement (const Statement &node) {
 		if (s->type) {
 			annotation = bodyType(*s->type);
 		}
-		if (const FunctionBlockExpression *fb_block = dynamic_cast<const FunctionBlockExpression *>(s->initializer.get())) {
+		if (const auto *fb_block = dynamic_cast<const FunctionBlockExpression *>(s->initializer.get())) {
 			expression(*s->initializer);
 			bindDeferred(s->name, annotation, s->isMutable, { fb_block, 0 }, deferredPresenceWrites(*fb_block));
 			return true;

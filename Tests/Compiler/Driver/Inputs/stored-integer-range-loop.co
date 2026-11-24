@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    def numbers := 13..16
+    int total = 0
+    for (int n <- numbers) total += n
+    return total
+}

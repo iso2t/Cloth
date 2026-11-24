@@ -17,7 +17,7 @@ From weakest to strongest, the binary operators group as follows.
 #. ``||``
 #. ``&&``
 #. ``==``, ``!=``, and ``===``
-#. ``<``, ``<=``, ``>``, ``>=``, and ``is``
+#. ``<``, ``<=``, ``>``, ``>=``, ``:``, and ``is``
 #. ``..`` and ``..=``
 #. ``->`` (conversion)
 #. ``+`` and ``-``
@@ -39,15 +39,42 @@ literal peer. Floating-point endpoints must be finite.
 .. code-block:: text
 
    fn<bool> within(int<8> n) {
-       range<int<8>> small = 1 .. 4
-       return n is small
+       range<int<8>> small := 1..4
+       return n : small
    }
 
-This test includes 1, 2, and 3. Comparing a number and a range with
-``==`` also tests membership, in either order. ``!=`` negates the test.
-Two ranges can be compared when their endpoint types match. For the
-order in which a loop visits the values, see `Integer ranges
+Write ``value : range`` to test membership. The example includes 1, 2,
+and 3. With an inline range, ``16 : 13..16`` is false and
+``16 : 13..=16`` is true. Reversed bounds contain no values. The value
+and endpoints must have the same numeric type. A numeric literal takes
+its type from its context. See the `runnable membership example
+<../../../Tests/Compiler/Driver/Inputs/integer-range-membership.co>`_ and
+`endpoint types supported by native code
+<../../compiler/driver/Objects.rst#integer-range-comparisons>`_.
+
+The existing spelling ``value is range`` also works. Comparing a number
+and a range with ``==`` tests membership in either operand order.
+``!=`` negates the result. Membership evaluates its operands once, from
+left to right. An early return skips the remaining operands.
+For the order in which a loop visits the values, see `Integer ranges
 <../statements/ControlFlow.rst#integer-ranges>`_.
+
+Comparing two ranges
+~~~~~~~~~~~~~~~~~~~~
+
+Two ranges of the same endpoint type compare equal when their starts,
+ends, and inclusion of the end all match. A copy of ``13..16`` compares
+equal to the original. ``(13..16) != (13..=16)`` is true because the
+inclusion flags differ. ``(13..16) != (13..=15)`` is also true because
+the ends differ. See the `runnable range equality example
+<../../../Tests/Compiler/Driver/Inputs/integer-range-equality.co>`_.
+
+Two absent ranges compare equal. If exactly one range is present, the
+ranges compare unequal. When both are present, compare their endpoints
+and end inclusion as usual. A present ``0..0`` therefore compares equal
+to another ``0..0`` and unequal to an absent range. ``!=`` gives the
+opposite result in each case. See the
+`nullable range equality example <../../../Tests/Compiler/Driver/Inputs/nullable-integer-range-equality.co>`_.
 
 Integer arithmetic
 ------------------
@@ -215,6 +242,13 @@ use the element type's equality rule. In the `nullable integer array example
 <../../../Tests/Compiler/Driver/Inputs/fixed-array-nullable-equality.co>`_,
 ``[0, null]`` equals its copy. Swapping the positions of zero and null
 makes the arrays unequal.
+
+Integer range elements compare by start, end, and end inclusion. Changing
+one element from ``13..15`` to ``13..=15`` makes the arrays unequal. In an
+array with nullable range elements, ``null`` and the present empty range
+``0..0`` also compare unequal. The `range array example
+<../../../Tests/Compiler/Driver/Inputs/fixed-array-range-equality.co>`_
+shows both cases.
 
 Integer elements compare at their declared width. In the `65-bit example
 <../../../Tests/Compiler/Driver/Inputs/fixed-array-equality.co>`_, a copy

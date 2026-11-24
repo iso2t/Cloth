@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+// See Documentation/compiler/internals/Backend.rst
+
+#include <backend/integer_range.hpp>
 #include <backend/nullable_value.hpp>
 #include <backend/scalar_lowering.hpp>
 #include <backend/value_types.hpp>
@@ -64,6 +67,10 @@ LLVMTypeRef ValueTypes::get (const cloth::ResolvedType &type) {
 		return ty_payload ? nullable::type(ty_payload) : nullptr;
 	}
 	if (const LLVMTypeRef ty_scalar = scalarType(ctx_context, cp_program.layout, type)) return ty_scalar;
+	if (const cloth::ResolvedType *rt_endpoint = cloth::semantic::rangeEndpoint(type); rt_endpoint && rt_endpoint->integer()) {
+		const LLVMTypeRef ty_endpoint = get(*rt_endpoint);
+		return ty_endpoint ? IntegerRange::type(ty_endpoint) : nullptr;
+	}
 	// An untyped null carries no data until a surrounding expression supplies the nullable type.
 	if (type == cloth::ResolvedType(cloth::kNull)) return LLVMStructTypeInContext(ctx_context, nullptr, 0, false);
 	const auto it_layout = cp_program.structLayouts.find(type);

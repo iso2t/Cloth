@@ -39,6 +39,12 @@ all zero fields is present. After checking for ``null``, fields can be
 read and written through the stored value. See the `nullable struct
 example <../../../Tests/Compiler/Driver/Inputs/nullable-struct-values.co>`_.
 
+Copying a range field preserves both endpoints and whether the end is
+included. In the `range field example
+<../../../Tests/Compiler/Driver/Inputs/struct-range-fields.co>`_,
+``window.bounds`` holds ``13..=15`` when the program copies the struct.
+After ``window.bounds = null``, the check ``15 : saved.bounds`` still succeeds.
+
 A struct's storage must be finite. A field cannot contain the same struct
 again by value, even through another struct or a nullable field. A class
 reference can link a struct back to an object that holds it. See the

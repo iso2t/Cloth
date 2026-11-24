@@ -322,7 +322,7 @@ bool Analyzer::hasConstructorProof (const ResolvedType &type, const ResultTypes 
 	for (const Substitutions::value_type &entry : m_arguments) {
 		if (entry.second != type) continue;
 		const ParameterContract          pc_contract     = parameterContract(*entry.first);
-		const Guarantees::const_iterator it_requirements = m_guarantees.find(pc_contract.parameter);
+		const auto it_requirements = m_guarantees.find(pc_contract.parameter);
 		if (it_requirements == m_guarantees.end()) continue;
 		for (const Symbol *sym_requirement : it_requirements->second) {
 			if (specialize(specialize(declarations.at(sym_requirement), pc_contract.arguments), m_arguments).parameters == parameters) return true;
@@ -335,7 +335,7 @@ void Analyzer::completeInstance (const InstanceWork &work) {
 	const Symbol                             &sym_declaration = *work.key.declaration;
 	const Substitutions                       m_arguments     = instanceArguments(work.key);
 	const std::function<void(const Symbol &)> dependencies    = [&] (const Symbol &owner) {
-                const std::unordered_map<const Symbol *, std::vector<InstanceUse>>::const_iterator it_uses = m_uses.find(&owner);
+                const auto it_uses = m_uses.find(&owner);
                 if (it_uses == m_uses.end()) return;
                 for (const InstanceUse &iu_use : it_uses->second) {
                         InstanceKey ik_next = iu_use.key;
@@ -370,7 +370,7 @@ void Analyzer::completeInstance (const InstanceWork &work) {
 	}
 	if (const TypeParameterList *tpl_parameters = typeParameters(sym_declaration)) {
 		for (const TypeParameterDeclaration &tp_parameter : tpl_parameters->parameters) {
-			const Guarantees::const_iterator it_requirements = m_guarantees.find(&tp_parameter);
+			const auto it_requirements = m_guarantees.find(&tp_parameter);
 			if (it_requirements == m_guarantees.end()) continue;
 			for (const Symbol *sym_requirement : it_requirements->second) {
 				if (!work.instance) {
@@ -444,7 +444,7 @@ void Analyzer::checkStorage () const {
 			if (!asStruct(field.type.declaration)) continue;
 			ResolvedType rt_nested = field.type;
 			rt_nested.suffixes.clear();
-			const std::map<ResolvedType, StorageFields>::const_iterator it_child = m_storage.find(rt_nested);
+			const auto it_child = m_storage.find(rt_nested);
 			if (it_child == m_storage.end()) throw std::logic_error("Missing struct field specialization");
 			const Layout *sl_child = &*it_child;
 			if (s_done.contains(sl_child)) continue;
