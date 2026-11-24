@@ -113,6 +113,11 @@ struct LoweredValue {
 	ValueStorage               storage;
 };
 
+struct ArrayBuffer {
+	LLVMValueRef address;
+	LLVMValueRef present;
+};
+
 struct LoopBlocks {
 	LLVMBasicBlockRef continuation;
 	LLVMBasicBlockRef exit;
@@ -126,6 +131,7 @@ class FunctionLowering {
     private:
 	const LoweredValue         *findLocal (const cloth::Token *declaration) const;
 	const LoweredValue         *namedLocal (const cloth::Expression &expression) const;
+	std::optional<ValueStorage> arrayReadSlot (const cloth::Expression &index) const;
 	LLVMValueRef                readValue (const LoweredValue &value, const cloth::ResolvedType &view);
 	LLVMValueRef                storeInEntrySlot (LLVMValueRef value);
 	const LoweredValue         &bindLocal (const cloth::Token &name, const cloth::ResolvedType &type, LLVMValueRef value, bool isMutable);
@@ -152,12 +158,11 @@ class FunctionLowering {
 	LLVMValueRef lowerExpression (const cloth::Expression &expression);
 	LLVMValueRef lowerUntilExit (const std::vector<cloth::ExpressionPtr> &elements);
 	LLVMValueRef lowerArrayLiteral (const cloth::ArrayLiteral &literal, const cloth::ExpressionInfo &info);
-	LLVMValueRef lowerArrayBuffer (const cloth::Expression &operand, bool snapshotMutable);
+	ArrayBuffer  lowerArrayBuffer (const cloth::Expression &operand, LLVMTypeRef bufferType, bool snapshotMutable, LLVMValueRef evaluated = nullptr);
 	LLVMValueRef tryLowerFixedArrayEquality (const cloth::BinaryExpression &binary, LLVMValueRef left, const cloth::ResolvedType &leftType,
 	                                         const cloth::ResolvedType &rightType);
 	LLVMValueRef lowerIndex (const cloth::IndexExpression &index, const cloth::ExpressionInfo &info);
-	bool         simpleIndex (const cloth::Expression &index) const;
-	LLVMValueRef tryArrayAddress (const cloth::Expression &array, bool borrowMutable);
+	LLVMValueRef tryArrayAddress (const cloth::Expression &array, std::optional<ValueStorage> requiredSlot);
 	LLVMValueRef lowerArrayOffset (const cloth::Expression &index, LLVMTypeRef arrayType);
 	LLVMValueRef arrayElementAddress (LLVMTypeRef arrayType, LLVMValueRef slot, LLVMValueRef offset) const;
 	LLVMValueRef lowerStructLiteral (const cloth::StructLiteral &literal, const cloth::ExpressionInfo &info);
@@ -397,69 +402,105 @@ LLVMValueRef FunctionLowering::arrayElementAddress (LLVMTypeRef arrayType, LLVMV
 	return LLVMBuildGEP2(ir_builder, arrayType, slot, v_indices, 2, "");
 }
 
-LLVMValueRef FunctionLowering::lowerArrayBuffer (const cloth::Expression &operand, bool snapshotMutable) {
-	const LoweredValue *lv_local = namedLocal(operand);
-	if (lv_local && lv_local->storage != ValueStorage::Direct && (!snapshotMutable || lv_local->storage == ValueStorage::ReadOnlySlot))
-		return lv_local->operand;
-	return storeInEntrySlot(lowerExpression(operand));
+ArrayBuffer FunctionLowering::lowerArrayBuffer (const cloth::Expression &operand, LLVMTypeRef bufferType, bool snapshotMutable, LLVMValueRef evaluated) {
+	const bool         b_nullable = mf_functions.program.expressions.at(&operand).types.front().nullable();
+	const LLVMValueRef ir_true    = LLVMConstInt(LLVMInt1TypeInContext(LLVMGetModuleContext(mf_functions.module)), 1, false);
+	// Without a buffer type the caller only needs effects and presence. A mutable slot's tag can be read immediately.
+	if (!evaluated) {
+		const std::optional<ValueStorage> opt_storage = bufferType && snapshotMutable ? std::optional(ValueStorage::ReadOnlySlot) : std::nullopt;
+		if (const LLVMValueRef ir_slot = tryArrayAddress(operand, opt_storage)) {
+			if (!b_nullable) return { .address = bufferType ? ir_slot : nullptr, .present = ir_true };
+			return { .address = bufferType ? detail::nullable::payloadAddress(ir_builder, bufferType, ir_slot) : nullptr,
+				 .present = sl_scalars.predicate(detail::nullable::loadPresence(ir_builder, ir_slot)) };
+		}
+		evaluated = lowerExpression(operand);
+	}
+	const LLVMValueRef ir_present = b_nullable ? sl_scalars.predicate(detail::nullable::presence(ir_builder, evaluated)) : ir_true;
+	if (!bufferType) return { .address = nullptr, .present = ir_present };
+	return { .address = storeInEntrySlot(b_nullable ? detail::nullable::payload(ir_builder, evaluated) : evaluated), .present = ir_present };
 }
 
 LLVMValueRef FunctionLowering::tryLowerFixedArrayEquality (const cloth::BinaryExpression &binary, LLVMValueRef left, const cloth::ResolvedType &leftType,
                                                            const cloth::ResolvedType &rightType) {
-	const std::optional<std::uint64_t> opt_leftLength = leftType.arrayExtent(), opt_rightLength = rightType.arrayExtent();
-	if (!opt_leftLength || !opt_rightLength) return nullptr;
-	const cloth::ResolvedType  rt_element     = leftType.element();
+	if (!cloth::semantic::hasArrayShape(leftType) || !cloth::semantic::hasArrayShape(rightType)) return nullptr;
+	const cloth::ResolvedType rt_left    = leftType.nullable() ? leftType.element() : leftType;
+	const cloth::ResolvedType rt_right   = rightType.nullable() ? rightType.element() : rightType;
+	cloth::ResolvedType       rt_element = rt_left.element();
+	while (rt_element.array()) rt_element.suffixes.pop_back();
 	const cloth::ResolvedType *rt_endpoint    = cloth::semantic::rangeEndpoint(rt_element);
 	const bool                 b_integerRange = rt_endpoint && rt_endpoint->integer();
 	const bool                 b_nullable     = rt_element.nullable();
 	if (!b_integerRange && !sl_scalars.type(b_nullable ? rt_element.element() : rt_element)) return nullptr;
-	const std::uint64_t u64_length = *opt_leftLength;
-	if (!u64_length || u64_length != *opt_rightLength) {
-		// A result known from the extents still observes both operands in source order.
-		if (!left) lowerExpression(*binary.left);
-		lowerExpression(*binary.right);
-		return LLVMConstInt(LLVMInt1TypeInContext(LLVMGetModuleContext(mf_functions.module)), u64_length == *opt_rightLength, false);
-	}
+
+	const LLVMTypeRef ty_left = mf_functions.valueTypes.localType(rt_left), ty_right = mf_functions.valueTypes.localType(rt_right);
+	if (!ty_left || !ty_right) return nullptr;
+	// With matching checked leaf types, the nested LLVM array types agree exactly when every extent agrees.
+	const LLVMTargetDataRef td_target = LLVMGetModuleDataLayout(mf_functions.module);
+	const std::uint64_t     u64_bytes = LLVMABISizeOfType(td_target, ty_left);
 	// A computed right operand can change a mutable left local before the first element comparison.
-	const LLVMValueRef      ir_leftSlot  = left ? storeInEntrySlot(left) : lowerArrayBuffer(*binary.left, !namedLocal(*binary.right));
-	const LLVMValueRef      ir_rightSlot = lowerArrayBuffer(*binary.right, false);
-	const LLVMTypeRef       ty_array     = LLVMGetAllocatedType(ir_leftSlot);
-	const LLVMTypeRef       ty_element   = LLVMGetElementType(ty_array);
-	const LLVMTypeRef       ty_offset    = sl_scalars.type(cloth::ResolvedType(cloth::KUsize));
-	const LLVMBasicBlockRef bb_start     = LLVMGetInsertBlock(ir_builder);
-	const LLVMBasicBlockRef bb_compare   = branchToNewBlock("array.equal.element");
-	const LLVMBasicBlockRef bb_end       = appendBlock("array.equal.end");
-	const LLVMValueRef      ir_offset    = LLVMBuildPhi(ir_builder, ty_offset, "");
-	const LLVMValueRef      ir_left      = LLVMBuildLoad2(ir_builder, ty_element, arrayElementAddress(ty_array, ir_leftSlot, ir_offset), "");
-	const LLVMValueRef      ir_right     = LLVMBuildLoad2(ir_builder, ty_element, arrayElementAddress(ty_array, ir_rightSlot, ir_offset), "");
-	const LLVMValueRef      ir_equal     = b_integerRange ? IntegerRange::equalPacked(ir_builder, ir_left, ir_right, b_nullable) :
-	                                                        sl_scalars.compare(cloth::OEqual, ir_left, ir_right, rt_element);
-	const LLVMValueRef      ir_next      = LLVMBuildAdd(ir_builder, ir_offset, LLVMConstInt(ty_offset, 1, false), "");
-	LLVMValueRef            v_offsets[]  = { LLVMConstNull(ty_offset), ir_next };
-	LLVMBasicBlockRef       v_blocks[]   = { bb_start, bb_compare };
+	const LLVMTypeRef ty_buffer = ty_left == ty_right && u64_bytes ? ty_left : nullptr;
+	const ArrayBuffer ab_left   = lowerArrayBuffer(*binary.left, ty_buffer, !namedLocal(*binary.right), left);
+	const ArrayBuffer ab_right  = lowerArrayBuffer(*binary.right, ty_buffer, false);
+	if (ty_left != ty_right) return LLVMBuildNot(ir_builder, LLVMBuildOr(ir_builder, ab_left.present, ab_right.present, ""), "");
+	const LLVMValueRef ir_samePresence = LLVMBuildICmp(ir_builder, LLVMIntEQ, ab_left.present, ab_right.present, "");
+	if (!u64_bytes) return ir_samePresence;
+	// Fixed rows are contiguous. Use the allocation stride of a leaf, including any padding, to count cells.
+	const LLVMTypeRef       ty_element      = mf_functions.valueTypes.get(rt_element);
+	const std::uint64_t     u64_length      = u64_bytes / LLVMABISizeOfType(td_target, ty_element);
+	const LLVMTypeRef       ty_array        = LLVMArrayType2(ty_element, u64_length);
+	const LLVMTypeRef       ty_offset       = sl_scalars.type(cloth::ResolvedType(cloth::KUsize));
+	const LLVMBasicBlockRef bb_start        = LLVMGetInsertBlock(ir_builder);
+	const LLVMBasicBlockRef bb_compare      = appendBlock("array.equal.element");
+	const LLVMBasicBlockRef bb_end          = appendBlock("array.equal.end");
+	const bool              b_checkPresence = leftType.nullable() || rightType.nullable();
+	if (b_checkPresence) {
+		// An absent buffer has no comparable cells. Bypass the loop before loading its first pair.
+		LLVMBuildCondBr(ir_builder, LLVMBuildAnd(ir_builder, ab_left.present, ab_right.present, ""), bb_compare, bb_end);
+	} else {
+		LLVMBuildBr(ir_builder, bb_compare);
+	}
+	LLVMPositionBuilderAtEnd(ir_builder, bb_compare);
+	const LLVMValueRef ir_offset   = LLVMBuildPhi(ir_builder, ty_offset, "");
+	const LLVMValueRef ir_left     = LLVMBuildLoad2(ir_builder, ty_element, arrayElementAddress(ty_array, ab_left.address, ir_offset), "");
+	const LLVMValueRef ir_right    = LLVMBuildLoad2(ir_builder, ty_element, arrayElementAddress(ty_array, ab_right.address, ir_offset), "");
+	const LLVMValueRef ir_equal    = b_integerRange ? IntegerRange::equalPacked(ir_builder, ir_left, ir_right, b_nullable) :
+	                                                  sl_scalars.compare(cloth::OEqual, ir_left, ir_right, rt_element);
+	const LLVMValueRef ir_next     = LLVMBuildAdd(ir_builder, ir_offset, LLVMConstInt(ty_offset, 1, false), "");
+	LLVMValueRef       v_offsets[] = { LLVMConstNull(ty_offset), ir_next };
+	LLVMBasicBlockRef  v_blocks[]  = { bb_start, bb_compare };
 	LLVMAddIncoming(ir_offset, v_offsets, v_blocks, 2);
 	const LLVMValueRef ir_more = LLVMBuildICmp(ir_builder, LLVMIntNE, ir_next, LLVMConstInt(ty_offset, u64_length, false), "");
 	LLVMBuildCondBr(ir_builder, LLVMBuildAnd(ir_builder, ir_equal, ir_more, ""), bb_compare, bb_end);
 	LLVMPositionBuilderAtEnd(ir_builder, bb_end);
-	return ir_equal;
+	if (!b_checkPresence) return ir_equal;
+	const LLVMValueRef ir_result   = LLVMBuildPhi(ir_builder, LLVMTypeOf(ir_equal), "");
+	LLVMValueRef       v_results[] = { ir_samePresence, ir_equal };
+	LLVMAddIncoming(ir_result, v_results, v_blocks, 2);
+	return ir_result;
 }
 
-bool FunctionLowering::simpleIndex (const cloth::Expression &index) const {
-	return dynamic_cast<const cloth::IntegerLiteral *>(&index) || namedLocal(index);
+std::optional<ValueStorage> FunctionLowering::arrayReadSlot (const cloth::Expression &index) const {
+	if (dynamic_cast<const cloth::IntegerLiteral *>(&index) || namedLocal(index)) return {};
+	// A computed subscript can rebind the receiver before a read. Only an immutable slot is safe to borrow.
+	return ValueStorage::ReadOnlySlot;
 }
 
-LLVMValueRef FunctionLowering::tryArrayAddress (const cloth::Expression &array, bool borrowMutable) {
+LLVMValueRef FunctionLowering::tryArrayAddress (const cloth::Expression &array, std::optional<ValueStorage> requiredSlot) {
 	if (const LoweredValue *lv_local = namedLocal(array)) {
-		const bool b_stable = lv_local->storage == ValueStorage::ReadOnlySlot || (borrowMutable && lv_local->storage == ValueStorage::MutableSlot);
-		return b_stable ? lv_local->operand : nullptr;
+		if (lv_local->storage == ValueStorage::Direct || (requiredSlot && lv_local->storage != *requiredSlot)) return nullptr;
+		if (lv_local->type.nullable() && !mf_functions.program.expressions.at(&array).types.front().nullable()) {
+			const LLVMTypeRef ty_payload = mf_functions.valueTypes.localType(lv_local->type.element());
+			return detail::nullable::payloadAddress(ir_builder, ty_payload, lv_local->operand);
+		}
+		return lv_local->operand;
 	}
 	const auto *ie_row = dynamic_cast<const cloth::IndexExpression *>(&array);
 	if (!ie_row) return nullptr;
 	const cloth::ExpressionFacts &ef_facts = mf_functions.program.expressions;
 	const cloth::ExpressionInfo  &ei_row   = ef_facts.at(ie_row);
 	if (!ei_row.fallsThrough || ei_row.indexed || !isBuiltinOperation(ei_row) || !ei_row.types.front().array()) return nullptr;
-	// Borrow a mutable row only if every remaining index leaves its storage unchanged.
-	const LLVMValueRef ir_outer = tryArrayAddress(*ie_row->array, borrowMutable && simpleIndex(*ie_row->index));
+	if (!requiredSlot) requiredSlot = arrayReadSlot(*ie_row->index);
+	const LLVMValueRef ir_outer = tryArrayAddress(*ie_row->array, requiredSlot);
 	if (!ir_outer) return nullptr;
 	const LLVMTypeRef ty_outer = mf_functions.valueTypes.localType(ef_facts.at(ie_row->array.get()).types.front());
 	return arrayElementAddress(ty_outer, ir_outer, lowerArrayOffset(*ie_row->index, ty_outer));
@@ -468,7 +509,7 @@ LLVMValueRef FunctionLowering::tryArrayAddress (const cloth::Expression &array, 
 LLVMValueRef FunctionLowering::lowerIndex (const cloth::IndexExpression &index, const cloth::ExpressionInfo &info) {
 	const cloth::ExpressionInfo &ei_array = mf_functions.program.expressions.at(index.array.get());
 	if (!ei_array.fallsThrough) return lowerExpression(*index.array);
-	const LLVMValueRef ir_buffer = tryArrayAddress(*index.array, simpleIndex(*index.index));
+	const LLVMValueRef ir_buffer = tryArrayAddress(*index.array, arrayReadSlot(*index.index));
 	const LLVMValueRef ir_array  = ir_buffer ? nullptr : lowerExpression(*index.array);
 	if (!ir_buffer && !ir_array) return nullptr;
 	const LLVMTypeRef  ty_array  = ir_buffer ? mf_functions.valueTypes.localType(ei_array.types.front()) : LLVMTypeOf(ir_array);
@@ -774,7 +815,9 @@ LLVMValueRef FunctionLowering::storeInEntrySlot (LLVMValueRef value) {
 }
 
 const LoweredValue &FunctionLowering::bindLocal (const cloth::Token &name, const cloth::ResolvedType &type, LLVMValueRef value, bool isMutable) {
-	const ValueStorage vs_storage = isMutable ? ValueStorage::MutableSlot : type.array() ? ValueStorage::ReadOnlySlot : ValueStorage::Direct;
+	const ValueStorage vs_storage = isMutable                            ? ValueStorage::MutableSlot :
+	                                cloth::semantic::hasArrayShape(type) ? ValueStorage::ReadOnlySlot :
+	                                                                       ValueStorage::Direct;
 	if (vs_storage != ValueStorage::Direct) value = storeInEntrySlot(value);
 	return m_locals.emplace(&name, LoweredValue{ .operand = value, .type = type, .storage = vs_storage }).first->second;
 }
@@ -815,19 +858,21 @@ void FunctionLowering::lowerAssignment (const cloth::AssignmentStatement &assign
 
 void FunctionLowering::lowerElementAssignment (const cloth::ElementAssignmentStatement &write) {
 	const cloth::IndexExpression &ie_target = *write.target;
-	if (!mf_functions.program.expressions.at(ie_target.array.get()).fallsThrough) {
+	const cloth::ExpressionInfo  &ei_array  = mf_functions.program.expressions.at(ie_target.array.get());
+	if (!ei_array.fallsThrough) {
 		lowerExpression(*ie_target.array);
 		return;
 	}
-	const LoweredValue *lv_array = namedLocal(*ie_target.array);
-	if (!lv_array || lv_array->storage != ValueStorage::MutableSlot || !lv_array->type.array())
+	const cloth::ResolvedType &rt_array  = ei_array.types.front();
+	const LLVMValueRef         ir_buffer = rt_array.array() ? tryArrayAddress(*ie_target.array, ValueStorage::MutableSlot) : nullptr;
+	if (!ir_buffer)
 		throw cde::ClothDiagnostic(Code::UnsupportedLowering, "LLVM lowering requires a mutable fixed-size array local for this assignment",
 		                           { { .span = ie_target.getSpan(), .text = "unsupported array assignment target" } });
-	const LLVMTypeRef  ty_array  = LLVMGetAllocatedType(lv_array->operand);
+	const LLVMTypeRef  ty_array  = mf_functions.valueTypes.localType(rt_array);
 	const LLVMValueRef ir_offset = lowerArrayOffset(*ie_target.index, ty_array);
 	if (!ir_offset) return;
-	const LLVMValueRef        ir_address = arrayElementAddress(ty_array, lv_array->operand, ir_offset);
-	const cloth::ResolvedType rt_element = lv_array->type.element();
+	const LLVMValueRef        ir_address = arrayElementAddress(ty_array, ir_buffer, ir_offset);
+	const cloth::ResolvedType rt_element = rt_array.element();
 	const LoweredValue        lv_element{ .operand = ir_address, .type = rt_element, .storage = ValueStorage::MutableSlot };
 	if (write.compound) return storeCompound(lv_element, *write.compound);
 	if (write.value) return storeExpression(lv_element, *write.value);
@@ -1020,9 +1065,8 @@ void FunctionLowering::lowerFor (const cloth::ForStatement &loop) {
 	}
 	const LLVMTypeRef ty_array = it_loop.kind == cloth::IterationKind::Array && !loop.stepper ? mf_functions.valueTypes.localType(ei_source.types.front()) :
 	                                                                                            nullptr;
-	if (!ty_array || it_loop.element.array())
-		throw cde::ClothDiagnostic(Code::UnsupportedLowering,
-		                           "LLVM iteration requires a one-dimensional fixed-size array with supported element storage",
+	if (!ty_array)
+		throw cde::ClothDiagnostic(Code::UnsupportedLowering, "LLVM iteration requires a fixed-size array with supported element storage",
 		                           { { .span = loop.source.getSpan(), .text = "unsupported iteration source" } });
 	const std::uint64_t u64_length = LLVMGetArrayLength2(ty_array);
 	if (!u64_length) {
@@ -1030,12 +1074,12 @@ void FunctionLowering::lowerFor (const cloth::ForStatement &loop) {
 		return;
 	}
 	const cloth::ResolvedType &rt_binding = bf_facts.localTypes.at(&loop.binding.name);
-	if (!mf_functions.valueTypes.get(rt_binding))
+	if (!mf_functions.valueTypes.localType(rt_binding))
 		throw cde::ClothDiagnostic(Code::UnsupportedLowering, "LLVM lowering requires a supported storage type for this loop binding",
 		                           { { .span = loop.binding.getSpan(), .text = "unsupported loop binding type" } });
 
 	// Capture the input before the body can modify it. A read-only local already holds an independent buffer.
-	const LLVMValueRef      ir_buffer = lowerArrayBuffer(e_source, true);
+	const LLVMValueRef      ir_buffer = lowerArrayBuffer(e_source, ty_array, true).address;
 	LLVMBasicBlockRef       bb_start  = LLVMGetInsertBlock(ir_builder);
 	const LLVMBasicBlockRef bb_body   = branchToNewBlock("for.body");
 	LoopBlocks              lb_blocks{ .continuation = loopContinuation(loop, loop.body, "for.next"), .exit = loopExit(loop) };

@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    int[2][3] rows := [[1, 2, 20], [3, 4, 22]]
+    int total = 0
+    for (def row <- rows) {
+        total += row[2]
+        row[2] = 0
+        if (row[2] != 0) return 1
+    }
+    return if (rows[0][2] == 20 && rows[1][2] == 22) total else 2
+}

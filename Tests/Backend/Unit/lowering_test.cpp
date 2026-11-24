@@ -373,6 +373,49 @@ fn<int> main() { Sample? sample = {false, 0}; return if (sample == null) 7 else 
 	}
 }
 
+TEST (BackendLowering, NullableFixedArrayLocalsStorePresenceBeforeTheAlignedBuffer) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = read(1)
+fn<int> read(final usize index) {
+    usize[2]? pair = [0, 42]
+    if (pair == null) return 1
+    return pair[index] -> int
+})",
+		                                                    { .sizeBits = u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const LLVMValueRef fn_read = LLVMGetNamedFunction(lm_module.get(), "cloth.read");
+		ASSERT_NE(fn_read, nullptr);
+		const LLVMValueRef ir_slot = LLVMGetFirstInstruction(LLVMGetEntryBasicBlock(fn_read));
+		ASSERT_NE(LLVMIsAAllocaInst(ir_slot), nullptr);
+		const LLVMTypeRef ty_local = LLVMGetAllocatedType(ir_slot);
+		ASSERT_EQ(LLVMGetTypeKind(ty_local), LLVMStructTypeKind);
+		ASSERT_EQ(LLVMCountStructElementTypes(ty_local), 2u);
+		const LLVMContextRef ctx_context = LLVMGetModuleContext(lm_module.get());
+		EXPECT_EQ(LLVMStructGetTypeAtIndex(ty_local, 0), LLVMInt8TypeInContext(ctx_context));
+		EXPECT_EQ(LLVMStructGetTypeAtIndex(ty_local, 1), LLVMArrayType2(LLVMIntTypeInContext(ctx_context, u_bits), 2));
+		const LLVMTargetDataRef td_target = LLVMGetModuleDataLayout(lm_module.get());
+		const unsigned          u_word    = u_bits / 8;
+		EXPECT_EQ(LLVMOffsetOfElement(td_target, ty_local, 1), u_word);
+		EXPECT_EQ(LLVMABIAlignmentOfType(td_target, ty_local), u_word);
+		EXPECT_EQ(LLVMABISizeOfType(td_target, ty_local), 3u * u_word);
+	}
+}
+
+TEST (BackendLowering, NullableFixedArraySizeIncludesItsPresenceByte) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const cloth::CheckedProgram cp_program =
+		        checkProgram("fn<int> main() { unsigned int<8>[4294967295]? bytes = null; return 42 }", { .sizeBits = u_bits });
+		const backend::LoweredModule lm_module(checkProgram("fn<int> main() = 42", { .sizeBits = u_bits }));
+		backend::detail::ValueTypes  vt_types(lm_module.get(), cp_program);
+		ASSERT_EQ(cp_program.localTypes.size(), 1u);
+		const cloth::ResolvedType &rt_nullable = cp_program.localTypes.begin()->second;
+		EXPECT_NE(vt_types.localType(rt_nullable.element()), nullptr);
+		EXPECT_EQ(vt_types.localType(rt_nullable) != nullptr, u_bits == 64);
+	}
+}
+
 TEST (BackendLowering, FixedArrayReadsAndWritesUseTheCheckedElementStrideOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
@@ -474,6 +517,75 @@ fn<int> at(final usize row, final usize col) {
 	}
 }
 
+TEST (BackendLowering, RectangularArrayStoresAddressTheCellInTheMutableLocal) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = put(1, 2, 7)
+fn<int> put(final usize row, final usize col, final int<12> value) {
+    int<12>[2][3] rows = [[1, 2, 3], [4, 5, 42]]
+    rows[row][col] = value
+    return rows[1][2] -> int
+})",
+		                                                    { .sizeBits = u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const LLVMValueRef fn_put = LLVMGetNamedFunction(lm_module.get(), "cloth.put");
+		ASSERT_NE(fn_put, nullptr);
+		const LLVMUseRef use_value = LLVMGetFirstUse(LLVMGetParam(fn_put, 2));
+		ASSERT_NE(use_value, nullptr);
+		ASSERT_EQ(LLVMGetNextUse(use_value), nullptr);
+		const LLVMValueRef ir_store = LLVMGetUser(use_value);
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_store), LLVMStore);
+		const LLVMValueRef ir_cell = LLVMGetOperand(ir_store, 1);
+		ASSERT_NE(LLVMIsAGetElementPtrInst(ir_cell), nullptr);
+		EXPECT_EQ(LLVMGetOperand(ir_cell, 2), LLVMGetParam(fn_put, 1));
+		const LLVMValueRef ir_row = LLVMGetOperand(ir_cell, 0);
+		ASSERT_NE(LLVMIsAGetElementPtrInst(ir_row), nullptr);
+		EXPECT_EQ(LLVMGetOperand(ir_row, 2), LLVMGetParam(fn_put, 0));
+		EXPECT_EQ(LLVMGetOperand(ir_row, 0), LLVMGetFirstInstruction(LLVMGetEntryBasicBlock(fn_put)));
+		EXPECT_EQ(LLVMGetElementType(LLVMGetGEPSourceElementType(ir_row)), LLVMGetGEPSourceElementType(ir_cell));
+	}
+}
+
+TEST (BackendLowering, RectangularArrayIterationCopiesEachRowIntoAnEntrySlot) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() {
+    int<65>[2][3] rows := [[1, 2, 20], [3, 4, 22]]
+    for (def row <- rows) row[2] = 0
+    return 42
+})",
+		                                                    { .sizeBits = u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const LLVMValueRef fn_main = LLVMGetNamedFunction(lm_module.get(), "main");
+		ASSERT_NE(fn_main, nullptr);
+		const LLVMBasicBlockRef bb_entry = LLVMGetEntryBasicBlock(fn_main);
+		const LLVMTypeRef       ty_row   = LLVMArrayType2(LLVMIntTypeInContext(LLVMGetModuleContext(lm_module.get()), 65), 3);
+		unsigned                u_copies = 0;
+		for (LLVMBasicBlockRef bb_block = LLVMGetNextBasicBlock(bb_entry); bb_block; bb_block = LLVMGetNextBasicBlock(bb_block)) {
+			for (LLVMValueRef ir_inst = LLVMGetFirstInstruction(bb_block); ir_inst; ir_inst = LLVMGetNextInstruction(ir_inst)) {
+				if (!LLVMIsAStoreInst(ir_inst)) continue;
+				const LLVMValueRef ir_row = LLVMGetOperand(ir_inst, 0);
+				if (LLVMTypeOf(ir_row) != ty_row) continue;
+				++u_copies;
+				const LLVMValueRef ir_binding = LLVMGetOperand(ir_inst, 1);
+				ASSERT_NE(LLVMIsAAllocaInst(ir_binding), nullptr);
+				EXPECT_EQ(LLVMGetInstructionParent(ir_binding), bb_entry);
+				EXPECT_EQ(LLVMGetAllocatedType(ir_binding), ty_row);
+				ASSERT_NE(LLVMIsALoadInst(ir_row), nullptr);
+				const LLVMValueRef ir_address = LLVMGetOperand(ir_row, 0);
+				ASSERT_NE(LLVMIsAGetElementPtrInst(ir_address), nullptr);
+				EXPECT_EQ(LLVMGetGEPSourceElementType(ir_address), LLVMArrayType2(ty_row, 2));
+				ASSERT_EQ(LLVMGetNumOperands(ir_address), 3);
+				EXPECT_NE(LLVMGetOperand(ir_address, 0), ir_binding);
+				const LLVMValueRef ir_index = LLVMGetOperand(ir_address, 2);
+				ASSERT_NE(LLVMIsAPHINode(ir_index), nullptr);
+				EXPECT_EQ(LLVMGetIntTypeWidth(LLVMTypeOf(ir_index)), u_bits);
+			}
+		}
+		EXPECT_EQ(u_copies, 1u);
+	}
+}
+
 TEST (BackendLowering, CompoundArrayUpdateLoadsAndStoresThroughTheSameAddress) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
@@ -547,6 +659,74 @@ fn<bool> same(final int<65> n) { int<65>[5] a = [n, 1, 2, 3, 4]; int<65>[5] b = 
 		}
 		EXPECT_EQ(u_slots, 2u);
 		EXPECT_EQ(u_comparisons, 1u);
+	}
+}
+
+TEST (BackendLowering, NullableFixedArrayEqualityGuardsCellLoadsWithBothPresenceFlags) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = if (same(true, false)) 1 else 42
+fn<bool> same(final bool a, final bool b) {
+    int<65>[2]? left := if (a) [0, 1] else null
+    int<65>[2]? right := if (b) [0, 1] else null
+    return left == right
+})",
+		                                                    { .sizeBits = u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		const LLVMValueRef fn_same = LLVMGetNamedFunction(lm_module.get(), "cloth.same");
+		ASSERT_NE(fn_same, nullptr);
+		const LLVMBasicBlockRef bb_end    = LLVMGetLastBasicBlock(fn_same);
+		const LLVMValueRef      ir_result = LLVMGetFirstInstruction(bb_end);
+		ASSERT_NE(LLVMIsAPHINode(ir_result), nullptr);
+		ASSERT_EQ(LLVMCountIncoming(ir_result), 2u);
+		const LLVMBasicBlockRef bb_start  = LLVMGetIncomingBlock(ir_result, 0);
+		const LLVMBasicBlockRef bb_cells  = LLVMGetIncomingBlock(ir_result, 1);
+		const LLVMValueRef      ir_branch = LLVMGetBasicBlockTerminator(bb_start);
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_branch), LLVMBr);
+		ASSERT_TRUE(LLVMIsConditional(ir_branch));
+		EXPECT_EQ(LLVMGetSuccessor(ir_branch, 0), bb_cells);
+		EXPECT_EQ(LLVMGetSuccessor(ir_branch, 1), bb_end);
+		const LLVMValueRef ir_both = LLVMGetCondition(ir_branch);
+		const LLVMValueRef ir_same = LLVMGetIncomingValue(ir_result, 0);
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_both), LLVMAnd);
+		ASSERT_NE(LLVMIsAICmpInst(ir_same), nullptr);
+		EXPECT_EQ(LLVMGetICmpPredicate(ir_same), LLVMIntEQ);
+		const LLVMValueRef ir_equal = LLVMGetIncomingValue(ir_result, 1);
+		ASSERT_NE(LLVMIsAICmpInst(ir_equal), nullptr);
+		EXPECT_EQ(LLVMGetICmpPredicate(ir_equal), LLVMIntEQ);
+		for (const unsigned u_side : { 0u, 1u }) {
+			EXPECT_EQ(LLVMGetOperand(ir_both, u_side), LLVMGetOperand(ir_same, u_side));
+			const LLVMValueRef ir_cell = LLVMGetOperand(ir_equal, u_side);
+			ASSERT_NE(LLVMIsALoadInst(ir_cell), nullptr);
+			EXPECT_EQ(LLVMGetInstructionParent(ir_cell), bb_cells);
+			EXPECT_EQ(LLVMTypeOf(ir_cell), LLVMIntTypeInContext(LLVMGetModuleContext(lm_module.get()), 65));
+		}
+	}
+}
+
+TEST (BackendLowering, RectangularArrayEqualityFoldsDifferentShapesAndEmptyBuffers) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = if (!differentShapes(7) && emptyRows()) 42 else 1
+fn<bool> differentShapes(final int n) {
+    int[1][2][1] a := [[[n], [0]]]
+    int[1][1][2] b := [[[n, 0]]]
+    return a == b
+}
+fn<bool> emptyRows() { int[2][0] a := [[], []]; return a == a })",
+		                                                    { .sizeBits = u_bits }));
+		ASSERT_NO_THROW(lm_module.verify());
+		for (const auto &[s_name, b_expected] : { std::pair{ "cloth.differentShapes", false }, std::pair{ "cloth.emptyRows", true } }) {
+			SCOPED_TRACE(s_name);
+			const LLVMValueRef fn_compare = LLVMGetNamedFunction(lm_module.get(), s_name);
+			ASSERT_NE(fn_compare, nullptr);
+			ASSERT_EQ(LLVMCountBasicBlocks(fn_compare), 1u);
+			const LLVMValueRef ir_return = LLVMGetBasicBlockTerminator(LLVMGetEntryBasicBlock(fn_compare));
+			ASSERT_EQ(LLVMGetInstructionOpcode(ir_return), LLVMRet);
+			const LLVMValueRef ir_result = LLVMGetOperand(ir_return, 0);
+			ASSERT_NE(LLVMIsAConstantInt(ir_result), nullptr);
+			EXPECT_EQ(LLVMConstIntGetZExtValue(ir_result), b_expected);
+		}
 	}
 }
 

@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<int> trace(final int label) {
+    println(label)
+    return label
+}
+
+fn<bool> shapes(final bool a, final bool b) {
+    int[0][3]? empty := if (a) [] else null
+    int[0][3]? same := if (b) [] else null
+    int[0][4]? wider := if (b) [] else null
+    if ((empty == same) != (a == b) || (same != empty) != (a != b)) return false
+    if ((empty == wider) != (!a && !b) || (wider != empty) != (a || b)) return false
+
+    int[2][3]? rows := if (a) [[1, 2, 3], [4, 5, 6]] else null
+    int[3][2]? pairs := if (b) [[1, 2], [3, 4], [5, 6]] else null
+    return (pairs == rows) == (!a && !b) && (rows != pairs) == (a || b)
+}
+
+fn<bool> cells(final bool present, final float zero) {
+    unsigned int<65>[2][1] plain := [[0], [18446744073709551616]]
+    unsigned int<65>[2][1]? wide := if (present) plain else null
+    if ((wide == plain) != present || (plain != wide) == present) return false
+    if ((plain == wide) != present || wide == [[0], [0]]) return false
+
+    int?[2]? optional := if (present) [null, 0] else null
+    if ((optional == [null, 0]) != present || optional == [0, null]) return false
+    range<int>?[1]? spans := if (present) [13..15] else null
+    if ((spans == [13..15]) != present || spans == [13..=15]) return false
+    float[1]? values := if (present) [zero / zero] else null
+    return (values == values) == !present && (values != values) == present
+}
+
+fn<bool> effects(final bool present) {
+    int[2]? value = if (present) [0, 42] else null
+    int[2]? saved := value
+    if ((value == [trace(1) - 1, 42]) != present) return false
+    if ((if (trace(2) == 2) { value = null; [0, 42] } else [9, 9]) == value) return false
+    value = saved
+    if ((value == (if (trace(3) == 3) { value = [7, 9]; [0, 42] } else [9, 9])) != present) return false
+    if (value != (if (trace(4) == 4) { value = null; [7, 9] } else [9, 9])) return false
+    return value == null
+}
+
+fn<bool> ordered(final bool present) {
+    int?[1]? missing := null
+    int?[1]? chosen := if (present) [null] else null
+    return (missing ?: (if (trace(5) == 5) chosen else missing)) == (missing ?: (if (trace(6) == 6) chosen else missing))
+}
+
+fn<int> early(final bool stopOnLeft) {
+    int[2]? missing := null
+    if (stopOnLeft) {
+        if ([(if (stopOnLeft) { return 42 } else 7), trace(99)] == missing) return 1
+    }
+    if (missing == [(if (!stopOnLeft) { return 42 } else 7), trace(99)]) return 2
+    return 3
+}
+
+pub fn<int> main() {
+    if (!shapes(false, false) || !shapes(false, true) || !shapes(true, false) || !shapes(true, true)) return 1
+    if (!cells(false, 0.0) || !cells(true, 0.0)) return 2
+    if (!effects(false) || !effects(true)) return 3
+    if (!ordered(false) || !ordered(true)) return 4
+    if (early(true) != 42) return 5
+    return early(false)
+}

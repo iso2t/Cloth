@@ -173,6 +173,15 @@ advances to the next element.
 
 The loop reads 4 and then 2, leaving ``result`` equal to 42. See the
 `array iteration example <../../../Tests/Compiler/Driver/Inputs/fixed-array-iteration.co>`_.
+
+For a rectangular array, ``for (def row <- rows)`` visits one row per
+iteration. In the `row iteration example
+<../../../Tests/Compiler/Driver/Inputs/rectangular-array-iteration.co>`_,
+the last cells hold 20 and 22. The loop adds them to get 42 and sets
+``row[2] = 0`` on each visit. The source rows still hold 20 and 22.
+A loop over ``int[2][0]`` visits two empty rows. A loop over
+``int[0][3]`` skips the body.
+
 For indexing and whole-array copies, see `Arrays <../types/Arrays.rst>`_.
 
 Collection iteration

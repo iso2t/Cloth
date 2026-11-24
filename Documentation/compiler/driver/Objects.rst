@@ -92,18 +92,30 @@ field offsets, see `Aggregate storage layout <../storage/Aggregates.rst>`_.
 Fixed-size arrays
 -----------------
 
-Native code supports rectangular fixed-size integer array locals and
-indexed reads. For example, ``int[2][3]`` holds two rows and each row has
-three valid column indices. See `rank and extents
-<../../language/types/Arrays.rst#rank-and-extents>`_.
+Native code supports indexed reads and writes on rectangular fixed-size
+integer array locals. For example, ``int[2][3]`` holds two rows of three
+integers, and ``rows[1][2] = 7`` updates the last cell. See `rank and
+extents <../../language/types/Arrays.rst#rank-and-extents>`_ for dimension
+order and `indexing and updates
+<../../language/types/Arrays.rst#indexing-and-updates>`_ for evaluation order.
 
-One-dimensional fixed-size arrays support ``==`` and ``!=`` for integers,
-booleans, characters, floats, integer ranges, and enums that use built-in
-equality. The elements can be nullable, as in ``int?[2]`` and
+Fixed-size arrays support ``==`` and ``!=`` across one or more dimensions.
+For example, a two-by-three integer array compares unequal to a three-by-two
+array holding the same six values. Supported cell types are integers,
+booleans, characters, floats, integer ranges, and enums with built-in
+equality. Cells can be nullable, as in ``int?[2][3]`` and
 ``range<int>?[3]``. See `array equality
 <../../language/expressions/Operators.rst#array-equality>`_ for comparison
 rules and `arrays <../../language/types/Arrays.rst>`_ for copying, indexing,
 and updates.
+
+Native locals can hold a whole nullable fixed-size array, as in
+``int[2]? pair = null``. Use ``== null`` or ``!= null`` to test presence,
+or select an array with ``pair ?: [0, 0]``. Native ``==`` and ``!=`` also
+compare two array values when either or both are nullable. Two absent
+arrays compare equal. Two present arrays compare by shape and cells.
+See `nullable arrays
+<../../language/types/Arrays.rst#nullable-arrays>`_.
 
 .. _integer-range-membership:
 
@@ -124,9 +136,13 @@ use ``?:`` to select a fallback range. The `nullable range example
 Loop sources
 ------------
 
-Native ``for`` loops accept integer ranges and one-dimensional fixed-size
-arrays with supported element types. Write ``for (int n <- 13..16)`` to
-iterate a range directly, or bind ``def numbers := 13..16`` and use
+Native ``for`` loops accept integer ranges and fixed-size arrays with
+supported element types. A rectangular array yields a writable copy of
+each row. See `fixed-size array iteration
+<../../language/statements/ControlFlow.rst#fixed-size-array-iteration>`_.
+
+Write ``for (int n <- 13..16)`` to iterate a range directly, or bind
+``def numbers := 13..16`` and use
 ``for (int n <- numbers)`` for each traversal. The `stored range example
 <../../../Tests/Compiler/Driver/Inputs/stored-integer-range-loop.co>`_
 compiles to an object and returns 42 when linked and run.

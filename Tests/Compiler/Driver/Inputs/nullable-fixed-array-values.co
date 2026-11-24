@@ -1,0 +1,55 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<int> trace(final int value) {
+    println(value)
+    return value
+}
+
+fn<bool> fallback(final bool present) {
+    int[2]? pair := if (present) [20, 22] else null
+    int[2] selected := pair ?: [trace(17), 25]
+    return selected[0] + selected[1] == 42
+}
+
+fn<bool> indexedEffects() {
+    int[2]? pair = [7, 42]
+    if (pair == null) return false
+    int last := pair[if (trace(1) == 1) { pair = null; 1 } else 0]
+    if (last != 42 || null != pair) return false
+
+    pair = [40, 7]
+    if (pair == null) return false
+    pair[0] += (if (trace(2) == 2) { pair = [0, 9]; 2 } else 0)
+    return pair != null && pair[0] == 42 && pair[1] == 9
+}
+
+fn<bool> rectangular() {
+    def high := unsigned int<65>::max
+    unsigned int<65>[2][2] plain := [[0, high], [high, 0]]
+    unsigned int<65>[2][2]? rows = plain
+    if (rows == null || rows != plain || plain != rows) return false
+    rows[1][1] = high
+    if (rows[1][0] != high || rows[1][1] != high || plain[1][1] != 0) return false
+    int count = 0
+    for (def row <- rows) {
+        rows = null
+        if (row[1] == high) count++
+    }
+    return count == 2 && rows == null
+}
+
+pub fn<int> main() {
+    if (!fallback(true) || !fallback(false) || !indexedEffects() || !rectangular()) return 1
+    int?[2]? cells = [null, 0]
+    if (cells == null || cells[0] != null || cells[1] == null) return 2
+    cells[0] = 0
+    cells[1] = null
+    if (cells == null || cells[0] == null || cells[0] != 0 || cells[1] != null) return 3
+
+    int<12>[0]? empty = null
+    if (empty != null) return 4
+    empty = []
+    if (empty == null) return 5
+    for (def value <- empty) return 6
+    return 42
+}

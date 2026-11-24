@@ -64,7 +64,6 @@ std::optional<ArrayMutation> arrayMutationNamed (std::string_view name);
 bool                         builtinFunctionNamed (std::string_view name);
 bool                         builtinNeverReturns (std::string_view name);
 bool                         checksNumericMethod (std::string_view name);
-bool                         hasArrayShape (const ResolvedType &type);
 bool                         usesBooleanArgumentConversion (const ResolvedType &parameter, const ResolvedType &argument);
 void                         requireRangeMember (const Expression &member, const ResolvedType &actual, const ResolvedType &endpoint);
 ResolvedType                 comparisonShape (ResolvedType type, const ArrayLiteral *literal = nullptr);

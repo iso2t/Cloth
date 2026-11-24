@@ -91,6 +91,12 @@ starts at byte 6 and the whole buffer occupies 12 bytes with two-byte
 alignment. A fixed row of length zero occupies zero bytes and retains
 the alignment of its element type.
 
+A nullable fixed-size array local has a presence byte at offset zero,
+followed by padding to the inline buffer's alignment. For ``usize[2]?``,
+the buffer begins at byte 4 on a 32-bit target and byte 8 on a 64-bit
+target. The local occupies 12 and 24 bytes respectively. An empty buffer
+retains its alignment and the local still stores the presence byte.
+
 The `storage layout implementation <../../../Compiler/src/semantic/storage_layout.cpp>`_
 calculates field offsets and array storage sizes. The `layout tests
 <../../../Tests/Compiler/Semantic/Unit/storage_layout_test.cpp>`_ include an

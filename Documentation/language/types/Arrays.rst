@@ -41,9 +41,22 @@ row is ``[4, 5, 42]``, so ``rows[1][2]`` returns 42. Cloth checks the row
 index before evaluating the column index. If the selected row is empty,
 every column index is out of bounds.
 
+Nullable arrays
+---------------
+
 A ``?`` marks the type immediately before it. In ``int?[]``, each
 element can be ``null``. In ``int[]?``, the array itself can be ``null``.
 For example, ``int?[2]`` can hold ``[0, null]``.
+
+An ``int[2]?`` local can hold ``null`` or a pair of integers. Assigning
+``[0, 0]`` makes the pair present. Inside ``if (pair != null)``, you can
+read either cell and update it if ``pair`` is mutable. Copying the local
+preserves its presence and cells. In the `nullable array example
+<../../../Tests/Compiler/Driver/Inputs/nullable-fixed-array.co>`_, clearing
+the original leaves the copy present with both zeros.
+
+A present empty array also passes a presence check. Its length is zero,
+so iteration skips the body and every index is out of bounds.
 
 Growable arrays
 ---------------
@@ -89,6 +102,13 @@ checks its bounds before evaluating the right-hand side. A compound
 assignment also reads the old element before evaluating the right-hand
 side, then writes the result to the same slot. Numeric elements support
 ``+=``, ``-=``, ``*=``, ``/=``, ``%=``, and standalone ``++`` and ``--``.
+
+For ``rows[r][c] = value``, Cloth evaluates and checks ``r`` first, then
+``c``, and evaluates ``value`` only after both indices are in bounds. In
+the `nested assignment example
+<../../../Tests/Compiler/Driver/Inputs/rectangular-array-write.co>`_,
+``rows[1][2] = 7`` changes one cell. The earlier copy still holds 42 at
+``saved[1][2]``, and the program returns 7.
 
 The expression ``values[index()] += 2`` calls ``index()`` once. In the
 65-bit example the call prints one line containing ``1``, and the update

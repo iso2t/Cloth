@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<bool> matches(final bool leftPresent, final bool rightPresent, final int last, final bool expected) {
+    int[2]? left := if (leftPresent) [0, 0] else null
+    int[2]? right := if (rightPresent) [0, last] else null
+    if ((left == right) != expected || (left != right) == expected) return false
+    return ((left ?: right) == (right ?: left)) == (expected || leftPresent != rightPresent)
+}
+
+pub fn<int> main() {
+    if (!matches(false, false, 0, true)) return 1
+    if (!matches(false, true, 0, false) || !matches(true, false, 0, false)) return 2
+    if (!matches(true, true, 0, true) || !matches(true, true, 7, false)) return 3
+    return 42
+}

@@ -33,6 +33,11 @@ LLVMValueRef presence (LLVMBuilderRef builder, LLVMValueRef value) {
 	return LLVMBuildExtractValue(builder, value, PRESENCE, "");
 }
 
+LLVMValueRef loadPresence (LLVMBuilderRef builder, LLVMValueRef address) {
+	// The presence byte is the first field, at offset zero for every payload type.
+	return LLVMBuildLoad2(builder, LLVMInt8TypeInContext(LLVMGetTypeContext(LLVMTypeOf(address))), address, "");
+}
+
 LLVMValueRef payload (LLVMBuilderRef builder, LLVMValueRef value) {
 	return LLVMBuildExtractValue(builder, value, PAYLOAD, "");
 }

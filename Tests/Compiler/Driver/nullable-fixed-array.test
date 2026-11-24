@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --kind executable --src "%S/Inputs/nullable-fixed-array.co" --target-bits 32 --emit object -o "%t.32.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/nullable-fixed-array.co" --target-bits 64 --emit object -o "%t.64.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/nullable-fixed-array.co" --emit object -o "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+# RUN: %cloth --kind executable --src "%S/Inputs/nullable-fixed-array-values.co" --emit object -o "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 17 --stdout-line 1 --stdout-line 2 --empty-stderr 42 "%t.exe"
+
+# RUN: echo "pub fn<int> main() { int[2]? pair = null; return pair[0] }" > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit object -o "%t.o" 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=UNPROVEN --input-file "%t.err"
+# UNPROVEN: [C3039] Error: Indexing requires an array and an integer index
+
+# RUN: echo "pub fn<int> main() = read(0)" > "%t.co"
+# RUN: echo "fn<int> read(final usize n) { int[0]? empty = []; if (empty == null) return 2; return empty[n] }" >> "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --emit object -o "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: array index out of bounds" 1 "%t.exe"

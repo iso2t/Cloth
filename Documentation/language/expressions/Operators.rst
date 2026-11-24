@@ -231,10 +231,26 @@ nullable positions, and element type must match. Declared extents may
 differ. Array inequality negates the structural equality result, so a
 struct element must supply ``==`` even when the caller writes ``!=``.
 
-Both operands are evaluated once, from left to right, even when their lengths
-differ. Arrays of different lengths compare unequal. Two empty arrays with
-the same element type compare equal. For equal lengths, comparison stops at
-the first unequal pair.
+Both operands are evaluated once, from left to right. If the arrays
+themselves are nullable, two absent arrays compare equal. An absent
+array compares unequal to any present array, including an empty array
+or one containing only zeros. A plain array is always present. The
+`nullable array comparison example
+<../../../Tests/Compiler/Driver/Inputs/nullable-fixed-array-equality.co>`_
+shows all four combinations of presence.
+
+Two present arrays of different lengths compare unequal. For fixed-size
+arrays this rule applies to every dimension, even when one is empty.
+For example, present ``int[0][3]`` and ``int[0][4]`` arrays compare
+unequal. When the dimensions match, comparison
+visits cells in row order and stops at the first unequal pair. Empty
+arrays of the same shape compare equal.
+
+In the `rectangular array example
+<../../../Tests/Compiler/Driver/Inputs/rectangular-array-equality.co>`_,
+a two-by-three array equals its copy until the last cell changes.
+A three-by-two array holding the copy's six values in the same order
+compares unequal to the copy.
 
 For nullable elements, two absent values compare equal. If only one element
 is present, the pair compares unequal. When both are present, their payloads

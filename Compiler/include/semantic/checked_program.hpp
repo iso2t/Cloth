@@ -81,6 +81,8 @@ struct TypeArguments {
 };
 
 namespace semantic {
+// Arrays and nullable arrays both carry a shape.
+bool hasArrayShape (const ResolvedType &type);
 // A range or nullable range carries its checked endpoint as its single type argument.
 const ResolvedType *rangeEndpoint (const ResolvedType &type);
 }

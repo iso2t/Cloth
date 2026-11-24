@@ -48,12 +48,18 @@ LLVMTypeRef ValueTypes::directCallType (const cloth::ResolvedType &type) const {
 }
 
 LLVMTypeRef ValueTypes::localType (const cloth::ResolvedType &type) {
-	if (!type.array()) return get(type);
-	const std::optional<std::uint64_t> opt_count = type.arrayExtent();
+	if (!cloth::semantic::hasArrayShape(type)) return get(type);
+	const bool                         b_nullable = type.nullable();
+	const cloth::ResolvedType          rt_array   = b_nullable ? type.element() : type;
+	const std::optional<std::uint64_t> opt_count  = rt_array.arrayExtent();
 	if (!opt_count) return nullptr;
-	const LLVMTypeRef                         ty_element = localType(type.element());
-	const std::optional<cloth::StorageLayout> opt_data   = cp_program.arrayDataLayout(type, *opt_count);
+	const cloth::ResolvedType rt_element = rt_array.element();
+	// Contiguous fixed rows are inline. An embedded nullable row uses the descriptor layout.
+	const LLVMTypeRef                         ty_element = rt_element.array() ? localType(rt_element) : get(rt_element);
+	const std::optional<cloth::StorageLayout> opt_data   = cp_program.arrayDataLayout(rt_array, *opt_count);
 	if (!ty_element || !opt_data) return nullptr;
+	// The presence byte occupies one alignment unit before the inline buffer.
+	if (b_nullable && opt_data->size > cp_program.layout.maximumSize() - opt_data->alignment) return nullptr;
 	const LLVMTypeRef          ty_buffer = LLVMArrayType2(ty_element, *opt_count);
 	const LLVMTargetDataRef    td_target = LLVMGetModuleDataLayout(mod_module);
 	const cloth::StorageLayout sl_actual{ .size = LLVMABISizeOfType(td_target, ty_buffer), .alignment = LLVMABIAlignmentOfType(td_target, ty_buffer) };
@@ -61,8 +67,8 @@ LLVMTypeRef ValueTypes::localType (const cloth::ResolvedType &type) {
 		throw cde::ClothDiagnostic(
 		        cde::DiagnosticCode::AbiLayout,
 		        std::format("LLVM gives the data buffer for '{}' size {} and alignment {}. The checked layout requires size {} and alignment {}",
-		                    type.spelling(), sl_actual.size, sl_actual.alignment, opt_data->size, opt_data->alignment));
-	return ty_buffer;
+		                    rt_array.spelling(), sl_actual.size, sl_actual.alignment, opt_data->size, opt_data->alignment));
+	return b_nullable ? nullable::type(ty_buffer) : ty_buffer;
 }
 
 LLVMTypeRef ValueTypes::get (const cloth::ResolvedType &type) {

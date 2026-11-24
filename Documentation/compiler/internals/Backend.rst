@@ -41,6 +41,24 @@ evaluating that subscript. The `rectangular array driver test
 <../../../Tests/Compiler/Driver/rectangular-array.test>`_ exercises both
 evaluation order and bounds failures.
 
+For a nullable fixed-size array local, ``ValueTypes::localType`` wraps the
+inline buffer with ``nullable::type``. Whole-local assignment copies the
+presence byte and buffer together. When the frontend proves the local
+present, ``tryArrayAddress`` uses ``nullable::payloadAddress`` to locate
+the buffer for an indexed read or write. Array iteration and structural
+comparison of present arrays use the same projection when borrowing a
+slot. The `nullable array driver test
+<../../../Tests/Compiler/Driver/nullable-fixed-array.test>`_ covers
+copying, clearing the source during iteration, and indexed side effects.
+
+For a built-in indexed write, ``lowerElementAssignment`` requests a
+``MutableSlot`` from ``tryArrayAddress``. Each checked subscript addresses
+an element within its parent buffer. Lowering keeps the final cell address
+while it evaluates the right-hand side, even if that expression reassigns
+the array local. A compound update loads the old cell before evaluating
+its right-hand side. See the `nested assignment driver test
+<../../../Tests/Compiler/Driver/rectangular-array-write.test>`_.
+
 Control flow and effects
 ------------------------
 
@@ -97,13 +115,29 @@ and the `nullable range equality driver test
 check presence, individual field differences, operand effects, and early
 returns.
 
-For fixed-size arrays of integer ranges, the array comparison loop passes
-each pair of loaded elements to ``IntegerRange::equalPacked``. This uses the
-same endpoint, inclusion, and nullable presence rules as standalone range
-equality. The loop stops at the first unequal pair. The `range array
-driver test <../../../Tests/Compiler/Driver/fixed-array-range-equality.test>`_
-covers a right operand that mutates the left array and differences at a
-single index.
+For built-in fixed-size array equality, the frontend checks rank and cell
+type. ``tryLowerFixedArrayEquality`` compares the nested LLVM buffer types
+to check every extent. It evaluates both operands once in source order.
+When a computed right operand can reassign a mutable left local, lowering
+captures the left presence and any cells the comparison needs.
+
+For different shapes, equality holds only when both arrays are absent.
+For matching empty shapes, the presence flags determine equality. Both
+cases skip the cell loop. For matching nonempty shapes, a branch admits
+only two present arrays to the loop. Its other edge returns the equality
+of the flags, so an absent payload cannot affect control flow. The
+`nullable comparison test
+<../../../Tests/Compiler/Driver/nullable-fixed-array-equality.test>`_
+exercises these paths and operand side effects.
+
+Fixed rows occupy contiguous storage. Dividing the buffer's allocation
+size by the cell's allocation stride gives the number of cells, including
+for padded integer types. A single target-sized index visits the cells in
+row order and stops at the first unequal pair. The loop uses scalar
+equality or ``IntegerRange::equalPacked``, preserving the cell type's
+rules for NaN, null, and range end inclusion. See the `rectangular
+comparison test <../../../Tests/Compiler/Driver/rectangular-array-equality.test>`_
+and the `range array test <../../../Tests/Compiler/Driver/fixed-array-range-equality.test>`_.
 
 ``FunctionLowering::lowerFor`` takes the counter type from
 ``BodyFacts::iterations``. A range written in the header supplies its
@@ -123,10 +157,17 @@ that returns from the function contributes no back edge. The
 exercises the side effects, and the `lowering tests
 <../../../Tests/Backend/Unit/lowering_test.cpp>`_ check the phi input.
 
-An array loop's ``continue`` advances through the captured array. A
-``break`` skips the range step or array advance. Capturing the array
-source once preserves the elements visited if the body assigns to the
-original local.
+For ``IterationKind::Array``, ``lowerFor`` captures the source with
+``lowerArrayBuffer`` before entering the body. A mutable source needs a
+copy because the body can change a row that the loop has yet to visit.
+The target-sized index advances along the outer dimension. With inline
+rows, each load yields a whole row, even when the row contains zero cells.
+``bindLocal`` copies that value into a writable slot allocated once in the
+function's entry block. Each visit initializes the slot from the captured
+array. ``continue`` advances the index and ``break`` exits the loop.
+The `array iteration driver test
+<../../../Tests/Compiler/Driver/fixed-array-iteration.test>`_ checks row
+mutation, empty dimensions, and nested traversal.
 
 Runtime calls and object output
 -------------------------------
