@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 obj-y := cloth.o \
-         file/object_file.o \
+         file/output_file.o \
          file/source_file.o \
          lexer/lexer.o \
          ast/decl/class_declaration.o \

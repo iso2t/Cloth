@@ -22,22 +22,21 @@
 #include <vector>
 
 #include <ast/stmt/loop_control.hpp>
-#include <cde/cloth_diagnostic.hpp>
+#include <diagnostics.hpp>
 #include <file/source_file.hpp>
 #include <lexer/lexer.hpp>
 #include <llvm-c/Analysis.h>
 #include <llvm-c/Core.h>
 #include <llvm-c/Object.h>
 #include <llvm-c/Target.h>
+#include <llvm-c/Types.h>
 #include <parser/parser.hpp>
 #include <semantic/checked_program.hpp>
+#include <semantic/program_kind.hpp>
+#include <semantic/symbol_table.hpp>
+#include <semantic/target_layout.hpp>
 #include <token/numeric_literals.hpp>
-#include "cde/diagnostic_code.hpp"
-#include "llvm-c/Types.h"
-#include "semantic/program_kind.hpp"
-#include "semantic/symbol_table.hpp"
-#include "semantic/target_layout.hpp"
-#include "token/token.hpp"
+#include <token/token.hpp>
 
 namespace {
 
@@ -427,6 +426,51 @@ fn<int> replace(final usize index, final int<12> next) { int<12>[2] values = [7,
 		}
 		EXPECT_EQ(u_reads, 1u);
 		EXPECT_EQ(u_writes, 1u);
+	}
+}
+
+TEST (BackendLowering, RectangularArrayReadsUseInlineRowsAndCheckEachIndex) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		SCOPED_TRACE(u_bits);
+		const cloth::CheckedProgram cp_program = checkProgram(R"(fn<int> main() = at(1, 2)
+fn<int> at(final usize row, final usize col) {
+    int<12>[2][3] rows := [[1, 2, 3], [4, 5, 42]]
+    return rows[row][col] -> int
+})",
+		                                                      { .sizeBits = u_bits });
+		const auto                  it_rows    = std::ranges::find_if(cp_program.localTypes, [] (const auto &local) { return local.second.array(); });
+		ASSERT_NE(it_rows, cp_program.localTypes.end());
+		const cloth::ResolvedType &rt_rows = it_rows->second;
+		EXPECT_EQ(cp_program.arrayDataLayout(rt_rows, 1), (cloth::StorageLayout{ .size = 6, .alignment = 2 }));
+		EXPECT_EQ(cp_program.arrayDataLayout(rt_rows, 2), (cloth::StorageLayout{ .size = 12, .alignment = 2 }));
+		EXPECT_FALSE(cp_program.arrayDataLayout(rt_rows, cp_program.layout.maximumSize() / 6 + 1));
+
+		const backend::LoweredModule lm_module(cp_program);
+		ASSERT_NO_THROW(lm_module.verify());
+		const LLVMValueRef fn_at = LLVMGetNamedFunction(lm_module.get(), "cloth.at");
+		ASSERT_NE(fn_at, nullptr);
+		const LLVMValueRef ir_slot = LLVMGetFirstInstruction(LLVMGetEntryBasicBlock(fn_at));
+		ASSERT_EQ(LLVMGetInstructionOpcode(ir_slot), LLVMAlloca);
+		const LLVMTypeRef ty_rows = LLVMGetAllocatedType(ir_slot);
+		ASSERT_EQ(LLVMGetTypeKind(ty_rows), LLVMArrayTypeKind);
+		EXPECT_EQ(LLVMGetArrayLength2(ty_rows), 2u);
+		const LLVMTypeRef ty_row = LLVMGetElementType(ty_rows);
+		ASSERT_EQ(LLVMGetTypeKind(ty_row), LLVMArrayTypeKind);
+		EXPECT_EQ(LLVMGetArrayLength2(ty_row), 3u);
+		EXPECT_EQ(LLVMGetIntTypeWidth(LLVMGetElementType(ty_row)), 12u);
+		const LLVMTargetDataRef td_target = LLVMGetModuleDataLayout(lm_module.get());
+		EXPECT_EQ(LLVMABISizeOfType(td_target, ty_rows), 12u);
+		EXPECT_EQ(LLVMABIAlignmentOfType(td_target, ty_rows), 2u);
+
+		unsigned u_loads = 0;
+		for (LLVMBasicBlockRef bb_block = LLVMGetFirstBasicBlock(fn_at); bb_block; bb_block = LLVMGetNextBasicBlock(bb_block)) {
+			for (LLVMValueRef ir_inst = LLVMGetFirstInstruction(bb_block); ir_inst; ir_inst = LLVMGetNextInstruction(ir_inst)) {
+				if (LLVMGetInstructionOpcode(ir_inst) != LLVMLoad) continue;
+				EXPECT_EQ(LLVMTypeOf(ir_inst), LLVMGetElementType(ty_row));
+				++u_loads;
+			}
+		}
+		EXPECT_EQ(u_loads, 1u);
 	}
 }
 
@@ -2191,7 +2235,7 @@ fn<int> main() { Box value = {{"text"}}; return 7 })",
 	expectUnsupported("fn<int> main() { string? text = null; return 42 }", Code::UnsupportedLowering, "string?");
 	expectUnsupported("typedef<struct> S { pub string text }\nfn<int> main() { S? value = null; return 42 }", Code::UnsupportedLowering, "S?", 2);
 	expectUnsupported("fn<int> main() { int[] a := [7]; return 42 }", Code::UnsupportedLowering, "int[]");
-	expectUnsupported("fn<int> main() { int[1][2] rows := [[7, 42]]; return 42 }", Code::UnsupportedLowering, "int[1][2]");
+	expectUnsupported("fn<int> main() { int[1][] rows := [[7, 42]]; return 42 }", Code::UnsupportedLowering, "int[1][]");
 	expectUnsupported("fn<int> main() { int unused := helper(int[2]::type::rank -> int); return 42 }\nfn<int> helper(int ignored) = 7",
 	                  Code::UnsupportedLowering, "int[2]::type::rank");
 	expectUnsupported("fn<int> main() { int later := { return 7 }; return later }", Code::UnsupportedLowering, "{ return 7 }");

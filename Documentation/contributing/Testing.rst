@@ -43,9 +43,10 @@ to select specific executables. Each lit run uses a private directory
 under ``BUILD_DIR/Tests/``, which defaults to ``build/Tests/``. A failed
 run prints that directory and keeps its files. Successful runs clean it up.
 
-The object-emission fixtures link native programs with Make's ``CC`` and
-inspect target objects with ``llvm-readobj`` from the configured LLVM installation.
-Use ``%cc`` and ``%llvm_readobj`` for these tools in lit directives.
+The native output fixtures use ``llvm-mc`` to assemble target code,
+``llvm-readobj`` to inspect object files, and Make's ``CC`` to link them.
+Use ``%llvm_mc``, ``%llvm_readobj``, and ``%cc`` for these tools in lit
+directives. Both LLVM tools come from the configured LLVM installation.
 Add ``%runtime`` to the link command for programs that call Cloth runtime helpers.
 
 The first native test build uses Python to fetch GoogleTest 1.18.0,

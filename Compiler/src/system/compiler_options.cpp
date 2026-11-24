@@ -2,6 +2,8 @@
 
 // See Documentation/compiler/Flags.rst
 
+#include <backend/backend.hpp>
+
 #include <algorithm>
 #include <format>
 #include <functional>
@@ -37,13 +39,15 @@ CompilerOptions::CompilerOptions (const int argc, const char *const argv[]) : ar
 			std::get<std::function<void()>>(bi_flag->v_action)();
 		}
 	}
-	if (p_objectPath) {
+	if (!s_emitFlag.empty()) {
 		if (kind != ProgramKind::Executable)
-			throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidCompilationRequest, "--emit-object requires --kind executable");
+			throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidCompilationRequest, std::format("{} requires --kind executable", s_emitFlag));
 		if (i_lexer != 0)
 			throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidCompilationRequest,
-			                           "--emit-object is incompatible with lexer-only mode (-l or -L)");
-		if (!p_sourcePath) throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidCompilationRequest, "--emit-object requires --src PATH");
+			                           std::format("{} is incompatible with lexer-only mode (-l or -L)", s_emitFlag));
+		if (!p_sourcePath)
+			throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidCompilationRequest, std::format("{} requires --src PATH", s_emitFlag));
+		if (!p_outputPath) p_outputPath.emplace(*p_sourcePath).replace_extension(emitKind == backend::EmitKind::Assembly ? ".s" : ".o");
 	}
 }
 
@@ -54,14 +58,15 @@ void CompilerOptions::addFlag (const CompilerFlag &flag) {
 // TODO: Allow comma separated lists of source files to use all at the same time? ie "path1","path2"
 // TODO: "path1","path" "path3" fails as path3 is seen as another arg.
 void CompilerOptions::buildDefaults () {
-	addFlag({ .s_flag = "--kind", .v_action = CompilerFlag::Value{ .s_description = "library or executable", .f_func = [this] (std::string_view kindName) {
-		                                                              if (kindName == "library")
-			                                                              kind = ProgramKind::Library;
-		                                                              else if (kindName == "executable")
-			                                                              kind = ProgramKind::Executable;
-		                                                              else
-			                                                              throw std::invalid_argument("--kind requires library or executable");
-	                                                              } } });
+	addFlag({ .s_flag   = "--kind",
+	          .v_action = CompilerFlag::Value{ .s_description = "library or executable", .f_func = [this] (const std::string_view kindName) {
+		                                          if (kindName == "library")
+			                                          kind = ProgramKind::Library;
+		                                          else if (kindName == "executable")
+			                                          kind = ProgramKind::Executable;
+		                                          else
+			                                          throw std::invalid_argument("--kind requires library or executable");
+	                                          } } });
 	addFlag({ .s_flag = "--target-bits", .v_action = CompilerFlag::Value{ .s_description = "32 or 64", .f_func = [this] (const std::string_view bits) {
 		                                                                     if (bits == "32")
 			                                                                     targetLayout.sizeBits = 32;
@@ -73,14 +78,27 @@ void CompilerOptions::buildDefaults () {
 	addFlag({ .s_flag = "--stdlib", .v_action = CompilerFlag::Value{ .s_description = "a directory", .f_func = [this] (const std::string_view path) {
 		                                                                standardLibraryRoot = std::u8string(path.begin(), path.end());
 	                                                                } } });
-	addFlag({ .s_flag = "-l", .v_action = [this] () { i_lexer = 1; } });
-	addFlag({ .s_flag = "-L", .v_action = [this] () { i_lexer = 2; } });
-	addFlag({ .s_flag = "--src", .v_action = CompilerFlag::Value{ .s_description = "a file path", .f_func = [this] (std::string_view path) {
+	addFlag({ .s_flag = "-l", .v_action = [this] { i_lexer = 1; } });
+	addFlag({ .s_flag = "-L", .v_action = [this] { i_lexer = 2; } });
+	addFlag({ .s_flag = "--src", .v_action = CompilerFlag::Value{ .s_description = "a file path", .f_func = [this] (const std::string_view path) {
 		                                                             p_sourcePath.emplace(std::u8string(path.begin(), path.end()));
 	                                                             } } });
-	addFlag({ .s_flag = "--emit-object", .v_action = CompilerFlag::Value{ .s_description = "a file path", .f_func = [this] (std::string_view path) {
-		                                                                     p_objectPath.emplace(std::u8string(path.begin(), path.end()));
-	                                                                     } } });
+	addFlag({ .s_flag = "--emit", .v_action = CompilerFlag::Value{ .s_description = "object or assembly", .f_func = [this] (const std::string_view name) {
+		                                                              if (name == "object")
+			                                                              emitKind = backend::EmitKind::Object;
+		                                                              else if (name == "assembly")
+			                                                              emitKind = backend::EmitKind::Assembly;
+		                                                              else
+			                                                              throw std::invalid_argument("--emit requires object or assembly");
+		                                                              s_emitFlag = "--emit";
+	                                                              } } });
+	for (const char *flag : { "-o", "--output", "--emit-object" }) {
+		addFlag({ .s_flag   = flag,
+		          .v_action = CompilerFlag::Value{ .s_description = "a file path", .f_func = [this, flag] (const std::string_view path) {
+			                                          p_outputPath.emplace(std::u8string(path.begin(), path.end()));
+			                                          if (s_emitFlag.empty()) s_emitFlag = flag;
+		                                          } } });
+	}
 }
 
 bool CompilerOptions::isEmpty () const {

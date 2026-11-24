@@ -61,13 +61,24 @@ Target width
 <../language/types/Arrays.rst#rank-and-extents>`_. The default is the
 native pointer width.
 
-Object emission
----------------
+.. _object-emission:
 
-``--emit-object PATH`` writes a relocatable object at the requested
-path. It requires ``--src`` and ``--kind executable`` and is incompatible
-with ``-l`` and ``-L``. For target formats and linking, see
-`Emitting and linking object files <driver/Objects.rst>`_.
+Native output
+-------------
+
+``--emit object`` writes a relocatable object file. ``--emit assembly``
+writes assembly for the selected target. Both require ``--src PATH`` and
+``--kind executable`` and are incompatible with the lexer modes.
+
+By default, Cloth replaces the source file's extension with ``.o`` or
+``.s`` in the same directory. For ``src/main.co``, assembly goes to
+``src/main.s``. Use ``-o PATH`` or ``--output PATH`` to choose the full
+output path, including its extension.
+
+An output path alone selects the default object format. The legacy
+spelling ``--emit-object PATH`` is an alias for ``-o PATH``. With no
+emission or output option, the driver checks the source. For compile
+and link commands, see `Emitting object files and assembly <driver/Objects.rst>`_.
 
 .. _native-values-and-operations:
 

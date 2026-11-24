@@ -9,7 +9,7 @@ Building and compiling
 * `Build the compiler <../building/Building.rst>`_
 * `Run your first Cloth program <../getting-started/FirstProgram.rst>`_
 * `Command-line options <Flags.rst>`_
-* `Emit and link an object file <driver/Objects.rst>`_
+* `Emit object files and assembly <driver/Objects.rst>`_
 * `Read a compiler diagnostic <driver/Diagnostics.rst>`_
 
 Target layout

@@ -156,6 +156,8 @@ class FunctionLowering {
 	LLVMValueRef tryLowerFixedArrayEquality (const cloth::BinaryExpression &binary, LLVMValueRef left, const cloth::ResolvedType &leftType,
 	                                         const cloth::ResolvedType &rightType);
 	LLVMValueRef lowerIndex (const cloth::IndexExpression &index, const cloth::ExpressionInfo &info);
+	bool         simpleIndex (const cloth::Expression &index) const;
+	LLVMValueRef tryArrayAddress (const cloth::Expression &array, bool borrowMutable);
 	LLVMValueRef lowerArrayOffset (const cloth::Expression &index, LLVMTypeRef arrayType);
 	LLVMValueRef arrayElementAddress (LLVMTypeRef arrayType, LLVMValueRef slot, LLVMValueRef offset) const;
 	LLVMValueRef lowerStructLiteral (const cloth::StructLiteral &literal, const cloth::ExpressionInfo &info);
@@ -442,17 +444,34 @@ LLVMValueRef FunctionLowering::tryLowerFixedArrayEquality (const cloth::BinaryEx
 	return ir_equal;
 }
 
-LLVMValueRef FunctionLowering::lowerIndex (const cloth::IndexExpression &index, const cloth::ExpressionInfo &info) {
+bool FunctionLowering::simpleIndex (const cloth::Expression &index) const {
+	return dynamic_cast<const cloth::IntegerLiteral *>(&index) || namedLocal(index);
+}
+
+LLVMValueRef FunctionLowering::tryArrayAddress (const cloth::Expression &array, bool borrowMutable) {
+	if (const LoweredValue *lv_local = namedLocal(array)) {
+		const bool b_stable = lv_local->storage == ValueStorage::ReadOnlySlot || (borrowMutable && lv_local->storage == ValueStorage::MutableSlot);
+		return b_stable ? lv_local->operand : nullptr;
+	}
+	const auto *ie_row = dynamic_cast<const cloth::IndexExpression *>(&array);
+	if (!ie_row) return nullptr;
 	const cloth::ExpressionFacts &ef_facts = mf_functions.program.expressions;
-	const cloth::ExpressionInfo  &ei_array = ef_facts.at(index.array.get());
-	const LoweredValue           *lv_local = namedLocal(*index.array);
-	// A simple index cannot rebind its receiver. A read-only local keeps its buffer throughout any index expression.
-	const bool b_direct =
-	        lv_local && lv_local->storage != ValueStorage::Direct &&
-	        (lv_local->storage == ValueStorage::ReadOnlySlot || dynamic_cast<const cloth::IntegerLiteral *>(index.index.get()) || namedLocal(*index.index));
-	const LLVMValueRef ir_array = b_direct ? nullptr : lowerExpression(*index.array);
-	if (!b_direct && !ir_array) return nullptr;
-	const LLVMTypeRef  ty_array  = b_direct ? LLVMGetAllocatedType(lv_local->operand) : LLVMTypeOf(ir_array);
+	const cloth::ExpressionInfo  &ei_row   = ef_facts.at(ie_row);
+	if (!ei_row.fallsThrough || ei_row.indexed || !isBuiltinOperation(ei_row) || !ei_row.types.front().array()) return nullptr;
+	// Borrow a mutable row only if every remaining index leaves its storage unchanged.
+	const LLVMValueRef ir_outer = tryArrayAddress(*ie_row->array, borrowMutable && simpleIndex(*ie_row->index));
+	if (!ir_outer) return nullptr;
+	const LLVMTypeRef ty_outer = mf_functions.valueTypes.localType(ef_facts.at(ie_row->array.get()).types.front());
+	return arrayElementAddress(ty_outer, ir_outer, lowerArrayOffset(*ie_row->index, ty_outer));
+}
+
+LLVMValueRef FunctionLowering::lowerIndex (const cloth::IndexExpression &index, const cloth::ExpressionInfo &info) {
+	const cloth::ExpressionInfo &ei_array = mf_functions.program.expressions.at(index.array.get());
+	if (!ei_array.fallsThrough) return lowerExpression(*index.array);
+	const LLVMValueRef ir_buffer = tryArrayAddress(*index.array, simpleIndex(*index.index));
+	const LLVMValueRef ir_array  = ir_buffer ? nullptr : lowerExpression(*index.array);
+	if (!ir_buffer && !ir_array) return nullptr;
+	const LLVMTypeRef  ty_array  = ir_buffer ? mf_functions.valueTypes.localType(ei_array.types.front()) : LLVMTypeOf(ir_array);
 	const LLVMValueRef ir_offset = lowerArrayOffset(*index.index, ty_array);
 	if (!ir_offset) return nullptr;
 	const cloth::ResolvedType rt_element = ei_array.types.front().element();
@@ -464,7 +483,7 @@ LLVMValueRef FunctionLowering::lowerIndex (const cloth::IndexExpression &index, 
 		}
 	}
 	// Keep the receiver's value from before index evaluation, even if the index reassigns the local.
-	const LLVMValueRef ir_slot    = b_direct ? lv_local->operand : storeInEntrySlot(ir_array);
+	const LLVMValueRef ir_slot    = ir_buffer ? ir_buffer : storeInEntrySlot(ir_array);
 	const LLVMValueRef ir_address = arrayElementAddress(ty_array, ir_slot, ir_offset);
 	return readValue({ .operand = ir_address, .type = rt_element, .storage = ValueStorage::ReadOnlySlot }, info.types.front());
 }
@@ -1001,7 +1020,7 @@ void FunctionLowering::lowerFor (const cloth::ForStatement &loop) {
 	}
 	const LLVMTypeRef ty_array = it_loop.kind == cloth::IterationKind::Array && !loop.stepper ? mf_functions.valueTypes.localType(ei_source.types.front()) :
 	                                                                                            nullptr;
-	if (!ty_array)
+	if (!ty_array || it_loop.element.array())
 		throw cde::ClothDiagnostic(Code::UnsupportedLowering,
 		                           "LLVM iteration requires a one-dimensional fixed-size array with supported element storage",
 		                           { { .span = loop.source.getSpan(), .text = "unsupported iteration source" } });
@@ -1287,23 +1306,28 @@ void LoweredModule::verify () const {
 	checkLLVMResult(b_failed, s_error, Code::InvalidIr, "LLVM module verification failed");
 }
 
-std::vector<std::byte> LoweredModule::emitObject () {
+std::vector<std::byte> LoweredModule::emit (EmitKind kind) {
 	verify();
 
-	char               *s_error   = nullptr;
-	LLVMMemoryBufferRef mb_output = nullptr;
-	const LLVMBool      b_failed  = LLVMTargetMachineEmitToMemoryBuffer(tm_machine.get(), get(), LLVMObjectFile, &s_error, &mb_output);
-	const MemoryBuffer  mb_object(mb_output, LLVMDisposeMemoryBuffer);
-	checkLLVMResult(b_failed, s_error, Code::LlvmObject, "LLVM object emission failed");
-	if (!mb_object || LLVMGetBufferSize(mb_object.get()) == 0) {
-		throw cde::ClothDiagnostic(Code::LlvmObject, "LLVM returned an empty object");
+	const LLVMCodeGenFileType fileType  = kind == EmitKind::Assembly ? LLVMAssemblyFile : LLVMObjectFile;
+	char                     *s_error   = nullptr;
+	LLVMMemoryBufferRef       mb_output = nullptr;
+	const LLVMBool            b_failed  = LLVMTargetMachineEmitToMemoryBuffer(tm_machine.get(), get(), fileType, &s_error, &mb_output);
+	const MemoryBuffer        buffer(mb_output, LLVMDisposeMemoryBuffer);
+	checkLLVMResult(b_failed, s_error, Code::LlvmEmission, "LLVM code emission failed");
+	if (!buffer || LLVMGetBufferSize(buffer.get()) == 0) {
+		throw cde::ClothDiagnostic(Code::LlvmEmission, "LLVM returned empty output");
 	}
-	const auto *p_bytes = reinterpret_cast<const std::byte *>(LLVMGetBufferStart(mb_object.get()));
-	return { p_bytes, p_bytes + LLVMGetBufferSize(mb_object.get()) };
+	const auto *p_bytes = reinterpret_cast<const std::byte *>(LLVMGetBufferStart(buffer.get()));
+	return { p_bytes, p_bytes + LLVMGetBufferSize(buffer.get()) };
+}
+
+std::vector<std::byte> emit (const cloth::CheckedProgram &program, EmitKind kind, std::string_view targetTriple) {
+	return LoweredModule(program, targetTriple).emit(kind);
 }
 
 std::vector<std::byte> emitObject (const cloth::CheckedProgram &program, std::string_view targetTriple) {
-	return LoweredModule(program, targetTriple).emitObject();
+	return emit(program, EmitKind::Object, targetTriple);
 }
 
 }

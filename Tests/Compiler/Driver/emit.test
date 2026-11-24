@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: mkdir -p "%t/src"
+# RUN: echo "pub fn<int> main () = 42" > "%t/src/answer.v1.co"
+
+# An explicit destination keeps its spelling, even with the other format's suffix.
+# RUN: %cloth --output "%t/custom object.s" --src "%t/src/answer.v1.co" --kind executable --emit object
+# RUN: %llvm_readobj --file-headers "%t/custom object.s" | %filecheck "%/s" --check-prefix=OBJECT
+# RUN: %cloth --emit assembly --kind executable --src "%t/src/answer.v1.co" -o "%t/custom assembly.o"
+# RUN: %filecheck "%/s" --check-prefix=ASSEMBLY --input-file "%t/custom assembly.o"
+# RUN: cd "%t/src" && %python -c "from pathlib import Path; assert list(Path('.').iterdir()) == [Path('answer.v1.co')]"
+
+# With no destination, replace the source's final extension in its own directory.
+# RUN: %cloth --src "%t/src/answer.v1.co" --kind executable --emit object
+# RUN: %llvm_readobj --file-headers "%t/src/answer.v1.o" | %filecheck "%/s" --check-prefix=OBJECT
+# RUN: %cloth --emit assembly --src "%t/src/answer.v1.co" --kind executable
+# RUN: %llvm_mc --filetype=obj "%t/src/answer.v1.s" -o "%t/assembled.o"
+# RUN: %cc "%t/assembled.o" -o "%t/answer.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t/answer.exe"
+
+# An output request without a kind defaults to a relocatable object.
+# RUN: %cloth --kind executable -o "%t/default" --src "%t/src/answer.v1.co"
+# RUN: %llvm_readobj --file-headers "%t/default" | %filecheck "%/s" --check-prefix=OBJECT
+
+# OBJECT: Format: {{COFF|elf}}
+# ASSEMBLY: {{^_?main:}}

@@ -213,7 +213,7 @@ enum class DiagnosticCode : std::uint16_t {
 	LinkerOutput            = 4014,
 	LinkerInterrupted       = 4015,
 	LlvmTarget              = 4020,
-	LlvmObject              = 4021,
+	LlvmEmission            = 4021,
 	LlvmInitialization      = 4022,
 	UnsupportedFunctionAbi = 4030,
 	// C4031 retired after arbitrary integer lowering and decimal text integration.

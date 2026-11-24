@@ -1,10 +1,10 @@
 .. SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-Emitting and linking object files
-=================================
+Emitting object files and assembly
+==================================
 
-Compile the source file that defines ``main``. Cloth writes a relocatable
-object containing the entry point and the functions it calls. Link that
+Compile the source file that defines ``main``. The emitted object or
+assembly contains the entry point and the functions it calls. Link an
 object with a C compiler for the same platform and width to produce an
 executable. For a complete example, see `Run your first Cloth program
 <../../getting-started/FirstProgram.rst>`_.
@@ -15,13 +15,22 @@ Entry point and output
 For native code, ``main`` takes no parameters and returns a signed
 32-bit ``int``. Its body can be an expression or a block with
 `conditionals and loops <../../language/statements/ControlFlow.rst>`_.
-When checking an executable without writing an object, Cloth accepts
+When checking an executable without emitting native code, Cloth accepts
 additional `entry-point signatures <../Flags.rst#program-kind>`_.
 
-Pass the destination path to ``--emit-object``. Its directory must
-already exist. A successful write replaces an existing regular file.
-If compilation fails, the old file keeps its contents. Cloth rejects
-paths that would overwrite the entry source or any of its imports.
+Use ``--emit object`` to write an object beside the source. To inspect
+assembly, use ``--emit assembly``. These commands write a listing to an
+explicit path and assemble it for the native target with LLVM's assembler.
+
+.. code-block:: sh
+
+   ./build/cloth --kind executable --src build/main.co --emit assembly -o build/listing.s
+   llvm-mc --filetype=obj build/listing.s -o build/listing.o
+
+The destination directory must already exist. A successful write
+replaces an existing regular file. If compilation fails, the old file
+keeps its contents. Cloth rejects paths that would overwrite the entry
+source or any of its imports.
 
 On x86, ``--target-bits 32`` selects i386 and ``--target-bits 64``
 selects x86-64. The toolchain used to build Cloth determines the object
@@ -52,7 +61,7 @@ object.
 
 .. code-block:: sh
 
-   ./build/cloth --kind executable --src build/main.co --emit-object build/main.o
+   ./build/cloth --kind executable --src build/main.co --emit object
    cc build/main.o -o build/main
 
 With MinGW, use ``gcc build/main.o -o build/main.exe`` for the link
@@ -83,10 +92,15 @@ field offsets, see `Aggregate storage layout <../storage/Aggregates.rst>`_.
 Fixed-size arrays
 -----------------
 
-Native code supports one-dimensional fixed-size array locals. ``==`` and
-``!=`` compare arrays of integers, booleans, characters, floats, integer
-ranges, and enums that use built-in equality. The elements can be nullable,
-as in ``int?[2]`` and ``range<int>?[3]``. See `array equality
+Native code supports rectangular fixed-size integer array locals and
+indexed reads. For example, ``int[2][3]`` holds two rows and each row has
+three valid column indices. See `rank and extents
+<../../language/types/Arrays.rst#rank-and-extents>`_.
+
+One-dimensional fixed-size arrays support ``==`` and ``!=`` for integers,
+booleans, characters, floats, integer ranges, and enums that use built-in
+equality. The elements can be nullable, as in ``int?[2]`` and
+``range<int>?[3]``. See `array equality
 <../../language/expressions/Operators.rst#array-equality>`_ for comparison
 rules and `arrays <../../language/types/Arrays.rst>`_ for copying, indexing,
 and updates.

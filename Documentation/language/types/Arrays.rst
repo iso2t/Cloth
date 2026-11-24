@@ -35,6 +35,12 @@ establishes a length of two for later rows. Assigning
 ``[[3, 4], [5, 6]]`` to ``rows`` changes the number of rows while
 preserving their length.
 
+Use one index per dimension. In the `rectangular array example
+<../../../Tests/Compiler/Driver/Inputs/rectangular-array.co>`_, the second
+row is ``[4, 5, 42]``, so ``rows[1][2]`` returns 42. Cloth checks the row
+index before evaluating the column index. If the selected row is empty,
+every column index is out of bounds.
+
 A ``?`` marks the type immediately before it. In ``int?[]``, each
 element can be ``null``. In ``int[]?``, the array itself can be ``null``.
 For example, ``int?[2]`` can hold ``[0, null]``.

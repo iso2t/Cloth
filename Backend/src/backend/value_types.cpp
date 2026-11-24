@@ -51,7 +51,7 @@ LLVMTypeRef ValueTypes::localType (const cloth::ResolvedType &type) {
 	if (!type.array()) return get(type);
 	const std::optional<std::uint64_t> opt_count = type.arrayExtent();
 	if (!opt_count) return nullptr;
-	const LLVMTypeRef                         ty_element = get(type.element());
+	const LLVMTypeRef                         ty_element = localType(type.element());
 	const std::optional<cloth::StorageLayout> opt_data   = cp_program.arrayDataLayout(type, *opt_count);
 	if (!ty_element || !opt_data) return nullptr;
 	const LLVMTypeRef          ty_buffer = LLVMArrayType2(ty_element, *opt_count);

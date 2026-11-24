@@ -54,13 +54,15 @@
 # RUN: %filecheck "%/s" --check-prefix=SOURCE --input-file "%t.err"
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object helper.co 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=SOURCE --input-file "%t.err"
+# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit assembly -o helper.co 2> "%t.err"
+# RUN: %filecheck "%/s" --check-prefix=SOURCE --input-file "%t.err"
 # RUN: cd "%t" && %python -c "import os; os.link('entry.co', 'alias.o')"
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object alias.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=SOURCE --input-file "%t.err"
-# SOURCE: [C0014] Error: Object output {{.*}} would overwrite source file
+# SOURCE: [C0014] Error: Output {{.*}} would overwrite source file
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object missing/answer.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=IO --input-file "%t.err"
-# IO: [C0013] Error: Could not write object file 'missing{{[/\\]}}answer.o'
+# IO: [C0013] Error: Could not write output file 'missing{{[/\\]}}answer.o'
 
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --src entry.co --emit-object answer.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=KIND --input-file "%t.err"

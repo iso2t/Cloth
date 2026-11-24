@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<int> trace(final int label, final int value) {
+    println(label)
+    return value
+}
+
+fn<int> early(final bool stopAtRow) {
+    int[1][1] rows := [[1]]
+    return rows[if (stopAtRow) { return 42 } else 0][if (stopAtRow) trace(99, 0) else { return 7 }]
+}
+
+fn<int> leaveAtRow(final int column) {
+    int[1][1] rows := [[1]]
+    return rows[if (column == 0) { return 42 } else { return 7 }][column]
+}
+
+pub fn<int> main() {
+    int<12>[2][3] rows = [[trace(1, 7) -> int<12>, 8, 9], [10, trace(2, 11) -> int<12>, 42]]
+    def saved := rows
+    if (saved[trace(3, 1)][trace(4, 2)] != 42) return 1
+    def row := rows[1]
+    if (rows[0][if (true) { rows = [[1, 2, 3], [4, 5, 6]]; 1 } else 0] != 8) return 2
+    if (rows[if (true) { rows = saved; 1 } else 0][2] != 6 || row[2] != 42) return 3
+
+    usize[2][1][2] cube := [[[0, 1]], [[2, 42]]]
+    if (cube[1][0][1] != 42) return 4
+    int[2][0] emptyRows := [[], []]
+    if (emptyRows[1]::size != 0) return 5
+    if (early(true) != 42 || early(false) != 7 || leaveAtRow(0) != 42) return 6
+    return rows[1][2] -> int
+}

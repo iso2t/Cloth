@@ -19,7 +19,7 @@ std::vector<SourceLabel> withPrimaryLabel (cloth::TokenSpan span, std::vector<So
 
 }
 
-SyntaxException::SyntaxException (DiagnosticCode code, std::string message, cloth::TokenSpan span, std::optional<std::string> guidance,
+SyntaxException::SyntaxException (const DiagnosticCode code, std::string message, cloth::TokenSpan span, std::optional<std::string> guidance,
                                   std::vector<SourceLabel> related) :
         ClothDiagnostic(code, std::move(message), withPrimaryLabel(std::move(span), std::move(related)), std::move(guidance)) {
 }

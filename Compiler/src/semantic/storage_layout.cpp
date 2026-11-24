@@ -118,8 +118,11 @@ std::optional<StorageLayout> CheckedProgram::storageLayout (const ResolvedType &
 
 std::optional<StorageLayout> CheckedProgram::arrayDataLayout (const ResolvedType &array, std::uint64_t count) const {
 	if (!array.array()) return {};
-	const std::optional<StorageLayout> opt_element = storageLayout(array.element());
-	if (!opt_element || count > layout.maximumSize() / opt_element->size) return {};
+	const ResolvedType rt_element = array.element();
+	// Contiguous fixed dimensions store rows inline. A zero-length row keeps its element alignment.
+	const std::optional<std::uint64_t> opt_rowExtent = array.arrayExtent() ? rt_element.arrayExtent() : std::nullopt;
+	const std::optional<StorageLayout> opt_element   = opt_rowExtent ? arrayDataLayout(rt_element, *opt_rowExtent) : storageLayout(rt_element);
+	if (!opt_element || count > layout.maximumSize() / std::max<std::uint64_t>(1, opt_element->size)) return {};
 	return StorageLayout{ .size = count * opt_element->size, .alignment = opt_element->alignment };
 }
 

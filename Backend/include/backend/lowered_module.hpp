@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <backend/backend.hpp>
+
 #include <cstddef>
 #include <memory>
 #include <string_view>
@@ -23,7 +25,7 @@ class LoweredModule {
 	// The LLVM handle is valid for the lifetime of this object.
 	[[nodiscard]] LLVMModuleRef          get () const;
 	void                                 verify () const;
-	[[nodiscard]] std::vector<std::byte> emitObject ();
+	[[nodiscard]] std::vector<std::byte> emit (EmitKind kind);
 
     private:
 	// The module borrows its context and must be destroyed first.

@@ -31,6 +31,16 @@ at the checked stride. See `LLVM value types
 <../../../Backend/src/backend/value_types.cpp>`_, `integer layout
 <../storage/Integers.rst>`_, and `aggregate layout <../storage/Aggregates.rst>`_.
 
+``ValueTypes::localType`` builds one LLVM array per fixed dimension,
+checking size and alignment against ``CheckedProgram::arrayDataLayout``.
+For ``rows[r][c]``, lowering checks ``r`` against the row count before
+evaluating ``c`` and checking it against the column count. A read from an
+immutable local can address the element directly. If a subscript can
+reassign a mutable local, lowering captures the receiver's value before
+evaluating that subscript. The `rectangular array driver test
+<../../../Tests/Compiler/Driver/rectangular-array.test>`_ exercises both
+evaluation order and bounds failures.
+
 Control flow and effects
 ------------------------
 
@@ -128,12 +138,15 @@ the diagnostic and terminates the process. The `runtime dependencies
 caller needs when linking each operation.
 
 The `backend <../../../Backend/src/backend/backend.cpp>`_ verifies the LLVM
-module and emits object bytes into memory. The `driver's writer
-<../../../Compiler/src/file/object_file.cpp>`_ checks that the requested
+module and asks the target machine to emit an object or assembly into
+memory. The `driver's writer
+<../../../Compiler/src/file/output_file.cpp>`_ checks that the requested
 destination cannot overwrite an input source. It writes and closes an
 exclusively created temporary file in the destination directory before
 renaming it over the output. A failed check or write preserves a previous
-object. The `target tests <../../../Tests/Compiler/Driver/emit-object-targets.test>`_
-inspect the emitted format, and the `failure tests
+output file. The `driver test <../../../Tests/Compiler/Driver/emit.test>`_
+checks output names and assembles and runs the emitted code. The
+`target tests <../../../Tests/Compiler/Driver/emit-object-targets.test>`_
+inspect the object format, and the `failure tests
 <../../../Tests/Compiler/Driver/emit-object-errors.test>`_ check diagnostics
 and existing output files.

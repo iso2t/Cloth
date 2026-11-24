@@ -26,6 +26,7 @@ def main():
     parser.add_argument("compiler", type=Path)
     parser.add_argument("selection", type=Path)
     parser.add_argument("--readobj", default="llvm-readobj")
+    parser.add_argument("--llvm-mc", default="llvm-mc")
     parser.add_argument("--cc", nargs=argparse.REMAINDER, help="C driver and flags used to link native objects")
     args = parser.parse_args()
 
@@ -47,6 +48,7 @@ def main():
         "-D", f"cloth={compiler}",
         "-D", f"filecheck={filecheck}",
         "-D", f"readobj={args.readobj}",
+        "-D", f"llvm_mc={args.llvm_mc}",
         "-D", f"cc={shlex.join([cc_path, *cc[1:]])}",
         "-D", f"exec_root={run_dir}",
     ]

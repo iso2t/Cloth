@@ -26,3 +26,18 @@
 # RUN: %expect_exit --empty-stdout 1 %cloth --src 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=MISSING-VALUE --input-file "%t.err"
 # MISSING-VALUE: --src requires a file path
+
+# RUN: %expect_exit --empty-stdout 1 %cloth --emit 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=EMIT-KIND --input-file "%t.err"
+# RUN: %expect_exit --empty-stdout 1 %cloth --emit unknown 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=EMIT-KIND --input-file "%t.err"
+# EMIT-KIND: --emit requires object or assembly
+# RUN: %expect_exit --empty-stdout 1 %cloth --emit assembly --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=EMIT-LIBRARY --input-file "%t.err"
+# EMIT-LIBRARY: [C0017] Error: --emit requires --kind executable
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit assembly -l 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=EMIT-LEXER --input-file "%t.err"
+# EMIT-LEXER: [C0017] Error: --emit is incompatible with lexer-only mode
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --emit object 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=EMIT-SOURCE --input-file "%t.err"
+# EMIT-SOURCE: [C0017] Error: --emit requires --src PATH

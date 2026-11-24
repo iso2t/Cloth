@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <backend/backend.hpp>
+
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -39,7 +41,8 @@ class CompilerOptions {
 	void buildDefaults ();
 
 	std::optional<std::filesystem::path> p_sourcePath;
-	std::optional<std::filesystem::path> p_objectPath;
+	std::optional<std::filesystem::path> p_outputPath;
+	backend::EmitKind                    emitKind = backend::EmitKind::Object;
 	TargetLayout                         targetLayout;
 	std::filesystem::path                standardLibraryRoot;
 	ProgramKind                          kind = ProgramKind::Library;
@@ -52,6 +55,7 @@ class CompilerOptions {
 
     private:
 	std::vector<CompilerFlag> v_compilerFlags;
+	std::string_view          s_emitFlag;
 	int                       i_lexer = 0;
 	int                       args{};
 	const char *const        *argv{};

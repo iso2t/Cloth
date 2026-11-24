@@ -85,6 +85,12 @@ the declared fields to remember its shape when its value is cleared.
 The element buffer occupies the element count times the allocation size
 of one element. For integer elements, see `Integer storage layout <Integers.rst>`_.
 
+A rectangular fixed-size local stores its rows inline. In
+``int<12>[2][3]``, each integer occupies two bytes, so the second row
+starts at byte 6 and the whole buffer occupies 12 bytes with two-byte
+alignment. A fixed row of length zero occupies zero bytes and retains
+the alignment of its element type.
+
 The `storage layout implementation <../../../Compiler/src/semantic/storage_layout.cpp>`_
 calculates field offsets and array storage sizes. The `layout tests
 <../../../Tests/Compiler/Semantic/Unit/storage_layout_test.cpp>`_ include an

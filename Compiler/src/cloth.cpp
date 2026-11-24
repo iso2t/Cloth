@@ -10,7 +10,7 @@
 
 #include <diagnostics.hpp>
 #include <errors/cloth_errors.hpp>
-#include <file/object_file.hpp>
+#include <file/output_file.hpp>
 #include <file/source_file.hpp>
 #include <lexer/lexer.hpp>
 #include <parser/parser.hpp>
@@ -54,7 +54,7 @@ int main (const int argc, char *argv[]) try {
 	cloth::Parser               p_parser{ l_lexer };
 	cloth::SymbolTable          st_symbols{ p_parser.parse() };
 	const cloth::CheckedProgram cp_program{ std::move(st_symbols), co_options.targetLayout, co_options.standardLibraryRoot, co_options.kind };
-	if (co_options.p_objectPath) cloth::emitObjectFile(cp_program, *co_options.p_objectPath);
+	if (co_options.p_outputPath) cloth::emitFile(cp_program, co_options.emitKind, *co_options.p_outputPath);
 
 	return SUCCESS;
 } catch (const cde::ClothDiagnostic &error) {

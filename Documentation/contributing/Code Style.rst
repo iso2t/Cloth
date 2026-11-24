@@ -168,9 +168,11 @@ Headers and includes
 
 Put ``#pragma once`` below the license header in new C++ headers.
 Include the headers that provide the types and functions you use.
-Use angle brackets for Cloth headers and paths relative to
-``Compiler/include``, as in ``#include <file/source_file.hpp>``.
-Let ClangFormat group and sort the includes.
+Prefer angle brackets for includes. For project headers, use paths
+relative to the component's include directory, as in
+``#include <file/source_file.hpp>``. Use ``#include <diagnostics.hpp>`` to
+include the complete diagnostics module. Let ClangFormat group and
+sort the includes.
 
 Comments
 --------
