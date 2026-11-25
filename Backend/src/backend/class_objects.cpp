@@ -14,8 +14,6 @@
 #include <utility>
 #include <vector>
 
-#include <ast/decl/class_declaration.hpp>
-#include <ast/decl/declarations.hpp>
 #include <diagnostics.hpp>
 #include <llvm-c/Core.h>
 #include <llvm-c/Target.h>
@@ -43,6 +41,8 @@ LLVMValueRef objectCall (LLVMBuilderRef builder, LLVMModuleRef module, ObjectOpe
 		return call("cloth_rt_object_create", handle, { word, word, pointer, pointer, pointer });
 	case ObjectOperation::Data:
 		return call("cloth_rt_object_data", pointer, { handle, byte });
+	case ObjectOperation::CheckBorrow:
+		return call("cloth_rt_object_check_borrow", nothing, { handle, byte });
 	case ObjectOperation::Backing:
 		return call("cloth_rt_object_backing", pointer, { handle, word, word });
 	case ObjectOperation::Delete:
@@ -65,16 +65,10 @@ ClassObjects::ClassObjects (LLVMModuleRef module, const cloth::CheckedProgram &p
         mod_module(module),
         cp_program(program),
         vt_types(types) {
-	for (const auto &[symbol, info] : program.declarations)
-		if (symbol->classFieldIndex) m_fields.emplace(&symbol->name, symbol);
 }
 
-const cloth::Symbol *ClassObjects::field (const cloth::Token *declaration) const {
-	const auto it_field = m_fields.find(declaration);
-	return it_field == m_fields.end() ? nullptr : it_field->second;
-}
-
-const cloth::ResolvedType &ClassObjects::fieldType (const cloth::Symbol &field) const {
+const cloth::ResolvedType &ClassObjects::fieldType (const ClassStorage &owner, const cloth::Symbol &field) const {
+	if (owner.instance) return owner.instance->fields.at(&field);
 	const auto &type = cp_program.declarations.at(&field).value;
 	if (!type)
 		throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedLowering, "Class field has no checked value type",
@@ -82,18 +76,15 @@ const cloth::ResolvedType &ClassObjects::fieldType (const cloth::Symbol &field) 
 	return *type;
 }
 
-ClassStorage &ClassObjects::layout (const cloth::Symbol &owner) {
-	if (const auto it_found = m_classes.find(&owner); it_found != m_classes.end()) return it_found->second;
-	ClassStorage result{ .storage = nullptr, .base = nullptr, .destructor = nullptr, .fields = {} };
-	const auto  &decl = dynamic_cast<const cloth::ClassDeclaration &>(*std::get<const cloth::TypeDeclaration *>(owner.declaration));
-	if (decl.typeParameters)
-		throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedLowering, "Native class construction requires a non-generic class",
-		                           { { .span = owner.name.getSpan(), .text = "generic class" } });
+ClassStorage &ClassObjects::layout (const cloth::ResolvedType &type) {
+	if (const auto it_found = m_classes.find(type); it_found != m_classes.end()) return it_found->second;
+	const cloth::Symbol &owner = *type.declaration;
+	ClassStorage result{ .type = type, .instance = cp_program.typeInstance(type), .storage = nullptr, .base = nullptr, .destructor = nullptr, .fields = {} };
 	std::vector<LLVMTypeRef> fields;
-	for (const cloth::ResolvedType &parent : cp_program.declarations.at(&owner).parents) {
+	for (const cloth::ResolvedType &parent : (result.instance ? result.instance->signature : cp_program.declarations.at(&owner)).parents) {
 		if (!parent.classReference() || !cp_program.declarations.at(parent.declaration).primaryConstructor) continue;
-		result.base = parent.declaration;
-		fields.push_back(layout(*result.base).storage);
+		result.base = &layout(parent);
+		fields.push_back(result.base->storage);
 	}
 	for (const auto &[name, group] : owner.members) {
 		for (const cloth::Symbol &member : group) {
@@ -103,7 +94,7 @@ ClassStorage &ClassObjects::layout (const cloth::Symbol &owner) {
 	}
 	std::ranges::sort(result.fields, {}, &cloth::Symbol::classFieldIndex);
 	for (const cloth::Symbol *symbol : result.fields) {
-		const cloth::ResolvedType &type   = fieldType(*symbol);
+		const cloth::ResolvedType &type   = fieldType(result, *symbol);
 		const LLVMTypeRef          stored = growable_array::ownsBuffer(type) ? vt_types.localType(type) : vt_types.slotType(type);
 		if (!stored)
 			throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedLowering, "Class field has no native storage representation",
@@ -114,16 +105,23 @@ ClassStorage &ClassObjects::layout (const cloth::Symbol &owner) {
 		throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedLowering, "Class storage exceeds the selected target's addressable size",
 		                           { { .span = owner.name.getSpan(), .text = "class instance is too large" } });
 	const LLVMContextRef context = LLVMGetModuleContext(mod_module);
-	result.storage               = LLVMStructCreateNamed(context, ("cloth.object." + owner.name.getNameKey()).c_str());
+	result.storage               = LLVMStructCreateNamed(context, ("cloth.object." + type.spelling()).c_str());
 	LLVMStructSetBody(result.storage, fields.data(), static_cast<unsigned>(fields.size()), false);
-	return m_classes.emplace(&owner, std::move(result)).first->second;
+	return m_classes.emplace(type, std::move(result)).first->second;
 }
 
-LLVMValueRef ClassObjects::fieldAddress (LLVMBuilderRef builder, LLVMValueRef storage, const cloth::Symbol &field) {
+const ClassStorage &ClassObjects::declaringLayout (const cloth::ResolvedType &receiver, const cloth::Symbol &field) {
+	const cloth::Symbol *declaration = cp_program.declarations.at(&field).owner;
+	for (const ClassStorage *owner = &layout(receiver); owner; owner = owner->base)
+		if (owner->type.declaration == declaration) return *owner;
+	throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedLowering, "Class field does not belong to the checked receiver",
+	                           { { .span = field.name.getSpan(), .text = "invalid field owner" } });
+}
+
+LLVMValueRef ClassObjects::fieldAddress (LLVMBuilderRef builder, LLVMValueRef storage, const ClassStorage &owner, const cloth::Symbol &field) {
 	if (!field.classFieldIndex)
 		throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedLowering, "Class field has no checked storage index",
 		                           { { .span = field.name.getSpan(), .text = "expected a stored class field" } });
-	const ClassStorage &owner = layout(*cp_program.declarations.at(&field).owner);
 	const auto          index = static_cast<unsigned>(field.classFieldIndex.value() + (owner.base ? 1 : 0));
 	return LLVMBuildStructGEP2(builder, owner.storage, storage, index, "");
 }
@@ -145,7 +143,8 @@ void ClassObjects::describe (const cloth::ResolvedType &type, ClassStorage &stor
 	std::vector<LLVMValueRef> tags;
 	for (const cloth::ResolvedType *view = &type; view;) {
 		tags.push_back(typeTag(*view));
-		const cloth::ResultTypes &parents = cp_program.declarations.at(view->declaration).parents;
+		const cloth::GenericInstance *instance = cp_program.typeInstance(*view);
+		const cloth::ResultTypes     &parents  = (instance ? instance->signature : cp_program.declarations.at(view->declaration)).parents;
 		const auto                base    = std::ranges::find_if(parents, &cloth::ResolvedType::classReference);
 		view                              = base == parents.end() ? nullptr : &*base;
 	}
@@ -169,17 +168,21 @@ void ClassObjects::describe (const cloth::ResolvedType &type, ClassStorage &stor
 		LLVMPositionBuilderAtEnd(builder.get(), LLVMGetEntryBasicBlock(function));
 		return LLVMGetParam(function, 0);
 	};
-	for (const ClassStorage *current = &storage; current; current = current->base ? &layout(*current->base) : nullptr) {
+	for (const ClassStorage *current = &storage; current; current = current->base) {
 		if (current->destructor) {
 			LLVMValueRef       self       = callback(storage.destroy, "cloth.destroy", LLVMInt64TypeInContext(context));
-			const LLVMValueRef destructor = functions.declareFunction(*current->destructor);
+			const cloth::GenericInstance *instance =
+			        current->instance ?
+			                &cp_program.instances.at({ .declaration = current->destructor, .receiver = current->type, .arguments = {} }) :
+			                nullptr;
+			const LLVMValueRef destructor = functions.declareFunction(*current->destructor, instance);
 			LLVMBuildCall2(builder.get(), LLVMGlobalGetValueType(destructor), destructor, &self, 1, "");
 		}
 		for (const cloth::Symbol *field : current->fields) {
-			const cloth::ResolvedType &type = fieldType(*field);
+			const cloth::ResolvedType &type = fieldType(*current, *field);
 			if (!growable_array::ownsBuffer(type)) continue;
 			const LLVMValueRef data = callback(storage.dispose, "cloth.dispose", pointer);
-			LLVMValueRef       slot = fieldAddress(builder.get(), data, *field);
+			LLVMValueRef       slot = fieldAddress(builder.get(), data, *current, *field);
 			if (type.nullable()) slot = nullable::payloadAddress(builder.get(), vt_types.localType(type.element()), slot);
 			growable_array::release(builder.get(), mod_module, slot);
 		}
@@ -192,7 +195,7 @@ void ClassObjects::describe (const cloth::ResolvedType &type, ClassStorage &stor
 }
 
 LLVMValueRef ClassObjects::create (LLVMBuilderRef builder, const cloth::ResolvedType &type, ModuleFunctions &functions) {
-	ClassStorage &storage = layout(*type.declaration);
+	ClassStorage &storage = layout(type);
 	if (!storage.views) describe(type, storage, functions);
 	const LLVMContextRef    context = LLVMGetModuleContext(mod_module);
 	const LLVMTargetDataRef target  = LLVMGetModuleDataLayout(mod_module);

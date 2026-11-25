@@ -179,14 +179,37 @@ and `linked lifetime tests <../../../Tests/Compiler/Driver/class-lifetime.test>`
 Direct calls and results
 ------------------------
 
-``ModuleFunctions`` queues the selected free function and each used
-parameter default once. ``argumentContract`` identifies the declaration
+``ModuleFunctions`` caches each LLVM declaration before queuing its body.
+The key contains the declaration, the frontend's canonical closed
+``InstanceKey`` when specialized, and the parameter index for a default.
+Recursive calls and calls from other modules reuse the declaration.
+A different concrete receiver, type argument, or operator selector can
+require another body. Only reachable instances enter the emission queue.
+
+Each closed callable uses its ``GenericInstance`` signature and body facts
+for names, expressions, control flow, and nested calls. The enclosing
+type instance supplies field types, base types, and primary constructor
+initializer facts. Constructor guarantees store a separate checked
+signature on the enclosing instance so their defaults can reference
+the guarantee's own parameters. See the `frontend specialization records
+<../../../Compiler/include/semantic/checked_program.hpp>`_.
+
+``argumentContract`` identifies the declaration
 that owns the defaults. Lowering evaluates the supplied expressions in
 source order and places their values using ``parameterForArgument``.
 It then visits ``omittedParameters`` in order. Each default is an internal
 function receiving the preceding parameter values. Its body uses the
 declaring scope, and recursive calls reuse the same LLVM declaration.
 See the `function ABI implementation <../../../Backend/src/backend/function_abi.cpp>`_.
+
+A direct struct method receives the physical address of its receiver,
+the handle of any class that owns that storage, and the receiver's
+destructor-access permission. A mutable place lends its address for the
+call. A value expression supplies a temporary copy. The callee validates
+a borrowed owner before accessing storage, including after an argument or
+right-hand side can delete that owner. The same receiver ABI applies to
+defaults and directly selected operators. See the `linked specialization
+and borrowed-receiver tests <../../../Tests/Compiler/Driver/generic-specialization.test>`_.
 
 Zero results use LLVM ``void``, one uses its value type, and several use
 an LLVM struct in declaration order. A grouped write captures the source

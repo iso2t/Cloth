@@ -794,8 +794,7 @@ void LifetimeChecker::binary (const BinaryExpression &node, const ExpressionInfo
 			return fresh(di_projection.returns.front());
 		};
 		const Handle h_left  = operand(*node.left, info.leftContext, checks.beforeArguments);
-		const bool   b_right = info.argumentContract &&
-		                     dynamic_cast<const MethodDeclaration &>(*callable(*info.argumentContract)).operatorMember->rightReceiver;
+		const bool   b_right = info.rightReceiver;
 		if (info.argumentContract && !b_right && !info.liftedEquality)
 			access(h_left, path, node.left->getSpan(), bf_facts.isDirectReceiver(*node.left), checks.beforeArguments);
 		const Handle h_right = operand(*node.right, info.rightContext, checks.atAccess);

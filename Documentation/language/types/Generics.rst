@@ -18,6 +18,13 @@ Check this example with ``--stdlib Stdlib`` from the repository root.
 The `numeric bound example <../../../Tests/Compiler/Semantic/generic-number.co>`_
 also calls ``twice`` with unsigned integers, floats and a class that supplies ``+``.
 
+The same function can be compiled to a native object for several types.
+For example, ``twice<int<12>>(21)`` returns 42, and
+``twice<unsigned int<8>>(150)`` returns 44 after eight-bit addition.
+A class that implements the imported ``Number`` interface can supply
+its own ``+`` for the same call. For a complete executable, see the
+`linked specialization example <../../../Tests/Compiler/Driver/Inputs/generic-specialization.co>`_.
+
 Arguments and inference
 -----------------------
 
@@ -61,6 +68,10 @@ with ``&``. A constructor bound such as ``T: new()`` allows ``T::new()`` and
 requires a matching accessible constructor on the supplied type.
 For example, ``fn<T> make<T: new()>() = T::new()`` can construct any class
 that meets that requirement.
+
+When a generic body calls a constructor through its bound, argument names
+and omitted defaults come from the bound. The selected concrete constructor
+receives those values even if its own parameters have different names or defaults.
 
 The standard library's ``Number`` admits signed and unsigned integers,
 ``isize``, ``usize``, and floating-point types. A class can explicitly implement

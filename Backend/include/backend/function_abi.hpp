@@ -7,8 +7,10 @@
 #include <backend/value_types.hpp>
 
 #include <cstddef>
+#include <map>
 #include <optional>
 #include <span>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -21,6 +23,7 @@ using ResultView = std::span<const cloth::ResolvedType>;
 
 struct FunctionBodyToEmit {
 	const cloth::Symbol       *symbol;
+	const cloth::GenericInstance *instance;
 	LLVMValueRef               function;
 	std::optional<std::size_t> defaultParameter;
 };
@@ -35,19 +38,28 @@ struct ModuleFunctions {
 	ClassObjects                    objects{ module, program, valueTypes };
 	std::vector<FunctionBodyToEmit> pending = {};
 
+	const cloth::Symbol          *field (const cloth::Token *declaration) const;
 	LLVMTypeRef  resultType (ResultView results);
-	LLVMValueRef declareFunction (const cloth::Symbol &symbol);
-	LLVMValueRef declareDefault (const cloth::Symbol &contract, std::size_t index);
+	const cloth::DeclarationInfo &signature (const cloth::Symbol &symbol, const cloth::GenericInstance *instance) const;
+	const cloth::BodyFacts       &facts (const cloth::GenericInstance *instance) const;
+	const cloth::BodyFacts       &bodyFacts (const FunctionBodyToEmit &body, const cloth::ResolvedType &receiver) const;
+	cloth::ResolvedType           receiverType (const cloth::Symbol &symbol, const cloth::GenericInstance *instance) const;
+	LLVMValueRef                  declareFunction (const cloth::Symbol &symbol, const cloth::GenericInstance *instance = nullptr);
+	LLVMValueRef                  declareDefault (const cloth::Symbol &contract, std::size_t index, const cloth::GenericInstance *instance);
 	void         emitNativeEntry (LLVMBuilderRef builder, LLVMValueRef function);
 
     private:
-	LLVMValueRef declare (const cloth::Symbol &symbol, std::optional<std::size_t> index);
+	LLVMValueRef declare (const cloth::Symbol &symbol, const cloth::GenericInstance *instance, std::optional<std::size_t> index);
 
-	std::unordered_map<const cloth::Symbol *, LLVMValueRef>               m_functions;
-	std::unordered_map<const cloth::ParameterDeclaration *, LLVMValueRef> m_defaults;
+	std::unordered_map<const cloth::GenericInstance *, const cloth::InstanceKey *> m_instanceKeys;
+	std::unordered_map<const cloth::Token *, const cloth::Symbol *>                m_fields;
+	using FunctionKey = std::tuple<const cloth::Symbol *, const cloth::InstanceKey *, std::optional<std::size_t>>;
+	std::map<FunctionKey, LLVMValueRef> m_functions;
 };
 
+LLVMTypeRef  structReceiverType (LLVMContextRef context);
 LLVMValueRef packResults (LLVMBuilderRef builder, std::span<LLVMValueRef const> values);
 bool         hasObjectReceiver (const cloth::Symbol &symbol, bool isDefault);
+bool         isStoredField (const cloth::Symbol *field);
 LLVMValueRef selectResult (LLVMBuilderRef builder, LLVMValueRef value, std::size_t count, std::size_t index);
 }

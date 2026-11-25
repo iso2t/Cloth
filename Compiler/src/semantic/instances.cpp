@@ -395,7 +395,10 @@ void Analyzer::completeInstance (const InstanceWork &work) {
 				if (!work.instance) {
 					dependencies(*sym_requirement);
 				} else {
-					DeclarationInfo di_requirement = specialize(declarations.at(sym_requirement), m_arguments);
+					DeclarationInfo &di_requirement =
+					        work.instance->constructorContracts
+					                .emplace(sym_requirement, specialize(declarations.at(sym_requirement), m_arguments))
+					                .first->second;
 					BodyChecker(*this, *sym_requirement, work.instance->body, m_arguments, di_requirement).check();
 				}
 			}

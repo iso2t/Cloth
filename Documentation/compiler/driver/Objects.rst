@@ -89,12 +89,18 @@ command. The program exits with status 42. Both functions are in
 is local to the object. See the `two source files
 <../../../Tests/Compiler/Driver/Inputs/imported-calls/>`_.
 
-Native code can call non-generic, top-level functions in the same file
+Native code can call top-level functions in the same file
 or in an imported file. Positional and named arguments run in written
 order. Omitted defaults run next, in parameter order, and can read
 earlier parameters. Helpers accept and return the native local value
 types described below. Array parameters and results have independent
 cells. Copying a class reference preserves the object's identity.
+
+Calls to generic functions and directly selected methods use the concrete
+types inferred or written at the call. A numeric bound can use the
+standard library's ``Number`` with ``--stdlib Stdlib``. Arithmetic uses the
+concrete integer width and signedness, floating-point operation, or selected
+operator body. See `generic types and functions <../../language/types/Generics.rst>`_.
 
 A helper can return several values. For example, ``int low, int high =
 bounds()`` receives both results from one call. Use ``_, high = bounds()``
@@ -136,7 +142,7 @@ array preserves each object's identity. The `class array example
 two instances at one call site and uses ``===`` to check which one each
 array holds after replacement.
 
-Native code can construct non-generic classes with stored fields, an
+Native code can construct classes with stored fields, an
 inherited class, and public secondary constructors. Class and interface
 references share the same eight-byte handle on both target widths.
 You can call directly selected class methods, test a reference with
@@ -145,6 +151,12 @@ construction and deletion example <../../../Tests/Compiler/Driver/Inputs/class-l
 shows inherited field access and destructor order. For calls that can
 invalidate their own receiver, see `Object ownership
 <../../language/objects/Ownership.rst>`_.
+
+Generic class and struct fields use their concrete element types. Calling
+a struct method on a mutable local, a stored field, or a fixed-array cell
+can change that value. An earlier copy keeps its own fields. On a nullable
+struct, a guarded call changes the stored payload only when it is present.
+See the `generic struct and class example <../../../Tests/Compiler/Driver/Inputs/generic-specialization.co>`_.
 
 Fixed-size arrays
 -----------------
@@ -276,7 +288,7 @@ character or boolean. See the `object emission diagnostics
 <../../../Tests/Compiler/Driver/emit-object-errors.test>`_.
 
 Programs using virtual or interface method dispatch, state transitions,
-calls to generic functions, multidimensional growable arrays and the
+primitive boxing into an interface value, multidimensional growable arrays and the
 collection APIs can be checked with ``--src``. The same applies to the
 standard library's file and UTF-8 intrinsics. The native call and storage forms are described
 above. See the `standard library guide <../../../Stdlib/README.md>`_ for
@@ -303,7 +315,8 @@ C compiler's link command. For the effects of printing and exiting, see
 * Growable arrays use `Runtime/src/array.c <../../../Runtime/src/array.c>`_
   for allocation, copying, and release, and `Runtime/src/errors.c
   <../../../Runtime/src/errors.c>`_ for capacity, allocation, bounds, and length errors.
-* Class allocation, access, and deletion use `Runtime/src/object.c
+* Class allocation, access, deletion, and struct methods that check their
+  receiver's owning object use `Runtime/src/object.c
   <../../../Runtime/src/object.c>`_. Pass ``-IRuntime/include`` when
   compiling the runtime from the repository root. Classes with growable
   array fields also use the array runtime.

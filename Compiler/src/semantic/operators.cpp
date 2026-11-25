@@ -361,6 +361,7 @@ std::optional<ExpressionInfo> BodyChecker::applyBinaryOperator (const BinaryExpr
 		                                      node.getSpan(), b_right ? node.left : node.right, &rt_argument);
 		ei_call.negateEquality = b_negate;
 		ei_call.liftedEquality = b_lifted;
+		ei_call.rightReceiver           = b_right;
 		return ei_call;
 	}
 	if (sym_unmatched)

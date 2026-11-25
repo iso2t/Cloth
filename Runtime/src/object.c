@@ -132,6 +132,10 @@ void *cloth_rt_object_data (uint64_t handle, uint8_t direct_self) {
 	return storage;
 }
 
+void cloth_rt_object_check_borrow (uint64_t owner, uint8_t direct_self) {
+	if (owner) (void)cloth_rt_object_data(owner, direct_self);
+}
+
 void *cloth_rt_object_backing (uint64_t handle, size_t bytes, size_t alignment) {
 	lock_registry();
 	void *storage = allocate_block(lookup(handle, 0), bytes, alignment);

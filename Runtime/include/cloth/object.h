@@ -16,6 +16,7 @@ typedef void (*cloth_dispose)(void *storage);
 uint64_t cloth_rt_new_identity (void);
 uint64_t cloth_rt_object_create (size_t bytes, size_t alignment, const void *const *types, cloth_destructor destroy, cloth_dispose dispose);
 void    *cloth_rt_object_data (uint64_t handle, uint8_t direct_self);
+void     cloth_rt_object_check_borrow (uint64_t owner, uint8_t direct_self);
 void    *cloth_rt_object_backing (uint64_t handle, size_t bytes, size_t alignment);
 uint8_t  cloth_rt_object_is (uint64_t handle, const void *type, uint8_t direct_self);
 void     cloth_rt_object_delete (uint64_t handle, uint64_t authority);

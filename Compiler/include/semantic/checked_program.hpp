@@ -287,6 +287,8 @@ struct ExpressionInfo {
 	std::optional<ResolvedType> representedType      = std::nullopt;
 	// The resolved right-hand type of a built-in type test, including symbolic generic parameters.
 	std::optional<ResolvedType> testedType = std::nullopt;
+	// The checker resolves primitive conformance to a nominal interface before native type testing.
+	bool                        primitiveMatchesTest = false;
 	std::optional<CallDispatch> dispatch   = std::nullopt;
 
 	ReceiverChecks receiverChecks = {};
@@ -299,6 +301,7 @@ struct ExpressionInfo {
 	bool                             callsClassEquality = false;
 	bool                             negateEquality     = false;
 	bool                             liftedEquality     = false;
+	bool                             rightReceiver      = false;
 	// Built-in boolean equality compares present payloads by truth value (zero or nonzero).
 	bool booleanEquality = false;
 	// Built-in comparisons use this operand type after contextual typing. Nullable equality retains its presence tag.
@@ -379,6 +382,8 @@ struct GenericInstance {
 	DeclarationInfo                        signature;
 	BodyFacts                              body;
 	std::map<const Symbol *, ResolvedType> fields;
+	// A constructor bound owns its parameter labels and defaults, even when the concrete constructor differs.
+	std::map<const Symbol *, DeclarationInfo> constructorContracts;
 };
 
 struct StructLayout {
@@ -408,6 +413,7 @@ struct CheckedProgram : BodyFacts {
 	std::map<InstanceKey, GenericInstance>              instances;
 	std::map<ResolvedType, TypeDispatch>                dispatchTables;
 	std::map<ResolvedType, StructLayout>                structLayouts;
+	[[nodiscard]] const GenericInstance                *typeInstance (const ResolvedType &type) const;
 	[[nodiscard]] std::optional<StorageLayout>          storageLayout (const ResolvedType &type) const;
 	// The selected explicit value or default for this payload field, indexed by case tag.
 	[[nodiscard]] std::vector<const Expression *> enumFieldValues (const Symbol &field) const;

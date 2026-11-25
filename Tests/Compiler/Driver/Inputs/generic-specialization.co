@@ -1,0 +1,98 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using cloth.lang.num.Number: Number
+using generic_helpers: identity, repeat
+
+fn<T> twice<T: Number>(T value) = value + value
+fn<T> divide<T: Number>(T a, T b) = a / b
+fn<bool> less<T: Number>(T a, T b) = a < b
+fn<bool> numeric<T>(T value) = value is Number
+fn<T, T> pair<T>(T first, opt<T> second ?: identity(first)) = first, second
+fn<T> first<T>(T[] items) = items[0]
+
+typedef<struct> Pair<T> {
+    pub T left, pub T right;
+    pub mt<T> replace(opt<T> next ?: right) {
+        T old := left
+        self.left = next
+        return old
+    }
+    pub operator +() -> T = self.left
+}
+typedef<enum> Preset(pub def<Pair<int>> point = {42, 7}) { pub On }
+typedef<struct> Cursor<T: Number> { pub T at; pub operator +(T step) -> Cursor<T> = {at + step} }
+typedef<class> Box<T>(pub def<T> value) {
+    pub def<T> initial = identity(value)
+    pub Box(T item, int tag) : (item) {}
+    pub mt<T> get(opt<T> item ?: self.value) = item
+    pub mt<U> keep<U>(U value) = identity(value)
+    pub ~Box { println(7) }
+}
+typedef<class> Child<T>(T item) : Box<T>(item, 0) {
+    pub Child(T item, int tag) : (item) {}
+}
+typedef<class> Defaulted(pub def<int> value) {
+    pub Defaulted(opt<int> renamed ?: 99, opt<int> other ?: 10) : (renamed + other) {}
+}
+fn<T> build<T: new(opt<int> first ?: 7, opt<int> second ?: first)>() = T::new()
+
+typedef<class> Amount<T: Number>(pub def<T> value) : Number {
+    pub Amount(T n, int tag) : (n) {}
+    pub operator +(Amount<T> other) -> Amount<T> = Amount<T>::new(self.value + other.value, 0)
+}
+typedef<class> Gauge {
+    pub Gauge(int n) : () {}
+    pub operator<int<auto>> +() -> int<auto> = 2 -> int<auto>
+    pub operator -(int n, self) -> int = n - 2
+}
+fn<int> markValue(int n) { println(n); return n }
+fn<Gauge> markGauge(Gauge gauge) { println(2); return gauge }
+
+pub fn<int> main() {
+    int<12> narrow := identity<int<12>>(21)
+    int wide := identity<int>(40)
+    if (twice(narrow) != 42 || identity(narrow) != 21 || repeat(wide, 3) != 40) return 1
+    int<12> a, int<12> b = pair(narrow)
+    float<64> real := 1.5
+    unsigned int<8> byte := 150
+    if (a != b || twice(real) != 3.0 || twice(byte) != 44) return 2
+    if (divide<int<8>>(-2, 2) != -1 || divide<unsigned int<8>>(254, 2) != 127) return 9
+    if (!less<int<8>>(-2, 2) || less<unsigned int<8>>(254, 2)) return 17
+    if (!numeric(narrow) || !numeric(real) || numeric(true) || numeric<int?>(null)) return 11
+    int<12>[] numbers := [42, 7]
+    if (first(identity(numbers)) != 42) return 3
+    Pair<int<12>> fields := {narrow, b}
+    if (identity(fields).left + fields.right != 42) return 4
+    Pair<int<12>> current = fields
+    if (current.replace(42) != 21 || +current != 42 || fields.left != 21) return 13
+    Pair<int<12>>[2] cells = [fields, current]
+    if (cells[1].replace() != 42 || cells[1].left != 21 || current.left != 42) return 14
+    if (Preset.On.point.replace(7) != 42 || Preset.On.point.left != 42) return 18
+    Cursor<int<12>>[1] cursors = [{40}]
+    cursors[0] += 2
+    if (cursors[0].at != 42) return 19
+    Pair<int<12>>? optional = current
+    if ((optional?.replace(7) ?: 0) -> int != 42 || (optional?.left ?: 0) -> int != 7) return 15
+    optional = null
+    if ((optional?.replace(7) ?: 42) -> int != 42) return 16
+    Child<int<12>> child := Child<int<12>>::new(narrow, 1)
+    Box<int<12>> base := child
+    Box<int> other := Box<int>::new(wide, 1)
+    base.value = 42
+    if (child.get() != 42 || base.initial != 21 || other.get() != 40) return 5
+    if (!(base is Child<int<12>>) || base is Child<int> || child.keep(wide) != 40 || child.keep(narrow) != 21) return 6
+    Defaulted product := build<Defaulted>()
+    if (product.value != 14) return 8
+    Amount<int<12>> amount := Amount<int<12>>::new(narrow, 0)
+    Amount<int<12>> sum := twice(amount)
+    Gauge gauge := Gauge::new(0)
+    if (sum.value != 42 || narrow + gauge != 23 || gauge + wide != 42) return 10
+    if (!numeric(amount) || markValue(44) - markGauge(gauge) != 42) return 12
+    amount::delete
+    sum::delete
+    gauge::delete
+    base::delete
+    other::delete
+    product::delete
+    return 42
+}

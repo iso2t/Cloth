@@ -489,6 +489,11 @@ ExpressionInfo BodyChecker::typeCheck (const TypeCheckExpression &node) {
 	}
 	ExpressionInfo ei_test = opt_source ? value(ResolvedType(KBoolean), target.declaration) : ExpressionInfo::never();
 	ei_test.testedType     = target;
+	if (opt_source && target.objectReference()) {
+		const ResolvedType &source   = *opt_source;
+		const ResolvedType  payload  = source.nullable() ? source.element() : source;
+		ei_test.primitiveMatchesTest = (payload.integer() || payload.floating()) && analyzer.accepts(target, payload);
+	}
 	return ei_test;
 }
 

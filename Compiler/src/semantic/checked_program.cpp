@@ -235,6 +235,11 @@ bool BodyFacts::isDirectReceiver (const Expression &expression) const {
 	return ne_name && ne_name->name.getLexeme() == toString(KSelf);
 }
 
+const GenericInstance *CheckedProgram::typeInstance (const ResolvedType &type) const {
+	if (!type.declaration || type.arguments().empty()) return nullptr;
+	return &instances.at({ .declaration = type.declaration, .receiver = std::nullopt, .arguments = type.arguments() });
+}
+
 CheckedProgram::CheckedProgram (SymbolTable entry, const TargetLayout layout, std::filesystem::path standardLibraryRoot, const ProgramKind kind) :
         layout(layout),
         standardLibraryRoot(std::move(standardLibraryRoot)),

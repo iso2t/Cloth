@@ -6,7 +6,6 @@
 
 #include <initializer_list>
 #include <map>
-#include <unordered_map>
 #include <vector>
 
 #include <llvm-c/Types.h>
@@ -15,12 +14,14 @@
 namespace backend::detail {
 struct ModuleFunctions;
 
-enum class ObjectOperation { Create, Data, Backing, Delete, Is, Acquire, Release, CheckMutation, SetCleanup };
+enum class ObjectOperation { Create, Data, CheckBorrow, Backing, Delete, Is, Acquire, Release, CheckMutation, SetCleanup };
 LLVMValueRef objectCall (LLVMBuilderRef builder, LLVMModuleRef module, ObjectOperation operation, std::initializer_list<LLVMValueRef> arguments);
 
 struct ClassStorage {
+	cloth::ResolvedType                type;
+	const cloth::GenericInstance      *instance;
 	LLVMTypeRef                        storage;
-	const cloth::Symbol               *base;
+	const ClassStorage                *base;
 	const cloth::Symbol               *destructor;
 	std::vector<const cloth::Symbol *> fields;
 	LLVMValueRef                       views = nullptr, destroy = nullptr, dispose = nullptr;
@@ -29,10 +30,10 @@ struct ClassStorage {
 class ClassObjects {
     public:
 	ClassObjects (LLVMModuleRef module, const cloth::CheckedProgram &program, ValueTypes &types);
-	ClassStorage              &layout (const cloth::Symbol &owner);
-	const cloth::Symbol       *field (const cloth::Token *declaration) const;
-	const cloth::ResolvedType &fieldType (const cloth::Symbol &field) const;
-	LLVMValueRef               fieldAddress (LLVMBuilderRef builder, LLVMValueRef storage, const cloth::Symbol &field);
+	ClassStorage              &layout (const cloth::ResolvedType &type);
+	const ClassStorage        &declaringLayout (const cloth::ResolvedType &receiver, const cloth::Symbol &field);
+	const cloth::ResolvedType &fieldType (const ClassStorage &owner, const cloth::Symbol &field) const;
+	LLVMValueRef               fieldAddress (LLVMBuilderRef builder, LLVMValueRef storage, const ClassStorage &owner, const cloth::Symbol &field);
 	LLVMValueRef               typeTag (const cloth::ResolvedType &type);
 	LLVMValueRef               create (LLVMBuilderRef builder, const cloth::ResolvedType &type, ModuleFunctions &functions);
 
@@ -41,8 +42,7 @@ class ClassObjects {
 	LLVMModuleRef                                 mod_module;
 	const cloth::CheckedProgram                  &cp_program;
 	ValueTypes                                   &vt_types;
-	std::map<const cloth::Symbol *, ClassStorage> m_classes;
+	std::map<cloth::ResolvedType, ClassStorage>   m_classes;
 	std::map<cloth::ResolvedType, LLVMValueRef>   m_tags;
-	std::unordered_map<const cloth::Token *, const cloth::Symbol *> m_fields;
 };
 }
