@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --kind executable --src "%S/Inputs/class-lifetime.co" --target-bits 32 --emit object -o "%t.32.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/class-lifetime.co" --target-bits 64 --emit object -o "%t.64.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/class-lifetime.co" --emit object -o "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 7 --stdout-line 8 --stdout-line 9 --stdout-line 10 --stdout-line 42 --stdout-line 11 --empty-stderr 42 "%t.exe"
+
+# RUN: %cloth --kind executable --src "%S/Inputs/class-lifetime-errors.co" --emit object -o "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 1 --stdout-line 42 --stderr-line "Cloth runtime error: access to a deleted class instance" 1 "%t.exe"
+# RUN: %expect_exit --stdout-line 1 --stdout-line 42 --stderr-line "Cloth runtime error: access to a deleted class instance" 1 "%t.exe" a
+# RUN: %expect_exit --stdout-line 42 --stderr-line "Cloth runtime error: access to a deleted class instance" 1 "%t.exe" a b
+# RUN: %expect_exit --stdout-line 42 --stderr-line "Cloth runtime error: access to a deleted class instance" 1 "%t.exe" a b c
+# RUN: %expect_exit --stdout-line 42 --stderr-line "Cloth runtime error: access to a deleted class instance" 1 "%t.exe" a b c d
+# RUN: %expect_exit --stdout-line 9 --stderr-line "Cloth runtime error: access to a class instance during destruction" 1 "%t.exe" a b c d e
+# RUN: %expect_exit --stdout-line 1 --stdout-line 42 --stderr-line "Cloth runtime error: access to a deleted class instance" 1 "%t.exe" a b c d e f
+# RUN: %expect_exit --stdout-line 1 --stdout-line 42 --stderr-line "Cloth runtime error: access to a deleted class instance" 1 "%t.exe" a b c d e f g
+# RUN: %expect_exit --stdout-line 1 --stdout-line 42 --stderr-line "Cloth runtime error: access to a deleted class instance" 1 "%t.exe" a b c d e f g h
+# RUN: %expect_exit --stdout-line 42 --stderr-line "Cloth runtime error: access to a deleted class instance" 1 "%t.exe" a b c d e f g h i
+# RUN: %expect_exit --stdout-line 42 --empty-stderr 42 "%t.exe" a b c d e f g h i j

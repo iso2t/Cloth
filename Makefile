@@ -63,7 +63,7 @@ $(BUILD_DIR)/obj/Backend/%.o: Backend/src/%.cpp Makefile Backend/Kbuild compile_
 
 $(BUILD_DIR)/obj/Runtime/%.o: Runtime/src/%.c Makefile Runtime/Kbuild
 	@$(make_dir)
-	$(CC) -std=c11 $(CPPFLAGS) $(CFLAGS) -MMD -MP -c "$<" -o "$@"
+	$(CC) -std=c11 -IRuntime/include $(CPPFLAGS) $(CFLAGS) -MMD -MP -c "$<" -o "$@"
 
 $(musubi_object): ThirdParty/musubi/src/musubi_impl.c Makefile
 	@$(make_dir)

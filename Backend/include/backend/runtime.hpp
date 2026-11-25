@@ -5,6 +5,8 @@
 #include <llvm-c/Types.h>
 
 namespace backend::detail {
+[[nodiscard]] LLVMValueRef declareProcessArguments (LLVMModuleRef module);
+[[nodiscard]] LLVMValueRef declareReleaseArguments (LLVMModuleRef module);
 [[nodiscard]] LLVMValueRef declareNewIdentity (LLVMModuleRef module);
 [[nodiscard]] LLVMValueRef declarePrintlnInt32 (LLVMModuleRef module);
 [[nodiscard]] LLVMValueRef declareExit (LLVMModuleRef module);

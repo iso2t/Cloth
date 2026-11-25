@@ -47,6 +47,14 @@ and named arguments can be mixed, but each parameter takes at most one
 argument. See the `duplicate argument diagnostic
 <../../compiler/driver/Diagnostics.rst>`_.
 
+For example, ``span(first = 40)`` below returns 2. The omitted
+``last`` uses the value supplied for ``first``. Giving ``last``
+explicitly skips its default expression.
+
+.. code-block:: text
+
+   fn<int> span(int first, opt<int> last ?: first + 2) = last - first
+
 A base class declares a virtual method with ``pub virtual mt``. A derived
 class can supply a different body with ``pub override mt``. Calls use the
 parameter labels and defaults from the original virtual declaration.
@@ -93,7 +101,9 @@ an empty array to the private primary constructor. See the `List declaration
 <../../../Stdlib/cloth/collections/List.co>`_.
 
 A secondary constructor delegates to the primary constructor of its own class.
-Field initializers run in declaration order. An initializer can read
+Both operate on the same instance. The primary constructor runs the
+selected base constructor, stores its own header fields, then evaluates
+its body field initializers in declaration order. An initializer can read
 constructor inputs, accessible inherited fields, and earlier fields of the
 same instance. The secondary constructor body can use the fully initialized
 ``self`` after delegation. For the lifetime of the resulting reference,

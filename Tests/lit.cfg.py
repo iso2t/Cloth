@@ -41,7 +41,8 @@ config.substitutions.extend([
     ("%llvm_readobj", tool_path(params.get("readobj", "llvm-readobj"))),
     ("%llvm_mc", tool_path(params.get("llvm_mc", "llvm-mc"))),
     ("%cc", params.get("cc", "gcc" if sys.platform == "win32" else "cc")),
-    ("%runtime", " ".join(tool_path(runtime / name) for name in ("array.c", "errors.c", "integer.c", "object.c", "println.c", "process.c"))),
+    ("%runtime", "-I " + tool_path(runtime.parent / "include") + " " + " ".join(tool_path(runtime / name) for name in ("arguments.c", "array.c", "errors.c", "integer.c", "object.c", "println.c", "process.c"))
+     + (" -lshell32" if sys.platform == "win32" else "")),
     ("%host_os", sys.platform),
     ("%expect_exit", tool_path(sys.executable) + " " + tool_path(suite / "Support" / "expect_exit.py")),
 ])

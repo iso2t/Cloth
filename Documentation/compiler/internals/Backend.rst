@@ -21,10 +21,10 @@ integer allocation and alignment against the checked ``TargetLayout``.
 Target-dependent widths such as ``usize`` must agree at both ends of the
 `frontend handoff <Frontend.rst#the-checked-program>`_.
 
-``ValueTypes`` selects the representation for each use. For example,
-a fixed-size array can live in a local, while the direct-call ABI takes
-scalar parameters and nullable scalars. Struct fields follow the offsets
-in ``CheckedProgram::structLayouts``.
+``ValueTypes`` selects the representation for each use. Internal direct
+calls pass local value representations. A fixed-size array travels as a
+snapshot of its cells. Struct fields in storage follow the offsets in
+``CheckedProgram::structLayouts``.
 A nullable scalar carries its presence information so a present zero
 survives storage and a call. A fixed-size array local stores its elements
 at the checked stride. See `LLVM value types
@@ -151,17 +151,59 @@ checks the live allocation count at scope boundaries. See `lifetime lowering
 Class reference storage
 -----------------------
 
-Class values use an LLVM 64-bit integer on both targets. An array copy
+Class and interface values use an LLVM 64-bit integer on both targets. An array copy
 therefore retains each instance's identity while its destination gets
 independent cells. Raw ``===`` compares handles and accounts for nullable
 operands. Array equality consults the checked element operator selection.
 
-``lowerConstruction`` evaluates supplied arguments in source order,
-using their checked parameter positions. It requests a fresh identity
-only after checking that the selected constructor and its primary
-delegation require no initialization work. See the `identity runtime
-<../../../Runtime/src/object.c>`_ and the `linked class copy test
-<../../../Tests/Compiler/Driver/class-array-copy.test>`_.
+Construction evaluates the checked arguments and defaults, allocates one
+instance, and passes its handle as a hidden parameter through constructor
+delegation. The concrete base occupies the prefix of the instance's
+storage. Each class's remaining fields follow their checked
+``classFieldIndex`` order. Lowering checks the combined field sizes and
+alignment padding against the target's addressable size before emitting
+the allocation. Fixed array backing storage inside a stored
+aggregate belongs to the instance. Growable fields own their buffers.
+See `class layout and callbacks <../../../Backend/src/backend/class_objects.cpp>`_.
+
+The runtime validates the slot and generation before exposing its data.
+For a direct method call, the backend captures the receiver and applies
+the checked ``beforeArguments`` and ``atAccess`` facts around argument
+evaluation. A field write retains its receiver through evaluation of
+the source expression. Deletion marks the instance as being destroyed,
+invokes the concrete destructor chain, releases native field storage,
+and retires the handle. Direct destructor access to ``self`` is permitted
+during that chain. See the `runtime ABI <../../../Runtime/include/cloth/object.h>`_
+and `linked lifetime tests <../../../Tests/Compiler/Driver/class-lifetime.test>`_.
+
+Direct calls and results
+------------------------
+
+``ModuleFunctions`` queues the selected free function and each used
+parameter default once. ``argumentContract`` identifies the declaration
+that owns the defaults. Lowering evaluates the supplied expressions in
+source order and places their values using ``parameterForArgument``.
+It then visits ``omittedParameters`` in order. Each default is an internal
+function receiving the preceding parameter values. Its body uses the
+declaring scope, and recursive calls reuse the same LLVM declaration.
+See the `function ABI implementation <../../../Backend/src/backend/function_abi.cpp>`_.
+
+Zero results use LLVM ``void``, one uses its value type, and several use
+an LLVM struct in declaration order. A grouped write captures the source
+values before changing any destination. Growable results transfer
+independent buffers to the caller, which registers each for cleanup.
+For a deferred read, lowering uses the checked block and result index.
+Each return in that block branches to the read's continuation after
+preserving the results and releasing block-local owners. The enclosing
+function's locals remain available on the next read. See the
+`linked call and result tests <../../../Tests/Compiler/Driver/call-results.test>`_.
+
+The external C ``main`` adapts host arguments and exit status when the
+Cloth signature requires it. Calls from Cloth use the original
+signature. The runtime keeps argument bytes alive until the entry
+returns, including after a Cloth array copy or resize. See the
+`argument runtime <../../../Runtime/src/arguments.c>`_ and
+`process status cases <../../../Tests/Compiler/Driver/entry-arguments.test>`_.
 
 Control flow and effects
 ------------------------

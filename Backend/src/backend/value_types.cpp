@@ -50,13 +50,13 @@ LLVMValueRef allocateEntrySlot (LLVMBuilderRef builder, LLVMTypeRef type, LLVMVa
 ValueTypes::ValueTypes (LLVMModuleRef module, const cloth::CheckedProgram &program) : mod_module(module), cp_program(program) {
 }
 
-LLVMTypeRef ValueTypes::directCallType (const cloth::ResolvedType &type) const {
-	const LLVMContextRef ctx_context = LLVMGetModuleContext(mod_module);
-	if (type.nullable()) {
-		const LLVMTypeRef ty_payload = scalarType(ctx_context, cp_program.layout, type.element());
-		return ty_payload ? nullable::type(ty_payload) : nullptr;
+std::optional<cloth::StorageLayout> ValueTypes::aggregateLayout (const std::vector<LLVMTypeRef> &fields) const {
+	const LLVMTargetDataRef target = LLVMGetModuleDataLayout(mod_module);
+	cloth::StructStorage    layout(cp_program.layout);
+	for (const LLVMTypeRef field : fields) {
+		if (!layout.append({ .size = LLVMABISizeOfType(target, field), .alignment = LLVMABIAlignmentOfType(target, field) })) return {};
 	}
-	return scalarType(ctx_context, cp_program.layout, type);
+	return layout.finish(false);
 }
 
 LLVMTypeRef ValueTypes::nullableType (LLVMTypeRef payload) const {
@@ -72,6 +72,7 @@ LLVMTypeRef ValueTypes::nullableType (LLVMTypeRef payload) const {
 LLVMTypeRef ValueTypes::localType (const cloth::ResolvedType &type) {
 	if (growable_array::supported(type)) return array_descriptor::type(mod_module, cp_program, type);
 	if (type.nullable()) {
+		if (growable_array::supported(type.element())) return nullableType(localType(type.element()));
 		return slotType(type) ? nullableType(localType(type.element())) : nullptr;
 	}
 	if (type.array()) {
@@ -216,12 +217,7 @@ const StructTypes *ValueTypes::structTypes (const cloth::ResolvedType &type) {
 	LLVMTypeRef ty_value = ty_struct;
 	if (v_elements != v_values) {
 		// Individually representable buffers can overflow when their cells are captured in one SSA value.
-		cloth::StructStorage ss_value(cp_program.layout);
-		for (const LLVMTypeRef ty_field : v_values) {
-			if (!ss_value.append({ .size = LLVMABISizeOfType(td_target, ty_field), .alignment = LLVMABIAlignmentOfType(td_target, ty_field) }))
-				return nullptr;
-		}
-		const std::optional<cloth::StorageLayout> opt_value = ss_value.finish(false);
+		const std::optional<cloth::StorageLayout> opt_value = aggregateLayout(v_values);
 		if (!opt_value) return nullptr;
 		ty_value = LLVMStructTypeInContext(ctx_context, v_values.data(), static_cast<unsigned>(v_values.size()), false);
 		if (LLVMABISizeOfType(td_target, ty_value) != opt_value->size) return nullptr;

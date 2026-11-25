@@ -35,9 +35,13 @@ bool supported (const cloth::ResolvedType &type) {
 	const cloth::ResolvedType  rt_cell     = type.element();
 	const cloth::ResolvedType  rt_value    = rt_cell.nullable() ? rt_cell.element() : rt_cell;
 	const cloth::ResolvedType *rt_endpoint = cloth::semantic::rangeEndpoint(rt_value);
-	return rt_value.integer() || rt_value.floating() || rt_value.enumeration() || rt_value.classReference() ||
+	return rt_value.integer() || rt_value.floating() || rt_value.enumeration() || rt_value.objectReference() ||
 	       rt_value == cloth::ResolvedType(cloth::KBoolean) || rt_value == cloth::ResolvedType(cloth::KCharacter) ||
-	       (rt_endpoint && rt_endpoint->integer());
+	       rt_value == cloth::ResolvedType(cloth::KString) || (rt_endpoint && rt_endpoint->integer());
+}
+
+bool ownsBuffer (const cloth::ResolvedType &type) {
+	return supported(type.nullable() ? type.element() : type);
 }
 
 LLVMValueRef borrow (LLVMBuilderRef builder, LLVMTypeRef descriptorType, LLVMValueRef data, LLVMValueRef length) {

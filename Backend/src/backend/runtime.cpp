@@ -44,6 +44,21 @@ LLVMValueRef declareNewIdentity (LLVMModuleRef module) {
 	return LLVMAddFunction(module, NAME, LLVMFunctionType(ty_handle, nullptr, 0, false));
 }
 
+LLVMValueRef declareProcessArguments (LLVMModuleRef module) {
+	constexpr char NAME[] = "cloth_rt_process_arguments";
+	if (const LLVMValueRef ir_existing = LLVMGetNamedFunction(module, NAME)) return ir_existing;
+	const LLVMContextRef ctx_context    = LLVMGetModuleContext(module);
+	const LLVMTypeRef    ty_pointer     = LLVMPointerTypeInContext(ctx_context, 0);
+	LLVMTypeRef          v_parameters[] = { LLVMInt32TypeInContext(ctx_context), ty_pointer, ty_pointer };
+	return LLVMAddFunction(module, NAME, LLVMFunctionType(ty_pointer, v_parameters, 3, false));
+}
+
+LLVMValueRef declareReleaseArguments (LLVMModuleRef module) {
+	const LLVMContextRef ctx_context = LLVMGetModuleContext(module);
+	LLVMTypeRef v_parameters[]       = { LLVMPointerTypeInContext(ctx_context, 0), LLVMIntPtrTypeInContext(ctx_context, LLVMGetModuleDataLayout(module)) };
+	return declareVoidFunction(module, "cloth_rt_release_arguments", v_parameters);
+}
+
 LLVMValueRef declarePrintlnInt32 (LLVMModuleRef module) {
 	LLVMTypeRef v_parameters[] = { LLVMInt32TypeInContext(LLVMGetModuleContext(module)) };
 	return declareVoidFunction(module, "cloth_rt_println_i32", v_parameters);

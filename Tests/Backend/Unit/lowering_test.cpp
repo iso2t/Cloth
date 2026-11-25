@@ -2480,9 +2480,9 @@ TEST (BackendLowering, ReusesDeclarationsAcrossMutualRecursion) {
 	EXPECT_EQ(LLVMGetCalledValue(ir_call), fn_first);
 }
 
-void expectUnsupported (const std::string &source, Code code, std::string_view markedText, std::size_t line = 1) {
+void expectUnsupported (const std::string &source, Code code, std::string_view markedText, std::size_t line = 1, cloth::TargetLayout layout = {}) {
 	SCOPED_TRACE(source);
-	const cloth::CheckedProgram cp_program = checkProgram(source);
+	const cloth::CheckedProgram cp_program = checkProgram(source, layout);
 	try {
 		const backend::LoweredModule lm_module(cp_program);
 		FAIL() << "Expected a lowering diagnostic";
@@ -2593,7 +2593,6 @@ fn<int> main() { Box value = {{int::type}}; return 7 })",
 	expectUnsupported("fn<int> main() { int[1][] rows := [[7, 42]]; return 42 }", Code::UnsupportedLowering, "int[1][]");
 	expectUnsupported("fn<int> main() { int unused := helper(int[2]::type::rank -> int); return 42 }\nfn<int> helper(int ignored) = 7",
 	                  Code::UnsupportedLowering, "int[2]::type::rank");
-	expectUnsupported("fn<int> main() { int later := { return 7 }; return later }", Code::UnsupportedLowering, "{ return 7 }");
 }
 
 TEST (BackendLowering, StringLiteralStoresItsUtf8BytesAndTargetSizedByteLength) {
@@ -2710,7 +2709,7 @@ fn<int> main() { Marker[] items = [make()]; return if (items[0] === items[0]) 42
 		const backend::LoweredModule lm_module(cp_program);
 		ASSERT_NO_THROW(lm_module.verify());
 		const LLVMTypeRef ty_handle = LLVMInt64TypeInContext(LLVMGetModuleContext(lm_module.get()));
-		for (const char *s_name : { "cloth_rt_new_identity", "cloth.make" }) {
+		for (const char *s_name : { "cloth_rt_object_create", "cloth.make" }) {
 			const LLVMValueRef fn_make = LLVMGetNamedFunction(lm_module.get(), s_name);
 			ASSERT_NE(fn_make, nullptr);
 			EXPECT_EQ(LLVMGetReturnType(LLVMGlobalGetValueType(fn_make)), ty_handle);
@@ -2722,30 +2721,104 @@ fn<int> main() { Marker[] items = [make()]; return if (items[0] === items[0]) 42
 	}
 }
 
-TEST (BackendLowering, RejectsClassConstructionWithPendingInitializationAndCustomEquality) {
-	for (const char *s_class : { "typedef<class> C { pub C(int n) : () { println(n) } }", "typedef<class> C { def<int> value = 7\npub C(int n) : () {} }",
-	                             "typedef<class> C { pub C(int n, opt<int> other ?: 42) : () {} }",
-	                             "typedef<class> Base { pub Base(int tag) : () {} }\ntypedef<class> C : Base(7) { pub C(int n) : () {} }" }) {
-		expectUnsupported(std::string("fn<int> main() { def value := C::new(7); return 42 }\n") + s_class, Code::UnsupportedLowering, "C::new(7)");
-	}
+TEST (BackendLowering, RejectsArrayEqualityThatRequiresUserOperatorDispatch) {
 	expectUnsupported("fn<int> main() { C[] a := [C::new(7)]; return if (a == a) 42 else 0 }\n"
 	                  "typedef<class> C { pub C(int n) : () {}\npub operator ==(C other) -> bool = false }",
 	                  Code::UnsupportedLowering, "a == a");
 }
 
-TEST (BackendLowering, LabelsUnsupportedCallFormsAndHelperSignatures) {
-	expectUnsupported("fn<int> main() = helper()\nfn<int> helper(opt<int> n ?: 7) = n", Code::UnsupportedLowering, "helper()");
-	expectUnsupported("fn<int> main() = identity(42)\nfn<T> identity<T>(T value) = value", Code::UnsupportedLowering, "identity(42)");
-	expectUnsupported("fn<int> main() = helper([42])\nfn<int> helper(int[] values) = 7", Code::UnsupportedFunctionAbi, "helper", 2);
-	expectUnsupported("fn<int> main() { helper([42]); return 42 }\nfn<void> helper(int[] values) {}", Code::UnsupportedFunctionAbi, "helper", 2);
-	expectUnsupported("fn<int> main() { pair(); return 42 }\nfn<int, int> pair() = 1, 2", Code::UnsupportedFunctionAbi, "pair", 2);
+TEST (BackendLowering, ChecksTheCapturedReceiverAroundArguments) {
+	const char *source = R"(typedef<class> Item {
+    pub Item(int value) : () {}
+    pub mt<int> read(int n) = n
+}
+fn<int> invalidate(Item item) { item::delete; return 7 }
+fn<int> use(Item item) = item.read(invalidate(item))
+fn<int> main() = use(Item::new(42)))";
+	for (const unsigned bits : { 32u, 64u }) {
+		SCOPED_TRACE(bits);
+		const cloth::CheckedProgram  program = checkProgram(source, { .sizeBits = bits });
+		const backend::LoweredModule module(program);
+		ASSERT_NO_THROW(module.verify());
+		const LLVMValueRef use        = LLVMGetNamedFunction(module.get(), "cloth.use");
+		const LLVMValueRef check      = LLVMGetNamedFunction(module.get(), "cloth_rt_object_data");
+		const LLVMValueRef invalidate = LLVMGetNamedFunction(module.get(), "cloth.invalidate");
+		const LLVMValueRef read       = LLVMGetNamedFunction(module.get(), "cloth.read");
+		ASSERT_NE(use, nullptr);
+		ASSERT_NE(check, nullptr);
+		ASSERT_NE(invalidate, nullptr);
+		ASSERT_NE(read, nullptr);
+		std::vector<LLVMValueRef> calls, receivers;
+		for (LLVMBasicBlockRef block = LLVMGetFirstBasicBlock(use); block; block = LLVMGetNextBasicBlock(block)) {
+			for (LLVMValueRef instruction = LLVMGetFirstInstruction(block); instruction; instruction = LLVMGetNextInstruction(instruction)) {
+				if (!LLVMIsACallInst(instruction)) continue;
+				calls.push_back(LLVMGetCalledValue(instruction));
+				receivers.push_back(LLVMGetOperand(instruction, 0));
+			}
+		}
+		ASSERT_EQ(calls, (std::vector<LLVMValueRef>{ check, invalidate, check, read }));
+		EXPECT_EQ(receivers[0], receivers[2]);
+		EXPECT_EQ(receivers[0], receivers[3]);
+	}
 }
 
-TEST (BackendLowering, LabelsUnsupportedEntrySignatures) {
-	expectUnsupported("fn<int> main(string[] args) = 42", Code::UnsupportedFunctionAbi, "main");
-	expectUnsupported("fn<int<12>> main() = 42", Code::UnsupportedFunctionAbi, "main");
-	expectUnsupported("fn<isize> main() = 42", Code::UnsupportedFunctionAbi, "main");
-	expectUnsupported("fn<void> main() {}", Code::UnsupportedFunctionAbi, "main");
+TEST (BackendLowering, RejectsClassFieldsWhoseCombinedSizeExceedsTheTarget) {
+	expectUnsupported(R"(typedef<class> Large(int seed) {
+    pub def<int[536870912]> first = unused()
+    pub def<int[536870912]> second = unused()
+    pub Large() : (0) {}
+}
+fn<int[536870912]> unused() = exit(7)
+fn<int> main() { Large::new(); return 42 })",
+	                  Code::UnsupportedLowering, "Large", 1, { .sizeBits = 32 });
+}
+
+TEST (BackendLowering, LabelsUnsupportedCallFormsAndHelperSignatures) {
+	expectUnsupported("fn<int> main() = identity(42)\nfn<T> identity<T>(T value) = value", Code::UnsupportedLowering, "identity(42)");
+	expectUnsupported("fn<int> main() = helper([[42]])\nfn<int> helper(int[][] values) = 7", Code::UnsupportedFunctionAbi, "helper", 2);
+	expectUnsupported("fn<int> main() { pair(); return 42 }\nfn<int, typeinfo> pair() = 1, int::type", Code::UnsupportedFunctionAbi, "pair", 2);
+}
+
+TEST (BackendLowering, AdaptsCheckedEntriesToTheNativeCSignature) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		for (const char *source :
+		     { "fn<int> main(string[] args) = 42", "fn<int<12>> main(string[]? args) = 42", "fn<isize> main() = 42", "fn<void> main() {}" }) {
+			SCOPED_TRACE(source);
+			const cloth::CheckedProgram  program = checkProgram(source, { .sizeBits = u_bits });
+			const backend::LoweredModule module(program);
+			ASSERT_NO_THROW(module.verify());
+			const LLVMValueRef native = LLVMGetNamedFunction(module.get(), "main");
+			const LLVMValueRef cloth  = LLVMGetNamedFunction(module.get(), "cloth.main");
+			ASSERT_NE(native, nullptr);
+			ASSERT_NE(cloth, nullptr);
+			EXPECT_EQ(LLVMGetLinkage(native), LLVMExternalLinkage);
+			EXPECT_EQ(LLVMGetLinkage(cloth), LLVMInternalLinkage);
+			EXPECT_EQ(LLVMGetIntTypeWidth(LLVMGetReturnType(LLVMGlobalGetValueType(native))), 32u);
+			EXPECT_EQ(LLVMCountParams(native), LLVMCountParams(cloth) ? 2u : 0u);
+		}
+	}
+}
+
+TEST (BackendLowering, ReusesTheDeclaredDefaultAndPacksOrderedResults) {
+	for (const unsigned u_bits : { 32u, 64u }) {
+		const cloth::CheckedProgram  program = checkProgram(R"(
+fn<int<12>, bool> pair(opt<int<12>> n ?: 42) = n, true
+fn<int> main() { def a, ok := pair(); def b, _ := pair(); return if (ok) (a + b -> int) else 0 }
+)",
+		                                                    { .sizeBits = u_bits });
+		const backend::LoweredModule module(program);
+		ASSERT_NO_THROW(module.verify());
+		const LLVMValueRef fn_pair    = LLVMGetNamedFunction(module.get(), "cloth.pair");
+		const LLVMValueRef fn_default = LLVMGetNamedFunction(module.get(), "cloth.pair.default.0");
+		ASSERT_NE(fn_pair, nullptr);
+		ASSERT_NE(fn_default, nullptr);
+		ASSERT_NE(LLVMGetFirstUse(fn_default), nullptr);
+		EXPECT_NE(LLVMGetNextUse(LLVMGetFirstUse(fn_default)), nullptr);
+		const LLVMTypeRef results = LLVMGetReturnType(LLVMGlobalGetValueType(fn_pair));
+		ASSERT_EQ(LLVMGetTypeKind(results), LLVMStructTypeKind);
+		ASSERT_EQ(LLVMCountStructElementTypes(results), 2u);
+		EXPECT_EQ(LLVMGetIntTypeWidth(LLVMStructGetTypeAtIndex(results, 0)), 12u);
+	}
 }
 
 TEST (BackendLowering, RequiresAnEntrySelectedByTheFrontend) {

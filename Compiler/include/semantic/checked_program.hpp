@@ -64,6 +64,7 @@ struct ResolvedType {
 	[[nodiscard]] bool                             floating () const;
 	[[nodiscard]] bool                             enumeration () const;
 	[[nodiscard]] bool                             classReference () const;
+	[[nodiscard]] bool                             objectReference () const;
 	[[nodiscard]] bool                             payloadFreeEnum () const;
 	// A typed destination normalizes a present integer to zero or one. Nullable destinations preserve absence.
 	[[nodiscard]] bool         convertsIntegerToBool (const ResolvedType &source) const;

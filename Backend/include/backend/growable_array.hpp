@@ -17,6 +17,7 @@ struct Elements {
 };
 
 [[nodiscard]] bool supported (const cloth::ResolvedType &type);
+[[nodiscard]] bool ownsBuffer (const cloth::ResolvedType &type);
 LLVMValueRef       borrow (LLVMBuilderRef builder, LLVMTypeRef descriptorType, LLVMValueRef data, LLVMValueRef length);
 Elements           elements (LLVMBuilderRef builder, LLVMValueRef descriptor);
 void assign (LLVMBuilderRef builder, LLVMModuleRef module, LLVMValueRef destination, LLVMValueRef data, LLVMValueRef count, cloth::StorageLayout cell);

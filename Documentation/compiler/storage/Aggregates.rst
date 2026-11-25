@@ -176,11 +176,13 @@ inclusion flag. The `nullable cell tests
 <../../../Tests/Compiler/Driver/Inputs/growable-nullable-cell-values.co>`_
 exercise these layouts across insertion, removal, and copying.
 
-A class reference occupies eight bytes on both pointer widths. Array
-assignment copies that handle into each destination cell. For a
-fieldless class the `object runtime <../../../Runtime/src/object.c>`_
-issues a fresh nonzero 64-bit identity. Reaching the last identity
-causes the next construction to report an exhaustion error.
+A class or interface reference occupies eight bytes on both pointer
+widths. Array assignment copies that handle into each destination cell.
+The low 32 bits identify a registry slot and the high 32 bits identify
+its generation. Deletion advances the generation before the slot can be
+reused. The `object runtime <../../../Runtime/src/object.c>`_ retires a
+slot when its generation reaches the limit. Zero denotes an absent
+handle at the runtime boundary.
 
 Before allocating, the runtime checks that capacity times stride, plus
 the padding needed to align the data pointer, fits ``PTRDIFF_MAX``.

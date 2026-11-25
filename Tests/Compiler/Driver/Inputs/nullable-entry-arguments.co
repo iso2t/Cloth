@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int<12>> main(string[]? args) {
+    if (args == null) return 42
+    if (args::size != 1) return 1
+    string saved := args[0]
+    args[0] = ""
+    args.clear()
+    if (args::size != 0) return 2
+    exit(7, saved)
+}

@@ -1,0 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<int> privateValue() = 40
+pub fn<int> imported(int n, opt<int> result ?: privateValue() + n) = result

@@ -82,7 +82,7 @@ LLVMValueRef intrinsic (LLVMModuleRef module, std::string_view name, LLVMTypeRef
 LLVMTypeRef scalarType (LLVMContextRef context, cloth::TargetLayout layout, const cloth::ResolvedType &type) {
 	if (type.parameter || !type.suffixes.empty()) return nullptr;
 	if (type.declaration) {
-		if (type.classReference()) return LLVMInt64TypeInContext(context);
+		if (type.objectReference()) return LLVMInt64TypeInContext(context);
 		return type.enumeration() ? LLVMInt32TypeInContext(context) : nullptr;
 	}
 	if (type.integer()) return LLVMIntTypeInContext(context, type.width ? type.width : layout.sizeBits);

@@ -3,6 +3,7 @@
 // See Documentation/compiler/storage/Aggregates.rst
 
 #include <backend/array_descriptor.hpp>
+#include <backend/class_objects.hpp>
 #include <backend/value_types.hpp>
 
 #include <cstdint>
@@ -22,17 +23,29 @@ LLVMValueRef ValueTypes::allocateBacking (LLVMBuilderRef builder, LLVMTypeRef bu
 	LLVMTypeRef             ty_block  = bufferType;
 	const LLVMTargetDataRef td_target = LLVMGetModuleDataLayout(mod_module);
 	std::uint64_t           u64_bytes = LLVMABISizeOfType(td_target, bufferType);
-	for (const ArrayDimension &dimension : std::views::reverse(path)) {
+	for (const ArrayDimension &dimension : std::views::reverse(path.dimensions)) {
 		// arrayTypes has checked the product of the enclosing extents and the largest backing for this field path.
 		u64_bytes *= dimension.count;
 		ty_block = LLVMArrayType2(ty_block, dimension.count);
 	}
 	if (LLVMABISizeOfType(td_target, ty_block) != u64_bytes)
 		throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedLowering, "LLVM cannot represent the fixed-array field buffer on this target");
-	const LLVMValueRef ir_block = allocateEntrySlot(builder, ty_block);
-	if (path.empty()) return ir_block;
-	std::vector<LLVMValueRef> v_indices{ LLVMConstNull(LLVMTypeOf(path.front().index)) };
-	for (const ArrayDimension &dimension : path) v_indices.push_back(dimension.index);
+	LLVMValueRef ir_block = nullptr;
+	if (path.owner) {
+		const LLVMBasicBlockRef site = LLVMGetInsertBlock(builder);
+		// Each field path needs one heap block, including when the cell stores are inside nested loops.
+		if (const LLVMValueRef end = LLVMGetBasicBlockTerminator(path.origin)) LLVMPositionBuilderBefore(builder, end);
+		const LLVMTypeRef word = LLVMIntPtrTypeInContext(LLVMGetModuleContext(mod_module), td_target);
+		ir_block               = objectCall(builder, mod_module, ObjectOperation::Backing,
+		                                    { path.owner, LLVMConstInt(word, u64_bytes, false),
+		                                      LLVMConstInt(word, LLVMABIAlignmentOfType(td_target, ty_block), false) });
+		LLVMPositionBuilderAtEnd(builder, site);
+	} else {
+		ir_block = allocateEntrySlot(builder, ty_block);
+	}
+	if (path.dimensions.empty()) return ir_block;
+	std::vector<LLVMValueRef> v_indices{ LLVMConstNull(LLVMTypeOf(path.dimensions.front().index)) };
+	for (const ArrayDimension &dimension : path.dimensions) v_indices.push_back(dimension.index);
 	return LLVMBuildGEP2(builder, ty_block, ir_block, v_indices.data(), static_cast<unsigned>(v_indices.size()), "");
 }
 
@@ -60,7 +73,7 @@ void ValueTypes::copyBuffer (LLVMBuilderRef builder, const cloth::ResolvedType &
 	const StoragePlace        sp_element  = arrayElementPlace(rt_element);
 	const LLVMValueRef ir_childShape = sharedShape && cloth::semantic::hasArrayShape(rt_element) ? array_descriptor::childShape(mod_module, sharedShape) :
 	                                                                                               nullptr;
-	if (initialization) initialization->push_back({ .count = u64_count, .index = ir_index });
+	if (initialization) initialization->dimensions.push_back({ .count = u64_count, .index = ir_index });
 	if (rt_element.array()) {
 		copyBuffer(builder, rt_element, ir_cell, ir_value, direction, initialization, ir_childShape);
 	} else if (direction == Transfer::Store) {
@@ -69,7 +82,7 @@ void ValueTypes::copyBuffer (LLVMBuilderRef builder, const cloth::ResolvedType &
 	} else {
 		LLVMBuildStore(builder, loadLocal(builder, rt_element, ir_cell, sp_element), ir_value);
 	}
-	if (initialization) initialization->pop_back();
+	if (initialization) initialization->dimensions.pop_back();
 	// A nested conversion can finish in its own exit block. Its value feeds this loop's back edge.
 	LLVMBasicBlockRef bb_end  = LLVMGetInsertBlock(builder);
 	LLVMValueRef      ir_next = LLVMBuildAdd(builder, ir_index, LLVMConstInt(ty_index, 1, false), "");

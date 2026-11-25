@@ -30,6 +30,20 @@ local before deleting the instance, then return that local. See the
 Deleting a null class reference has no effect. Deleting the same instance
 twice, even through different names, is an error.
 
+Deleting through a base class or interface reference runs the concrete
+class's destructor first, followed by each base class destructor. Each
+destructor runs once. It can read its own fields through ``self``.
+An outside alias cannot access the instance while destruction is underway.
+
+When an argument can delete a method's receiver, the call checks the
+captured receiver again after evaluating the arguments. For example,
+``item.read(destroy(item))`` runs ``destroy`` and reports a runtime
+error before entering ``read`` if the argument deleted ``item``.
+Field assignments also check the receiver when the right-hand side can
+invalidate it. A later allocation leaves every alias to the deleted
+instance stale. See the `linked lifetime examples
+<../../../Tests/Compiler/Driver/class-lifetime.test>`_.
+
 Owning lists
 ------------
 

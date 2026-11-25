@@ -4,10 +4,12 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <vector>
 
 #include <llvm-c/Core.h>
 #include <semantic/checked_program.hpp>
+#include <semantic/target_layout.hpp>
 
 namespace backend::detail {
 
@@ -39,12 +41,16 @@ enum class StoragePlace { Slot, Embedded };
 [[nodiscard]] StoragePlace arrayElementPlace (const cloth::ResolvedType &element);
 
 class ValueTypes {
-	using ArrayPath = std::vector<ArrayDimension>;
+	struct ArrayPath {
+		std::vector<ArrayDimension> dimensions;
+		LLVMValueRef                owner  = nullptr;
+		LLVMBasicBlockRef           origin = nullptr;
+	};
 	enum class Transfer { Load, Store };
 
     public:
 	ValueTypes (LLVMModuleRef module, const cloth::CheckedProgram &program);
-	[[nodiscard]] LLVMTypeRef directCallType (const cloth::ResolvedType &type) const;
+	[[nodiscard]] std::optional<cloth::StorageLayout> aggregateLayout (const std::vector<LLVMTypeRef> &fields) const;
 	// Physical storage inside a struct, including fixed-array descriptors.
 	[[nodiscard]] LLVMTypeRef get (const cloth::ResolvedType &type);
 	// Fixed array buffers store their cells contiguously at the checked stride.
@@ -54,6 +60,7 @@ class ValueTypes {
 	LLVMValueRef              arrayFieldWitness (LLVMBuilderRef builder, const cloth::ResolvedType &owner, LLVMValueRef parentAddress, unsigned fieldIndex);
 	LLVMValueRef              arrayData (LLVMBuilderRef builder, const cloth::ResolvedType &type, LLVMValueRef slot);
 	LLVMValueRef              allocateLocal (LLVMBuilderRef builder, const cloth::ResolvedType &type, LLVMValueRef value);
+	void         initializeField (LLVMBuilderRef builder, const cloth::ResolvedType &type, LLVMValueRef slot, LLVMValueRef value, LLVMValueRef self);
 	LLVMValueRef loadLocal (LLVMBuilderRef builder, const cloth::ResolvedType &type, LLVMValueRef address, StoragePlace place = StoragePlace::Slot);
 	void         storeLocal (LLVMBuilderRef builder, const cloth::ResolvedType &type, LLVMValueRef address, LLVMValueRef value,
 	                         StoragePlace place = StoragePlace::Slot, LLVMValueRef witness = nullptr);

@@ -39,6 +39,11 @@ void ValueTypes::storeLocal (LLVMBuilderRef builder, const cloth::ResolvedType &
 	storeValue(builder, type, address, value, place, nullptr);
 }
 
+void ValueTypes::initializeField (LLVMBuilderRef builder, const cloth::ResolvedType &type, LLVMValueRef slot, LLVMValueRef value, LLVMValueRef self) {
+	ArrayPath path{ .dimensions = {}, .owner = self, .origin = LLVMGetInsertBlock(builder) };
+	storeValue(builder, type, slot, value, StoragePlace::Slot, &path);
+}
+
 LLVMValueRef ValueTypes::loadLocal (LLVMBuilderRef builder, const cloth::ResolvedType &type, LLVMValueRef address, StoragePlace place) {
 	const LLVMTypeRef ty_value  = localType(type);
 	const LLVMTypeRef ty_stored = place == StoragePlace::Embedded ? get(type) : slotType(type);

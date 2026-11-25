@@ -16,7 +16,7 @@ class ArrayLifetimes {
 
 	ArrayLifetimes (LLVMModuleRef module, LLVMBuilderRef builder);
 	[[nodiscard]] Mark mark () const;
-	LLVMValueRef       own (LLVMTypeRef descriptor, Kind kind);
+	LLVMValueRef       own (LLVMTypeRef descriptor, Kind kind, bool nullable = false);
 	// A jump cleans up its path while sibling paths can still use the same active scope.
 	void releaseSince (Mark scope) const;
 	void endScope (Mark scope);
@@ -43,5 +43,6 @@ struct ArrayLifetimes::Mark {
 struct ArrayLifetimes::Owner {
 	LLVMValueRef slot;
 	Kind         kind;
+	LLVMTypeRef  nullablePayload;
 };
 }

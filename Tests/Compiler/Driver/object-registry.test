@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cc "%S/Inputs/object_registry.c" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: only the owning list can delete its object" 1 "%t.exe" delete
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: class instance already belongs to an owning list" 1 "%t.exe" acquire
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: only the owning list can release its object" 1 "%t.exe" release
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: owning lists cannot form an ownership cycle" 1 "%t.exe" cycle
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: cannot mutate an owning list during cleanup" 1 "%t.exe" mutate
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: access to a deleted class instance" 1 "%t.exe" stale

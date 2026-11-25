@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<class> Item(pub def<int> value, bool checked) {
+    pub Item(int n) : (n, true) {}
+    pub def<int[8]> cells = [0, 0, 0, 0, 0, 0, 0, 0]
+    pub def<int[]> values = [1]
+    pub mt<int> read(int argument) { println(99); return value + argument }
+    pub ~Item { println(self.value) }
+}
+fn<int> mark() { println(77); return 7 }
+fn<int> destroy(Item item) { println(1); item::delete; return 7 }
+fn<int> use(Item item) = item.read(mark())
+fn<bool> same(Item? first, Item? second) = first == second
+fn<int> stale(Item item) {
+    item::delete
+    Item replacement := Item::new(7)
+    return replacement.value
+}
+typedef<class> During(pub def<int> value, bool checked) {
+    pub During(int n) : (n, true) {}
+    pub ~During { println(self.value); inspect(self) }
+}
+fn<void> inspect(During alias) { println(alias.value) }
+pub fn<int> main(string[] args) {
+    Item item := Item::new(42)
+    if (args::size == 0) return item.read(destroy(item))
+    if (args::size == 1) { item.value = destroy(item); return 2 }
+    if (args::size == 2) { stale(item); return item.value }
+    if (args::size == 3) { stale(item); return use(item) }
+    if (args::size == 4) { stale(item); item::delete; return 5 }
+    if (args::size == 5) { During::new(9)::delete; return 6 }
+    if (args::size == 6) { item.cells[destroy(item)] = 7; return 7 }
+    if (args::size == 7) { item.values[0] = destroy(item); return 8 }
+    if (args::size == 8) { item.values.append(destroy(item)); return 9 }
+    stale(item)
+    if (args::size == 9) return if (same(item, item)) 10 else 11
+    return if (item === item && !same(item, null)) 42 else 12
+}

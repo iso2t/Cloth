@@ -1,0 +1,52 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<int> mark(int n) { println(n); return n }
+typedef<interface> Tagged {}
+typedef<class> Base(pub def<int> initial, bool checked) : Tagged {
+    pub Base(int n) : (n, true) {}
+    pub def<int> first = mark(self.initial + 1)
+    pub ~Base { println(self.initial) }
+}
+typedef<class> Sample(pub def<int> value) : Base(mark(value + 1)) {
+    pub def<int> next = mark(self.first + 1)
+    pub Sample() : (mark(7)) { value = 42 }
+    pub mt<int> read(opt<int> amount ?: self.next) = self.value + amount
+    pub ~Sample { println(self.value) }
+}
+
+typedef<struct> Row { pub int[2] cells }
+typedef<class> Container(pub def<Row[2]> rows, pub def<int[]> values, bool checked) {
+    pub Container(Row[2] data, int[] items) : (data, items, true) {}
+}
+fn<Container> container() {
+    Row[2] rows := [{[3, 4]}, {[5, 6]}]
+    int[] values := [7]
+    return Container::new(rows, values)
+}
+fn<void> erase(Tagged view) { view::delete }
+fn<int> readOrZero(Sample? item) = item?.read() ?: 0
+
+pub fn<int> main() {
+    Sample sample := Sample::new()
+    Sample alias := sample
+    Base base := sample
+    Tagged view := base
+    if (!(view is Sample) || !(view is Base) || view is int || !(sample === view)) return 1
+    if (alias.value != 42 || base.initial != 8 || sample.read() != 52) return 2
+    if (readOrZero(sample) != 52 || readOrZero(null) != 0) return 5
+    base.initial = 11
+    Container box := container()
+    Container other := container()
+    box.rows[1].cells[0] = 42
+    box.values.append(42)
+    box.values[0] += 4
+    if (box.rows[1].cells[0] != 42 || other.rows[1].cells[0] != 5) return 3
+    if (box.values[0] != 11 || box.values[1] != 42 || other.values::size != 1) return 4
+    box::delete
+    other::delete
+    erase(view)
+    Sample? absent = null
+    absent::delete
+    absent::delete
+    return 42
+}
