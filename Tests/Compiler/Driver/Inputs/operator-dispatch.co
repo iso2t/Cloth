@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<class> Cell<T>(pub def<T> value, pub def<bool> valid) {
+    pub Cell(T seed) : (seed, true) {}
+    operator []?(int i) -> bool { println(2); return valid && i == 0 }
+    pub operator [](int i) -> T { println(3); return value }
+    pub operator []=(int i, T replacement) { println(5); value = replacement }
+}
+fn<Cell<int>> receiver(Cell<int> cell) { println(0); return cell }
+fn<int> index(int i) { println(1); return i }
+fn<int> amount(Cell<int> cell, bool invalidate) {
+    println(4)
+    if (invalidate) cell.valid = false
+    return 35
+}
+
+typedef<struct> Cursor { pub int value; pub operator ++() { value++ } }
+typedef<class> Counter(pub def<int> value) {
+    pub Counter(int v, int tag) : (v) {}
+    pub operator +=(int n) { value += n }
+}
+fn<int> close(Cell<Counter> cell) { println(6); cell.valid = false; return 35 }
+
+typedef<class> Gate {
+    pub Gate(int tag) : () {}
+    pub operator &&(bool flag, self) = flag
+    pub operator ||(bool flag, self) = flag
+    pub operator ?:(int n) = n
+}
+fn<Gate> gate(Gate g) { println(8); return g }
+fn<int> fallback() { println(9); return 42 }
+
+pub fn<int> main(string[] args) {
+    Cell<int> cell := Cell<int>::new(7)
+    receiver(cell)[index(if (args::size == 1) 1 else 0)] += amount(cell, args::size == 2)
+    if (cell.value != 42) return 1
+    cell::delete
+    Cursor original := {41}
+    Cursor[1] cells = [original]
+    cells[0]++
+    if (cells[0].value != 42 || original.value != 41) return 7
+    Cell<Cursor> cursor := Cell<Cursor>::new(original)
+    cursor[0]++
+    if (cursor.value.value != 42 || original.value != 41) return 2
+    cursor::delete
+    Counter counter := Counter::new(7, 0)
+    Cell<Counter> objects := Cell<Counter>::new(counter)
+    objects[0] += close(objects)
+    if (counter.value != 42 || objects.valid) return 3
+    objects::delete
+    counter::delete
+    Gate g := Gate::new(0)
+    if (false && gate(g)) return 4
+    if (!(true || gate(g))) return 5
+    int result := gate(g) ?: fallback()
+    g::delete
+    return result
+}

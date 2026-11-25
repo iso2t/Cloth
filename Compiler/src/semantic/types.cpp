@@ -689,18 +689,34 @@ bool Analyzer::supportsEquality (const ResolvedType &type) const {
 	return referenceType(rt_element) || numeric(rt_element);
 }
 
-bool Analyzer::classEqualityMayCall (const ResolvedType &type, Operator operation) const {
-	const std::function hasEquality = [&] (const ResolvedType &owner) {
-		for (const Candidate &c_op : members(owner, toString(operation), SymbolKind::Operator)) {
-			const auto           &md_equal = dynamic_cast<const MethodDeclaration &>(*callable(*c_op.symbol));
-			const OperatorMember &om_form  = *md_equal.operatorMember;
-			if (!om_form.provider && !om_form.selector && !om_form.rightReceiver && md_equal.parameters.size() == 1 &&
-			    c_op.symbol->visibility == Visibility::Public &&
-			    accepts(substitute(declarations.at(c_op.symbol).parameters.front(), c_op.arguments), owner))
-				return true;
-		}
-		return false;
+std::vector<ReferenceEquality> Analyzer::referenceEquality (const ResolvedType &owner, Operator operation) const {
+	std::vector<ReferenceEquality> result;
+	const auto                     moreSpecific = [&] (const ReferenceEquality &a, const ReferenceEquality &b) {
+		return moreSpecificOperator(a.method.owner, a.parameter, b.method.owner, b.parameter);
 	};
+	for (const Candidate &candidate : members(owner, toString(operation), SymbolKind::Operator)) {
+		const auto &method = dynamic_cast<const MethodDeclaration &>(*callable(*candidate.symbol));
+		if (!method.operatorMember) continue;
+		const auto &form = *method.operatorMember;
+		const auto &decl = declarations.at(candidate.symbol);
+		if (form.provider || form.selector || form.rightReceiver || method.parameters.size() != 1 || candidate.symbol->visibility != Visibility::Public)
+			continue;
+		const ResolvedType parameter = substitute(decl.parameters.front(), candidate.arguments);
+		if (!accepts(parameter, owner)) continue;
+		ReferenceEquality body{ .method    = { .symbol = candidate.symbol, .owner = substitute(ownerType(*decl.owner), candidate.arguments) },
+			                .parameter = parameter };
+		const auto        before = std::ranges::find_if(result, [&] (const ReferenceEquality &prior) { return moreSpecific(body, prior); });
+		result.insert(before, std::move(body));
+	}
+	for (auto current = result.begin(); current != result.end(); ++current) {
+		for (auto later = current + 1; later != result.end(); ++later)
+			if (!moreSpecific(*current, *later)) current->competingPeers.push_back(later->parameter);
+	}
+	return result;
+}
+
+bool Analyzer::classEqualityMayCall (const ResolvedType &type, Operator operation) const {
+	const auto hasEquality = [&] (const ResolvedType &owner) { return !referenceEquality(owner, operation).empty(); };
 	if (operation == ONotEqual && classEqualityMayCall(type, OEqual)) return true;
 	return hasEquality(type) || anyReceiverClass(type, hasEquality);
 }

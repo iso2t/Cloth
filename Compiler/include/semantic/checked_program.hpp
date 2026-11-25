@@ -155,7 +155,15 @@ struct StateMethod {
 	std::map<const Symbol *, MethodRef> implementations;
 };
 
+struct ReferenceEquality {
+	MethodRef    method;
+	ResolvedType parameter;
+	// Later candidates that can also match the peer without losing on specificity.
+	ResultTypes competingPeers = {};
+};
+
 using StateSelections = std::map<std::string, StateSelection, std::less<>>;
+struct CallDispatch;
 
 struct TypeDispatch {
 	std::vector<MethodSlot>      methods;
@@ -164,6 +172,9 @@ struct TypeDispatch {
 	StateSelections              states;
 	const Symbol                *initialState = nullptr;
 	std::vector<StateMethod>     stateMethods;
+	std::map<Operator, std::vector<ReferenceEquality>> referenceEquality;
+	[[nodiscard]] const MethodRef                     *methodTarget (const CallDispatch &call) const;
+	[[nodiscard]] const StateMethod                   *stateTarget (const MethodRef &contract) const;
 };
 
 // The static receiver and contract select a slot in the concrete receiver's dispatch table.
@@ -258,6 +269,7 @@ struct ProviderSelection {
 
 struct IndexedAccess {
 	const Symbol          *operation;
+	const GenericInstance *operationInstance;
 	const Symbol          *validator;
 	const GenericInstance *validatorInstance;
 	Substitutions          arguments;
@@ -268,6 +280,7 @@ enum class RangeOperation { Construct, Membership, Equal };
 struct OperatorSelection {
 	const Symbol          *symbol;
 	const GenericInstance *instance;
+	bool                   rightReceiver = false;
 };
 
 struct ExpressionInfo {

@@ -52,7 +52,11 @@ Test the active state with ``meter is Loaded``. Use ``meter -> Loaded(42)``
 to enter a state that takes an integer, or ``meter -> Idle`` to enter a
 ``void`` state. A transition changes the instance and has no result.
 A state body can use ``self`` to access the host and ``init { ... }`` to
-run code on entry.
+run code on entry. A running state method keeps the payload it received on
+entry, even if it changes the object's state before returning. In the
+`native state example <../../../Tests/Compiler/Driver/Inputs/state-dispatch.co>`_,
+``finish()`` enters ``Ready`` and then reads both elements of the previous
+state's array.
 
 The payload must match the declared type. Changing the transition in
 ``load`` to ``alias -> Loaded(false)`` produces ``C3129`` because
@@ -69,5 +73,7 @@ Ordinary class methods use the dot in ``meter.method()``.
 
 A state may omit a method. Calling ``meter::reading()`` immediately
 after ``meter -> Idle`` produces ``C3130`` because ``Idle`` has no body
-for ``reading()``. See the `missing state method example
+for ``reading()``. If the active state is only known at runtime, the same
+call ends the program with status 1 and reports the missing method.
+See the `missing state method example
 <../../../Tests/Compiler/Semantic/invalid-active-state.co>`_.

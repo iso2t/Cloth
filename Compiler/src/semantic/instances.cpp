@@ -150,21 +150,11 @@ void Analyzer::instantiateTargets (const InstanceKey &key, const DispatchUse &us
 	const std::function<void(const MethodRef &)> instantiate = [&] (const MethodRef &body) {
 		enqueue({ .declaration = body.symbol, .receiver = body.owner, .arguments = key.arguments }, use.where, false);
 	};
-	if (use.call.kind == DispatchKind::Interface) {
-		const ResolvedType &rt_view = asInterface(use.call.receiver.declaration) ? use.call.receiver : use.call.contract.owner;
-		for (const InterfaceTarget &it_target : td_table.interfaceTargets) {
-			if (it_target.view == rt_view && it_target.contract == use.call.contract) instantiate(it_target.implementation);
-		}
-	} else if (use.call.kind == DispatchKind::Virtual) {
-		for (const MethodSlot &ms_slot : td_table.methods) {
-			if (ms_slot.contract == use.call.contract && ms_slot.implementation) instantiate(*ms_slot.implementation);
-		}
-	} else if (use.call.kind == DispatchKind::State) {
-		for (const StateMethod &sm_method : td_table.stateMethods) {
-			if (sm_method.contract == use.call.contract) {
-				for (const std::pair<const Symbol *const, MethodRef> &entry : sm_method.implementations) instantiate(entry.second);
-			}
-		}
+	if (use.call.kind == DispatchKind::State) {
+		if (const StateMethod *method = td_table.stateTarget(use.call.contract))
+			for (const auto &[selection, body] : method->implementations) instantiate(body);
+	} else if (const MethodRef *body = td_table.methodTarget(use.call)) {
+		instantiate(*body);
 	}
 }
 

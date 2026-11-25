@@ -37,6 +37,7 @@ class ScalarLowering {
 	LLVMValueRef     withinRangeEnd (LLVMValueRef value, LLVMValueRef end, LLVMValueRef inclusive, const cloth::ResolvedType &type) const;
 	IntegerRangeStep integerRangeStep (cloth::Operator op, LLVMValueRef current, LLVMValueRef amount, const cloth::ResolvedType &type) const;
 	void             guardRangeProgress (LLVMValueRef unchanged, LLVMValueRef canContinue) const;
+	void             requireValidIndex (LLVMValueRef valid) const;
 
     private:
 	using FailureDeclaration = LLVMValueRef (*)(LLVMModuleRef module);

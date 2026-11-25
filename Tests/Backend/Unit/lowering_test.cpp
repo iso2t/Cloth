@@ -2548,9 +2548,6 @@ TEST (BackendLowering, PreservesPrimitiveWidthsAndTruthAtTheBoundaries) {
 }
 
 TEST (BackendLowering, LabelsUnsupportedStatementsInSourceOrder) {
-	expectUnsupported(R"(typedef<struct> Cursor { pub int at; pub operator ++() { at++ } }
-fn<int> main() { Cursor[1] a = [{7}]; a[0]++; return a[0].at })",
-	                  Code::UnsupportedLowering, "a[0]++", 2);
 	expectUnsupported("fn<int> main() { def stop := exit(7); return 42 }", Code::UnsupportedLowering, "return 42");
 	expectUnsupported("pub fn<int> main() { print(1); return 42 }", Code::UnsupportedLowering, "print(1)");
 	expectUnsupported("pub fn<int> main() { return 42; println(1) }", Code::UnsupportedLowering, "println(1)");
@@ -2643,19 +2640,9 @@ TEST (BackendLowering, LabelsUnsupportedExpressions) {
 	expectUnsupported("pub fn<int> main() = sideEffect()\nfn<int> sideEffect() { print(1)\nreturn 42 }", Code::UnsupportedLowering, "print(1)", 2);
 }
 
-TEST (BackendLowering, LabelsUnsupportedPayloadFieldTypesAndUserDefinedEnumEquality) {
-	const std::string s_payload = "typedef<enum> Mode(pub def<int[]> row = [1, 2]) { pub On }\n";
-	expectUnsupported(s_payload + "fn<int> main() { Mode mode = Mode.On; mode.row; return 42 }", Code::UnsupportedLowering, "mode.row", 2);
-	const std::string s_override = "typedef<enum> Mode { pub Off, pub On; pub operator ==(Mode other) -> bool = true }\n";
-	expectUnsupported(s_override + "fn<int> main() = if (Mode.On == Mode.Off) 42 else 7", Code::UnsupportedLowering, "Mode.On == Mode.Off", 2);
-	expectUnsupported(s_override + "fn<int> main() = if (Mode.On != Mode.Off) 42 else 7", Code::UnsupportedLowering, "Mode.On != Mode.Off", 2);
-	for (const std::string s_array : { "Mode[1]", "Mode?[1]" }) {
-		const std::string s_body = s_override + "fn<int> main() { " + s_array + " a := [Mode.On]; " + s_array + " b := [Mode.Off]; return if (";
-		expectUnsupported(s_body + "a != b) 42 else 7 }", Code::UnsupportedLowering, "a != b", 2);
-		expectUnsupported(s_body + "a == b) 42 else 7 }", Code::UnsupportedLowering, "a == b", 2);
-	}
-	expectUnsupported(s_override + "fn<int> main() = if (different(Mode.Off, null)) 42 else 7\nfn<bool> different(final Mode? a, final Mode? b) = a != b",
-	                  Code::UnsupportedLowering, "a != b", 3);
+TEST (BackendLowering, LabelsUnsupportedEnumPayloadFieldTypes) {
+	const std::string source = "typedef<enum> Mode(pub def<int[]> row = [1, 2]) { pub On }\n";
+	expectUnsupported(source + "fn<int> main() { Mode mode = Mode.On; mode.row; return 42 }", Code::UnsupportedLowering, "mode.row", 2);
 }
 
 TEST (BackendLowering, LabelsUnsupportedPrintlnForms) {
@@ -2722,10 +2709,24 @@ fn<int> main() { Marker[] items = [make()]; return if (items[0] === items[0]) 42
 	}
 }
 
-TEST (BackendLowering, RejectsArrayEqualityThatRequiresUserOperatorDispatch) {
-	expectUnsupported("fn<int> main() { C[] a := [C::new(7)]; return if (a == a) 42 else 0 }\n"
-	                  "typedef<class> C { pub C(int n) : () {}\npub operator ==(C other) -> bool = false }",
-	                  Code::UnsupportedLowering, "a == a");
+TEST (BackendLowering, EmitsOnlyReachableDispatchImplementations) {
+	const char *source = R"(typedef<interface> Contract { pub mt<int> read() }
+typedef<class> Ready : Contract {
+    pub Ready(int n) : () {}
+    pub mt<int> read() = 42
+}
+typedef<class> Unused : Contract {
+    pub Unused(int n) : () {}
+    pub mt<int> read() { print(1); return 0 }
+}
+fn<int> invoke(Contract value) = value.read()
+fn<int> main() = invoke(Ready::new(0)))";
+	for (const unsigned bits : { 32u, 64u }) {
+		const auto                   program = checkProgram(source, { .sizeBits = bits });
+		const backend::LoweredModule module(program);
+		EXPECT_NE(LLVMGetNamedFunction(module.get(), "cloth.read"), nullptr);
+		EXPECT_EQ(LLVMGetNamedFunction(module.get(), "cloth.read.1"), nullptr);
+	}
 }
 
 TEST (BackendLowering, ChecksTheCapturedReceiverAroundArguments) {

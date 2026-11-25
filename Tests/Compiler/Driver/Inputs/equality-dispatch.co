@@ -1,0 +1,84 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<interface> Comparable {}
+typedef<interface> LeftView {}
+typedef<interface> RightView {}
+typedef<class> Overloaded : Comparable, LeftView, RightView {
+    pub Overloaded(int tag) : () {}
+    pub operator ==(LeftView peer) -> bool = true
+    pub operator ==(RightView peer) -> bool = false
+    pub operator ==(Overloaded peer) -> bool = true
+}
+typedef<class> LeftOnly : Comparable, LeftView { pub LeftOnly(int tag) : () {} }
+typedef<class> RightOnly : Comparable, RightView { pub RightOnly(int tag) : () {} }
+typedef<class> BothViews : Comparable, LeftView, RightView { pub BothViews(int tag) : () {} }
+typedef<class> Base : Comparable { pub Base(int tag) : () {} }
+typedef<class> Item(pub def<int> value) : Base(0) {
+    pub Item(int v, int tag) : (v) {}
+    pub operator ==(Item other) -> bool = value == other.value
+    pub operator !=(Item other) -> bool = false
+}
+fn<bool> equal(Comparable? a, Comparable? b) = a == b
+fn<bool> different(Base a, Base b) = a != b
+fn<bool> lifted(Item? a, Item? b) = a == b
+typedef<enum> Mode(pub def<int> code = 7) {
+    pub Off, pub On;
+    pub operator ==(Mode other) -> bool = self.code == other.code
+}
+typedef<struct> Point {
+    pub int coordinate;
+    pub operator ==(Point other, self) -> bool { println(coordinate); return coordinate == other.coordinate }
+}
+typedef<struct> Marker { pub int n; pub operator ===(Marker other) -> bool = n == other.n }
+fn<bool> same(Marker? a, Marker? b) = a === b
+typedef<class> Key {
+    pub Key(int tag) : () {}
+    pub operator ==(Owner other) -> bool { println(55); return true }
+}
+typedef<class> Owner(pub def<Key?> peer) {
+    pub Owner(Key? key, int tag) : (key) {}
+    pub ~Owner { if (self.peer == self) println(1) }
+}
+
+pub fn<int> main(string[] args) {
+    if (args::size == 1) {
+        Key key := Key::new(0)
+        Owner owner := Owner::new(key, 0)
+        owner::delete
+        key::delete
+        return 1
+    }
+    Overloaded overloads := Overloaded::new(0)
+    if (args::size == 2) return if (equal(overloads, BothViews::new(0))) 1 else 2
+    LeftOnly onlyLeft := LeftOnly::new(0)
+    RightOnly onlyRight := RightOnly::new(0)
+    if (!equal(overloads, onlyLeft) || equal(overloads, onlyRight) || !equal(overloads, overloads)) return 10
+    onlyLeft::delete
+    onlyRight::delete
+    overloads::delete
+    Item a := Item::new(42, 0)
+    Item b := Item::new(42, 0)
+    Item c := Item::new(7, 0)
+    Base plain := Base::new(0)
+    if (a === b || !equal(a, b) || equal(a, c) || equal(a, plain) || equal(plain, a)) return 1
+    if (!equal(plain, plain) || different(a, c) || !different(a, plain)) return 2
+    if (!equal(null, null) || equal(a, null) || equal(null, b)) return 3
+    if (!lifted(a, b) || lifted(a, null) || !lifted(null, null)) return 4
+    Comparable?[2] left := [null, a]
+    Comparable?[2] right := [null, b]
+    if (left != right) return 5
+    Mode?[2] off := [null, Mode.Off]
+    Mode?[2] on := [null, Mode.On]
+    if (off != on || Mode.On != Mode.Off) return 6
+    Point[2] p := [{7}, {42}]
+    Point[2] q := [{8}, {42}]
+    if (p == q) return 7
+    if (p != p) return 8
+    Marker marker := {42}
+    if (!same(null, null) || same(null, marker) || !same(marker, marker)) return 9
+    a::delete
+    b::delete
+    c::delete
+    plain::delete
+    return 42
+}

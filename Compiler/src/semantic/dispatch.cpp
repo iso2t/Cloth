@@ -503,6 +503,10 @@ void Analyzer::publishDispatch () const {
 		applyArguments(rt_owner, key.arguments);
 		program.dispatchTables.insert(m_dispatch.extract(rt_owner));
 	}
+	for (auto &[owner, table] : program.dispatchTables) {
+		if (!owner.classReference() || owner.dependent()) continue;
+		for (const Operator op : { OEqual, ONotEqual }) table.referenceEquality.emplace(op, referenceEquality(owner, op));
+	}
 }
 
 }

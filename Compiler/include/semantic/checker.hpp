@@ -169,6 +169,9 @@ class Analyzer {
 	[[nodiscard]] ResultTypes  applicationsOf (const ResolvedType &actual, const Symbol &definition) const;
 	[[nodiscard]] bool         supportsEquality (const ResolvedType &type) const;
 	[[nodiscard]] bool         classEqualityMayCall (const ResolvedType &type, Operator operation = OEqual) const;
+	[[nodiscard]] std::vector<ReferenceEquality> referenceEquality (const ResolvedType &type, Operator operation) const;
+	[[nodiscard]] bool                           moreSpecificOperator (const ResolvedType &left, const ResolvedType &right, const ResolvedType &otherLeft,
+	                                                                   const ResolvedType &otherRight) const;
 	[[nodiscard]] bool         anyReceiverClass (const ResolvedType &type, const std::function<bool(const ResolvedType &)> &matches) const;
 	void                       checkFormatterDefault (const ResolvedType &element, const TokenSpan &receiver, const Token &parameter, bool record);
 	bool                       checkDefaultExpression (const std::function<bool()> &check);

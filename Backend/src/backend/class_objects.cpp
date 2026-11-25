@@ -57,6 +57,18 @@ LLVMValueRef objectCall (LLVMBuilderRef builder, LLVMModuleRef module, ObjectOpe
 		return call("cloth_rt_object_check_mutation", nothing, { handle });
 	case ObjectOperation::SetCleanup:
 		return call("cloth_rt_object_set_cleanup", nothing, { handle, byte });
+	case ObjectOperation::Configure:
+		return call("cloth_rt_object_configure", nothing, { handle, pointer });
+	case ObjectOperation::Method:
+		return call("cloth_rt_object_method", pointer, { handle, word, byte });
+	case ObjectOperation::BeginInitial:
+		return call("cloth_rt_object_begin_initial", byte, { handle, pointer });
+	case ObjectOperation::State:
+		return call("cloth_rt_object_state", pointer, { handle, byte });
+	case ObjectOperation::Enter:
+		return call("cloth_rt_object_enter", pointer, { handle, pointer, word, word, pointer });
+	case ObjectOperation::Payload:
+		return call("cloth_rt_object_payload", pointer, { handle, pointer });
 	}
 	throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedLowering, "Unknown object runtime operation");
 }
@@ -142,15 +154,16 @@ void ClassObjects::describe (const cloth::ResolvedType &type, ClassStorage &stor
 	const LLVMValueRef        absent  = LLVMConstNull(pointer);
 	std::vector<LLVMValueRef> tags;
 	for (const cloth::ResolvedType *view = &type; view;) {
-		tags.push_back(typeTag(*view));
+		storage.nominalViews.push_back(*view);
 		const cloth::GenericInstance *instance = cp_program.typeInstance(*view);
 		const cloth::ResultTypes     &parents  = (instance ? instance->signature : cp_program.declarations.at(view->declaration)).parents;
 		const auto                base    = std::ranges::find_if(parents, &cloth::ResolvedType::classReference);
 		view                              = base == parents.end() ? nullptr : &*base;
 	}
 	if (const auto table = cp_program.dispatchTables.find(type); table != cp_program.dispatchTables.end()) {
-		for (const cloth::ResolvedType &view : table->second.interfaces) tags.push_back(typeTag(view));
+		storage.nominalViews.insert(storage.nominalViews.end(), table->second.interfaces.begin(), table->second.interfaces.end());
 	}
+	for (const auto &view : storage.nominalViews) tags.push_back(typeTag(view));
 	tags.push_back(absent);
 	const LLVMValueRef list = LLVMConstArray2(pointer, tags.data(), tags.size());
 	storage.views           = LLVMAddGlobal(mod_module, LLVMTypeOf(list), "cloth.object.views");
@@ -201,9 +214,11 @@ LLVMValueRef ClassObjects::create (LLVMBuilderRef builder, const cloth::Resolved
 	const LLVMTargetDataRef target  = LLVMGetModuleDataLayout(mod_module);
 	const LLVMTypeRef       word    = LLVMIntPtrTypeInContext(context, target);
 	const LLVMValueRef      absent  = LLVMConstNull(LLVMPointerTypeInContext(context, 0));
-	return objectCall(builder, mod_module, ObjectOperation::Create,
-	                  { LLVMConstInt(word, LLVMABISizeOfType(target, storage.storage), false),
-	                    LLVMConstInt(word, LLVMABIAlignmentOfType(target, storage.storage), false), storage.views,
-	                    storage.destroy ? storage.destroy : absent, storage.dispose ? storage.dispose : absent });
+	const LLVMValueRef      self    = objectCall(builder, mod_module, ObjectOperation::Create,
+	                                             { LLVMConstInt(word, LLVMABISizeOfType(target, storage.storage), false),
+	                                               LLVMConstInt(word, LLVMABIAlignmentOfType(target, storage.storage), false), storage.views,
+	                                               storage.destroy ? storage.destroy : absent, storage.dispose ? storage.dispose : absent });
+	objectCall(builder, mod_module, ObjectOperation::Configure, { self, functions.dispatch.descriptor(type) });
+	return self;
 }
 }

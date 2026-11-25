@@ -90,6 +90,7 @@ void BodyChecker::checkValidatorReceiver (const Expression *receiver, const Toke
 IndexedAccess BodyChecker::indexAccess (const ExpressionInfo &operation, const TokenSpan &span) const {
 	const Symbol *sym_validator = analyzer.indexValidator(*operation.symbol);
 	return { .operation         = operation.symbol,
+		 .operationInstance = operation.instance,
 		 .validator         = sym_validator,
 		 .validatorInstance = sym_validator && record ? analyzer.useCallable(*sym_validator, operation.typeArguments, context, span) : nullptr,
 		 .arguments         = operation.typeArguments };

@@ -176,6 +176,38 @@ and retires the handle. Direct destructor access to ``self`` is permitted
 during that chain. See the `runtime ABI <../../../Runtime/include/cloth/object.h>`_
 and `linked lifetime tests <../../../Tests/Compiler/Driver/class-lifetime.test>`_.
 
+Method and state dispatch
+-------------------------
+
+The checked call records a static receiver, a contract, and any concrete
+method type arguments. Lowering assigns that combination a slot. As
+reachable bodies allocate classes or introduce more slots, the backend
+resolves each new class/slot pair against the frontend's ``TypeDispatch``.
+It queues the selected implementations and publishes the constant tables
+once the body queue is empty. The call evaluates arguments and defaults
+using its static contract before looking up the implementation on the
+captured handle. See the `dispatch emitter <../../../Backend/src/backend/dispatch.cpp>`_.
+
+Each object records its concrete descriptor and active state. A state row
+contains the callable slots provided by that state. A separate state
+definition attached to two hosts can require two bodies, each using its
+host's checked attachment facts. The runtime replaces the previous payload
+on transition and releases it on deletion. A running method holds a
+snapshot when another transition replaces that payload. See the
+`object runtime <../../../Runtime/src/object.c>`_.
+
+Reference comparisons through a base class or interface use the checked
+equality candidates for the concrete receiver and test the peer's nominal
+type before calling a body. The frontend orders candidates with the same
+specificity rule it uses for a direct operator and records competing peer
+types. A match against a competing type reports an ambiguous overload.
+Structural array comparisons use the selected
+element operator, preserve operand order, and stop on the first mismatch.
+For a checked indexed write, lowering captures the receiver and index once
+and invokes the selected validator before the read and before the store.
+A dedicated update on a class element needs only the captured handle after
+the getter. See the `linked operator tests <../../../Tests/Compiler/Driver/operator-dispatch.test>`_.
+
 Direct calls and results
 ------------------------
 

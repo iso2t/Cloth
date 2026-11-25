@@ -224,6 +224,10 @@ void ScalarLowering::failIf (LLVMValueRef condition, FailureDeclaration declareF
 	LLVMPositionBuilderAtEnd(ir_builder, bb_valid);
 }
 
+void ScalarLowering::requireValidIndex (LLVMValueRef valid) const {
+	failIf(LLVMBuildIsNull(ir_builder, valid, ""), declareArrayIndexOutOfBounds);
+}
+
 void ScalarLowering::guardDivisor (LLVMValueRef dividend, LLVMValueRef divisor, bool isUnsigned) const {
 	const LLVMTypeRef ty_integer = LLVMTypeOf(divisor);
 	failIf(LLVMBuildICmp(ir_builder, LLVMIntEQ, divisor, LLVMConstNull(ty_integer), ""), declareDivideByZero);

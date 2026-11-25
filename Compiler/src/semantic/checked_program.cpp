@@ -235,6 +235,24 @@ bool BodyFacts::isDirectReceiver (const Expression &expression) const {
 	return ne_name && ne_name->name.getLexeme() == toString(KSelf);
 }
 
+const MethodRef *TypeDispatch::methodTarget (const CallDispatch &call) const {
+	if (call.kind == DispatchKind::Interface) {
+		const ResolvedType &view = call.receiver.classReference() ? call.contract.owner : call.receiver;
+		for (const InterfaceTarget &target : interfaceTargets)
+			if (target.view == view && target.contract == call.contract) return &target.implementation;
+	} else if (call.kind == DispatchKind::Virtual) {
+		for (const MethodSlot &slot : methods)
+			if (slot.contract == call.contract && slot.implementation) return &slot.implementation.value();
+	}
+	return nullptr;
+}
+
+const StateMethod *TypeDispatch::stateTarget (const MethodRef &contract) const {
+	for (const StateMethod &method : stateMethods)
+		if (method.contract == contract) return &method;
+	return nullptr;
+}
+
 const GenericInstance *CheckedProgram::typeInstance (const ResolvedType &type) const {
 	if (!type.declaration || type.arguments().empty()) return nullptr;
 	return &instances.at({ .declaration = type.declaration, .receiver = std::nullopt, .arguments = type.arguments() });

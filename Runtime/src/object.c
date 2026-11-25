@@ -24,6 +24,12 @@ struct object_slot {
 	const void *const *types;
 	cloth_destructor   destroy;
 	cloth_dispose      dispose;
+	const struct cloth_dispatch *dispatch;
+	const struct cloth_state    *active;
+	struct backing              *payload_block;
+	void                        *payload;
+	cloth_dispose                dispose_payload;
+	uint8_t                      entered;
 };
 
 static struct object_slot *slots;
@@ -47,7 +53,16 @@ static _Noreturn void fail_locked (const char *reason) {
 	exit(1);
 }
 
+static void free_payload (struct object_slot *slot) {
+	if (slot->dispose_payload && slot->payload) slot->dispose_payload(slot->payload);
+	free(slot->payload_block);
+	slot->payload_block   = NULL;
+	slot->payload         = NULL;
+	slot->dispose_payload = NULL;
+}
+
 static void free_storage (struct object_slot *slot) {
+	free_payload(slot);
 	if (slot->dispose && slot->storage) slot->dispose(slot->storage);
 	while (slot->blocks) {
 		struct backing *block = slot->blocks;
@@ -74,15 +89,15 @@ static struct object_slot *lookup (uint64_t handle, int direct_self) {
 	return slot;
 }
 
-static void *allocate_block (struct object_slot *slot, size_t bytes, size_t alignment) {
+static void *allocate_block (struct backing **blocks, size_t bytes, size_t alignment) {
 	if (!bytes) bytes = 1;
 	if (!alignment || (alignment & (alignment - 1)) || alignment - 1 > SIZE_MAX - sizeof(struct backing) ||
 	    bytes > SIZE_MAX - sizeof(struct backing) - (alignment - 1))
 		fail_locked("class storage exceeds addressable memory");
 	struct backing *block = calloc(1, sizeof(*block) + bytes + alignment - 1);
 	if (!block) fail_locked("unable to allocate class storage");
-	block->next           = slot->blocks;
-	slot->blocks          = block;
+	block->next           = *blocks;
+	*blocks               = block;
 	const uintptr_t start = (uintptr_t)(block + 1);
 	return (unsigned char *)(block + 1) + ((-start) & (alignment - 1));
 }
@@ -115,7 +130,7 @@ uint64_t cloth_rt_object_create (size_t bytes, size_t alignment, const void *con
 	slot->types               = types;
 	slot->destroy             = destroy;
 	slot->dispose             = dispose;
-	slot->storage             = allocate_block(slot, bytes, alignment);
+	slot->storage             = allocate_block(&slot->blocks, bytes, alignment);
 	const uint64_t handle     = ((uint64_t)slot->generation << 32) | index;
 	unlock_registry();
 	return handle;
@@ -138,7 +153,7 @@ void cloth_rt_object_check_borrow (uint64_t owner, uint8_t direct_self) {
 
 void *cloth_rt_object_backing (uint64_t handle, size_t bytes, size_t alignment) {
 	lock_registry();
-	void *storage = allocate_block(lookup(handle, 0), bytes, alignment);
+	void *storage = allocate_block(&lookup(handle, 0)->blocks, bytes, alignment);
 	unlock_registry();
 	return storage;
 }
@@ -216,4 +231,64 @@ void cloth_rt_object_set_cleanup (uint64_t owner, uint8_t active) {
 	if (active && list->cleaning) fail_locked("cannot mutate an owning list during cleanup");
 	list->cleaning = active != 0;
 	unlock_registry();
+}
+
+void cloth_rt_object_configure (uint64_t self, const struct cloth_dispatch *dispatch) {
+	lock_registry();
+	struct object_slot *slot = lookup(self, 0);
+	slot->dispatch           = dispatch;
+	slot->active             = dispatch->initial;
+	unlock_registry();
+}
+
+cloth_method cloth_rt_object_method (uint64_t self, size_t index, uint8_t direct_self) {
+	lock_registry();
+	struct object_slot *slot   = lookup(self, direct_self);
+	cloth_method        method = slot->dispatch->methods[index];
+	if (!method && slot->active) method = slot->active->methods[index];
+	if (!method) fail_locked("method is unavailable in the active state");
+	unlock_registry();
+	return method;
+}
+
+uint8_t cloth_rt_object_begin_initial (uint64_t self, const void *concrete_type) {
+	lock_registry();
+	struct object_slot *slot  = lookup(self, 0);
+	const uint8_t       begin = slot->types[0] == concrete_type && !slot->entered;
+	unlock_registry();
+	return begin;
+}
+
+const void *cloth_rt_object_state (uint64_t self, uint8_t direct_self) {
+	if (!self) return NULL;
+	lock_registry();
+	struct object_slot *slot = lookup(self, direct_self);
+	const void         *tag  = slot->active ? slot->active->tag : NULL;
+	unlock_registry();
+	return tag;
+}
+
+void *cloth_rt_object_enter (uint64_t self, const void *tag, size_t bytes, size_t alignment, cloth_dispose dispose) {
+	lock_registry();
+	struct object_slot       *slot  = lookup(self, 0);
+	const struct cloth_state *state = slot->dispatch->states;
+	while (state->tag && state->tag != tag) ++state;
+	if (!state->tag) fail_locked("state is unavailable on this class");
+	free_payload(slot);
+	slot->active          = state;
+	slot->entered         = 1;
+	slot->dispose_payload = dispose;
+	void *payload         = bytes ? allocate_block(&slot->payload_block, bytes, alignment) : NULL;
+	slot->payload         = payload;
+	unlock_registry();
+	return payload;
+}
+
+void *cloth_rt_object_payload (uint64_t self, const void *tag) {
+	lock_registry();
+	struct object_slot *slot = lookup(self, 1);
+	if (!slot->active || slot->active->tag != tag || !slot->entered) fail_locked("state payload is unavailable");
+	void *payload = slot->payload;
+	unlock_registry();
+	return payload;
 }

@@ -49,7 +49,7 @@ std::optional<Candidate> bestOperator (const Analyzer &analyzer, const Symbol &c
 	const unsigned      u_best       = std::ranges::min_element(matches, {}, &OperatorMatch::rank)->rank;
 	const std::function moreSpecific = [&] (const OperatorMatch &candidate, const OperatorMatch &other) {
 		const std::array<ResolvedType, 2> &a = candidate.operands, &b = other.operands;
-		return analyzer.accepts(b[0], a[0]) && analyzer.accepts(b[1], a[1]) && (!analyzer.accepts(a[0], b[0]) || !analyzer.accepts(a[1], b[1]));
+		return analyzer.moreSpecificOperator(a[0], a[1], b[0], b[1]);
 	};
 	const OperatorMatch *om_selected = nullptr;
 	for (const OperatorMatch &om_match : matches) {
@@ -71,6 +71,10 @@ ResolvedType payload (const ResolvedType &type) {
 	return type.nullable() ? type.element() : type;
 }
 
+}
+
+bool Analyzer::moreSpecificOperator (const ResolvedType &left, const ResolvedType &right, const ResolvedType &otherLeft, const ResolvedType &otherRight) const {
+	return accepts(otherLeft, left) && accepts(otherRight, right) && (!accepts(left, otherLeft) || !accepts(right, otherRight));
 }
 
 bool Analyzer::hasOperator (std::string_view name) const {
@@ -470,7 +474,7 @@ ExpressionInfo BodyChecker::equality (const BinaryExpression &node, const Resolv
 		if (opt_equal) {
 			const GenericInstance *gi_instance = record ? analyzer.useCallable(*opt_equal->symbol, opt_equal->arguments, context, node.getSpan()) :
 			                                              nullptr;
-			ei_result.elementEquality          = OperatorSelection{ .symbol = opt_equal->symbol, .instance = gi_instance };
+			ei_result.elementEquality = OperatorSelection{ .symbol = opt_equal->symbol, .instance = gi_instance, .rightReceiver = b_right };
 		}
 		ei_result.callsElementEquality = opt_equal.has_value() || (analyzer.referenceType(rt_leaf) && analyzer.classEqualityMayCall(rt_leaf));
 		if (ei_result.callsElementEquality) {

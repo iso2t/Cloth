@@ -190,7 +190,10 @@ and checks it again before storing. See the `List implementation
 A compound update on a user-defined collection requires a getter and
 setter that share the same bounds validator. A dedicated update on a
 class element captures the handle returned by the getter and applies
-the update to that object.
+the update to that object. A by-value update writes the changed element
+back through the setter. If the right-hand side makes the captured index
+invalid, the second check stops that write. See the `executable indexed
+update example <../../../Tests/Compiler/Driver/Inputs/operator-dispatch.co>`_.
 For built-in arrays, see `Indexing and updates
 <../types/Arrays.rst#indexing-and-updates>`_.
 
@@ -222,6 +225,16 @@ precedence, followed by negating an applicable ``==``. Two absent nullable
 values compare equal. If only one is present, they compare unequal. Two
 present values use their payloads' equality rule, including any overload.
 The built-in identity operator ``===`` compares class and interface references.
+
+When two base-class or interface references use logical equality, the
+concrete left receiver can supply a public comparison for the peer.
+The most specific applicable overload wins. If the peer satisfies two
+equally specific overloads, the runtime reports an ambiguous comparison
+before calling either body. If no applicable comparison exists, the
+references compare by identity.
+The `equality example <../../../Tests/Compiler/Driver/Inputs/equality-dispatch.co>`_
+compares two distinct objects with the same stored value through an
+interface and uses the same rule for array elements.
 
 Array equality
 --------------

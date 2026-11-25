@@ -102,6 +102,18 @@ standard library's ``Number`` with ``--stdlib Stdlib``. Arithmetic uses the
 concrete integer width and signedness, floating-point operation, or selected
 operator body. See `generic types and functions <../../language/types/Generics.rst>`_.
 
+For a virtual or interface call, the receiver's concrete class supplies
+the implementation. The type at the call site supplies the argument
+names and defaults. A class can inherit an interface's default body.
+The `method dispatch example <../../../Tests/Compiler/Driver/Inputs/method-dispatch.co>`_
+calls the same two objects through both a base class and an interface.
+
+A state method uses the state active when the call takes place.
+An alias observes a transition on the same instance. If the active state
+omits the requested method, the runtime reports
+``Cloth runtime error: method is unavailable in the active state``.
+See `named states <../../language/objects/States.rst>`_.
+
 A helper can return several values. For example, ``int low, int high =
 bounds()`` receives both results from one call. Use ``_, high = bounds()``
 to retain only the second. A deferred block runs again each time a bound
@@ -287,12 +299,10 @@ Of the built-in functions and primitive methods, native code supports
 character or boolean. See the `object emission diagnostics
 <../../../Tests/Compiler/Driver/emit-object-errors.test>`_.
 
-Programs using virtual or interface method dispatch, state transitions,
-primitive boxing into an interface value, multidimensional growable arrays and the
-collection APIs can be checked with ``--src``. The same applies to the
-standard library's file and UTF-8 intrinsics. The native call and storage forms are described
-above. See the `standard library guide <../../../Stdlib/README.md>`_ for
-the module interfaces.
+Primitive boxing into an interface value, multidimensional growable arrays,
+and the standard library's file and UTF-8 intrinsics still require source
+checking with ``--src``. See the `standard library guide <../../../Stdlib/README.md>`_
+for the module interfaces.
 
 Runtime dependencies
 --------------------
@@ -310,16 +320,17 @@ C compiler's link command. For the effects of printing and exiting, see
   <../../language/expressions/Builtins.rst#ending-the-process>`_ for the byte
   and newline behavior.
 * Integer division and remainder checks, negative integer exponent checks,
-  float-to-integer conversion checks, array bounds checks, and range
-  steps that can stall use `Runtime/src/errors.c <../../../Runtime/src/errors.c>`_.
+  float-to-integer conversion checks, array bounds checks, range steps
+  that can stall, and ambiguous reference equality use
+  `Runtime/src/errors.c <../../../Runtime/src/errors.c>`_.
 * Growable arrays use `Runtime/src/array.c <../../../Runtime/src/array.c>`_
   for allocation, copying, and release, and `Runtime/src/errors.c
   <../../../Runtime/src/errors.c>`_ for capacity, allocation, bounds, and length errors.
-* Class allocation, access, deletion, and struct methods that check their
-  receiver's owning object use `Runtime/src/object.c
+* Class allocation, access, deletion, method and state dispatch, and struct
+  methods that check their receiver's owning object use `Runtime/src/object.c
   <../../../Runtime/src/object.c>`_. Pass ``-IRuntime/include`` when
   compiling the runtime from the repository root. Classes with growable
-  array fields also use the array runtime.
+  array fields or growable state payloads also use the array runtime.
 * When a `range counter <../../language/statements/ControlFlow.rst#integer-ranges>`_
   is wider than the target pointer, ``*=``, ``/=``, and ``%=`` steps also
   need `Runtime/src/integer.c <../../../Runtime/src/integer.c>`_.

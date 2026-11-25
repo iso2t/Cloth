@@ -3,6 +3,7 @@
 #pragma once
 
 #include <backend/class_objects.hpp>
+#include <backend/dispatch.hpp>
 #include <backend/enum_payloads.hpp>
 #include <backend/value_types.hpp>
 
@@ -26,6 +27,7 @@ struct FunctionBodyToEmit {
 	const cloth::GenericInstance *instance;
 	LLVMValueRef               function;
 	std::optional<std::size_t> defaultParameter;
+	const cloth::ResolvedType    *host = nullptr;
 };
 
 struct ModuleFunctions {
@@ -36,10 +38,14 @@ struct ModuleFunctions {
 	ValueTypes                      valueTypes{ module, program };
 	EnumPayloads                    enumPayloads{ module, program, valueTypes };
 	ClassObjects                    objects{ module, program, valueTypes };
+	NativeDispatch                  dispatch{ module };
 	std::vector<FunctionBodyToEmit> pending = {};
 
 	const cloth::Symbol          *field (const cloth::Token *declaration) const;
 	LLVMTypeRef  resultType (ResultView results);
+	LLVMTypeRef                   functionType (const cloth::Symbol &symbol, const cloth::GenericInstance *instance, std::optional<std::size_t> index = {});
+	const cloth::ResultTypes     &arguments (const cloth::GenericInstance *instance) const;
+	LLVMValueRef                  declareMember (const cloth::MethodRef &body, const cloth::ResultTypes &arguments = {});
 	const cloth::DeclarationInfo &signature (const cloth::Symbol &symbol, const cloth::GenericInstance *instance) const;
 	const cloth::BodyFacts       &facts (const cloth::GenericInstance *instance) const;
 	const cloth::BodyFacts       &bodyFacts (const FunctionBodyToEmit &body, const cloth::ResolvedType &receiver) const;
@@ -49,11 +55,12 @@ struct ModuleFunctions {
 	void         emitNativeEntry (LLVMBuilderRef builder, LLVMValueRef function);
 
     private:
-	LLVMValueRef declare (const cloth::Symbol &symbol, const cloth::GenericInstance *instance, std::optional<std::size_t> index);
+	LLVMValueRef declare (const cloth::Symbol &symbol, const cloth::GenericInstance *instance, std::optional<std::size_t> index,
+	                      const cloth::ResolvedType *host = nullptr);
 
 	std::unordered_map<const cloth::GenericInstance *, const cloth::InstanceKey *> m_instanceKeys;
 	std::unordered_map<const cloth::Token *, const cloth::Symbol *>                m_fields;
-	using FunctionKey = std::tuple<const cloth::Symbol *, const cloth::InstanceKey *, std::optional<std::size_t>>;
+	using FunctionKey = std::tuple<const cloth::Symbol *, const cloth::InstanceKey *, std::optional<std::size_t>, const cloth::ResolvedType *>;
 	std::map<FunctionKey, LLVMValueRef> m_functions;
 };
 

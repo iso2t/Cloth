@@ -92,6 +92,10 @@ LLVMValueRef declareInvalidFloatToInteger (LLVMModuleRef module) {
 	return declareVoidFunction(module, "cloth_rt_invalid_float_to_integer", {}, /*noReturn=*/true);
 }
 
+LLVMValueRef declareAmbiguousEquality (LLVMModuleRef module) {
+	return declareVoidFunction(module, "cloth_rt_ambiguous_equality", {}, /*noReturn=*/true);
+}
+
 LLVMValueRef declareArrayIndexOutOfBounds (LLVMModuleRef module) {
 	return declareVoidFunction(module, "cloth_rt_array_index_out_of_bounds", {}, /*noReturn=*/true);
 }

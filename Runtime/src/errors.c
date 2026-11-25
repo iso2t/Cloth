@@ -27,6 +27,10 @@ _Noreturn void cloth_rt_invalid_float_to_integer (void) {
 	report_error("invalid float-to-integer cast (NaN or out of range)");
 }
 
+_Noreturn void cloth_rt_ambiguous_equality (void) {
+	report_error("ambiguous reference equality overload");
+}
+
 _Noreturn void cloth_rt_array_index_out_of_bounds (void) {
 	report_error("array index out of bounds");
 }

@@ -14,7 +14,24 @@
 namespace backend::detail {
 struct ModuleFunctions;
 
-enum class ObjectOperation { Create, Data, CheckBorrow, Backing, Delete, Is, Acquire, Release, CheckMutation, SetCleanup };
+enum class ObjectOperation {
+	Create,
+	Data,
+	CheckBorrow,
+	Backing,
+	Delete,
+	Is,
+	Acquire,
+	Release,
+	CheckMutation,
+	SetCleanup,
+	Configure,
+	Method,
+	BeginInitial,
+	State,
+	Enter,
+	Payload
+};
 LLVMValueRef objectCall (LLVMBuilderRef builder, LLVMModuleRef module, ObjectOperation operation, std::initializer_list<LLVMValueRef> arguments);
 
 struct ClassStorage {
@@ -24,6 +41,7 @@ struct ClassStorage {
 	const ClassStorage                *base;
 	const cloth::Symbol               *destructor;
 	std::vector<const cloth::Symbol *> fields;
+	cloth::ResultTypes                 nominalViews = {};
 	LLVMValueRef                       views = nullptr, destroy = nullptr, dispose = nullptr;
 };
 

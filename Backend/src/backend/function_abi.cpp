@@ -95,8 +95,13 @@ const cloth::BodyFacts &ModuleFunctions::facts (const cloth::GenericInstance *in
 
 const cloth::BodyFacts &ModuleFunctions::bodyFacts (const FunctionBodyToEmit &body, const cloth::ResolvedType &receiver) const {
 	// Parent calls and field initializers are checked on the enclosing type. Parameter defaults belong to the callable.
-	const auto *callable = std::get<const cloth::CallableSignature *>(body.symbol->declaration);
-	if (!body.defaultParameter && dynamic_cast<const cloth::PrimaryConstructorDeclaration *>(callable)) return facts(program.typeInstance(receiver));
+	if (body.host && !body.instance) {
+		const auto *owner = program.declarations.at(body.symbol).owner;
+		if (owner && owner->kind == cloth::SymbolKind::State && !program.declarations.at(owner).owner) return program.attachmentBodies.at(*body.host);
+	}
+	const auto *callable = std::get_if<const cloth::CallableSignature *>(&body.symbol->declaration);
+	if (!body.defaultParameter && callable && dynamic_cast<const cloth::PrimaryConstructorDeclaration *>(*callable))
+		return facts(program.typeInstance(receiver));
 	return facts(body.instance);
 }
 
@@ -107,6 +112,7 @@ cloth::ResolvedType ModuleFunctions::receiverType (const cloth::Symbol &symbol, 
 		if (receiver) return *receiver;
 	}
 	const cloth::Symbol *owner = program.declarations.at(&symbol).owner;
+	if (owner && owner->kind == cloth::SymbolKind::State) owner = program.declarations.at(owner).owner;
 	if (!owner) return cloth::ResolvedType{};
 	cloth::ResolvedType type(owner->name.getNameKey());
 	type.declaration = owner;
@@ -118,7 +124,9 @@ LLVMValueRef ModuleFunctions::declareFunction (const cloth::Symbol &symbol, cons
 }
 
 bool hasObjectReceiver (const cloth::Symbol &symbol, bool isDefault) {
-	return symbol.kind == cloth::SymbolKind::Method || symbol.kind == cloth::SymbolKind::Operator || symbol.kind == cloth::SymbolKind::Destructor ||
+	return symbol.kind == cloth::SymbolKind::StateMethodContract || symbol.kind == cloth::SymbolKind::StateInitializer ||
+	       symbol.kind == cloth::SymbolKind::State || symbol.kind == cloth::SymbolKind::StateAttachment || symbol.kind == cloth::SymbolKind::Method ||
+	       symbol.kind == cloth::SymbolKind::Operator || symbol.kind == cloth::SymbolKind::Destructor ||
 	       (symbol.kind == cloth::SymbolKind::Constructor && !isDefault);
 }
 
@@ -126,31 +134,55 @@ LLVMValueRef ModuleFunctions::declareDefault (const cloth::Symbol &contract, std
 	return declare(contract, instance, index);
 }
 
-LLVMValueRef ModuleFunctions::declare (const cloth::Symbol &symbol, const cloth::GenericInstance *instance, std::optional<std::size_t> index) {
-	const FunctionKey key{ &symbol, instance ? m_instanceKeys.at(instance) : nullptr, index };
-	if (const auto found = m_functions.find(key); found != m_functions.end()) return found->second;
+const cloth::ResultTypes &ModuleFunctions::arguments (const cloth::GenericInstance *instance) const {
+	static const cloth::ResultTypes empty;
+	return instance ? m_instanceKeys.at(instance)->arguments : empty;
+}
+
+LLVMValueRef ModuleFunctions::declareMember (const cloth::MethodRef &body, const cloth::ResultTypes &arguments) {
+	const auto  found     = program.instances.find({ .declaration = body.symbol, .receiver = body.owner, .arguments = arguments });
+	const auto *owner     = program.declarations.at(body.symbol).owner;
+	const bool  stateBody = body.symbol->kind == cloth::SymbolKind::State || body.symbol->kind == cloth::SymbolKind::StateAttachment ||
+	                       (owner && owner->kind == cloth::SymbolKind::State);
+	const cloth::ResolvedType *host = stateBody ? &program.dispatchTables.find(body.owner)->first : nullptr;
+	if (found == program.instances.end() && (!arguments.empty() || !body.owner.arguments().empty()))
+		throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedFunctionAbi, "Missing checked instance for a dispatched body",
+		                           { { .span = body.symbol->name.getSpan(), .text = "missing method specialization" } });
+	return declare(*body.symbol, found == program.instances.end() ? nullptr : &found->second, {}, host);
+}
+
+LLVMTypeRef ModuleFunctions::functionType (const cloth::Symbol &symbol, const cloth::GenericInstance *instance, std::optional<std::size_t> index) {
 	const cloth::DeclarationInfo &signature = this->signature(symbol, instance);
 	const ResultView              parameters(signature.parameters);
 	const ResultView              results = index ? parameters.subspan(*index, 1) : ResultView(signature.returns);
 	std::vector<LLVMTypeRef>      v_parameters;
 	if (hasObjectReceiver(symbol, index.has_value())) {
 		const LLVMContextRef context = LLVMGetModuleContext(module);
-		v_parameters.push_back(program.structLayouts.contains(receiverType(symbol, instance)) ? structReceiverType(context) :
-		                                                                                        LLVMInt64TypeInContext(context));
+		const auto           receiver = receiverType(symbol, instance);
+		v_parameters.push_back(program.structLayouts.contains(receiver) ? structReceiverType(context) :
+		                       receiver.enumeration()                   ? valueTypes.localType(receiver) :
+		                                                                  LLVMInt64TypeInContext(context));
 	}
 	for (const cloth::ResolvedType &type : parameters.first(index.value_or(parameters.size()))) v_parameters.push_back(valueTypes.localType(type));
 	const LLVMTypeRef ty_result = resultType(results);
 	if (!ty_result || std::ranges::find(v_parameters, nullptr) != v_parameters.end())
 		throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedFunctionAbi, "LLVM lowering requires representable parameter and result types",
 		                           { { .span = symbol.name.getSpan(), .text = "unsupported function signature" } });
-	const bool  b_native = !index && &symbol == program.entryPoint && nativeSignature(signature);
+	return LLVMFunctionType(ty_result, v_parameters.data(), static_cast<unsigned>(v_parameters.size()), false);
+}
+
+LLVMValueRef ModuleFunctions::declare (const cloth::Symbol &symbol, const cloth::GenericInstance *instance, std::optional<std::size_t> index,
+                                       const cloth::ResolvedType *host) {
+	const FunctionKey key{ &symbol, instance ? m_instanceKeys.at(instance) : nullptr, index, host };
+	if (const auto found = m_functions.find(key); found != m_functions.end()) return found->second;
+	const bool  b_native = !index && &symbol == program.entryPoint && nativeSignature(signature(symbol, instance));
 	std::string s_name   = b_native ? "main" : "cloth." + symbol.name.getNameKey();
 	if (index) s_name += ".default." + std::to_string(*index);
-	const LLVMTypeRef  ty_function = LLVMFunctionType(ty_result, v_parameters.data(), static_cast<unsigned>(v_parameters.size()), false);
+	const LLVMTypeRef  ty_function = functionType(symbol, instance, index);
 	const LLVMValueRef fn_function = LLVMAddFunction(module, s_name.c_str(), ty_function);
 	LLVMSetLinkage(fn_function, b_native ? LLVMExternalLinkage : LLVMInternalLinkage);
 	m_functions.emplace(key, fn_function);
-	pending.push_back({ .symbol = &symbol, .instance = instance, .function = fn_function, .defaultParameter = index });
+	pending.push_back({ .symbol = &symbol, .instance = instance, .function = fn_function, .defaultParameter = index, .host = host });
 	return fn_function;
 }
 
