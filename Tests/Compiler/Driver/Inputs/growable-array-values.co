@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<int> trace(final int label, final int value) {
+    println(label)
+    return value
+}
+
+fn<bool> growthAndCopies() {
+    int[] values = []
+    values.reserve(0)
+    values.reserve(2)
+    values.reserve(1)
+    if (values::size != 0) return false
+    for (int n <- 0..17) values.append(n)
+    int[] saved := values
+    int[] other = []
+    other = values
+    values = values
+    values[0] = 42
+    values.append(values[0])
+    other[16] = 7
+    other.reserve(64)
+    other.reserve(64)
+    if (values::size != 18 || saved::size != 17 || other::size != 17) return false
+    if (values[17] != 42 || saved[0] != 0 || saved[16] != 16 || other[16] != 7) return false
+    other = []
+    other.append(9)
+    return other::size == 1 && other[0] == 9 && values[16] == 16
+}
+
+fn<bool> indexedEffects() {
+    int[] values = [10, 40]
+    int old := values[if (trace(1, 1) == 1) { values = [3]; 1 } else 0]
+    if (old != 40 || values::size != 1) return false
+    values[trace(2, 0)] = (if (trace(3, 1) == 1) { values = [6, 9]; values.reserve(64); 40 } else 0)
+    if (values[0] != 40 || values[1] != 9) return false
+    values[trace(4, 0)] += (if (trace(5, 1) == 1) { values = [99, 7, 8]; values.reserve(128); 2 } else 0)
+    if (values[0] != 42 || values[1] != 7 || values[2] != 8) return false
+    values.append(if (trace(6, 1) == 1) { values.append(9); 10 } else 0)
+    return values::size == 5 && values[3] == 9 && values[4] == 10
+}
+
+fn<bool> widths() {
+    int<12>[] narrow = [-2048, 2047]
+    narrow[1]++
+    narrow.append(-7)
+    unsigned int<65>[] wide = [unsigned int<65>::max]
+    wide.append(18446744073709551616)
+    wide[0]++
+    if (narrow[0] != -2048 || narrow[1] != -2048 || narrow[2] != -7) return false
+    if (wide[0] != 0 || wide[1] != 18446744073709551616) return false
+    int<65536>[] largest = [int<65536>::min]
+    largest.append(42)
+    int<65536>[] saved := largest
+    largest[0] = 0
+    if (saved[0] >= 0 || largest[0] < 0 || (largest[1] -> int) != 42) return false
+    usize[] sizes = []
+    sizes.append(usize::max)
+    isize[] offsets = [isize::min]
+    offsets.append(-1)
+    return sizes[0] == usize::max && offsets[0] == isize::min && offsets[1] == -1
+}
+
+fn<bool> fixedCopies() {
+    int[2] fixed = [7, 9]
+    int[] values = fixed
+    fixed[0] = 1
+    values.append(42)
+    int[3] snapshot = values
+    snapshot[0] = 3
+    values[2] = 4
+    return values[0] == 7 && snapshot[2] == 42 && fixed[0] == 1
+}
+
+fn<int> fromBranch(final bool pick) {
+    int[] chosen = if (pick) {
+        int[] local = [7]
+        local.append(42)
+        local
+    } else {
+        int[] local = []
+        local.append(9)
+        local
+    }
+    return chosen[chosen::size - 1]
+}
+
+pub fn<int> main() {
+    if (!growthAndCopies()) return 1
+    if (!indexedEffects()) return 2
+    if (!widths()) return 3
+    if (!fixedCopies() || fromBranch(true) != 42 || fromBranch(false) != 9) return 4
+    return 42
+}

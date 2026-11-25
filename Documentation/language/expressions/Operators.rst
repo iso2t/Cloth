@@ -246,6 +246,13 @@ unequal. When the dimensions match, comparison
 visits cells in row order and stops at the first unequal pair. Empty
 arrays of the same shape compare equal.
 
+One-dimensional growable and fixed-size arrays can compare equal when
+their element type, length, and values match. Reserving more capacity leaves
+equality intact. If the right operand changes the left array, the
+comparison uses the left value captured before that change. See the
+`growable array comparisons
+<../../../Tests/Compiler/Driver/Inputs/growable-array-traversal-values.co>`_.
+
 In the `rectangular array example
 <../../../Tests/Compiler/Driver/Inputs/rectangular-array-equality.co>`_,
 a two-by-three array equals its copy until the last cell changes.
@@ -258,6 +265,17 @@ use the element type's equality rule. In the `nullable integer array example
 <../../../Tests/Compiler/Driver/Inputs/fixed-array-nullable-equality.co>`_,
 ``[0, null]`` equals its copy. Swapping the positions of zero and null
 makes the arrays unequal.
+The same rule applies to growable cells, including nullable enums and
+integer ranges. See the `growable nullable comparisons
+<../../../Tests/Compiler/Driver/Inputs/growable-nullable-cell-values.co>`_.
+
+For arrays of nullable rows, comparison tests each row's presence
+before its cells. An absent row compares unequal to a present empty row
+or a present row containing only zeros. Declared inner extents still
+count when every row is absent. For example, present ``int[2]?[0]`` and
+``int[2]?[2]`` arrays compare unequal even when both hold
+``[null, null]``. See the `nullable row comparisons
+<../../../Tests/Compiler/Driver/Inputs/nullable-array-row-values.co>`_.
 
 Integer range elements compare by start, end, and end inclusion. Changing
 one element from ``13..15`` to ``13..=15`` makes the arrays unequal. In an
@@ -277,5 +295,7 @@ identical payloads and still compare unequal.
 
 Floating-point elements compare at their stored precision. Positive and
 negative zero compare equal at 16, 32, and 64 bits. An array containing NaN
-compares unequal even to itself, as the `floating-point array example
-<../../../Tests/Compiler/Driver/Inputs/fixed-array-scalar-equality.co>`_ shows.
+compares unequal even to itself. See the `fixed-size
+<../../../Tests/Compiler/Driver/Inputs/fixed-array-scalar-equality.co>`_ and
+`growable floating-point examples
+<../../../Tests/Compiler/Driver/Inputs/growable-scalar-array-values.co>`_.

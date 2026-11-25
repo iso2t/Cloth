@@ -2,6 +2,7 @@
 
 import argparse
 import os
+from pathlib import Path
 import signal
 import subprocess
 import sys
@@ -21,7 +22,9 @@ def illegal_instruction_status():
     return -signal.SIGILL
 
 
-def expected_output(empty, lines):
+def expected_output(empty, lines, path):
+    if path is not None:
+        return path.read_bytes()
     if empty:
         return b""
     if lines:
@@ -35,6 +38,7 @@ def main():
         group = parser.add_mutually_exclusive_group()
         group.add_argument(f"--empty-{stream}", action="store_true")
         group.add_argument(f"--{stream}-line", action="append", metavar="TEXT", help=f"Expect one complete {stream} line per occurrence, in order.")
+        group.add_argument(f"--{stream}-file", type=Path, metavar="PATH", help=f"Compare {stream} with the exact bytes of this file.")
     parser.add_argument(
         "status", type=lambda value: value if value == "SIGILL" else int(value, 0),
         help="Integer exit status or SIGILL for an illegal instruction",
@@ -49,8 +53,8 @@ def main():
     else:
         # POSIX wait status exposes the low eight bits of a normal process exit.
         expected = args.status & 0xff if os.name == "posix" else args.status
-    expected_stdout = expected_output(args.empty_stdout, args.stdout_line)
-    expected_stderr = expected_output(args.empty_stderr, args.stderr_line)
+    expected_stdout = expected_output(args.empty_stdout, args.stdout_line, args.stdout_file)
+    expected_stderr = expected_output(args.empty_stderr, args.stderr_line, args.stderr_file)
     result = subprocess.run(
         args.command,
         stdout=subprocess.PIPE if expected_stdout is not None else None,

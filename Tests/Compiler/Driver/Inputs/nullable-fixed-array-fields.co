@@ -1,0 +1,54 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Sample { pub int<12>[2][2]? rows, pub int[2]? counts, pub int[2][0]? empty }
+typedef<struct> Box { pub Sample? sample }
+
+fn<bool> compareBeforeClear(final bool present) {
+    int[2]? pair := if (present) [0, 42] else null
+    Sample sample = {null, pair, null}
+    Sample saved := sample
+    bool equal := sample.counts == (if (present) {
+        sample.counts = null
+        [0, 42]
+    } else [9, 9])
+    return equal == present && sample.counts == null && (saved.counts != null) == present
+}
+
+fn<bool> nested(final bool startPresent) {
+    Sample full := {[[0, 1], [2, 42]], [7, 9], [[], []]}
+    Box box = {if (startPresent) full else null}
+    Box earlier := box
+    if (box.sample == null) box.sample = full
+    if (box.sample == null || box.sample.rows == null) return false
+    box.sample.rows[1][1] = 7
+    box.sample.counts = null
+    Box partial := box
+    box.sample = null
+    if (box.sample != null || partial.sample == null || partial.sample.rows == null) return false
+    if (partial.sample.rows[1][1] != 7 || partial.sample.counts != null || partial.sample.empty == null) return false
+    if (earlier.sample == null) return !startPresent
+    return startPresent && earlier.sample.rows != null && earlier.sample.rows[1][1] == 42 && earlier.sample.counts == [7, 9]
+}
+
+pub fn<int> main() {
+    if (!compareBeforeClear(true) || !compareBeforeClear(false)) return 7
+    Sample sample = {null, [0, 42], null}
+    Sample original := sample
+    sample.rows = [[0, 0], [0, 42]]
+    sample.empty = [[], []]
+    Sample saved := sample
+    sample.rows = null
+    sample.empty = null
+    Sample cleared = sample
+    if (cleared.rows != null || cleared.empty != null || original.rows != null || saved.empty == null) return 1
+    if (cleared.counts == null) return 2
+    cleared.counts[1] = 7
+    if (sample.counts == null || sample.counts[1] != 42) return 3
+    sample = original
+    sample.rows = [[1, 2], [3, 4]]
+    if (sample.rows == null) return 4
+    sample.rows[1][1] = (if (cleared.counts != null) { sample = saved; 7 } else 0)
+    if (sample.rows == null || sample.rows[1][1] != 7 || sample.rows[0][0] != 0) return 5
+    if (!nested(false) || !nested(true) || saved.rows == null) return 6
+    return saved.rows[1][1] -> int
+}

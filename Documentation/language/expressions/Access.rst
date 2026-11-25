@@ -25,6 +25,20 @@ or a call that can change that location, check it again before reading
 its payload. See the `nullable access examples
 <../../../Tests/Compiler/Semantic/Unit/flow_test.cpp>`_.
 
+Guarded field reads
+-------------------
+
+Use ``sample?.value ?: 7`` to read an integer field from a nullable
+struct. The receiver is evaluated once. A present field holding 42 or 0
+returns that value. If ``sample`` is null, the field read is skipped and
+the fallback supplies 7. See the `guarded field example
+<../../../Tests/Compiler/Driver/Inputs/guarded-struct-field.co>`_.
+
+If the field itself can be null, its absence also selects the fallback.
+In ``maybe?.sample?.value``, each guard checks its own receiver. The
+`nested example <../../../Tests/Compiler/Driver/Inputs/guarded-struct-field-values.co>`_
+also shows when a fallback with a side effect runs.
+
 Data providers
 --------------
 
@@ -39,8 +53,13 @@ determines what the answer measures.
   <../../compiler/storage/Aggregates.rst>`_.
 * ``int[2][3]::size`` gives 2, the outer extent. On an array value,
   ``values::size`` gives the current outer length. An array type with an
-  open outer dimension has no fixed count to query. A string value also
-  supplies ``::size``.
+  open outer dimension has no fixed count to query.
+* On a string value, ``text::size`` returns the number of Unicode scalar
+  values as a ``usize``. An empty string has size 0 and ``"Cloth"`` has
+  size 5. In ``"é\0😀"``, the accented letter, embedded NUL, and emoji
+  each count once. A combining mark also counts separately from its base
+  letter. See the `string size example
+  <../../../Tests/Compiler/Driver/Inputs/string-size-values.co>`_.
 * ``int<8>::min`` and ``int<8>::max`` give -128 and 127. Integers and floats
   supply both limits. Querying a nullable numeric value this way requires
   its payload to be present.

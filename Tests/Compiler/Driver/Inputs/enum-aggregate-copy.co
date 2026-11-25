@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Batch { pub string name, pub int<12>[2] cells }
+typedef<enum> Preset(pub def<Batch> batch = {"Cloth", [7, 42]}) { pub Default }
+
+typedef<struct> OptionalBatch { pub string name, pub int[2]? cells }
+typedef<enum> Inventory(pub def<OptionalBatch> batch = {"", null}) { pub Empty, pub Full({"Cloth", [0, 42]}) }
+
+fn<bool> optionalCells(final bool present) {
+    OptionalBatch? selected := if (present) Inventory.Full.batch else null
+    int[2] cells := selected?.cells ?: [0, 7]
+    if (cells[1] != (if (present) 42 else 7)) return false
+
+    OptionalBatch first := Inventory.Full.batch
+    OptionalBatch copy = first
+    copy.cells = null
+    OptionalBatch cleared := copy
+    copy = Inventory.Empty.batch
+    if (copy.cells != null || cleared.cells != null || cleared.name::size != 5) return false
+    copy.cells = [0, 7]
+    return first.cells != null && first.cells[1] == 42 && copy.cells != null && copy.cells[1] == 7
+}
+
+pub fn<int> main() {
+    if (!optionalCells(true) || !optionalCells(false)) return 4
+    Batch original := Preset.Default.batch
+    Batch current = original
+    current.cells[1] = 7
+    current.name = ""
+    if (original.name::size != 5 || original.cells[1] != 42) return 1
+    Batch saved := current
+    current = original
+    if (saved.name::size != 0 || saved.cells[1] != 7) return 2
+    if (current.name::size != 5) return 3
+    return current.cells[1] -> int
+}

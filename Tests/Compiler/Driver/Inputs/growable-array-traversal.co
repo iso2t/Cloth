@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    int[] numbers = [13, 14, 15]
+    int[] saved = numbers
+    saved.reserve(20)
+    if (numbers != saved) return 1
+
+    int total = 0
+    for (int n <- numbers) {
+        numbers.clear()
+        total += n
+    }
+    if (numbers::size != 0 || numbers == saved) return 2
+    return total
+}

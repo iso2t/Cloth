@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<usize> measure(final bool present) {
+    string text := if (present) "Cloth" else ""
+    return text::size
+}
+
+pub fn<int> main() {
+    if (measure(false) != 0 || measure(true) != 5) return 1
+    return 42
+}

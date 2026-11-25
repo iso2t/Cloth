@@ -156,11 +156,13 @@ in range, the body runs there and another multiplication leaves it unchanged.
 For the runtime sources to link with these loops, see `Runtime dependencies
 <../../compiler/driver/Objects.rst#runtime-dependencies>`_.
 
-Fixed-size array iteration
---------------------------
+.. _fixed-size-array-iteration:
 
-A ``for`` loop evaluates its fixed-size array source once and visits the
-captured elements in index order. An empty array skips the body. Each
+Array iteration
+---------------
+
+A ``for`` loop evaluates its array source once and visits the captured
+elements in index order. An empty array skips the body. Each
 iteration binds a writable copy of its element. Changing the source
 array inside the loop leaves the captured values intact. ``continue``
 advances to the next element.
@@ -173,6 +175,13 @@ advances to the next element.
 
 The loop reads 4 and then 2, leaving ``result`` equal to 42. See the
 `array iteration example <../../../Tests/Compiler/Driver/Inputs/fixed-array-iteration.co>`_.
+
+For a growable array, the loop captures both the length and
+the values. In the `growable array example
+<../../../Tests/Compiler/Driver/Inputs/growable-array-traversal.co>`_,
+the body clears its source on the first visit. It still visits 13, 14,
+and 15 and returns their sum, 42. Appending during traversal also
+leaves the set of captured elements unchanged.
 
 For a rectangular array, ``for (def row <- rows)`` visits one row per
 iteration. In the `row iteration example

@@ -6,7 +6,9 @@
 
 #include <span>
 #include <string_view>
+
 #include <llvm-c/Core.h>
+#include <llvm-c/Target.h>
 #include <llvm-c/Types.h>
 
 namespace backend::detail {
@@ -25,6 +27,21 @@ LLVMValueRef declareVoidFunction (LLVMModuleRef module, const char *name, std::s
 	}
 	return fn_runtime;
 }
+
+LLVMValueRef declareIndexedArrayMutation (LLVMModuleRef module, const char *name) {
+	const LLVMContextRef ctx_context    = LLVMGetModuleContext(module);
+	const LLVMTypeRef    ty_pointer     = LLVMPointerTypeInContext(ctx_context, 0);
+	const LLVMTypeRef    ty_word        = LLVMIntPtrTypeInContext(ctx_context, LLVMGetModuleDataLayout(module));
+	LLVMTypeRef          v_parameters[] = { ty_pointer, ty_word, ty_pointer, ty_word, ty_word };
+	return declareVoidFunction(module, name, v_parameters);
+}
+}
+
+LLVMValueRef declareNewIdentity (LLVMModuleRef module) {
+	constexpr char NAME[] = "cloth_rt_new_identity";
+	if (const LLVMValueRef ir_existing = LLVMGetNamedFunction(module, NAME)) return ir_existing;
+	const LLVMTypeRef ty_handle = LLVMInt64TypeInContext(LLVMGetModuleContext(module));
+	return LLVMAddFunction(module, NAME, LLVMFunctionType(ty_handle, nullptr, 0, false));
 }
 
 LLVMValueRef declarePrintlnInt32 (LLVMModuleRef module) {
@@ -35,6 +52,13 @@ LLVMValueRef declarePrintlnInt32 (LLVMModuleRef module) {
 LLVMValueRef declareExit (LLVMModuleRef module) {
 	LLVMTypeRef v_parameters[] = { LLVMInt32TypeInContext(LLVMGetModuleContext(module)) };
 	return declareVoidFunction(module, "cloth_rt_exit", v_parameters, /*noReturn=*/true);
+}
+
+LLVMValueRef declareExitMessage (LLVMModuleRef module) {
+	const LLVMContextRef ctx_context    = LLVMGetModuleContext(module);
+	LLVMTypeRef          v_parameters[] = { LLVMInt32TypeInContext(ctx_context), LLVMPointerTypeInContext(ctx_context, 0),
+		                                LLVMIntPtrTypeInContext(ctx_context, LLVMGetModuleDataLayout(module)) };
+	return declareVoidFunction(module, "cloth_rt_exit_message", v_parameters, /*noReturn=*/true);
 }
 
 LLVMValueRef declareDivideByZero (LLVMModuleRef module) {
@@ -55,6 +79,51 @@ LLVMValueRef declareInvalidFloatToInteger (LLVMModuleRef module) {
 
 LLVMValueRef declareArrayIndexOutOfBounds (LLVMModuleRef module) {
 	return declareVoidFunction(module, "cloth_rt_array_index_out_of_bounds", {}, /*noReturn=*/true);
+}
+
+LLVMValueRef declareArrayLengthMismatch (LLVMModuleRef module) {
+	return declareVoidFunction(module, "cloth_rt_array_length_mismatch", {}, /*noReturn=*/true);
+}
+
+LLVMValueRef declareArrayAssign (LLVMModuleRef module) {
+	const LLVMContextRef ctx_context    = LLVMGetModuleContext(module);
+	const LLVMTypeRef    ty_pointer     = LLVMPointerTypeInContext(ctx_context, 0);
+	const LLVMTypeRef    ty_word        = LLVMIntPtrTypeInContext(ctx_context, LLVMGetModuleDataLayout(module));
+	LLVMTypeRef          v_parameters[] = { ty_pointer, ty_pointer, ty_word, ty_word, ty_word };
+	return declareVoidFunction(module, "cloth_rt_array_assign", v_parameters);
+}
+
+LLVMValueRef declareArrayReserve (LLVMModuleRef module) {
+	const LLVMContextRef ctx_context    = LLVMGetModuleContext(module);
+	const LLVMTypeRef    ty_word        = LLVMIntPtrTypeInContext(ctx_context, LLVMGetModuleDataLayout(module));
+	LLVMTypeRef          v_parameters[] = { LLVMPointerTypeInContext(ctx_context, 0), ty_word, ty_word, ty_word };
+	return declareVoidFunction(module, "cloth_rt_array_reserve", v_parameters);
+}
+
+LLVMValueRef declareArrayAppend (LLVMModuleRef module) {
+	const LLVMContextRef ctx_context    = LLVMGetModuleContext(module);
+	const LLVMTypeRef    ty_pointer     = LLVMPointerTypeInContext(ctx_context, 0);
+	const LLVMTypeRef    ty_word        = LLVMIntPtrTypeInContext(ctx_context, LLVMGetModuleDataLayout(module));
+	LLVMTypeRef          v_parameters[] = { ty_pointer, ty_pointer, ty_word, ty_word };
+	return declareVoidFunction(module, "cloth_rt_array_append", v_parameters);
+}
+
+LLVMValueRef declareArrayRelease (LLVMModuleRef module) {
+	LLVMTypeRef v_parameters[] = { LLVMPointerTypeInContext(LLVMGetModuleContext(module), 0) };
+	return declareVoidFunction(module, "cloth_rt_array_release", v_parameters);
+}
+
+LLVMValueRef declareArrayInsert (LLVMModuleRef module) {
+	return declareIndexedArrayMutation(module, "cloth_rt_array_insert");
+}
+
+LLVMValueRef declareArrayRemoveAt (LLVMModuleRef module) {
+	return declareIndexedArrayMutation(module, "cloth_rt_array_remove_at");
+}
+
+LLVMValueRef declareArrayClear (LLVMModuleRef module) {
+	LLVMTypeRef v_parameters[] = { LLVMPointerTypeInContext(LLVMGetModuleContext(module), 0) };
+	return declareVoidFunction(module, "cloth_rt_array_clear", v_parameters);
 }
 
 LLVMValueRef declareStalledRange (LLVMModuleRef module) {

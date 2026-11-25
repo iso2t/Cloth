@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Matrix { pub int<12>[2][3] rows, pub bool marked }
+typedef<struct> Box { pub Matrix inner, pub int stamp }
+
+fn<int> trace(final int label, final int value) {
+    println(label)
+    return value
+}
+
+fn<bool> loopCopies() {
+    Matrix last = {[[0, 0, 0], [0, 0, 42]], false}
+    Matrix before = last
+    for (int<12> n <- 1..4) {
+        Matrix current = last
+        current.rows[0][0] = n
+        before = last
+        last = current
+        current.rows[0][0] = 9
+        if (last.rows[0][0] != n || before.rows[0][0] != n - 1) return false
+    }
+    return before.rows[0][0] == 2 && last.rows[1][2] == 42
+}
+
+fn<bool> nullableParent(final bool present) {
+    Matrix full := {[[1, 2, 3], [4, 5, 42]], true}
+    Matrix? record = if (present) full else null
+    Matrix? saved := record
+    record = null
+    if (saved == null) return !present && record == null
+    record = saved
+    if (record == null) return false
+    record.rows[1][2] = 7
+    return saved.rows[1][2] == 42 && record.rows[1][2] == 7
+}
+
+pub fn<int> main() {
+    Box box = {{[[1, 2, 3], [4, 5, 42]], true}, 0}
+    def saved := box
+    def rowCopy := box.inner.rows[1]
+    box.inner.rows[trace(1, 1)][trace(2, 2)] = (if (trace(3, 1) == 1) {
+        box = {{[[6, 7, 8], [9, 10, 11]], false}, 5}
+        7
+    } else 0)
+    if (box.stamp != 5 || box.inner.marked || box.inner.rows[1][2] != 7 || box.inner.rows[1][1] != 10) return 1
+    if (saved.inner.rows[1][2] != 42 || rowCopy[2] != 42) return 2
+    box.inner.rows = saved.inner.rows
+    box.inner.rows[1][2]++
+    if (box.inner.rows[1][2] != 43 || saved.inner.rows[1][2] != 42) return 3
+    if (box.inner.rows[if (trace(4, 1) == 1) { box = saved; 1 } else 0][2] != 43) return 4
+    if (!loopCopies() || !nullableParent(true) || !nullableParent(false)) return 5
+    return box.inner.rows[1][2] -> int
+}

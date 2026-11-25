@@ -28,6 +28,8 @@ class ScalarLowering {
 	LLVMValueRef               predicate (LLVMValueRef integer) const;
 	LLVMValueRef               boolean (LLVMValueRef predicate) const;
 	LLVMValueRef               checkedArrayIndex (LLVMValueRef index, bool isUnsigned, std::uint64_t length) const;
+	LLVMValueRef               checkedArrayIndex (LLVMValueRef index, bool isUnsigned, LLVMValueRef length) const;
+	void                       checkArrayLength (LLVMValueRef length, std::uint64_t expected) const;
 	// Returns an LLVM i1. Nullable scalars support equality and inequality.
 	LLVMValueRef               compare (cloth::Operator op, LLVMValueRef left, LLVMValueRef right, const cloth::ResolvedType &operandType) const;
 	LLVMValueRef               binary (cloth::Operator op, LLVMValueRef left, LLVMValueRef right, const cloth::ResolvedType &operandType) const;

@@ -40,10 +40,19 @@ signed 32-bit ``int`` on either target width, and flushes buffered output.
 Calling it inside a helper ends the whole process. Windows exposes the
 32-bit exit status. Unix exposes its low eight bits.
 
-The source checker also accepts a second, positional ``string`` message.
-Use the single-argument form for native output. An ordinary function
-declared with the name ``exit`` takes precedence over the built-in and
-can return to its caller. See the `process exit examples
+In ``exit(status, message)``, the status evaluates first, then the
+positional ``string`` message. Each argument runs once. If either
+argument returns from the enclosing function or calls ``exit`` itself,
+execution follows that transfer immediately. After both arguments
+produce values, the call writes the message's UTF-8 bytes to standard
+output and exits. An embedded null byte is part of the output. To end
+the message with a newline, include one in the string. An empty message
+writes zero bytes. If the output stream reports a write or flush error,
+the runtime reports it on standard error and exits with status 1.
+
+An ordinary function declared with the name ``exit`` takes precedence over
+the built-in and can return to its caller. See the `message example
+<../../../Tests/Compiler/Driver/Inputs/process-exit-message.co>`_ and `process exit tests
 <../../../Tests/Compiler/Driver/process-exit.test>`_. The `object-file guide
 <../../compiler/driver/Objects.rst#runtime-dependencies>`_ lists the runtime
 sources for linking.

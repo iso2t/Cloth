@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Report { pub string text }
+
+fn<unsigned int<97>> status() {
+    println(1)
+    return 18446744073709551879
+}
+
+fn<bool> choose() {
+    println(2)
+    return true
+}
+
+pub fn<int> main() {
+    Report report := {"A\0é😀%\nZ"}
+    exit(status(), if (choose()) report.text else "unreached")
+}

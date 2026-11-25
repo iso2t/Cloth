@@ -16,6 +16,7 @@
 #include <ast/expr/expressions.hpp>
 #include <semantic/checked_program.hpp>
 #include <semantic/checker.hpp>
+#include <semantic/struct_storage.hpp>
 #include <semantic/symbol_table.hpp>
 #include <semantic/target_layout.hpp>
 #include <token/numeric_literals.hpp>
@@ -33,34 +34,25 @@ std::uint64_t padding (std::uint64_t offset, unsigned alignment) {
 	               std::format("Storage of {} '{}' exceeds {} on a {}-bit target", toString(KStruct), type.spelling(), toString(KUsize), target.sizeBits));
 }
 
-// A field starts at its ABI alignment. Tail padding is applied once all fields are placed.
-class StructStorage {
-    public:
-	explicit StructStorage (const TargetLayout &target) : u64_limit(target.maximumSize()) {
-	}
+}
 
-	std::optional<std::uint64_t> append (StorageLayout field) {
-		const std::uint64_t u64_padding = padding(u64_end, field.alignment);
-		if (u64_padding > u64_limit - u64_end) return {};
-		const std::uint64_t u64_offset = u64_end + u64_padding;
-		if (field.size > u64_limit - u64_offset) return {};
-		u64_end     = u64_offset + field.size;
-		u_alignment = std::max(u_alignment, field.alignment);
-		return u64_offset;
-	}
+StructStorage::StructStorage (const TargetLayout &target) : u64_limit(target.maximumSize()) {
+}
 
-	[[nodiscard]] std::optional<StorageLayout> finish () const {
-		const std::uint64_t u64_padding = padding(u64_end, u_alignment);
-		if (u64_padding > u64_limit - u64_end) return {};
-		return StorageLayout{ .size = std::max<std::uint64_t>(1, u64_end + u64_padding), .alignment = u_alignment };
-	}
+std::optional<std::uint64_t> StructStorage::append (StorageLayout field) {
+	const std::uint64_t u64_padding = padding(u64_end, field.alignment);
+	if (u64_padding > u64_limit - u64_end) return {};
+	const std::uint64_t u64_offset = u64_end + u64_padding;
+	if (field.size > u64_limit - u64_offset) return {};
+	u64_end     = u64_offset + field.size;
+	u_alignment = std::max(u_alignment, field.alignment);
+	return u64_offset;
+}
 
-    private:
-	std::uint64_t u64_limit;
-	std::uint64_t u64_end     = 0;
-	unsigned      u_alignment = 1;
-};
-
+std::optional<StorageLayout> StructStorage::finish (bool reserveEmptyByte) const {
+	const std::uint64_t u64_padding = padding(u64_end, u_alignment);
+	if (u64_padding > u64_limit - u64_end) return {};
+	return StorageLayout{ .size = std::max<std::uint64_t>(reserveEmptyByte, u64_end + u64_padding), .alignment = u_alignment };
 }
 
 StorageLayout TargetLayout::integerStorage (unsigned width) const {
@@ -103,7 +95,7 @@ std::optional<StorageLayout> CheckedProgram::storageLayout (const ResolvedType &
 	if (type == ResolvedType(KCharacter) || semantic::enumeration(type)) return layout.integerStorage(32);
 	if (type == ResolvedType(KTypeinfo)) return sl_word;
 	if (type == ResolvedType(KString)) return StorageLayout{ .size = 2 * sl_word.size, .alignment = sl_word.alignment };
-	if (semantic::asClass(type.declaration) || semantic::asInterface(type.declaration)) return layout.integerStorage(64);
+	if (type.classReference() || semantic::asInterface(type.declaration)) return layout.integerStorage(64);
 	if (const ResolvedType *rt_endpoint = semantic::rangeEndpoint(type)) {
 		const std::optional<StorageLayout> opt_endpoint = storageLayout(*rt_endpoint);
 		if (!opt_endpoint) return {};

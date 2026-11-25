@@ -31,6 +31,22 @@ _Noreturn void cloth_rt_array_index_out_of_bounds (void) {
 	report_error("array index out of bounds");
 }
 
+_Noreturn void cloth_rt_array_length_mismatch (void) {
+	report_error("array length does not match fixed extent");
+}
+
+_Noreturn void cloth_rt_array_capacity_overflow (void) {
+	report_error("array capacity exceeds addressable storage");
+}
+
+_Noreturn void cloth_rt_identity_exhausted (void) {
+	report_error("object identity space exhausted");
+}
+
+_Noreturn void cloth_rt_array_allocation_failed (void) {
+	report_error("unable to allocate array storage");
+}
+
 _Noreturn void cloth_rt_stalled_range (void) {
 	report_error("range counter update made no progress");
 }

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <backend/enum_payloads.hpp>
+#include <backend/growable_array.hpp>
 #include <backend/nullable_value.hpp>
 #include <backend/scalar_lowering.hpp>
+#include <backend/string_value.hpp>
 #include <backend/value_types.hpp>
 
 #include <cstddef>
@@ -31,7 +33,7 @@ EnumPayloads::EnumPayloads (LLVMModuleRef module, const cloth::CheckedProgram &p
 
 LLVMValueRef EnumPayloads::constant (const cloth::Expression &value, const cloth::ResolvedType &destination) {
 	const cloth::ExpressionInfo &ei_value = cp_program.expressions.at(&value);
-	const LLVMTypeRef            ty_value = vt_types.get(destination);
+	const LLVMTypeRef            ty_value = vt_types.localType(destination);
 	if (destination.nullable()) {
 		if (dynamic_cast<const cloth::NullLiteral *>(&value)) return LLVMConstNull(ty_value);
 		if (const auto *ce_cast = dynamic_cast<const cloth::CastExpression *>(&value);
@@ -46,13 +48,24 @@ LLVMValueRef EnumPayloads::constant (const cloth::Expression &value, const cloth
 		return scalarConstant(ty_value, ei_value.numericConstant);
 	}
 	if (const auto *cl_literal = dynamic_cast<const cloth::CharacterLiteral *>(&value)) return LLVMConstInt(ty_value, cl_literal->value, false);
+	if (const auto *sl_literal = dynamic_cast<const cloth::StringLiteral *>(&value)) return string_value::literal(mod_module, *sl_literal);
+	if (const auto *al_literal = dynamic_cast<const cloth::ArrayLiteral *>(&value)) {
+		const cloth::ResolvedType rt_element = destination.element();
+		std::vector<LLVMValueRef> v_elements;
+		v_elements.reserve(al_literal->elements.size());
+		for (const cloth::ExpressionPtr &ep_element : al_literal->elements) v_elements.push_back(constant(*ep_element, rt_element));
+		return LLVMConstArray2(LLVMGetElementType(ty_value), v_elements.data(), v_elements.size());
+	}
 	if (const auto *sl_literal = dynamic_cast<const cloth::StructLiteral *>(&value)) {
 		if (sl_literal->fields.empty()) return LLVMConstNull(ty_value);
 		const cloth::StructLayout &sl_layout = cp_program.structLayouts.at(destination);
 		std::vector<LLVMValueRef>  v_fields;
-		v_fields.reserve(sl_literal->fields.size());
+		const unsigned             u_count = LLVMCountStructElementTypes(ty_value);
+		v_fields.reserve(u_count);
 		for (std::size_t st_index = 0; st_index < sl_literal->fields.size(); ++st_index)
 			v_fields.push_back(constant(*sl_literal->fields[st_index], sl_layout.fields.at(st_index).type));
+		// A fresh literal has no earlier array shapes. The current fields supply their own presence.
+		while (v_fields.size() < u_count) v_fields.push_back(LLVMConstNull(LLVMStructGetTypeAtIndex(ty_value, static_cast<unsigned>(v_fields.size()))));
 		return LLVMConstNamedStruct(ty_value, v_fields.data(), static_cast<unsigned>(v_fields.size()));
 	}
 	if (const auto *ce_cast = dynamic_cast<const cloth::CastExpression *>(&value);
@@ -66,8 +79,8 @@ LLVMValueRef EnumPayloads::table (const cloth::Symbol &field, const cloth::Token
 	if (const auto it_table = m_tables.find(&field); it_table != m_tables.end()) return it_table->second;
 	const cloth::DeclarationInfo &di_field = cp_program.declarations.at(&field);
 	const cloth::ResolvedType    &rt_field = di_field.value.value();
-	const LLVMTypeRef             ty_field = vt_types.get(rt_field);
-	if (!ty_field)
+	const LLVMTypeRef             ty_field = vt_types.localType(rt_field);
+	if (!ty_field || growable_array::supported(rt_field))
 		throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedLowering,
 		                           "LLVM lowering does not support enum payload type '" + rt_field.spelling() + "'",
 		                           { { .span = use, .text = "unsupported enum payload field" } });

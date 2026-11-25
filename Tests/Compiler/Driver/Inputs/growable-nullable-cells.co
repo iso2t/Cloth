@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    int?[] values = [null, 0]
+    int?[] saved := values
+    values.insert(1, 42)
+    if (values.removeAt(0) != null || values == saved) return 1
+    if (saved != [null, 0] || values[1] == null) return 2
+    return values.removeAt(0) ?: 7
+}

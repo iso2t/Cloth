@@ -20,6 +20,38 @@ The program returns 42. The ``:=`` makes ``saved`` immutable. The ``=``
 in the declaration of ``values`` allows its elements to be updated. See
 the `complete example <../../../Tests/Compiler/Driver/Inputs/fixed-array-write.co>`_.
 
+When an element is a class reference, copying the array copies the
+reference. The corresponding cells refer to the same instance, so
+``copy[0] === items[0]`` is true immediately after the copy. Replacing
+``items[0]`` with another instance leaves ``copy[0]`` pointing to the
+first one. See the `class array copy example
+<../../../Tests/Compiler/Driver/Inputs/class-array-copy.co>`_.
+
+Fixed-size array fields
+-----------------------
+
+Copying a struct also copies the elements of its fixed-size array fields.
+In the `array field example <../../../Tests/Compiler/Driver/Inputs/fixed-array-fields.co>`_,
+``sample.cells[1] = 7`` updates the original struct. Its earlier copy
+still holds 42 in that cell. Assigning a whole array to the field also
+copies its elements. A rectangular field keeps the same row and column
+order as an array local.
+
+A nullable field such as ``int<12>[2][2]? rows`` can hold a two-by-two
+array or ``null``. Clearing ``sample.rows`` leaves an earlier struct
+copy's cells available. Reassigning a two-by-two array makes the field
+present again. A present array of empty rows also survives a copy and
+passes a presence check. See the `nullable array field example
+<../../../Tests/Compiler/Driver/Inputs/nullable-fixed-array-fields.co>`_.
+
+A fixed-size array of structs copies the fields of every element. In the
+`array of structs example <../../../Tests/Compiler/Driver/Inputs/array-of-structs.co>`_,
+``Row[1] saved := rows`` copies the row and its two cells. Replacing
+``rows[0]`` makes ``rows[0].cells[1]`` read 7 while
+``saved[0].cells[1]`` still reads 42. You can also update a single cell
+directly with ``rows[0].cells[1] = 7``. An element bound by a
+``for`` loop has its own copy of the cells.
+
 Rank and extents
 ----------------
 
@@ -58,12 +90,52 @@ the original leaves the copy present with both zeros.
 A present empty array also passes a presence check. Its length is zero,
 so iteration skips the body and every index is out of bounds.
 
+A fixed-size array can hold nullable rows. For example, ``int[3]?[2]``
+holds three rows, each either ``null`` or a pair of integers. Assigning
+``rows[i] = null`` clears that row. Assigning a pair makes it present
+again. A copy keeps the presence and cells of every row. In the
+`nullable row example <../../../Tests/Compiler/Driver/Inputs/nullable-array-rows.co>`_,
+the second row in the saved array still holds 42 after the original row
+is cleared.
+
+Bind a row with ``int[2]? row := rows[i]``, then test ``row != null``
+before indexing it. To visit each row, write ``for (int[2]? row <- rows)``.
+The loop also visits absent rows. A present row of length zero passes
+the presence test and has no cells to visit.
+
 Growable arrays
 ---------------
 
 Use an open outer dimension for an array whose length can change.
 In ``int[] values = [1, 2]`` the declared type allows growth.
 ``def values = [1, 2]`` infers a fixed two-element array.
+
+In the `growable integer example
+<../../../Tests/Compiler/Driver/Inputs/growable-array.co>`_, ``values``
+starts with one element, 7. After ``values.append(42)`` its
+``::size`` is two and ``values[1]`` returns 42. To start empty,
+write ``int[] values = []``. Calling ``values.reserve(8)`` reserves
+room for at least eight elements and leaves the current length intact.
+
+The same operations work on booleans, characters, and floats. For
+example, inserting ``'\0'`` between two characters increases the length
+by one, and ``removeAt`` returns that character. See the `growable scalar
+array example <../../../Tests/Compiler/Driver/Inputs/growable-scalar-arrays.co>`_.
+
+In ``int?[] values = [null, 0]``, both cells count toward the length.
+Removing the first returns ``null``. Removing the second returns a
+present zero, so ``?:`` keeps the zero. Copying the array preserves
+each cell's presence. Use an explicitly nullable binding such as
+``for (int? value <- values)`` when iterating. See the `nullable cell
+example <../../../Tests/Compiler/Driver/Inputs/growable-nullable-cells.co>`_.
+
+Assigning one growable array to another copies its elements. Appending
+or changing a cell in either array leaves the other copy intact. A
+fixed-size array can also initialize a growable one with the same
+element type. Copying in the other direction requires the current
+length to equal the fixed extent. When that length is known only at
+runtime, a mismatch reports
+``Cloth runtime error: array length does not match fixed extent``.
 
 .. code-block:: text
 
@@ -76,10 +148,24 @@ In ``int[] values = [1, 2]`` the declared type allows growth.
        return row
    }
 
-``append(value)`` adds one element. ``insert(index, value)`` inserts at a
-``usize`` index, and ``removeAt(index)`` returns the removed element.
-``clear()`` removes all elements. ``reserve(count)`` requests capacity without
-changing the length. All five operations require writable growable storage.
+``append(value)`` adds one element at the end. ``insert(index, value)``
+places the value before the element at that ``usize`` index. Inserting
+at ``values::size`` appends, so index zero is valid for an empty array.
+``removeAt(index)`` requires an existing element, returns it, and shifts
+the later elements left. An index beyond the insertion or removal bounds
+reports ``Cloth runtime error: array index out of bounds``.
+
+Mutation calls evaluate their arguments from left to right and use the
+array's length after argument evaluation. ``clear()`` removes every
+element. You can clear an empty array and insert or append again.
+``reserve(count)`` requests capacity without changing the length. All
+five operations require writable growable storage.
+
+In the `insertion and removal example
+<../../../Tests/Compiler/Driver/Inputs/growable-array-mutations.co>`_,
+inserting 42 into ``[7, 9]`` at index one gives ``[7, 42, 9]``.
+``removeAt(1)`` returns 42 and leaves ``[7, 9]``. The program clears the
+array and appends the saved 42 to it.
 
 For an array of rows, inserting or appending a row must preserve the
 established inner shape. Clearing the outer array preserves that shape.
@@ -103,6 +189,15 @@ assignment also reads the old element before evaluating the right-hand
 side, then writes the result to the same slot. Numeric elements support
 ``+=``, ``-=``, ``*=``, ``/=``, ``%=``, and standalone ``++`` and ``--``.
 
+For a growable array, the selected index survives a change in storage
+during the right-hand side. If ``values[i] += expression`` reserves more
+space or replaces ``values`` while evaluating ``expression``, it adds to
+the saved cell value and writes at index ``i`` in the current array.
+If the replacement is too short, the write reports an out-of-bounds
+error. An indexed read uses the array value captured before evaluating
+its index. See the `growable array updates
+<../../../Tests/Compiler/Driver/Inputs/growable-array-values.co>`_.
+
 For ``rows[r][c] = value``, Cloth evaluates and checks ``r`` first, then
 ``c``, and evaluates ``value`` only after both indices are in bounds. In
 the `nested assignment example
@@ -117,8 +212,8 @@ example <../../../Tests/Compiler/Driver/Inputs/fixed-array-update.co>`_.
 
 For comparison with ``==`` and ``!=``, see `Array equality
 <../expressions/Operators.rst#array-equality>`_. For the values a
-``for`` loop visits, see `Fixed-size array iteration
-<../statements/ControlFlow.rst#fixed-size-array-iteration>`_.
+``for`` loop visits, see `Array iteration
+<../statements/ControlFlow.rst#array-iteration>`_.
 
 For native array support and the byte distance between integer elements,
 see `Fixed-size arrays in object files

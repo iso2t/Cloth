@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Sample { pub int value }
+
+fn<int> read(final bool present, final int value) {
+    Sample full := {value}
+    Sample? sample := if (present) full else null
+    return sample?.value ?: 7
+}
+
+pub fn<int> main() {
+    if (read(true, 0) != 0) return 1
+    if (read(false, 42) != 7) return 2
+    return read(true, 42)
+}

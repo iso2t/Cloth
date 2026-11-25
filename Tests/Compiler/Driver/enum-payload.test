@@ -11,6 +11,10 @@
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 1 --stdout-line 2 --empty-stderr 42 "%t.exe"
 
+# RUN: %cloth --kind executable --src "%S/Inputs/enum-aggregate-copy.co" --emit object -o "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
 # RUN: echo "typedef<enum> Mode(pub def<int> code = 7) { pub On(42) }" > "%t.co"
 # RUN: echo "fn<int> main() { Mode mode = Mode.On; mode.code = 1; return mode.code }" >> "%t.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" 2> "%t.err"

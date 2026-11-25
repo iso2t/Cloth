@@ -81,7 +81,10 @@ LLVMValueRef intrinsic (LLVMModuleRef module, std::string_view name, LLVMTypeRef
 
 LLVMTypeRef scalarType (LLVMContextRef context, cloth::TargetLayout layout, const cloth::ResolvedType &type) {
 	if (type.parameter || !type.suffixes.empty()) return nullptr;
-	if (type.declaration) return type.enumeration() ? LLVMInt32TypeInContext(context) : nullptr;
+	if (type.declaration) {
+		if (type.classReference()) return LLVMInt64TypeInContext(context);
+		return type.enumeration() ? LLVMInt32TypeInContext(context) : nullptr;
+	}
 	if (type.integer()) return LLVMIntTypeInContext(context, type.width ? type.width : layout.sizeBits);
 	if (type == cloth::ResolvedType(cloth::KBoolean)) return LLVMInt8TypeInContext(context);
 	if (type == cloth::ResolvedType(cloth::KCharacter)) return LLVMInt32TypeInContext(context);
@@ -233,12 +236,22 @@ void ScalarLowering::guardDivisor (LLVMValueRef dividend, LLVMValueRef divisor, 
 }
 
 LLVMValueRef ScalarLowering::checkedArrayIndex (LLVMValueRef index, bool isUnsigned, std::uint64_t length) const {
+	const unsigned u_width = std::max(1u, static_cast<unsigned>(std::bit_width(length)));
+	return checkedArrayIndex(index, isUnsigned, integerConstant(LLVMIntTypeInContext(LLVMGetModuleContext(mod_module), u_width), length));
+}
+
+LLVMValueRef ScalarLowering::checkedArrayIndex (LLVMValueRef index, bool isUnsigned, LLVMValueRef length) const {
 	// Keep all index bits and leave a sign bit above the length so negative indices compare out of range.
-	const unsigned     u_bits   = std::max(LLVMGetIntTypeWidth(LLVMTypeOf(index)), static_cast<unsigned>(std::bit_width(length)) + !isUnsigned);
+	const unsigned     u_bits    = std::max(LLVMGetIntTypeWidth(LLVMTypeOf(index)), LLVMGetIntTypeWidth(LLVMTypeOf(length)) + !isUnsigned);
 	const LLVMTypeRef  ty_check = LLVMIntTypeInContext(LLVMGetModuleContext(mod_module), u_bits);
 	const LLVMValueRef ir_index = LLVMBuildIntCast2(ir_builder, index, ty_check, !isUnsigned, "");
-	failIf(LLVMBuildICmp(ir_builder, LLVMIntUGE, ir_index, integerConstant(ty_check, length), ""), declareArrayIndexOutOfBounds);
+	const LLVMValueRef ir_length = LLVMBuildIntCast2(ir_builder, length, ty_check, false, "");
+	failIf(LLVMBuildICmp(ir_builder, LLVMIntUGE, ir_index, ir_length, ""), declareArrayIndexOutOfBounds);
 	return LLVMBuildIntCast2(ir_builder, ir_index, type(cloth::ResolvedType(cloth::KUsize)), false, "");
+}
+
+void ScalarLowering::checkArrayLength (LLVMValueRef length, std::uint64_t expected) const {
+	failIf(LLVMBuildICmp(ir_builder, LLVMIntNE, length, integerConstant(LLVMTypeOf(length), expected), ""), declareArrayLengthMismatch);
 }
 
 LLVMValueRef ScalarLowering::withinRangeEnd (LLVMValueRef value, LLVMValueRef end, LLVMValueRef inclusive, const cloth::ResolvedType &type) const {

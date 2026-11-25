@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --kind executable --src "%S/Inputs/growable-array-mutations.co" --target-bits 32 --emit object -o "%t.32.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/growable-array-mutations.co" --target-bits 64 --emit object -o "%t.64.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/growable-array-mutations.co" --emit object -o "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+# RUN: %cloth --kind executable --src "%S/Inputs/growable-array-mutation-values.co" --target-bits 32 --emit object -o "%t.32.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/growable-array-mutation-values.co" --target-bits 64 --emit object -o "%t.64.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/growable-array-mutation-values.co" --emit object -o "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 1 --stdout-line 2 --stdout-line 3 --empty-stderr 42 "%t.exe"
+
+# Both arguments run before insert checks the current length. Reserved capacity does not extend it.
+# RUN: echo "fn<int> cell() { println(2); return 42 }" > "%t.co"
+# RUN: echo "pub fn<int> main() { int[] a = [7]; a.reserve(8); a.insert((if (a.removeAt(0) == 7) { println(1); 1 } else 0), cell()); return 42 }" >> "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --emit object -o "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 1 --stdout-line 2 --stderr-line "Cloth runtime error: array index out of bounds" 1 "%t.exe"
+
+# RUN: echo "pub fn<int> main() { int[] a = [7, 9]; a.reserve(8); return a.removeAt(a::size) }" > "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --emit object -o "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: array index out of bounds" 1 "%t.exe"
+
+# RUN: echo "pub fn<int> main() { int[] a = [7]; a.clear(); return a.removeAt(0) }" > "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --emit object -o "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: array index out of bounds" 1 "%t.exe"
+
+# RUN: echo "pub fn<int> main() { int[] a = []; a.insert(usize::max, 42); return 42 }" > "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --emit object -o "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: array index out of bounds" 1 "%t.exe"

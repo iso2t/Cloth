@@ -13,7 +13,8 @@ gtest_deps := $(BUILD_DIR)/Tests/deps
 gtest_dir := $(gtest_deps)/googletest-$(gtest_version)/googletest
 gtest_source := $(gtest_dir)/src/gtest-all.cc
 
-unit_sources := Backend/Unit/llvm_link_test.cpp \
+unit_sources := Backend/Unit/array_descriptor_test.cpp \
+                Backend/Unit/llvm_link_test.cpp \
                 Backend/Unit/lowering_test.cpp \
                 Compiler/Lexer/Unit/token_test.cpp \
                 Compiler/Parser/Unit/precedence_test.cpp \

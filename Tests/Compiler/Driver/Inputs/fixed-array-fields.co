@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Sample { pub bool ready, pub int<12>[2] cells, pub usize count }
+
+pub fn<int> main() {
+    Sample sample = {true, [0, 42], 2}
+    def saved := sample
+    sample.cells[1] = 7
+    if (!sample.ready || sample.count != 2 || sample.cells[1] != 7) return 1
+    return saved.cells[1] -> int
+}

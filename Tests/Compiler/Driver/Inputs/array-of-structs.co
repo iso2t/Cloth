@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Row { pub int[2] cells }
+
+pub fn<int> main() {
+    Row[1] rows = [{[0, 42]}]
+    Row[1] saved := rows
+    rows[0] = {[0, 7]}
+    if (rows[0].cells[1] != 7) return 1
+    return saved[0].cells[1]
+}

@@ -1,1 +1,5 @@
 pub typedef<interface> Number {}
+
+pub typedef<class> Integer : Number {}
+
+pub typedef<class> Float : Number {}

@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-runtime-obj-y := errors.o \
+runtime-obj-y := array.o \
+               errors.o \
                integer.o \
+               object.o \
                println.o \
                process.o

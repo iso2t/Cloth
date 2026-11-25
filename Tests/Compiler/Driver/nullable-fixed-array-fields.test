@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --kind executable --src "%S/Inputs/nullable-fixed-array-fields.co" --target-bits 32 --emit object -o "%t.32.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/nullable-fixed-array-fields.co" --target-bits 64 --emit object -o "%t.64.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/nullable-fixed-array-fields.co" --emit object -o "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"

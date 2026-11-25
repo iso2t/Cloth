@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<class> Marker { pub Marker(int[2] pair, int tag) : () {} }
+
+pub fn<int> main() {
+    int[] one = []
+    one.append(7)
+    Marker::new(one, if (true) { return 42 } else { return 7 })
+}

@@ -122,6 +122,10 @@ bool ResolvedType::enumeration () const {
 	return semantic::enumeration(*this) != nullptr;
 }
 
+bool ResolvedType::classReference () const {
+	return suffixes.empty() && semantic::asClass(declaration);
+}
+
 bool ResolvedType::payloadFreeEnum () const {
 	const EnumDeclaration *ed_enum = semantic::enumeration(*this);
 	return ed_enum && ed_enum->fields.empty();

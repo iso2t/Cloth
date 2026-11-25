@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int> main() {
+    int[] values = [7]
+    values.append(42)
+    return values[1]
+}
