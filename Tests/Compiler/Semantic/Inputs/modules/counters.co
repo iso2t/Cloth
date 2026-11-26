@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<int> next() = 0;
+
+pub {
+    fn<int> next(int value) = value + 1;
+
+    typedef<interface> Reading {
+        pub { mt<int> read() = default (0); }
+    }
+
+    typedef<class> Counter : Reading {
+        def<int> value = 0;
+        pub {
+            Counter(int initial) : () { self.value = initial; }
+            override mt<int> read() = self.value;
+        }
+    }
+}
+
+pub fn<int> answer(Reading counter) = next(counter.read());

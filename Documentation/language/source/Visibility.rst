@@ -11,15 +11,50 @@ exclusions. For example, both Unicode spellings of ``café`` resolve to the
 same declaration. Diagnostics retain the original source spelling.
 See `Unicode Standard Annex #31 <https://www.unicode.org/reports/tr31/tr31-45.html>`_.
 
-An unmarked top-level declaration is private to its file. An unmarked
-member is private to its declaring type, even when the type is public.
-``pub`` is the only visibility modifier.
+By default, top-level declarations are private to their file and members
+are private to their declaring type, even when the type is public.
+Use ``pub`` on an individual declaration or a group of declarations.
 
 A ``using`` declaration imports public names from another file. The dotted
 module path selects a ``.co`` or ``.clib`` file. The compiler searches the
 entry file's directory first, then the configured standard library.
 Inside a function or method, parameters and local bindings take precedence
 over members and file-level names.
+
+Public declaration blocks
+-------------------------
+
+At file scope or inside a class or interface, write ``pub { ... }`` to
+make each direct declaration public. You can mix blocks with individual
+modifiers in the same file.
+
+.. code-block:: text
+
+   fn<int> next() = 0;
+   pub {
+       fn<int> next(int value) = value + 1;
+       typedef<class> Counter {
+           def<int> value = 0;
+           pub {
+               Counter(int initial) : () { self.value = initial; }
+               mt<int> read() = self.value;
+           }
+       }
+   }
+   pub fn<int> answer(Counter counter) = next(counter.read());
+
+A caller can import ``Counter``, ``answer``, and the one-argument
+overload of ``next``. The zero-argument overload is private to the file.
+The member block exposes the constructor and ``read``. A caller can
+write ``answer(Counter::new(41))`` to get 42. The field ``value`` is
+private to the class. See the
+`module and interface example <../../../Tests/Compiler/Semantic/Inputs/modules/counters.co>`_.
+
+Declarations keep their order and belong to the enclosing file or type.
+Each child takes its usual terminator. The block ends at its closing
+brace. Empty and nested public blocks are valid, and a child can also
+carry its own ``pub``. Put every ``using`` import before the first
+file-level declaration or public block, including an empty block.
 
 Importing a module
 ------------------
@@ -74,7 +109,7 @@ and the visibility of a separate state definition, see `Named states
 <../objects/States.rst#declaring-and-attaching-states>`_.
 
 A class method that implements a public interface requirement must itself
-be declared ``pub``. If the interface declares the method without a body,
+be public. If the interface declares the method without a body,
 the class can supply the first body with either ``pub mt`` or
 ``pub override mt``. A class method that replaces an inherited interface
 body introduced by ``= default`` must use ``override``.

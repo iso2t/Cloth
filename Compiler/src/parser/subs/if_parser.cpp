@@ -27,44 +27,30 @@ IfExpression IfParser::parseIf (bool allowWhileTrailer, bool statement) const {
 	std::optional<std::vector<StatementPtr>> opt_otherwise;
 	std::optional<TokenSpan>                 opt_otherwiseSpan;
 	while (true) {
-		ExpressionPtr ep_condition = p_parser.p_delimitedParser.parentheses([this] () -> ExpressionPtr {
-			p_parser.skipNewLines();
-			ExpressionPtr ep_expression = p_parser.p_expressionParser.parseExpression();
-			p_parser.skipNewLines();
-			return ep_expression;
-		});
-		p_parser.skipNewLines();
-		BlockBody       bb_branch = parseBranchBody(allowWhileTrailer, statement, t_keyword);
+		ExpressionPtr ep_condition =
+		        p_parser.p_delimitedParser.parentheses([this] () -> ExpressionPtr { return p_parser.p_expressionParser.parseExpression(); });
+		BlockBody       bb_branch = parseBranchBody(allowWhileTrailer, statement);
 		const TokenSpan ts_branch = TokenSpan::spanThrough(ep_condition->getSpan(), bb_branch.span);
 		v_branches.push_back({ .condition = std::move(ep_condition), .statements = std::move(bb_branch.statements), .span = ts_branch });
 
-		int i_elseOffset = 0;
-		while (p_parser.peek(i_elseOffset).getType() == TokenType::NewLine) {
-			++i_elseOffset;
-		}
-		if (!p_parser.atKeyword(KElse, i_elseOffset)) {
+		if (!p_parser.atKeyword(KElse)) {
 			break;
 		}
-		for (int i_skipped = 0; i_skipped <= i_elseOffset; ++i_skipped) {
-			p_parser.advance();
-		}
-		p_parser.skipNewLines();
+		p_parser.advance();
 		if (!p_parser.atKeyword(KIf)) {
-			BlockBody bb_otherwise = parseBranchBody(allowWhileTrailer, statement, t_keyword);
+			BlockBody bb_otherwise = parseBranchBody(allowWhileTrailer, statement);
 			opt_otherwise          = std::move(bb_otherwise.statements);
 			opt_otherwiseSpan      = bb_otherwise.span;
 			break;
 		}
 		p_parser.advance();
-		p_parser.skipNewLines();
 	}
 
 	const TokenSpan ts_span = TokenSpan::spanThrough(t_keyword.getSpan(), p_parser.previousStatementEnd());
-	p_parser.recordRange(SourceConstruct::Conditional, t_keyword);
 	return { t_keyword, std::move(v_branches), std::move(opt_otherwise), ts_span, opt_otherwiseSpan };
 }
 
-BlockBody IfParser::parseBranchBody (const bool allowWhileTrailer, const bool statement, const Token &keyword) const {
+BlockBody IfParser::parseBranchBody (const bool allowWhileTrailer, const bool statement) const {
 	const Token        t_start  = p_parser.peek();
 	const std::string &s_lexeme = t_start.getLexeme();
 	if (s_lexeme == toString(OBraceOpen)) {
@@ -73,7 +59,6 @@ BlockBody IfParser::parseBranchBody (const bool allowWhileTrailer, const bool st
 	if (t_start.getType() == TokenType::EndOfFile || p_parser.atKeyword(KElse) || s_lexeme == toString(OBraceClose) || s_lexeme == toString(OSemicolon)) {
 		throw cde::SyntaxErrors::expected(std::format("a conditional body ('{}' or a statement)", toString(OBraceOpen)), t_start);
 	}
-	return p_parser.parseUnbracedBody(allowWhileTrailer,
-	                                  statement ? Parser::UnbracedContext::ConditionalStatement : Parser::UnbracedContext::ConditionalValue, &keyword);
+	return p_parser.parseUnbracedBody(allowWhileTrailer, /*valueArm=*/!statement);
 }
 }

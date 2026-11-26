@@ -37,11 +37,10 @@ program := $(BUILD_DIR)/cloth$(exe_suffix)
 
 include Stdlib/Makefile
 include Runtime/Makefile
-include Compiler/migration.mk
 include Tests/Makefile
 
 .PHONY: all run
-all: $(program) $(migrator) runtime
+all: $(program) runtime
 
 run: $(program)
 	"$(run_path)" --kind library --stdlib Stdlib/StandardLibrary/src --src Stdlib/StandardLibrary/src/cloth/Library.co

@@ -47,7 +47,7 @@ bool BindingsParser::startsBinding () const {
 		if (!p_parser.at(OComma, i_end)) {
 			return p_parser.at(OAssign, i_end) || p_parser.at(OFinalAssign, i_end);
 		}
-		i_start      = p_parser.afterNewLines(i_end + 1);
+		i_start      = i_end + 1;
 		opt_typedEnd = p_parser.p_typeParser.typedTargetEnd(i_start);
 		if (!opt_typedEnd && !Parser::isReceivingTarget(p_parser.peek(i_start))) {
 			return false;
@@ -76,7 +76,6 @@ std::vector<StatementPtr> BindingsParser::parseBindings (bool allowWhileTrailer)
 	while (p_parser.at(OComma)) {
 		p_parser.advance();
 		if (!v_types.empty()) {
-			p_parser.skipNewLines();
 			if (p_parser.p_typeParser.typedTargetEnd()) {
 				v_types.push_back(p_parser.p_typeParser.parse(/*inCast=*/false, /*allowArrays=*/true));
 			}
@@ -131,11 +130,11 @@ std::vector<StatementPtr> BindingsParser::parseBindings (bool allowWhileTrailer)
 	if (b_functionBlock) {
 		ep_initializer = std::move(ep_braced);
 	} else if (!ep_braced) {
-		ep_initializer = p_parser.parseResults(nullptr, p_parser.peek().getSpan(), allowWhileTrailer, /*multiline=*/false);
+		ep_initializer = p_parser.parseResults(nullptr, p_parser.peek().getSpan(), allowWhileTrailer);
 	} else {
 		const TokenSpan ts_bracedStart = ep_braced->getSpan();
 		ExpressionPtr   ep_primary     = p_parser.p_expressionParser.continueFromPrimary(std::move(ep_braced), allowWhileTrailer);
-		ep_initializer                 = p_parser.parseResults(std::move(ep_primary), ts_bracedStart, allowWhileTrailer, /*multiline=*/false);
+		ep_initializer                 = p_parser.parseResults(std::move(ep_primary), ts_bracedStart, allowWhileTrailer);
 	}
 
 	const TokenSpan ts_span = TokenSpan::spanThrough(t_start.getSpan(), p_parser.previousStatementEnd());

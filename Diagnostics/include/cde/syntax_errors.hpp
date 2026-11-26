@@ -10,7 +10,6 @@
 namespace cde::SyntaxErrors {
 
 SyntaxException expected (std::string_view description, const cloth::Token &token);
-SyntaxException newline (const cloth::Token &token);
 SyntaxException missingSemicolon (const cloth::TokenSpan &last, std::string_view after, bool allowBody = false);
 SyntaxException reassignment (const cloth::Token &token);
 SyntaxException readOnlyProvider (const cloth::Token &name);

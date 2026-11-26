@@ -28,7 +28,6 @@ InterfaceDeclaration InterfaceParser::parse (const Token &keyword, const Token &
 	std::vector<TypeReference>       v_parents =
 	        p_parser.p_typeParser.parseParents("an interface parent name", [] (TypeReference type, const Token &) -> TypeReference { return type; });
 	std::vector<TypeDeclarationPtr> v_nestedTypes;
-	p_parser.skipNewLines();
 	std::vector<InterfaceMethodDeclaration> v_methods;
 	if (!p_parser.consumeEmptyTypeHeader("interface header")) {
 		v_methods = p_parser.p_delimitedParser.braces([this, &v_nestedTypes] () { return parseMembers(v_nestedTypes); });
@@ -47,13 +46,11 @@ InterfaceDeclaration InterfaceParser::parse (const Token &keyword, const Token &
 
 std::vector<InterfaceMethodDeclaration> InterfaceParser::parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) const {
 	std::vector<InterfaceMethodDeclaration> v_methods;
-	p_parser.skipNewLines();
-	while (p_parser.peek().getLexeme() != toString(OBraceClose)) {
+	p_parser.parseDeclarationItems(/*braced=*/true, [&] (const PublicBlockOrigin &publicBlock) {
 		if (p_parser.startsTypeDeclaration()) {
-			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
-			continue;
+			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration(publicBlock));
+			return;
 		}
-		const Token          first          = p_parser.peek();
 		std::optional<Token> opt_visibility = p_parser.parseVisibility();
 		if (p_parser.atKeyword(KFn)) {
 			throw cde::SyntaxErrors::functionInType(p_parser.peek());
@@ -61,26 +58,14 @@ std::vector<InterfaceMethodDeclaration> InterfaceParser::parseMembers (std::vect
 		if (!p_parser.atKeyword(KMt)) {
 			throw cde::SyntaxErrors::expected(std::format("an interface '{}' declaration", toString(KMt)), p_parser.peek());
 		}
-		v_methods.push_back(p_parser.p_functionParser.parseInterfaceMethod(std::move(opt_visibility)));
-		const FunctionBody *fb_body = v_methods.back().executableBody();
+		InterfaceMethodDeclaration &method = v_methods.emplace_back(p_parser.p_functionParser.parseInterfaceMethod(std::move(opt_visibility)));
+		method.publicBlock                 = publicBlock;
+		const FunctionBody *fb_body        = method.executableBody();
 		const bool          b_block = fb_body && std::holds_alternative<BlockBody>(fb_body->value);
-		p_parser.recordDeclaration(SourceConstruct::Member, first, !b_block);
-		if (p_parser.explicitSemicolons()) {
-			if (!b_block) {
-				p_parser.requireSemicolon("interface method");
-			}
-			continue;
+		if (!b_block) {
+			p_parser.requireSemicolon("interface method");
 		}
-		if (const Token t_next = p_parser.peek(); !b_block && p_parser.isSemiColon(t_next)) {
-			p_parser.advance();
-		} else if (t_next.getType() != TokenType::NewLine && t_next.getLexeme() != toString(OBraceClose)) {
-			if (b_block) {
-				throw cde::SyntaxErrors::expected(std::format("a newline or '{}' after a block default", toString(OBraceClose)), t_next);
-			}
-			throw cde::SyntaxErrors::newline(t_next);
-		}
-		p_parser.skipNewLines();
-	}
+	});
 	return v_methods;
 }
 

@@ -505,7 +505,7 @@ void Analyzer::loadImports (const NativeModules &modules) {
 		m_libraryPaths[it->second].insert(std::string(module));
 		if (inserted) {
 			Lexer lexer{ SourceFile(path) };
-			program.units.emplace_back(std::make_unique<SymbolTable>(Parser(lexer, program.units.front()->getSourceUnit().grammar).parse()));
+			program.units.emplace_back(std::make_unique<SymbolTable>(Parser(lexer).parse()));
 			v_sourceRoots.push_back(p_libraryRoot);
 		}
 		if (module == PRELUDE_MODULE) {
@@ -568,7 +568,7 @@ void Analyzer::loadImports (const NativeModules &modules) {
 				if (it_module != m_moduleNames.end()) program.nativeModules.emplace(inserted.first->second, it_module->second);
 				v_sourceRoots.push_back(it_module != m_moduleNames.end() ? p_target.parent_path() : p_sourceRoot);
 				Lexer l_lexer{ SourceFile(p_target) };
-				program.units.emplace_back(std::make_unique<SymbolTable>(Parser(l_lexer, st_unit.getSourceUnit().grammar).parse()));
+				program.units.emplace_back(std::make_unique<SymbolTable>(Parser(l_lexer).parse()));
 			}
 			v_edges[st_file].emplace_back(&id_import, inserted.first->second);
 		}

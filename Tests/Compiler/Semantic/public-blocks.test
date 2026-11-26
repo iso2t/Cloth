@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# RUN: echo "using counters: Counter, next; fn<int> use(Counter counter) = next(counter.read());" > "%t.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --stdlib "%S/Inputs/modules" --src "%t.co"
+# RUN: echo "using counters: *; fn<int> use() = answer(Counter::new(41));" > "%t.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --stdlib "%S/Inputs/modules" --src "%t.co"
+# RUN: echo "using counters: *; fn<int> use() = next();" > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind library --stdlib "%S/Inputs/modules" --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=OVERLOAD --input-file "%t.err"
+# OVERLOAD: [C3023] Error: No overload of 'next' accepts these arguments
+# RUN: echo "using counters: *; fn<int> use(Counter counter) = counter.value;" > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind library --stdlib "%S/Inputs/modules" --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=FIELD --input-file "%t.err"
+# FIELD: [C3089] Error: 'value' is private
+
+# A public state definition can have a private attachment on its host.
+# RUN: mkdir -p "%t.dir"
+# RUN: echo "pub { typedef<class> Door { pub { default state<void> Idle; state Open; } state Ready; }" > "%t.dir/doors.co"
+# RUN: echo "typedef<state<void>> Open for Door; typedef<state<void>> Ready for Door; }" >> "%t.dir/doors.co"
+# RUN: echo "using doors: Door, Open, Ready; fn<bool> use(Door d) { d -> Open; return d is Open; }" > "%t.dir/client.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --src "%t.dir/client.co"
+# RUN: echo "using doors: Door, Ready; fn<bool> use(Door d) = d is Ready;" > "%t.dir/client.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind library --src "%t.dir/client.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=STATE --input-file "%t.err"
+# STATE: [C3089] Error: 'Ready' is private
+
+# RUN: echo "fn f() {}" > "%t.co"
+# RUN: echo "pub { fn f() {} }" >> "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind library --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=DUPLICATE --input-file "%t.err"
+# DUPLICATE: [C3019] Error: Duplicate signature for 'f'
+# DUPLICATE-DAG: 1 | fn f() {}
+# DUPLICATE-DAG: 2 | pub { fn f() {} }
+
+# RUN: echo "typedef<class> Hidden;" > "%t.co"
+# RUN: echo "pub {" >> "%t.co"
+# RUN: echo "  fn ok() {}" >> "%t.co"
+# RUN: echo "  fn<Hidden> leak() = Hidden::new;" >> "%t.co"
+# RUN: echo "}" >> "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind library --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=SURFACE --input-file "%t.err"
+# SURFACE: [C3117] Error: Public signature exposes private type 'Hidden'
+# SURFACE: .co:4:6
+# SURFACE-DAG: declared here
+# SURFACE-DAG: made public by this block

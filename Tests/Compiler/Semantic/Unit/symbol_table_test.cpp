@@ -54,6 +54,57 @@ typedef<struct> Later { int private; }
 	EXPECT_EQ(cs_callable->parameters[0].type.getSpelling(), "Later");
 }
 
+TEST (SemanticSymbols, PublicBlocksUseTheEnclosingScopeAndStopAtTypeBodies) {
+	const SymbolTable  table   = collect(R"(pub {
+    typedef<class> Door {
+        def<int> key = 0;
+        state Ready;
+        pub {
+            Door(int key) : () {}
+            ~Door {}
+            def<int> count = 0;
+            default state<void> Idle { mt reset() {} }
+            state Hidden;
+            operator +(int delta) -> int = delta;
+            typedef<class> Part { mt inside() {} }
+        }
+        mt after() {}
+    }
+    typedef<state<void>> Ready for Door;
+    typedef<interface> View {
+        pub { pub { mt show(); } typedef<class> Entry; }
+        mt hidden();
+    }
+}
+typedef<state<void>> Hidden for Door;
+typedef<class> Internal { pub { mt visible() {} } }
+)");
+	const SymbolScope &globals = table.getGlobals();
+	expectSymbol(globals, "Door", SymbolKind::Type, Visibility::Public);
+	expectSymbol(globals, "Ready", SymbolKind::State, Visibility::Public);
+	expectSymbol(globals, "Hidden", SymbolKind::State);
+	const SymbolScope &door = globals.at("Door").front().members;
+	expectSymbol(door, "Ready", SymbolKind::StateAttachment);
+	expectSymbol(door, "Hidden", SymbolKind::StateAttachment, Visibility::Public);
+	expectSymbol(door, "Idle", SymbolKind::State, Visibility::Public);
+	expectSymbol(door.at("Idle").front().members, "reset", SymbolKind::Method);
+	expectSymbol(door, "key", SymbolKind::Field);
+	expectSymbol(door, "count", SymbolKind::Field, Visibility::Public);
+	expectSymbol(door, "after", SymbolKind::Method);
+	ASSERT_EQ(door.at("Door").size(), 2u);
+	EXPECT_EQ(door.at("Door")[1].visibility, Visibility::Public);
+	expectSymbol(door, "~Door", SymbolKind::Destructor, Visibility::Public);
+	expectSymbol(door, "+", SymbolKind::Operator, Visibility::Public);
+	expectSymbol(door, "Part", SymbolKind::Type, Visibility::Public);
+	expectSymbol(door.at("Part").front().members, "inside", SymbolKind::Method);
+	const SymbolScope &view = globals.at("View").front().members;
+	expectSymbol(view, "Entry", SymbolKind::Type, Visibility::Public);
+	expectSymbol(view, "show", SymbolKind::Method, Visibility::Public);
+	expectSymbol(view, "hidden", SymbolKind::Method);
+	expectSymbol(globals, "Internal", SymbolKind::Type);
+	expectSymbol(globals.at("Internal").front().members, "visible", SymbolKind::Method, Visibility::Public);
+}
+
 TEST (SemanticSymbols, AcceptsPrivateAndPrivAsFieldTypeNames) {
 	const SymbolTable  st_table   = collect(R"(typedef<struct> private {}
 pub typedef<struct> priv {}

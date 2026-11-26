@@ -188,19 +188,6 @@ from the checkout with its source root supplied to the native compiler.
 
    cargo run --locked --manifest-path Shuttle/Cargo.toml -- build --manifest-path Stdlib/build.k --compiler build/cloth --stdlib Stdlib/StandardLibrary/src
 
-Migrate a TOML manifest
------------------------
-
-Move the project name and version from ``[project]`` to the ``project`` node
-in ``build.k``. Convert its kind and entry into a ``target`` and place the
-source under the project's or an included module's ``src/``. Translate a
-dotted ``entryPoint`` using its old ``[modules]`` mapping to find the same
-source file. For example, the old standard library entry
-``StandardLibrary.cloth.Library`` becomes ``src/cloth/Library.co`` in
-``StandardLibrary/module.k``. Convert module roots into ``include`` nodes,
-dependencies into ``dependency`` and ``uses`` nodes, and ``[output].directory``
-into an ``output`` node. Cargo reads ``Shuttle/Cargo.toml`` to build the Rust CLI.
-
 Target and tool selection
 -------------------------
 

@@ -18,7 +18,6 @@ unit_sources := Backend/Unit/array_descriptor_test.cpp \
                 Backend/Unit/lowering_test.cpp \
                 Compiler/Lexer/Unit/token_test.cpp \
                 Compiler/Parser/Unit/precedence_test.cpp \
-                Compiler/Parser/Unit/migration_test.cpp \
                 Compiler/Parser/Unit/semicolon_test.cpp \
                 Compiler/Semantic/Unit/symbol_table_test.cpp \
                 Compiler/Semantic/Unit/checked_program_test.cpp \
@@ -36,7 +35,7 @@ unit_obj_dir := $(BUILD_DIR)/obj/Tests
 unit_objects := $(addprefix $(unit_obj_dir)/,$(unit_sources:.cpp=.o))
 backend_unit_objects := $(filter $(unit_obj_dir)/Backend/%,$(unit_objects))
 gtest_objects := $(addprefix $(unit_obj_dir)/googletest/,gtest-all.o gtest_main.o)
-unit_cloth_objects := $(filter-out $(BUILD_DIR)/obj/cloth.o,$(objects)) $(BUILD_DIR)/obj/migration/structure.o
+unit_cloth_objects := $(filter-out $(BUILD_DIR)/obj/cloth.o,$(objects))
 unit_program := $(BUILD_DIR)/Tests/cloth-unit$(exe_suffix)
 unit_cxxflags = @compile_flags.txt $(CPPFLAGS) $(CXXFLAGS) $(gtest_thread_flags) -I"$(gtest_dir)/include"
 
@@ -63,7 +62,7 @@ $(unit_program): $(unit_objects) $(gtest_objects) $(unit_cloth_objects) Makefile
 .PHONY: test test-build test-driver test-lexer test-parser test-diagnostics test-file test-unit test-shuttle
 .PHONY: lit-all lit-lexer lit-diagnostics unit-all unit-lexer unit-diagnostics
 
-test-build: $(program) $(migrator) $(unit_program)
+test-build: $(program) $(unit_program)
 test: lit-all unit-all test-shuttle
 
 test-shuttle: export CLOTHC := $(abspath $(program))
@@ -80,7 +79,7 @@ lit-diagnostics: test_input := Tests/Diagnostics
 test-file: test_input = $(CASE)
 test-file: test_file_flag := --single
 
-lit-all test-driver test-file: $(migrator) $(runtime_archive)
+lit-all test-driver test-file: $(runtime_archive)
 lit-all lit-lexer lit-diagnostics test-driver test-file: $(program)
 	@"$(PYTHON)" Tests/Support/run_lit.py $(test_file_flag) "$(program)" "$(test_input)" \
 		--runtime "$(runtime_archive)" --readobj "$(call llvm_query,--bindir)/llvm-readobj$(exe_suffix)" --llvm-mc "$(call llvm_query,--bindir)/llvm-mc$(exe_suffix)" --cc $(CC) $(LDFLAGS)

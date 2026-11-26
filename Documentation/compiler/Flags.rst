@@ -26,31 +26,6 @@ when developing the library. The selected library also supplies the
 declaration for `collection iteration
 <../language/statements/ControlFlow.rst#collection-iteration>`_.
 
-Migrating legacy semicolons
----------------------------
-
-Build the standalone converter with ``make migrate-semicolons`` or
-``mingw32-make migrate-semicolons`` on Windows. Run it on individual
-``.co`` or ``.clib`` files, or on directories to process them recursively.
-For a checkout known to use the legacy grammar, use the following command.
-
-.. code-block:: console
-
-   build/cloth-migrate-semicolons --from-legacy src
-
-The converter reads the legacy parse first and verifies that each proposed
-file has the same syntax tree under strict parsing. It replaces each verified
-file atomically. A second run leaves its bytes and modification time intact.
-Without ``--from-legacy``, a file that parses both ways with different meanings
-produces a diagnostic at the conflicting source range. A parse failure in both
-grammars or a rewrite that changes the tree also leaves that file untouched.
-The command exits with status 1 if any input needs attention.
-
-For example, the legacy initializer ``Box x := {;}`` creates an empty
-deferred binding. Removing its interior semicolon would make ``{}`` a
-struct literal in strict syntax. The converter reports the difference
-and preserves the original file.
-
 Lexer modes
 -----------
 

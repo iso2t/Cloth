@@ -36,7 +36,6 @@ if platform.machine().lower() in {"amd64", "x86_64", "x86", "i386", "i486", "i58
 config.substitutions.extend([
     ("%python", tool_path(sys.executable)),
     ("%cloth", tool_path(params["cloth"])),
-    ("%migrate_semicolons", tool_path(Path(params["cloth"]).with_name("cloth-migrate-semicolons" + Path(params["cloth"]).suffix))),
     ("%filecheck", tool_path(params["filecheck"])),
     ("%llvm_readobj", tool_path(params.get("readobj", "llvm-readobj"))),
     ("%llvm_mc", tool_path(params.get("llvm_mc", "llvm-mc"))),

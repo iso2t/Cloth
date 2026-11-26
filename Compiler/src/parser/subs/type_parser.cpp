@@ -46,7 +46,6 @@ bool touches (const Token &token, const Token &next) {
 
 TypeParser::ParentType TypeParser::parseParent (const std::string_view description) {
 	const Token t_separator = p_parser.advance();
-	p_parser.skipNewLines();
 	if (const Token t_next = p_parser.peek(); t_next.getType() != TokenType::Identifier) {
 		throw cde::SyntaxErrors::expected(std::string(description), t_next);
 	}
@@ -62,11 +61,9 @@ std::optional<TypeParameterList> TypeParser::parseTypeParameters () {
 		return std::nullopt;
 	}
 	const Token t_opening = p_parser.advance();
-	p_parser.skipNewLines();
 	std::vector<TypeParameterDeclaration> v_parameters;
 	while (true) {
 		const Token t_name = p_parser.expect(TokenType::Identifier, "a type parameter name");
-		p_parser.skipNewLines();
 		std::vector<TypeParameterBound> v_bounds;
 		if (at(OColon)) {
 			v_bounds = parseBounds();
@@ -74,11 +71,9 @@ std::optional<TypeParameterList> TypeParser::parseTypeParameters () {
 		std::optional<TypeReference> opt_defaultType;
 		if (at(OAssign)) {
 			p_parser.advance();
-			p_parser.skipNewLines();
 			opt_defaultType = parse(/*inCast=*/false, /*allowArrays=*/true);
 		}
 		v_parameters.push_back({ .name = t_name, .bounds = std::move(v_bounds), .defaultType = std::move(opt_defaultType) });
-		p_parser.skipNewLines();
 		if (at(OElvis)) {
 			throw cde::GenericErrors::syntax(std::format("Type defaults written with '{}'", toString(OElvis)), p_parser.peek());
 		}
@@ -86,7 +81,6 @@ std::optional<TypeParameterList> TypeParser::parseTypeParameters () {
 			break;
 		}
 		p_parser.expect(OComma);
-		p_parser.skipNewLines();
 	}
 	return TypeParameterList{ .opening = t_opening, .parameters = std::move(v_parameters), .closing = p_parser.expect(OGreater) };
 }
@@ -95,7 +89,6 @@ std::vector<TypeParameterBound> TypeParser::parseBounds () {
 	std::vector<TypeParameterBound> v_bounds;
 	do {
 		p_parser.advance();
-		p_parser.skipNewLines();
 		if (p_parser.atKeyword(KNew)) {
 			const Token                       t_keyword    = p_parser.advance();
 			std::vector<ParameterDeclaration> v_parameters = p_parser.p_functionParser.parseParameters();
@@ -104,7 +97,6 @@ std::vector<TypeParameterBound> TypeParser::parseBounds () {
 		} else {
 			v_bounds.push_back({ parse(/*inCast=*/false, /*allowArrays=*/true) });
 		}
-		p_parser.skipNewLines();
 	} while (at(OAmpersand));
 	return v_bounds;
 }
@@ -126,7 +118,6 @@ TypeArgumentList TypeParser::arguments () {
 	++i_argumentDepth;
 	const ArgumentDepth ad_scope{ i_argumentDepth };
 
-	p_parser.skipNewLines();
 	if (at(OGreater)) {
 		return { .opening = t_opening, .arguments = {}, .closing = p_parser.advance() };
 	}
@@ -141,12 +132,10 @@ TypeArgumentList TypeParser::arguments () {
 		} else {
 			v_arguments.push_back(parse(/*inCast=*/false, /*allowArrays=*/true));
 		}
-		p_parser.skipNewLines();
 		if (at(OGreater)) {
 			break;
 		}
 		p_parser.expect(OComma);
-		p_parser.skipNewLines();
 	}
 	return { .opening = t_opening, .arguments = std::move(v_arguments), .closing = p_parser.expect(OGreater) };
 }
@@ -173,8 +162,7 @@ std::optional<int> TypeParser::angleListEnd (const int start) const {
 			continue;
 		}
 		const TokenType tt_type     = t_token.getType();
-		const bool      b_typeToken = tt_type == TokenType::Identifier || tt_type == TokenType::Keyword || tt_type == TokenType::IntegerLiteral ||
-		                         tt_type == TokenType::NewLine;
+		const bool      b_typeToken   = tt_type == TokenType::Identifier || tt_type == TokenType::Keyword || tt_type == TokenType::IntegerLiteral;
 		const bool b_punctuation = s_lexeme == toString(OComma) || s_lexeme == toString(ODot) || s_lexeme == toString(OQuestion) ||
 		                           s_lexeme == toString(OBracketOpen) || s_lexeme == toString(OBracketClose) || s_lexeme == toString(OUnderscore);
 		if (!b_typeToken && !b_punctuation) {
@@ -275,7 +263,7 @@ int TypeParser::nameEnd (const int start) const {
 
 bool TypeParser::typeCanEndAt (const int offset) const {
 	const TokenType tt_type = p_parser.peek(offset).getType();
-	return tt_type == TokenType::Operator || tt_type == TokenType::EndOfFile || tt_type == TokenType::NewLine || p_parser.atKeyword(KIs, offset);
+	return tt_type == TokenType::Operator || tt_type == TokenType::EndOfFile || p_parser.atKeyword(KIs, offset);
 }
 
 TypeReference TypeParser::parse (bool inCast, bool allowArrays) {

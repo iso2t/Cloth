@@ -7,7 +7,6 @@
 #include <format>
 #include <random>
 #include <span>
-#include <stdexcept>
 #include <system_error>
 #ifdef _WIN32
 #include <stdio.h> // _wfopen
@@ -19,7 +18,7 @@
 namespace cloth {
 namespace fs = std::filesystem;
 
-void publishFile (const fs::path &output, const std::span<const std::byte> bytes, const SourceFile *original) {
+void publishFile (const fs::path &output, const std::span<const std::byte> bytes) {
 	// Use a short sibling name distinct from the destination, even when its filename is at the filesystem limit.
 	const char *s_prefix = output.filename().native().starts_with('.') ? "cloth-" : ".cloth-";
 	unsigned    u_nonce  = std::random_device{}();
@@ -38,24 +37,11 @@ void publishFile (const fs::path &output, const std::span<const std::byte> bytes
 	std::error_code ec;
 	if (std::fwrite(bytes.data(), 1, bytes.size(), fp_temp) != bytes.size()) ec = { errno ? errno : EIO, std::generic_category() };
 	if (std::fclose(fp_temp) != 0 && !ec) ec = { errno ? errno : EIO, std::generic_category() };
-	try {
-		if (original && !ec) {
-			const fs::perms permissions = fs::status(output).permissions();
-			fs::permissions(p_temp, permissions, ec);
-			if (!ec && SourceFile(original->getPath()).getContents() != original->getContents()) {
-				throw std::runtime_error("Source changed during conversion: " + pathUtf8(output));
-			}
-		}
-		if (!ec) fs::rename(p_temp, output, ec);
-		if (ec) throw std::system_error(ec, pathUtf8(output));
-	} catch (...) {
+	if (!ec) fs::rename(p_temp, output, ec);
+	if (ec) {
 		std::error_code cleanup;
-#ifdef _WIN32
-		// A read-only source can also make the unpublished sibling read-only.
-		if (original) fs::permissions(p_temp, fs::perms::owner_write, fs::perm_options::add, cleanup);
-#endif
 		fs::remove(p_temp, cleanup);
-		throw;
+		throw std::system_error(ec, pathUtf8(output));
 	}
 }
 }

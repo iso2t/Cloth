@@ -977,9 +977,13 @@ void Analyzer::checkPublicSurface (const Symbol &symbol, const Symbol *exporting
 	        [&] (const ResolvedType &type, const TypeReference *reference, const TokenSpan &where) {
 		        if (!s_exposed.insert(type).second) return;
 		        for (const Symbol *sym_type = type.declaration; sym_type; sym_type = declarations.at(sym_type).owner) {
-			        if (sym_type->visibility != Visibility::Public)
-				        fail(Code::PrivateGenericSignature, where, "Public signature exposes private type '" + sym_type->name.getLexeme() + "'",
-				             &sym_type->name);
+			        if (sym_type->visibility != Visibility::Public) {
+				        const std::string             message = "Public signature exposes private type '" + sym_type->name.getLexeme() + "'";
+				        std::vector<cde::SourceLabel> labels{ { .span = where, .text = message },
+					                                      { .span = sym_type->name.getSpan(), .text = "declared here" } };
+				        if (symbol.publicBlock) labels.push_back({ .span = *symbol.publicBlock, .text = "made public by this block" });
+				        throw cde::ClothDiagnostic(Code::PrivateGenericSignature, message, std::move(labels));
+			        }
 		        }
 		        for (std::size_t st_index = 0; st_index < type.arguments().size(); ++st_index) {
 			        const TypeReference *tr_arg =

@@ -62,6 +62,7 @@ struct Symbol {
 	std::optional<std::size_t> classFieldIndex = std::nullopt;
 	// For EnumCase, the zero-based position among all cases of its declaring enum.
 	std::size_t enumCaseOrdinal = 0;
+	PublicBlockOrigin publicBlock     = nullptr;
 };
 
 // Owns the syntax backing every declaration reference, including synthesized primary constructors.

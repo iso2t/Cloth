@@ -28,7 +28,8 @@ bool allowsOverloads (SymbolKind kind) {
 	       kind == SymbolKind::StateMethodContract;
 }
 
-Symbol &declare (SymbolScope &scope, SymbolKind kind, const Token &name, const std::optional<Token> &visibility, SymbolDeclaration declaration) {
+Symbol &declare (SymbolScope &scope, SymbolKind kind, const Token &name, const std::optional<Token> &visibility, SymbolDeclaration declaration,
+                 const PublicBlockOrigin &publicBlock = {}) {
 	std::vector<Symbol> &v_symbols = scope[name.getNameKey()];
 	if (!allowsOverloads(kind)) {
 		const auto it_previous = std::ranges::find(v_symbols, kind, &Symbol::kind);
@@ -36,15 +37,17 @@ Symbol &declare (SymbolScope &scope, SymbolKind kind, const Token &name, const s
 			throw cde::DeclarationErrors::duplicate(it_previous->name, name);
 		}
 	}
-	return v_symbols.emplace_back(kind, visibility ? Visibility::Public : Visibility::Private, name, declaration, SymbolScope{});
+	Symbol &symbol = v_symbols.emplace_back(kind, visibility || publicBlock ? Visibility::Public : Visibility::Private, name, declaration, SymbolScope{});
+	if (!visibility) symbol.publicBlock = publicBlock;
+	return symbol;
 }
 
-void collectCallable (SymbolScope &scope, SymbolKind kind, const CallableSignature &callable) {
-	declare(scope, kind, callable.getName(), callable.visibility, &callable);
+void collectCallable (SymbolScope &scope, SymbolKind kind, const CallableSignature &callable, const PublicBlockOrigin &publicBlock = {}) {
+	declare(scope, kind, callable.getName(), callable.visibility, &callable, publicBlock);
 }
 
-void collectMethod (SymbolScope &scope, const MethodDeclaration &method) {
-	collectCallable(scope, method.operatorMember ? SymbolKind::Operator : SymbolKind::Method, method);
+void collectMethod (SymbolScope &scope, const MethodDeclaration &method, const PublicBlockOrigin &publicBlock = {}) {
+	collectCallable(scope, method.operatorMember ? SymbolKind::Operator : SymbolKind::Method, method, publicBlock);
 }
 
 void collectStateMembers (SymbolScope &scope, const StateBodyDeclaration &state) {
@@ -58,14 +61,14 @@ void collectStateMembers (SymbolScope &scope, const StateBodyDeclaration &state)
 	}
 }
 
-void collectClassState (SymbolScope &scope, const StateClassMember &member) {
+void collectClassState (SymbolScope &scope, const StateClassMember &member, const PublicBlockOrigin &publicBlock) {
 	if (const auto *nsd_state = dynamic_cast<const NestedStateDeclaration *>(&member)) {
-		Symbol &sym_state = declare(scope, SymbolKind::State, nsd_state->name, nsd_state->visibility, nsd_state);
+		Symbol &sym_state = declare(scope, SymbolKind::State, nsd_state->name, nsd_state->visibility, nsd_state, publicBlock);
 		collectStateMembers(sym_state.members, *nsd_state);
 	} else if (const auto *sad_attachment = dynamic_cast<const StateAttachmentDeclaration *>(&member)) {
-		declare(scope, SymbolKind::StateAttachment, sad_attachment->name, sad_attachment->visibility, sad_attachment);
+		declare(scope, SymbolKind::StateAttachment, sad_attachment->name, sad_attachment->visibility, sad_attachment, publicBlock);
 	} else {
-		collectCallable(scope, SymbolKind::StateMethodContract, dynamic_cast<const StateMethodContractDeclaration &>(member));
+		collectCallable(scope, SymbolKind::StateMethodContract, dynamic_cast<const StateMethodContractDeclaration &>(member), publicBlock);
 	}
 }
 
@@ -79,20 +82,20 @@ void collectClassMembers (SymbolScope &scope, const ClassDeclaration &type) {
 	}
 	for (const ClassMember &cm_member : type.members) {
 		if (const ClassFieldDeclaration *cfd_field = std::get_if<ClassFieldDeclaration>(&cm_member.value)) {
-			Symbol &sym_field         = declare(scope, SymbolKind::Field, cfd_field->name, cfd_field->visibility, cfd_field);
+			Symbol &sym_field         = declare(scope, SymbolKind::Field, cfd_field->name, cfd_field->visibility, cfd_field, cm_member.publicBlock);
 			sym_field.classFieldIndex = st_fieldIndex++;
 		} else if (const MethodDeclaration *md_method = std::get_if<MethodDeclaration>(&cm_member.value)) {
-			collectMethod(scope, *md_method);
+			collectMethod(scope, *md_method, cm_member.publicBlock);
 		} else if (const ConstructorDeclaration *cd_constructor = std::get_if<ConstructorDeclaration>(&cm_member.value)) {
-			collectCallable(scope, SymbolKind::Constructor, *cd_constructor);
+			collectCallable(scope, SymbolKind::Constructor, *cd_constructor, cm_member.publicBlock);
 		} else if (const DestructorDeclaration *dd_destructor = std::get_if<DestructorDeclaration>(&cm_member.value)) {
 			const Token &t_tilde = dd_destructor->getOperator();
 			const Token &t_type  = dd_destructor->name;
 			const Token  t_name(t_tilde.getLexeme() + t_type.getLexeme(), TokenType::Identifier,
 			                    TokenSpan::spanThrough(t_tilde.getSpan(), t_type.getSpan()));
-			declare(scope, SymbolKind::Destructor, t_name, dd_destructor->visibility, dd_destructor);
+			declare(scope, SymbolKind::Destructor, t_name, dd_destructor->visibility, dd_destructor, cm_member.publicBlock);
 		} else {
-			collectClassState(scope, *std::get<StateClassMemberPtr>(cm_member.value));
+			collectClassState(scope, *std::get<StateClassMemberPtr>(cm_member.value), cm_member.publicBlock);
 		}
 	}
 }
@@ -102,12 +105,12 @@ void collectClassMembers (SymbolScope &scope, const ClassDeclaration &type) {
 SymbolTable::SymbolTable (SourceUnit source) : su_source(std::move(source)) {
 	for (const DeclarationPtr &dp_declaration : su_source.declarations) {
 		if (const auto *fd_function = dynamic_cast<const FunctionDeclaration *>(dp_declaration.get())) {
-			collectCallable(ss_globals, SymbolKind::Function, *fd_function);
+			collectCallable(ss_globals, SymbolKind::Function, *fd_function, fd_function->publicBlock);
 		} else if (const TypeDeclarationPtr tdp_type = std::dynamic_pointer_cast<const TypeDeclaration>(dp_declaration)) {
 			collectType(ss_globals, tdp_type);
 		} else {
 			const auto &tsd_state = dynamic_cast<const TopLevelStateDeclaration &>(*dp_declaration);
-			Symbol     &sym_state = declare(ss_globals, SymbolKind::State, tsd_state.name, tsd_state.visibility, &tsd_state);
+			Symbol     &sym_state = declare(ss_globals, SymbolKind::State, tsd_state.name, tsd_state.visibility, &tsd_state, tsd_state.publicBlock);
 			collectStateMembers(sym_state.members, tsd_state);
 			for (const TypeDeclarationPtr &tdp_nested : tsd_state.nestedTypes) {
 				collectType(sym_state.members, tdp_nested);
@@ -117,7 +120,7 @@ SymbolTable::SymbolTable (SourceUnit source) : su_source(std::move(source)) {
 }
 
 void SymbolTable::collectType (SymbolScope &scope, const TypeDeclarationPtr &type) {
-	SymbolScope &ss_members = declare(scope, SymbolKind::Type, type->name, type->visibility, type.get()).members;
+	SymbolScope &ss_members = declare(scope, SymbolKind::Type, type->name, type->visibility, type.get(), type->publicBlock).members;
 	if (const std::shared_ptr<const ClassDeclaration> cdp_class = std::dynamic_pointer_cast<const ClassDeclaration>(type)) {
 		const PrimaryConstructorDeclaration &pcd_primary =
 		        *v_primaryConstructors.emplace_back(std::make_shared<PrimaryConstructorDeclaration>(cdp_class));
@@ -147,7 +150,7 @@ void SymbolTable::collectType (SymbolScope &scope, const TypeDeclarationPtr &typ
 	} else {
 		const auto &id_interface = dynamic_cast<const InterfaceDeclaration &>(*type);
 		for (const InterfaceMethodDeclaration &imd_method : id_interface.methods) {
-			collectCallable(ss_members, SymbolKind::Method, imd_method);
+			collectCallable(ss_members, SymbolKind::Method, imd_method, imd_method.publicBlock);
 		}
 	}
 	for (const TypeDeclarationPtr &tdp_nested : type->nestedTypes) {

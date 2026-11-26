@@ -71,7 +71,9 @@ struct DestructorDeclaration : CallableDeclaration {
 };
 
 struct ClassMember {
-	std::variant<ClassFieldDeclaration, ConstructorDeclaration, DestructorDeclaration, StateClassMemberPtr, MethodDeclaration> value;
+	using Value = std::variant<ClassFieldDeclaration, ConstructorDeclaration, DestructorDeclaration, StateClassMemberPtr, MethodDeclaration>;
+	Value             value;
+	PublicBlockOrigin publicBlock = nullptr;
 
 	[[nodiscard]] TokenSpan getSpan () const {
 		return std::visit(

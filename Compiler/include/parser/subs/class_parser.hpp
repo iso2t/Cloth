@@ -29,11 +29,10 @@ class ClassParser {
 
 	[[nodiscard]] ClassParameterDeclaration parseHeaderParameter () const;
 	std::vector<ClassMember>                parseMembers (const Token &owner, std::vector<TypeDeclarationPtr> &nestedTypes) const;
-	[[nodiscard]] ClassMember               parseMember (const Token &owner) const;
+	[[nodiscard]] ClassMember::Value        parseMember (const Token &owner) const;
 	[[nodiscard]] InitialStatePrefix        parseInitialState () const;
 	[[nodiscard]] StateClassMemberPtr       parseState (std::optional<Token> visibility, std::optional<InitialStatePrefix> initial) const;
 	std::vector<StateMemberPtr>             parseStateBody (std::vector<TypeDeclarationPtr> *nestedTypes = nullptr) const;
-	void                                    finishMember (bool allowsTerminator, Keyword kind) const;
 	[[nodiscard]] ClassFieldDeclaration     parseField (std::optional<Token> visibility) const;
 	[[nodiscard]] TypeReference             parseFieldType () const;
 	[[nodiscard]] ConstructorDeclaration    parseConstructor (const Token &owner, const std::optional<Token> &visibility) const;

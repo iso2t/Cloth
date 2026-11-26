@@ -3,7 +3,6 @@
 #pragma once
 
 #include <cstddef>
-#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -60,11 +59,11 @@ struct ImportSelection {
 };
 
 struct ImportDeclaration {
-	Token                keyword;
-	ImportPath           path;
-	Token                colon;
-	ImportSelection      selection;
-	std::optional<Token> terminator = std::nullopt;
+	Token           keyword;
+	ImportPath      path;
+	Token           colon;
+	ImportSelection selection;
+	Token           terminator;
 
 	[[nodiscard]] TokenSpan getSpan () const {
 		return TokenSpan::spanThrough(keyword.getSpan(), selection.getSpan());

@@ -17,8 +17,12 @@
 
 namespace cloth {
 
+// Direct children share the location of their enclosing block's pub keyword.
+using PublicBlockOrigin = std::shared_ptr<const TokenSpan>;
+
 struct Declaration {
-	TokenSpan span;
+	TokenSpan         span;
+	PublicBlockOrigin publicBlock;
 
 	explicit Declaration (TokenSpan span) : span(std::move(span)) {
 	}

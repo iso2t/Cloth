@@ -32,8 +32,7 @@ title with ``RFC:`` and link related issues or prototypes.
 * Explain the proposed design. For user-facing changes, include short
   Cloth examples or compiler invocations with expected results.
 * Summarize the alternatives you considered and their tradeoffs.
-* Explain how existing programs or tools would be affected and describe
-  any migration they would need.
+* Explain how the change affects existing programs or tools.
 * Identify affected compiler components, outline how to verify the
   change, and list open questions.
 

@@ -204,13 +204,10 @@ ExpressionPtr ExpressionParser::parseArrowTarget (ExpressionPtr receiver, const 
 	}
 	const Token     t_target   = p_parser.advance();
 	ExpressionPtr   ep_payload = p_parser.p_delimitedParser.parentheses([this] () -> ExpressionPtr {
-                p_parser.skipNewLines();
                 if (at(OParenClose)) {
                         return nullptr;
                 }
-                ExpressionPtr ep_expression = parseExpression();
-                p_parser.skipNewLines();
-                return ep_expression;
+		return parseExpression();
         });
 	const TokenSpan ts_span    = TokenSpan::spanThrough(receiver->getSpan(), p_parser.previous().getSpan());
 	return std::make_shared<StateTransitionExpression>(std::move(receiver), op, t_target, std::move(ep_payload), ts_span);
@@ -394,9 +391,7 @@ ExpressionPtr ExpressionParser::parseInterpolation () {
 			return std::make_shared<InterpolatedString>(std::move(v_parts), TokenSpan::spanThrough(t_opening.getSpan(), t_closing.getSpan()));
 		}
 		p_parser.expect(TokenType::InterpolationOpen, std::format("'{}' before an interpolated expression", toString(OBraceOpen)));
-		p_parser.skipNewLines();
 		v_parts.push_back(parseExpression());
-		p_parser.skipNewLines();
 		p_parser.expect(TokenType::InterpolationClose, std::format("'{}' after an interpolated expression", toString(OBraceClose)));
 	}
 }

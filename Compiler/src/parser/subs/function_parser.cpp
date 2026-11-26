@@ -92,12 +92,10 @@ ParameterDeclaration FunctionParser::parseParameter () {
 	std::optional<Token> opt_opening;
 	if (opt_optionalKeyword) {
 		opt_opening = p_parser.expect(OLess);
-		p_parser.skipNewLines();
 	}
 	TypeReference        tr_type = p_parser.p_typeParser.parse(/*inCast=*/false, /*allowArrays=*/true);
 	std::optional<Token> opt_closing;
 	if (opt_optionalKeyword) {
-		p_parser.skipNewLines();
 		opt_closing = p_parser.expect(OGreater);
 	}
 	const Token          t_name = p_parser.expect(TokenType::Identifier, "a parameter name");
@@ -147,16 +145,12 @@ MethodDeclaration FunctionParser::parseMethod (std::optional<Token> visibility, 
 
 InterfaceMethodDeclaration FunctionParser::parseInterfaceMethod (std::optional<Token> visibility) {
 	auto [keyword, name, returnTypes, parameters, typeParameters] = methodHeader(/*allowTypeParameters=*/true);
-	const int i_signatureEnd                                      = p_parser.i_currentIndex;
-	p_parser.skipNewLines();
 	std::optional<InterfaceMethodFallback> opt_fallback;
 	if (at(OAssign)) {
 		opt_fallback = parseInterfaceFallback();
 	} else if (at(OBraceOpen)) {
 		throw cde::SyntaxErrors::expected(std::format("'{} {}' before an interface method body", toString(OAssign), toString(KDefault)),
 		                                  p_parser.peek());
-	} else {
-		p_parser.i_currentIndex = i_signatureEnd;
 	}
 	const TokenSpan ts_span = TokenSpan::spanThrough((visibility ? *visibility : keyword).getSpan(), p_parser.previous().getSpan());
 	return {
@@ -171,18 +165,10 @@ InterfaceMethodFallback FunctionParser::parseInterfaceFallback () {
 		                                  p_parser.peek());
 	}
 	const Token t_keyword = p_parser.advance();
-	p_parser.skipNewLines();
 	if (at(OParenOpen)) {
-		ExpressionPtr   ep_expression = inBody([this] () -> ExpressionPtr {
-                        return p_parser.p_delimitedParser.parentheses([this] () -> ExpressionPtr {
-                                p_parser.skipNewLines();
-                                ExpressionPtr ep_results =
-                                        p_parser.parseResults(nullptr, p_parser.peek().getSpan(), /*allowWhileTrailer=*/false, /*multiline=*/true);
-                                p_parser.skipNewLines();
-                                return ep_results;
-                        });
-                });
-		const TokenSpan ts_span       = TokenSpan::spanThrough(t_equals.getSpan(), p_parser.previous().getSpan());
+		ExpressionPtr ep_expression =
+		        inBody([this] () -> ExpressionPtr { return p_parser.p_delimitedParser.parentheses([this] { return p_parser.parseResults(); }); });
+		const TokenSpan ts_span = TokenSpan::spanThrough(t_equals.getSpan(), p_parser.previous().getSpan());
 		return { .equals  = t_equals,
 			 .keyword = t_keyword,
 			 .body    = { ExpressionBody{ .equals = t_equals, .expression = std::move(ep_expression), .span = ts_span } } };
@@ -219,7 +205,6 @@ MethodDeclaration FunctionParser::parseOperator (std::optional<Token> visibility
                         }
                         p_parser.advance();
                         b_rightReceiver = true;
-                        p_parser.skipNewLines();
                         if (!at(OParenClose)) {
                                 throw cde::SyntaxErrors::expected(std::format("'{}' after '{}'", toString(OParenClose), toString(KSelf)), p_parser.peek());
                         }
@@ -277,12 +262,10 @@ Token FunctionParser::parseOperatorName () const {
 }
 
 BlockBody FunctionParser::parseBlockBody () {
-	p_parser.skipNewLines();
 	return inBody([this] () -> BlockBody { return p_parser.parseBlock(); });
 }
 
 FunctionBody FunctionParser::parseBody (std::string_view kind, bool allowStatement, bool allowIntrinsic) {
-	p_parser.skipNewLines();
 	FunctionBody body = inBody([this, kind, allowStatement, allowIntrinsic] () -> FunctionBody {
 		if (at(OBraceOpen)) {
 			return { p_parser.parseBlock() };
@@ -301,11 +284,11 @@ FunctionBody FunctionParser::parseBody (std::string_view kind, bool allowStateme
 		if (allowStatement) {
 			return parseVoidBody(t_equals);
 		}
-		ExpressionPtr   ep_expression = p_parser.parseResults(nullptr, t_next.getSpan(), /*allowWhileTrailer=*/false, /*multiline=*/false);
+		ExpressionPtr   ep_expression = p_parser.parseResults();
 		const TokenSpan ts_span       = TokenSpan::spanThrough(t_equals.getSpan(), p_parser.previous().getSpan());
 		return { ExpressionBody{ .equals = t_equals, .expression = std::move(ep_expression), .span = ts_span } };
 	});
-	if (p_parser.explicitSemicolons() && body.getEquals() && !(allowStatement && Parser::isSemiColon(p_parser.previous()))) {
+	if (body.getEquals() && !(allowStatement && Parser::isSemiColon(p_parser.previous()))) {
 		p_parser.requireSemicolon(kind);
 	}
 	return body;

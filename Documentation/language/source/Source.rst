@@ -39,9 +39,7 @@ line. In a generic call such as ``first<int>(x)``, keep the name next to
 
 ``//`` starts a comment that ends at the newline. Place a statement's
 terminator before a trailing line comment. A block comment starts with
-``/*`` and ends at the first ``*/``. To update a source file that used
-newlines as statement boundaries, see `Migrating legacy semicolons
-<../../compiler/Flags.rst#migrating-legacy-semicolons>`_.
+``/*`` and ends at the first ``*/``.
 
 Numbers
 -------

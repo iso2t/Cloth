@@ -56,19 +56,16 @@ class DelimitedParser {
 	template <typename EndAfterItem, typename ParseItem>
 	std::vector<std::invoke_result_t<ParseItem &>> commaSeparated (Operator close, EndAfterItem &&endAfterItem, ParseItem &&parseItem) {
 		std::vector<std::invoke_result_t<ParseItem &>> v_items;
-		skipNewLines();
 		if (at(close)) {
 			return v_items;
 		}
 
 		while (true) {
 			v_items.push_back(parseItem());
-			skipNewLines();
 			if (at(close) || endAfterItem()) {
 				break;
 			}
 			expect(OComma);
-			skipNewLines();
 		}
 		return v_items;
 	}
@@ -78,7 +75,6 @@ class DelimitedParser {
 
 	void expect (Operator op) const;
 	bool at (Operator op) const;
-	void skipNewLines () const;
 };
 
 }

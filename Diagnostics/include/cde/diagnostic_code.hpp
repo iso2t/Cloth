@@ -41,7 +41,6 @@ enum class DiagnosticCode : std::uint16_t {
 	InvalidNumericLiteral       = 1013,
 
 	ExpectedToken             = 2000,
-	ExpectedNewline           = 2001,
 	InvalidReassignment       = 2002,
 	UnsupportedOperator       = 2003,
 	InvalidInteger            = 2004,

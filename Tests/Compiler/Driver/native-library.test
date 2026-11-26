@@ -29,6 +29,26 @@
 # IMPORT-linux: Section: Undefined
 # IMPORT-win32: Section: IMAGE_SYM_UNDEFINED
 
+# Both spellings export the same functions and default-argument entry point.
+# RUN: %cloth --kind library --module-name Arithmetic --src "%S/Inputs/native-library/grouped.co" --emit-object "%t.dir/grouped.o"
+# RUN: %cc "%t.dir/app.o" "%t.dir/grouped.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+# RUN: %cloth --kind executable --extern "Arithmetic=%S/Inputs/native-library/grouped.co" --src "%S/Inputs/native-library/main.co" --emit-object "%t.dir/grouped-app.o"
+# RUN: %cc "%t.dir/grouped-app.o" "%t.dir/lib.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+# RUN: %llvm_readobj --symbols "%t.dir/grouped.o" | %filecheck "%s" --check-prefixes=HELPER,HELPER-%host_os
+# RUN: %llvm_readobj --symbols "%t.dir/lib.o" "%t.dir/grouped.o" | %filecheck "%s" --check-prefix=SAME --implicit-check-not=cloth_v1_
+# SAME: File: {{.*}}lib.o
+# SAME: Name: [[FIRST:_?cloth_v1_[A-Za-z0-9_.]+]]
+# SAME: Name: [[SECOND:_?cloth_v1_[A-Za-z0-9_.]+]]
+# SAME: Name: [[THIRD:_?cloth_v1_[A-Za-z0-9_.]+]]
+# SAME: Name: [[FOURTH:_?cloth_v1_[A-Za-z0-9_.]+]]
+# SAME: File: {{.*}}grouped.o
+# SAME-DAG: Name: [[FIRST]]{{( |$)}}
+# SAME-DAG: Name: [[SECOND]]{{( |$)}}
+# SAME-DAG: Name: [[THIRD]]{{( |$)}}
+# SAME-DAG: Name: [[FOURTH]]{{( |$)}}
+
 # Reordering overloads and renaming parameters preserve the original consumer's ABI.
 # RUN: echo "pub fn<int> pick(bool value) = 0;" > "%t.dir/reordered.co"
 # RUN: echo "pub fn<int> pick(int input) = input - 33;" >> "%t.dir/reordered.co"
@@ -41,9 +61,14 @@
 # RUN: echo "pub fn<int> main() = adjust(40);" >> "%t.dir/private.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --extern "Arithmetic=%S/Inputs/native-library/api.co" --src "%t.dir/private.co" --emit-object "%t.dir/private.o" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=PRIVATE --input-file "%t.err"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --extern "Arithmetic=%S/Inputs/native-library/grouped.co" --src "%t.dir/private.co" --emit-object "%t.dir/private.o" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=PRIVATE --input-file "%t.err"
 # PRIVATE: [C3103] Error: 'adjust' is private
 
 # RUN: echo "pub fn<int> first(int[] values) = values[0];" > "%t.dir/unsupported.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind library --module-name Buffer --src "%t.dir/unsupported.co" --emit-object "%t.dir/unsupported.o" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=ABI --input-file "%t.err"
+# RUN: echo "pub { fn<int> first(int[] values) = values[0]; }" > "%t.dir/unsupported.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --kind library --module-name Buffer --src "%t.dir/unsupported.co" --emit-object "%t.dir/unsupported.o" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=ABI --input-file "%t.err"
 # ABI: A native library export requires scalar or string parameters and results

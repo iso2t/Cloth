@@ -39,7 +39,9 @@ to attach a separate definition with that name. A separate state
 names its host with ``for``, as in ``typedef<state<void>> Ready for Lamp;``.
 A state declared for an interface can be
 attached to classes that implement it. To export a separate state from
-its file, put ``pub`` after the ``typedef<state<...>>`` header.
+its file, put ``pub`` after the ``typedef<state<...>>`` header or place
+the definition in a file-level `public block <../source/Visibility.rst#public-declaration-blocks>`_.
+The class controls the visibility of its own ``state Name;`` attachment.
 
 A class that declares or attaches states must mark one of them
 ``default``. A derived class that only inherits states keeps its base

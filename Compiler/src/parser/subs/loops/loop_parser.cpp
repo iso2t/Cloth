@@ -16,18 +16,17 @@
 namespace cloth {
 
 LoopBody LoopParser::parseLoopBody (const Token &keyword, bool allowWhileTrailer) const {
-	p_parser.skipNewLines();
 	const Token        t_bodyStart = p_parser.peek();
 	const std::string &s_lexeme    = t_bodyStart.getLexeme();
 	if (s_lexeme == toString(OBraceOpen)) {
 		BlockBody bb_block = p_parser.parseBlock();
 		return { .statements = std::move(bb_block.statements), .braced = true, .span = bb_block.span };
 	}
-	if (p_parser.explicitSemicolons() && p_parser.isSemiColon(t_bodyStart)) {
+	if (p_parser.isSemiColon(t_bodyStart)) {
 		throw cde::SyntaxException{ cde::DiagnosticCode::ExpectedToken, "Expected a loop body", t_bodyStart.getSpan(),
 			                    std::format("Write '{}{}' for an empty loop body.", toString(OBraceOpen), toString(OBraceClose)) };
 	}
-	if (t_bodyStart.getType() == TokenType::EndOfFile || s_lexeme == toString(OBraceClose) || s_lexeme == toString(OSemicolon)) {
+	if (t_bodyStart.getType() == TokenType::EndOfFile || s_lexeme == toString(OBraceClose)) {
 		throw cde::SyntaxErrors::expected(std::format("a '{}' loop body ('{}' or a statement)", keyword.getLexeme(), toString(OBraceOpen)),
 		                                  t_bodyStart);
 	}

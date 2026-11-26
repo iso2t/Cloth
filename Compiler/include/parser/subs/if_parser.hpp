@@ -19,7 +19,7 @@ class IfParser {
     private:
 	Parser &p_parser;
 
-	BlockBody parseBranchBody (bool allowWhileTrailer, bool statement, const Token &keyword) const;
+	BlockBody parseBranchBody (bool allowWhileTrailer, bool statement) const;
 };
 
 }

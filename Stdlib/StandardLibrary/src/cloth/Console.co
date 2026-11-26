@@ -6,14 +6,16 @@ fn<string?> readLine(string prompt) = intrinsic "console.read_line";
 // Interpolation can use a type's private ::str provider across module boundaries.
 fn<string> textOf<T>(T? value) = if (value == null) "" else #"{value}";
 
-pub fn print<T = string>(T? value) = writeText(textOf<T>(value));
+pub {
+    fn print<T = string>(T? value) = writeText(textOf<T>(value));
 
-pub fn println() = writeText("\n");
+    fn println() = writeText("\n");
 
-pub fn println<T = string>(T? value) {
-    if (value == null) println();
-    else writeText(#"{value}\n");
+    fn println<T = string>(T? value) {
+        if (value == null) println();
+        else writeText(#"{value}\n");
+    }
+
+    fn<string?> input<T = string>(T? prompt) = readLine(textOf<T>(prompt));
+    fn<string?> input() = readLine("");
 }
-
-pub fn<string?> input<T = string>(T? prompt) = readLine(textOf<T>(prompt));
-pub fn<string?> input() = readLine("");

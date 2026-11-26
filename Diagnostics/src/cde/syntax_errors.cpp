@@ -28,12 +28,6 @@ SyntaxException expected (std::string_view description, const cloth::Token &toke
 	return { DiagnosticCode::ExpectedToken, std::format("Expected {}, found {}", description, found(token)), token.getSpan() };
 }
 
-SyntaxException newline (const cloth::Token &token) {
-	const auto semicolon = cloth::toString(cloth::Operator::OSemicolon);
-	return { DiagnosticCode::ExpectedNewline, std::format("Expected a newline or '{}' after statement, found {}", semicolon, found(token)), token.getSpan(),
-		 std::format("Start the next statement on a new line or separate it with '{}'.", semicolon) };
-}
-
 SyntaxException missingSemicolon (const cloth::TokenSpan &last, const std::string_view after, const bool allowBody) {
 	const std::string s_expected = allowBody ? std::format("'{}' or '{}'", cloth::toString(cloth::OBraceOpen), cloth::toString(cloth::OSemicolon)) :
 	                                           std::format("'{}'", cloth::toString(cloth::OSemicolon));
