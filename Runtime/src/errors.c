@@ -5,10 +5,17 @@
 #include <runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 _Noreturn void clothRtError (const char *message) {
+	clothRtErrorBytes((const unsigned char *)message, strlen(message));
+}
+
+_Noreturn void clothRtErrorBytes (const unsigned char *message, size_t length) {
 	fflush(stdout);
-	fprintf(stderr, "Cloth runtime error: %s\n", message);
+	fputs("Cloth runtime error: ", stderr);
+	if (length) fwrite(message, 1, length, stderr);
+	fputc('\n', stderr);
 	exit(1);
 }
 

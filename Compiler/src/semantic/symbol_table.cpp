@@ -130,6 +130,8 @@ void SymbolTable::collectType (SymbolScope &scope, const TypeDeclarationPtr &typ
 		for (const MethodDeclaration &md_method : sd_struct->methods) {
 			collectMethod(ss_members, md_method);
 		}
+	} else if (const auto *intrinsic = dynamic_cast<const IntrinsicTypeDeclaration *>(type.get())) {
+		for (const MethodDeclaration &method : intrinsic->methods) collectMethod(ss_members, method);
 	} else if (const auto *ed_enum = dynamic_cast<const EnumDeclaration *>(type.get())) {
 		for (const EnumFieldDeclaration &efd_field : ed_enum->fields) {
 			declare(ss_members, SymbolKind::Field, efd_field.name, efd_field.visibility, &efd_field);

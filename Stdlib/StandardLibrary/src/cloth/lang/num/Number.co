@@ -1,5 +1,40 @@
 pub typedef<interface> Number {}
 
-pub typedef<class> Integer : Number {}
+fn numericError(string message) = intrinsic "numeric.error";
 
-pub typedef<class> Float : Number {}
+pub typedef<intrinsic "primitive.integer"> Integer : Number {
+    pub mt<Self> smaller(Self other) = if (self < other) self else other;
+
+    pub mt<Self> abs() {
+        if (self >= 0) return self;
+        if (self == Self::min) numericError("absolute value exceeds the signed integer width");
+        return 0 - self;
+    }
+
+    pub mt<Self> clamp(Self low, Self high) {
+        if (low > high) numericError("invalid clamp bounds");
+        return if (self < low) low else if (high < self) high else self;
+    }
+
+    pub mt<int> signum() = if (self < 0) -1 else if (self > 0) 1 else 0;
+    pub mt<usize> leadingZeros() = intrinsic "integer.leading_zeros";
+    pub mt<usize> trailingZeros() = intrinsic "integer.trailing_zeros";
+    pub mt<string> toStringRadix(int radix) = intrinsic "integer.to_string_radix";
+    pub operator ::str() -> string = self.toStringRadix(10);
+}
+
+pub typedef<intrinsic "primitive.float"> Float : Number {
+    pub mt<Self> abs() = intrinsic "float.abs";
+
+    pub mt<Self> clamp(Self low, Self high) {
+        if (!(low <= high)) numericError("invalid clamp bounds");
+        return if (self < low) low else if (high < self) high else self;
+    }
+
+    pub mt<int> signum() {
+        if (self != self) numericError("signum of NaN");
+        return if (self < 0.0) -1 else if (self > 0.0) 1 else 0;
+    }
+
+    pub operator ::str() -> string = intrinsic "float.format";
+}

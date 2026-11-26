@@ -78,6 +78,38 @@ On an integer, ``leadingZeros()`` and ``trailingZeros()`` return a ``usize``
 count at the integer's declared width. ``toStringRadix(base)`` takes an
 ``int`` from 2 through 36 and returns a ``string``.
 
+.. _standard-library-integer-methods:
+
+Standard-library numeric methods
+--------------------------------
+
+With the standard library selected, ``a.smaller(b)`` returns the lesser of
+two integers of the receiver's type. For example, on an ``unsigned int<65>``
+the comparison is unsigned and the result has all 65 bits. The same methods
+are available on ``isize`` and ``usize``.
+
+The compiler loads ``Integer`` and ``Float`` from ``cloth/lang/num/Number.co``
+under the ``--stdlib`` source root. Their methods are available without an
+import. Inside either declaration, ``self`` is the receiver value and
+``Self`` is its exact type, including the width and integer signedness.
+For example, these members of ``Integer`` use both forms of method body.
+
+.. code-block:: text
+
+   pub typedef<intrinsic "primitive.integer"> Integer : Number {
+       pub mt<Self> smaller(Self other) = if (self < other) self else other;
+       pub mt<string> toStringRadix(int radix) = intrinsic "integer.to_string_radix";
+       pub operator ::str() -> string = self.toStringRadix(10);
+   }
+
+``Float`` binds ``"primitive.float"`` for 16-, 32-, and 64-bit receivers.
+Its ``clamp`` and ``signum`` are written in Cloth. Its ``abs`` uses the
+native floating-point absolute value, which turns negative zero into
+positive zero. For both families, ``value::str``, printing, and string
+interpolation use the family's formatter. See the `numeric declarations
+<../../../Stdlib/StandardLibrary/src/cloth/lang/num/Number.co>`_ and the
+`native examples <../../../Tests/Compiler/Driver/Inputs/numeric-methods.co>`_.
+
 Character and string methods
 ----------------------------
 

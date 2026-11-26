@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<int<64>> add(int left, int right) = (left -> int<64>) + (right -> int<64>);
+pub fn<int<64>> subtract(int left, int right) = (left -> int<64>) - (right -> int<64>);
+pub fn<int<64>> multiply(int left, int right) = (left -> int<64>) * (right -> int<64>);
+
+pub fn<int<64>?> divide(int left, int right) {
+    if (right == 0) return null;
+    return (left -> int<64>) / (right -> int<64>);
+}

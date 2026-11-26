@@ -87,17 +87,9 @@ struct ExpressionBody {
 	TokenSpan     span;
 };
 
-/** The operation name comes from a string literal in a library binding. */
-struct IntrinsicBody {
-	Token     equals;
-	Token     operation;
-	TokenSpan span;
-
-	IntrinsicBody (const Token &equals, const Token &operation) :
-	        equals(equals),
-	        operation(operation),
-	        span(TokenSpan::spanThrough(equals.getSpan(), operation.getSpan())) {
-	}
+/** The compiler binding ID comes from a string literal in the standard library. */
+struct IntrinsicBinding {
+	Token operation;
 
 	[[nodiscard]] std::string_view getId () const {
 		const std::string_view s_name  = operation.getLexeme();
@@ -106,6 +98,17 @@ struct IntrinsicBody {
 			return s_name.substr(s_quote.size(), s_name.size() - 2 * s_quote.size());
 		}
 		return s_name;
+	}
+};
+
+struct IntrinsicBody : IntrinsicBinding {
+	Token     equals;
+	TokenSpan span;
+
+	IntrinsicBody (const Token &equals, const Token &operation) :
+	        IntrinsicBinding{ operation },
+	        equals(equals),
+	        span(TokenSpan::spanThrough(equals.getSpan(), operation.getSpan())) {
 	}
 };
 

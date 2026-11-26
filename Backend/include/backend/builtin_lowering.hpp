@@ -21,6 +21,9 @@ class BuiltinLowering {
 	LLVMValueRef method (const cloth::BuiltinCall &call, const cloth::ResolvedType &receiverType, LLVMValueRef receiver,
 	                     const std::vector<LLVMValueRef> &args, const cloth::ResolvedType &result);
 	LLVMValueRef formatScalar (const cloth::ResolvedType &type, LLVMValueRef value);
+	LLVMValueRef floatAbs (LLVMValueRef value);
+	LLVMValueRef integerZeros (LLVMValueRef value, bool leading);
+	LLVMValueRef integerText (const cloth::ResolvedType &type, LLVMValueRef value, LLVMValueRef radix);
 	LLVMValueRef equalText (LLVMValueRef left, LLVMValueRef right, bool optional);
 	LLVMValueRef enumName (const cloth::ResolvedType &type, LLVMValueRef tag);
 	LLVMValueRef join (std::span<const LLVMValueRef> parts);

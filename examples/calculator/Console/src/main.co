@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using Arithmetic : add, subtract, multiply, divide;
+
+pub fn<int> main(string[] args) {
+    if (args::size != 3) return usage();
+
+    int? left := parseInteger(args[0]);
+    int? right := parseInteger(args[2]);
+    if (left == null || right == null) {
+        println("Operands must be signed 32-bit decimal integers.");
+        return 2;
+    }
+
+    string operation := args[1];
+    if (operation == "+") println(add(left, right));
+    else if (operation == "-") println(subtract(left, right));
+    else if (operation == "*") println(multiply(left, right));
+    else if (operation == "/") {
+        int<64>? quotient := divide(left, right);
+        if (quotient == null) {
+            println("Cannot divide by zero.");
+            return 1;
+        }
+        println(quotient);
+    } else return usage();
+    return 0;
+}
+
+fn<int> usage() {
+    println("Usage: calculator <integer> <+|-|*|/> <integer>");
+    return 2;
+}
+
+fn<int?> parseInteger(string text) {
+    char[] chars := text.toChars();
+    bool negative := text.startsWith("-");
+    usize index = if (negative || text.startsWith("+")) 1 else 0;
+    if (index == chars::size) return null;
+
+    int<64> value = 0;
+    while (index < chars::size) {
+        int<64> digit := (chars[index].toInt() - '0'.toInt()) -> int<64>;
+        if (digit < 0 || digit > 9) return null;
+        value = value * 10 + (if (negative) -digit else digit);
+        if (value < (int::min -> int<64>) || value > (int::max -> int<64>)) return null;
+        index++;
+    }
+    return value -> int;
+}

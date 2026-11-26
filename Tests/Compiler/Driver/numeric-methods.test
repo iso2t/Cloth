@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/numeric-methods.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/numeric-methods.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/numeric-methods.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %stdlib_runtime %runtime -lm -o "%t.exe"
+# RUN: %expect_exit --stdout-line "-1.5 -2.5 -3.5" --stdout-line "[1.5, 0]" --empty-stderr 0 "%t.exe"
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: invalid clamp bounds" 1 "%t.exe" low
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: invalid clamp bounds" 1 "%t.exe" high
+
+# A library can supply the bodies of existing numeric methods and the float formatter.
+# RUN: mkdir -p "%t.lib/cloth/lang/num"
+# RUN: echo 'pub typedef<interface> Number {}' > "%t.lib/cloth/lang/num/Number.co"
+# RUN: echo 'pub typedef<intrinsic "primitive.integer"> Integer : Number {' >> "%t.lib/cloth/lang/num/Number.co"
+# RUN: echo '    pub mt<Self> abs() = self + 1;' >> "%t.lib/cloth/lang/num/Number.co"
+# RUN: echo '    pub mt<string> toStringRadix(int radix) = intrinsic "integer.to_string_radix";' >> "%t.lib/cloth/lang/num/Number.co"
+# RUN: echo '    pub mt<string> toStringRadix(string text) = text;' >> "%t.lib/cloth/lang/num/Number.co"
+# RUN: echo '}' >> "%t.lib/cloth/lang/num/Number.co"
+# RUN: echo 'pub typedef<intrinsic "primitive.float"> Float : Number { pub mt<Self> abs() = self * 2.0; pub operator ::str() -> string = "float"; }' >> "%t.lib/cloth/lang/num/Number.co"
+# RUN: echo 'pub fn<int> main() { int<12> i = 3; float<16> h = 3.0; if (i.abs() != 4 || h.abs() != 6.0 || i.toStringRadix("ok") != "ok") return 1; println(h); println(#"{h::str} {h}"); println([h]); return 0; }' > "%t.co"
+# RUN: %cloth --kind executable --stdlib "%t.lib" --src "%t.co" --emit-object "%t.custom.o"
+# RUN: %cc "%t.custom.o" %stdlib_runtime %runtime -o "%t.custom.exe"
+# RUN: %expect_exit --stdout-line "float" --stdout-line "float float" --stdout-line "[float]" --empty-stderr 0 "%t.custom.exe"
+# RUN: echo 'fn f(int x) {} fn f(string x) {} fn g() { f(2.toStringRadix(36 + 1)); }' > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.lib" --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --input-file "%t.err"
+# CHECK: [C3074] Error: An integer formatting radix must be between 2 and 36

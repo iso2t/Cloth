@@ -3,6 +3,7 @@
 #pragma once
 
 #include <optional>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -29,10 +30,17 @@ struct TypeParameterBound {
 	}
 };
 
+enum class PrimitiveFamily { Integer, Float };
+
+constexpr std::string_view primitiveFamilyName (PrimitiveFamily family) {
+	return family == PrimitiveFamily::Integer ? "integer" : "float";
+}
+
 struct TypeParameterDeclaration {
 	Token                           name;
 	std::vector<TypeParameterBound> bounds      = {};
 	std::optional<TypeReference>    defaultType = std::nullopt;
+	std::optional<PrimitiveFamily>  primitiveSelf = {};
 
 	[[nodiscard]] TokenSpan getSpan () const {
 		TokenSpan ts_name = name.getSpan();

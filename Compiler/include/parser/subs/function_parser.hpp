@@ -32,7 +32,7 @@ class FunctionParser {
 	                                        const std::optional<TokenSpan> &virtualPrefix = std::nullopt, bool allowIntrinsic = false,
 	                                        bool allowTypeParameters = false);
 	InterfaceMethodDeclaration parseInterfaceMethod (std::optional<Token> visibility = std::nullopt);
-	MethodDeclaration          parseOperator (std::optional<Token> visibility = std::nullopt);
+	MethodDeclaration                 parseOperator (std::optional<Token> visibility = std::nullopt, bool allowIntrinsic = false);
 	BlockBody                  parseBlockBody ();
 
 	template <typename ParseContents> std::invoke_result_t<ParseContents> inBody (ParseContents &&parseContents) {

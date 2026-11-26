@@ -228,7 +228,9 @@ void BodyChecker::resolveNames (const Expression &node) {
 			resolveNames(*mc_call->receiver);
 			if (mc_call->typeArguments) checkTypeArguments(*mc_call->typeArguments);
 			if (isSelfReference(*mc_call->receiver)) {
-				if (analyzer.members(selfType(), mc_call->name.getNameKey(), SymbolKind::Method).empty())
+				const ResolvedType self = selfType();
+				if (analyzer.members(self, mc_call->name.getNameKey(), SymbolKind::Method).empty() &&
+				    (analyzer.primitiveOwner(self) || !builtinMethodNamed(mc_call->name.getNameKey(), self)))
 					throw cde::ClothDiagnostic(Code::UnknownMember,
 					                           std::format("Type '{}' has no member method '{}'", selfType().spelling(),
 					                                       mc_call->name.getLexeme()),

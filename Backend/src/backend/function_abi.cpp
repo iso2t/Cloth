@@ -204,9 +204,9 @@ LLVMTypeRef ModuleFunctions::functionType (const cloth::Symbol &symbol, const cl
 	if (hasObjectReceiver(symbol, index.has_value())) {
 		const LLVMContextRef context = LLVMGetModuleContext(module);
 		const auto           receiver = receiverType(symbol, instance);
-		v_parameters.push_back(program.structLayouts.contains(receiver) ? structReceiverType(context) :
-		                       receiver.enumeration()                   ? valueTypes.localType(receiver) :
-		                                                                  LLVMInt64TypeInContext(context));
+		v_parameters.push_back(program.structLayouts.contains(receiver)             ? structReceiverType(context) :
+		                       receiver.enumeration() || receiver.primitiveFamily() ? valueTypes.localType(receiver) :
+		                                                                              LLVMInt64TypeInContext(context));
 	}
 	for (const cloth::ResolvedType &type : parameters.first(index.value_or(parameters.size()))) v_parameters.push_back(valueTypes.localType(type));
 	const LLVMTypeRef ty_result = resultType(results);

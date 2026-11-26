@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/primitive-integer.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/primitive-integer.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/primitive-integer.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %stdlib_runtime %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line "-1 4095" --stdout-line "18446744073709551616" --stdout-line "[18446744073709551616, 18446744073709551617]" --empty-stderr 0 "%t.exe"
+
+# A different library method body must reach all four text paths, including plain int println.
+# RUN: mkdir -p "%t.lib/cloth/lang/num"
+# RUN: echo 'pub typedef<interface> Number {}' > "%t.lib/cloth/lang/num/Number.co"
+# RUN: echo 'pub typedef<intrinsic "primitive.integer"> Integer : Number {' >> "%t.lib/cloth/lang/num/Number.co"
+# RUN: echo '    mt<Self> increment() = self + 1;' >> "%t.lib/cloth/lang/num/Number.co"
+# RUN: echo '    pub mt<Self> next() = self.increment();' >> "%t.lib/cloth/lang/num/Number.co"
+# RUN: echo '    mt<string> toStringRadix(int radix) = intrinsic "integer.to_string_radix";' >> "%t.lib/cloth/lang/num/Number.co"
+# RUN: echo '    pub operator ::str() -> string = #"x{self.toStringRadix(16)}";' >> "%t.lib/cloth/lang/num/Number.co"
+# RUN: echo '}' >> "%t.lib/cloth/lang/num/Number.co"
+# RUN: echo 'pub fn<int> main() { unsigned int<65> n = 18446744073709551615; print(n.next()); println(42); println(#"{n::str} {n}"); println([n]); return 0; }' > "%t.co"
+# RUN: %cloth --kind executable --stdlib "%t.lib" --src "%t.co" --emit-object "%t.custom.o"
+# RUN: %cc "%t.custom.o" %stdlib_runtime %runtime -o "%t.custom.exe"
+# RUN: %expect_exit --stdout-line "x10000000000000000x2a" --stdout-line "xffffffffffffffff xffffffffffffffff" --stdout-line "[xffffffffffffffff]" --empty-stderr 0 "%t.custom.exe"
+
+# RUN: echo 'fn<int<12>> bad(int<12> a, unsigned int<12> b) = a.smaller(b);' > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=MISMATCH --input-file "%t.err"
+# MISMATCH: [C3024] Error: No overload of 'smaller' accepts these arguments

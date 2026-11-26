@@ -147,6 +147,7 @@ class FunctionLowering {
 	LoweredValue                selfField (const cloth::Symbol &field);
 	std::optional<LoweredValue> structPlace (const cloth::Expression &source);
 	LLVMValueRef                memberReceiver (const cloth::Expression &source, LLVMValueRef evaluated = nullptr);
+	bool                        valueReceiver (const cloth::ResolvedType &type) const;
 	LLVMValueRef                packStructReceiver (LLVMValueRef address, ObjectAccess owner);
 	void                        checkMemberReceiver (LLVMValueRef self, const cloth::ResolvedType &type, bool directSelf, bool check) const;
 	void                        checkOwner (ObjectAccess owner) const;
@@ -1346,8 +1347,7 @@ LLVMValueRef FunctionLowering::lowerUnaryOperator (const cloth::Expression &oper
 	const LLVMValueRef self = memberReceiver(operand);
 	if (!self) return nullptr;
 	const auto &type = bf_body.expressions.at(&operand).types.front();
-	if ((!type.classReference() && !type.enumeration() && !mf_functions.program.structLayouts.contains(type)) ||
-	    (info.dispatch && info.dispatch->kind != cloth::DispatchKind::Direct))
+	if ((!type.classReference() && !valueReceiver(type)) || (info.dispatch && info.dispatch->kind != cloth::DispatchKind::Direct))
 		throw cde::ClothDiagnostic(Code::UnsupportedLowering, "This operator requires a native value receiver",
 		                           { { .span = operand.getSpan(), .text = "unsupported operator receiver" } });
 	checkMemberReceiver(self, type, bf_body.isDirectReceiver(operand), info.receiverChecks.atAccess);
@@ -1391,13 +1391,13 @@ LLVMValueRef FunctionLowering::lowerSelectedBinary (const cloth::BinaryExpressio
 		if (!value) return { .value = nullptr, .type = cloth::ResolvedType{} };
 		cloth::ResolvedType type = bf_body.expressions.at(&source).types.front();
 		if (projection) {
-			if (!type.classReference() && !type.enumeration() && !mf_functions.program.structLayouts.contains(type)) throw unsupported();
+			if (!type.classReference() && !valueReceiver(type)) throw unsupported();
 			checkMemberReceiver(value, type, bf_body.isDirectReceiver(source), check);
 			value = callMember(*projection->symbol, projection->instance, value, {});
 			type  = mf_functions.signature(*projection->symbol, projection->instance).returns.front();
 		}
 		if (selected && receiver) {
-			if (!type.classReference() && !type.enumeration() && !mf_functions.program.structLayouts.contains(type)) throw unsupported();
+			if (!type.classReference() && !valueReceiver(type)) throw unsupported();
 			if (projection && mf_functions.program.structLayouts.contains(type)) value = packStructReceiver(temporarySlot(type, value), {});
 			if (check) checkMemberReceiver(value, type, !projection && bf_body.isDirectReceiver(source), true);
 		} else if (selected) {
@@ -1612,6 +1612,10 @@ LLVMValueRef FunctionLowering::memberReceiver (const cloth::Expression &source, 
 	return evaluated ? packStructReceiver(temporarySlot(info.types.front(), evaluated), {}) : nullptr;
 }
 
+bool FunctionLowering::valueReceiver (const cloth::ResolvedType &type) const {
+	return type.primitiveFamily() || type.enumeration() || mf_functions.program.structLayouts.contains(type);
+}
+
 void FunctionLowering::checkMemberReceiver (LLVMValueRef self, const cloth::ResolvedType &type, bool directSelf, bool check) const {
 	if (mf_functions.program.structLayouts.contains(type)) {
 		checkOwner({ .handle = LLVMBuildExtractValue(ir_builder, self, 1, ""), .permission = LLVMBuildExtractValue(ir_builder, self, 2, "") });
@@ -1640,7 +1644,7 @@ LLVMValueRef FunctionLowering::lowerObjectCall (const cloth::CallSite &call, con
 	const LLVMValueRef self = receiver ? memberReceiver(*receiver) : ir_self;
 	if (!self) return nullptr;
 	const auto &type = receiver ? bf_body.expressions.at(receiver).types.front() : rt_self;
-	if (!type.objectReference() && !type.enumeration() && !mf_functions.program.structLayouts.contains(type))
+	if (!type.objectReference() && !valueReceiver(type))
 		throw cde::ClothDiagnostic(Code::UnsupportedLowering, "Native member calls require a supported receiver type",
 		                           { { .span = call.getSpan(), .text = "unsupported method dispatch" } });
 	const bool directSelf = !receiver || bf_body.isDirectReceiver(*receiver);
@@ -2809,6 +2813,25 @@ void FunctionLowering::lowerLibraryIntrinsic (cloth::LibraryIntrinsic intrinsic,
 		return;
 	}
 	switch (intrinsic) {
+	case Intrinsic::IntegerLeadingZeros:
+	case Intrinsic::IntegerTrailingZeros:
+		LLVMBuildRet(ir_builder, bl_builtins.integerZeros(ir_self, intrinsic == Intrinsic::IntegerLeadingZeros));
+		return;
+	case Intrinsic::IntegerToStringRadix:
+		LLVMBuildRet(ir_builder, bl_builtins.integerText(rt_self, ir_self, LLVMGetParam(function, 1)));
+		return;
+	case Intrinsic::FloatAbs:
+		LLVMBuildRet(ir_builder, bl_builtins.floatAbs(ir_self));
+		return;
+	case Intrinsic::FloatFormat:
+		LLVMBuildRet(ir_builder, bl_builtins.formatScalar(rt_self, ir_self));
+		return;
+	case Intrinsic::NumericError: {
+		const auto message = detail::string_value::bytes(ir_builder, LLVMGetParam(function, 0));
+		bl_builtins.call("cloth_rt_error_bytes", LLVMVoidTypeInContext(context), { message.data, message.length });
+		LLVMBuildUnreachable(ir_builder);
+		return;
+	}
 	case Intrinsic::OwnershipAcquire:
 		detail::objectCall(ir_builder, mf_functions.module, Operation::Acquire, { ir_self, LLVMGetParam(function, 1) });
 		break;

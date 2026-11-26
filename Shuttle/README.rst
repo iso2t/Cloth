@@ -39,9 +39,10 @@ Cloth identifier, for example when the project name contains a hyphen.
 Build an executable and a library
 ---------------------------------
 
-Include sibling module directories in the project's ``build.k``. Each
-directory has a ``module.k`` beside its ``src/``. Project paths are relative
-to ``build.k``. A module's API path is relative to its ``module.k``.
+The `calculator example <../examples/calculator>`_ includes two sibling
+module directories in its ``build.k``. Each directory has a ``module.k``
+beside its ``src/``. Project paths are relative to ``build.k``. A module's
+API path is relative to its ``module.k``.
 
 .. code-block:: text
 
@@ -67,13 +68,28 @@ Give ``Arithmetic/module.k`` the import name and public source file.
 
    module "Arithmetic" api="src/api.co"
 
-``Console/src/main.co`` can import public declarations from
-``Arithmetic/src/api.co`` with ``using Arithmetic : pick;``. Shuttle builds
-the modules reached through ``uses``. To use a module from a project-owned
-entry such as ``src/main.co``, put ``uses`` inside that ``target`` node.
+The `console entry <../examples/calculator/Console/src/main.co>`_ imports
+``add``, ``subtract``, ``multiply``, and ``divide`` from the
+`Arithmetic API <../examples/calculator/Arithmetic/src/api.co>`_.
+Shuttle builds the modules reached through ``uses``. To use a module from
+a project-owned entry such as ``src/main.co``, put ``uses`` inside that
+``target`` node.
+
+To build both targets, start in the Cloth checkout and enter the example directory.
+
+.. code-block:: sh
+
+   cd examples/calculator
+   shuttle build
+   shuttle build arithmetic-lib
+
+The first build produces the ``calculator`` executable. Run the path it
+prints with ``6 '*' 7`` to get ``42``. The console accepts two signed
+32-bit integers and one of ``+``, ``-``, ``*``, or ``/``. Division truncates
+toward zero. The second build produces ``arithmetic-lib.o`` for other
+Cloth projects to link.
 
 ``shuttle build`` selects the target that inherits the project name.
-``shuttle build arithmetic-lib`` builds ``arithmetic-lib.o`` independently.
 When every target has an explicit name, a sole target is the default.
 With several named targets, Shuttle lists the choices. Use
 ``--manifest-path PATH`` to select a project directory or its manifest

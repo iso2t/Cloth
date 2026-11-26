@@ -43,6 +43,7 @@ obj-y := cloth.o \
          semantic/lifetime.o \
          semantic/loop_writes.o \
          semantic/names.o \
+         semantic/numeric_methods.o \
          semantic/operators.o \
          semantic/shapes.o \
          semantic/storage_layout.o \

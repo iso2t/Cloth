@@ -89,7 +89,7 @@ const Symbol *Analyzer::instanceOwner (const Symbol &symbol) const {
 
 bool Analyzer::isTemplate (const Symbol &symbol) const {
 	for (const Symbol *sym_scope = &symbol; sym_scope; sym_scope = declarations.at(sym_scope).owner) {
-		if (typeParameters(*sym_scope)) return true;
+		if (typeParameters(*sym_scope) || asIntrinsicType(sym_scope)) return true;
 		if (sym_scope->kind == SymbolKind::Type) break;
 	}
 	return false;

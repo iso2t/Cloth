@@ -78,3 +78,13 @@ Copying the spelling into an application does not register a new intrinsic.
 The `program boundary checks <../../../Compiler/src/semantic/program_boundaries.cpp>`_
 also select the entry point for executable checking. For what the selected
 program can emit, see `Lowering a checked program <Backend.rst>`_.
+
+The checker also loads ``cloth/lang/num/Number.co`` from the selected
+standard library when that module exists. The public ``primitive.integer``
+and ``primitive.float`` declarations supply members for numeric receivers.
+Member lookup binds each declaration's implicit ``Self`` parameter
+to the receiver's resolved type. The generic instance key carries that type
+through body checking and native code generation. The checker diagnoses
+invalid constant arguments at the call site. Builds without a binding for
+the family use the standalone compiler's numeric methods. See the
+`numeric declarations <../../../Stdlib/StandardLibrary/src/cloth/lang/num/Number.co>`_.

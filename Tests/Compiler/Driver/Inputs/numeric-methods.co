@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<float<16>> half(float<16> value) = value.abs();
+fn<float<64>> clamp(float<64> value, float<64> low, float<64> high) = value.clamp(low, high);
+fn<float<64>> nan(float<64> zero) = zero / zero;
+fn<int?> sign(float<16>? value) = value?.signum();
+fn<float> magnitude(float value, opt<float> result ?: value.abs()) = result;
+
+pub fn<int> main(string[] args) {
+    float<64> unordered = nan(0.0);
+    if (args::size > 0) {
+        if (args[0] == "low") clamp(1.0, unordered, 3.0);
+        if (args[0] == "high") clamp(1.0, 0.0, unordered);
+        return 1;
+    }
+    float<16> h = -1.5;
+    float s = -2.5;
+    float<64> d = -3.5;
+    if (half(h) != 1.5 || h.clamp(-1.0, 2.0) != -1.0 || (sign(h) ?: 0) != -1 || sign(null) != null) return 2;
+    if (magnitude(s) != 2.5 || s.signum() != -1 || clamp(d, -4.0, 0.0) != d || d.abs() != 3.5) return 3;
+    float<16> zero = -0.0;
+    if (zero.signum() != 0 || (1.0 / (half(zero) -> float<64>)) < 0.0) return 4;
+    if (clamp(unordered, -1.0, 1.0) == clamp(unordered, -1.0, 1.0)) return 5;
+    unsigned int<1> bit = 1;
+    unsigned int<129> wide = 0;
+    if (bit.abs() != bit || bit.signum() != 1 || bit.clamp(0, 0) != 0) return 6;
+    if (wide.leadingZeros() != 129 || wide.trailingZeros() != 129 || wide.toStringRadix(2) != "0") return 7;
+    println(#"{h::str} {s} {d}");
+    println([half(h), half(zero)]);
+    return 0;
+}

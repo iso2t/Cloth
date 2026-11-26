@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<int<12>?> capped(int<12>? n) = n?.smaller(7);
+fn<usize> capSize(usize size, usize limit) = size.smaller(limit);
+fn<int<12>> cappedDefault(int<12> value, opt<int<12>> limit ?: value.smaller(5)) = limit;
+
+pub fn<int> main() {
+    int<12> signedBits = -1;
+    unsigned int<12> unsignedBits = 4095;
+    unsigned int<65> wide = 18446744073709551616;
+    if (signedBits.smaller(1) != -1 || unsignedBits.smaller(1) != 1) return 1;
+    if (wide.smaller(wide + 1) != wide || capSize(42, 7) != 7) return 2;
+    int<12> present = capped(9) ?: 0;
+    if (capped(null) != null || present != 7) return 3;
+    int<1> signBit = -1;
+    if (signBit.smaller(0) != -1 || cappedDefault(8) != 5) return 4;
+    print(signedBits);
+    println(#" {unsignedBits}");
+    println(wide::str);
+    println([wide, wide + 1]);
+    return 0;
+}

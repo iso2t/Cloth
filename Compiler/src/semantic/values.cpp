@@ -154,6 +154,7 @@ std::optional<ProviderSelection> BodyChecker::textConversion (const ResolvedType
 bool BodyChecker::formatterMayRun (const Expression &receiver, const ResolvedType &type, bool declared) {
 	if (!readOnlyDefaultRoot(receiver)) return true;
 	const ResolvedType rt_element = formatElement(type);
+	if (rt_element.primitiveFamily()) return true;
 	if (declared && !rt_element.parameter) invalidDefaultFormatter(receiver.getSpan(), pd_default->name);
 	analyzer.checkFormatterDefault(rt_element, receiver.getSpan(), pd_default->name, record);
 	return false;
@@ -253,7 +254,7 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 		requirePresent();
 		const bool     b_maximum = s_name == provider::S_MAX;
 		ExpressionInfo result    = selection(b_maximum ? ProviderKind::Maximum : ProviderKind::Minimum, payload);
-		result.numericConstant   = numericLimit(payload, analyzer.program.layout, b_maximum);
+		if (!payload.dependent()) result.numericConstant = numericLimit(payload, analyzer.program.layout, b_maximum);
 		return result;
 	}
 	if (s_name == provider::S_SIZE) {
@@ -273,7 +274,7 @@ ExpressionInfo BodyChecker::providerAccess (const ProviderAccessExpression &node
 		}
 		if (hasStorageSize(analyzer, type)) {
 			ExpressionInfo result = selection(ProviderKind::StorageSize, ResolvedType(KUsize));
-			if (!type.nullable()) result.numericConstant = countConstant(analyzer.program.storageLayout(type).value().size);
+			if (!type.nullable() && !type.dependent()) result.numericConstant = countConstant(analyzer.program.storageLayout(type).value().size);
 			return result;
 		}
 	}

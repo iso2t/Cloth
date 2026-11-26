@@ -19,12 +19,13 @@ class StructParser {
 	}
 
 	StructDeclaration parse (const Token &keyword, std::optional<Token> visibility) const;
+	IntrinsicTypeDeclaration parseIntrinsic (const Token &keyword, std::optional<Token> visibility, IntrinsicBinding binding) const;
 
     private:
 	Parser &p_parser;
 
 	std::vector<StructFieldDeclaration> parseFields () const;
-	std::vector<MethodDeclaration>      parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) const;
+	std::vector<MethodDeclaration>      parseMembers (std::vector<TypeDeclarationPtr> *nestedTypes) const;
 	void                                rejectFunction () const;
 	int                                 memberOffset () const;
 	bool                                atMember () const;

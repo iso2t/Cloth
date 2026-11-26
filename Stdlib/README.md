@@ -37,16 +37,17 @@ consumers of the collection, math, text, path, and file modules. See the
 [test prerequisites](../Documentation/contributing/Testing.rst#test-dependencies).
 
 To run the collection example from the repository root, compile the consumer
-and link its object with the collection and integer-output runtime sources.
+and link its object with the runtime archive for the target.
 
 ```sh
 build/cloth --kind executable --stdlib Stdlib/StandardLibrary/src --src Tests/Compiler/Driver/Inputs/stdlib-collections.co --emit-object build/collections.o
-cc -IRuntime/include build/collections.o Runtime/src/array.c Runtime/src/errors.c Runtime/src/object.c Runtime/src/println.c -o build/collections
+cc build/collections.o "build/lib/cloth/$(build/cloth --print-target)/libcloth_runtime.a" -o build/collections
 ```
 
 Running `build/collections` prints `40` and `2` on separate lines as the
 owned children are destroyed, then exits with status 42. On Windows use
-`build/cloth.exe`, MinGW `gcc`, and `build/collections.exe`. For the
+`build/cloth.exe`, MinGW `gcc`, and `build/collections.exe`, adding
+`-lshell32` to the link command. For the
 additional text and file link inputs, see the [runtime dependencies](../Documentation/compiler/driver/Objects.rst#runtime-dependencies).
 
 ## Numbers and math
@@ -56,6 +57,12 @@ as `fn<T> twice<T: Number>(T value) = value + value;`. Signed and unsigned
 integers, target-sized integers, and floating-point types satisfy this
 interface. A numeric type parameter retains its caller's exact type. Classes
 can implement `Number` explicitly and provide the operators their callers use.
+
+The library declares `abs`, `clamp`, `signum`, and `::str` on both
+`Integer` and `Float`. Integers also provide `smaller`, `leadingZeros`,
+`trailingZeros`, and `toStringRadix`. Within each family, `Self` preserves
+the receiver's exact type. See the [Cloth declarations](StandardLibrary/src/cloth/lang/num/Number.co)
+and [numeric method reference](../Documentation/language/expressions/Builtins.rst#standard-library-numeric-methods).
 
 The `cloth.math.Math` module exports `E()`, `PI()`, and `TAU()` as
 64-bit floating-point values. The `magic<T>(T value)` function in

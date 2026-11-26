@@ -277,6 +277,7 @@ void checkNumeric (const Expression &node, ExpressionInfo &result, const Express
 	if (result.symbol || result.leftContext || result.rightContext || result.types.size() != 1 || !result.fallsThrough) return;
 	const ResolvedType &rt_declared = result.types.front();
 	const ResolvedType  type        = rt_declared.nullable() ? rt_declared.element() : rt_declared;
+	if (type.dependent()) return;
 	if (type == ResolvedType(KBoolean)) {
 		std::optional<bool> opt_truth;
 		if (const auto *be_test = dynamic_cast<const BinaryExpression *>(&node); be_test && result.booleanEquality) {

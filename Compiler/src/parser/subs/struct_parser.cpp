@@ -54,7 +54,7 @@ StructDeclaration StructParser::parse (const Token &keyword, std::optional<Token
 					                                  p_parser.peek());
 				}
 			}
-			v_methods = parseMembers(v_nestedTypes);
+			v_methods = parseMembers(&v_nestedTypes);
 		});
 	}
 	const TokenSpan ts_span = TokenSpan::spanThrough((visibility ? *visibility : keyword).getSpan(), p_parser.previous().getSpan());
@@ -84,11 +84,24 @@ std::vector<StructFieldDeclaration> StructParser::parseFields () const {
 	        });
 }
 
-std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDeclarationPtr> &nestedTypes) const {
+IntrinsicTypeDeclaration StructParser::parseIntrinsic (const Token &keyword, std::optional<Token> visibility, IntrinsicBinding binding) const {
+	const Token t_name = p_parser.expect(TokenType::Identifier, "an intrinsic type name");
+	p_parser.expect(OColon);
+	TypeReference                  tr_parent = p_parser.p_typeParser.parse();
+	std::vector<MethodDeclaration> v_methods = p_parser.p_delimitedParser.braces([this] {
+		p_parser.skipNewLines();
+		return parseMembers(nullptr);
+	});
+	const TokenSpan                ts_span   = TokenSpan::spanThrough((visibility ? *visibility : keyword).getSpan(), p_parser.previous().getSpan());
+	return { t_name, std::move(visibility), ts_span, std::move(binding), std::move(tr_parent), std::move(v_methods) };
+}
+
+std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDeclarationPtr> *nestedTypes) const {
+	const bool                     primitiveFamily = nestedTypes == nullptr;
 	std::vector<MethodDeclaration> v_methods;
 	while (!atEnd()) {
-		if (p_parser.startsTypeDeclaration()) {
-			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
+		if (nestedTypes && p_parser.startsTypeDeclaration()) {
+			nestedTypes->emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}
 		rejectFunction();
@@ -96,10 +109,10 @@ std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDecla
 		std::optional<Token> opt_visibility = p_parser.parseVisibility();
 		if (p_parser.atKeyword(KMt)) {
 			v_methods.push_back(p_parser.p_functionParser.parseMethod(std::move(opt_visibility), std::nullopt, std::nullopt,
-			                                                          /*allowIntrinsic=*/false,
+			                                                          /*allowIntrinsic=*/primitiveFamily,
 			                                                          /*allowTypeParameters=*/true));
 		} else if (p_parser.atKeyword(KOperator)) {
-			v_methods.push_back(p_parser.p_functionParser.parseOperator(std::move(opt_visibility)));
+			v_methods.push_back(p_parser.p_functionParser.parseOperator(std::move(opt_visibility), /*allowIntrinsic=*/primitiveFamily));
 		} else {
 			throw cde::SyntaxErrors::expected(std::format("a '{}' or '{}' declaration", toString(KMt), toString(KOperator)), p_parser.peek());
 		}

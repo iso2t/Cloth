@@ -1,0 +1,5 @@
+pub fn print(string str) {
+
+}
+
+pub fn println(string str) = print(str + "\n");

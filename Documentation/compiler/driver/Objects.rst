@@ -340,7 +340,9 @@ Include the runtime sources for the operations your program uses in the
 C compiler's link command. For the effects of printing and exiting, see
 `Built-in functions and methods <../../language/expressions/Builtins.rst>`_.
 
-* ``println`` on a signed 32-bit ``int`` uses the small C entry point
+* With the standard-library integer formatter, ``println`` uses the general
+  text runtime. When compiling without that formatter, ``println`` on a
+  signed 32-bit ``int`` uses the small C entry point
   ``void cloth_rt_println_i32(int32_t value)`` in
   `Runtime/src/println.c <../../../Runtime/src/println.c>`_.
 * General text I/O, formatting, string comparison and methods, Unicode

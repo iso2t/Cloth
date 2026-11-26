@@ -2,7 +2,7 @@
 # REQUIRES: x86 && (linux || win32)
 
 # RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/stdlib-collections.co" --emit-object "%t.collections.o"
-# RUN: %cc "%t.collections.o" %runtime -o "%t.collections.exe"
+# RUN: %cc "%t.collections.o" %stdlib_runtime %runtime -o "%t.collections.exe"
 # RUN: %expect_exit --stdout-line 40 --stdout-line 2 --empty-stderr 42 "%t.collections.exe"
 # RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/stdlib-text.co" --emit-object "%t.text.o"
 # RUN: %cc "%t.text.o" %stdlib_runtime %runtime -o "%t.text.exe"
@@ -11,7 +11,7 @@
 # RUN: %cc "%t.io.o" %stdlib_runtime %runtime -o "%t.io.exe"
 # RUN: %python -c "from pathlib import Path; Path(r'%t.é.data').write_bytes(bytes.fromhex('c3a90041c080'))"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.io.exe" "%t.é.data" "%t.missing"
-# RUN: %cloth --kind executable --src "%S/Inputs/stdlib-input.co" --emit-object "%t.input.o"
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/stdlib-input.co" --emit-object "%t.input.o"
 # RUN: %cc "%t.input.o" %stdlib_runtime %runtime -o "%t.input.exe"
 # RUN: %python -c "from pathlib import Path; Path(r'%t.input').write_bytes(bytes.fromhex('c3a9f09f98800d0a0a'))"
 # RUN: %expect_exit --stdout-line "input> " --empty-stderr 42 "%t.input.exe" < "%t.input"

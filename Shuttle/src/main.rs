@@ -4,11 +4,30 @@ mod build;
 mod manifest;
 mod project;
 
-use std::{env, error::Error, ffi::OsStr, path::PathBuf, process::ExitCode};
+use std::{env, error::Error, ffi::OsString, path::PathBuf, process::ExitCode};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-const USAGE: &str = "Usage: shuttle build [TARGET] [--manifest-path PATH] [--target-bits 32|64] [--stdlib DIR] [--compiler PATH] [--cc PATH] [--runtime-dir DIR]";
+const HELP: &str = "\
+Shuttle builds Cloth executables and libraries from build.k.
+
+Usage
+  shuttle build [TARGET] [OPTIONS]
+  shuttle --help
+
+Examples
+  shuttle build                 Build the default target in this directory
+  shuttle build arithmetic-lib  Build the calculator example's library
+
+Project options
+  --manifest-path PATH   Use a build.k file or a project directory
+  --target-bits 32|64    Build for 32-bit or 64-bit x86
+
+Toolchain options
+  --compiler PATH        Use this Cloth compiler executable
+  --cc PATH              Link the executable with this C compiler driver
+  --stdlib DIR           Read standard library sources from DIR
+  --runtime-dir DIR      Look for DIR/<target-triple>/libcloth_runtime.a";
 
 struct Options {
     manifest: PathBuf,
@@ -21,7 +40,7 @@ struct Options {
 }
 
 impl Options {
-    fn parse(mut args: impl Iterator<Item = std::ffi::OsString>) -> Result<Self> {
+    fn parse(mut args: impl Iterator<Item = OsString>) -> Result<Option<Self>> {
         let mut options = Self {
             manifest: "build.k".into(),
             target: None,
@@ -46,6 +65,7 @@ impl Options {
                     .ok_or_else(|| format!("{} requires a value", flag.to_string_lossy()))
             };
             match flag.to_str() {
+                Some("-h" | "--help") => return Ok(None),
                 Some("--manifest-path") => options.manifest = value()?.into(),
                 Some("--compiler") => options.compiler = value()?.into(),
                 Some("--cc") => options.linker = value()?.into(),
@@ -68,17 +88,30 @@ impl Options {
                 }
             }
         }
-        Ok(options)
+        Ok(Some(options))
     }
 }
 
 fn run() -> Result<()> {
     let mut args = env::args_os().skip(1);
-    if args.next().as_deref() != Some(OsStr::new("build")) {
-        return Err(USAGE.into());
+    let Some(command) = args.next() else {
+        return Err(format!("expected a command\n\n{HELP}").into());
+    };
+    let options = match command.to_str() {
+        Some("build") => Options::parse(args)?,
+        Some("-h" | "--help") => None,
+        _ => {
+            return Err(
+                format!("unknown command '{}'\n\n{HELP}", command.to_string_lossy()).into(),
+            );
+        }
+    };
+    if let Some(options) = options {
+        let artifact = build::project(options)?;
+        println!("{}", artifact.display());
+    } else {
+        println!("{HELP}");
     }
-    let artifact = build::project(Options::parse(args)?)?;
-    println!("{}", artifact.display());
     Ok(())
 }
 

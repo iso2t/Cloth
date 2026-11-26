@@ -110,13 +110,21 @@ std::optional<std::uint64_t> ResolvedType::arrayExtent () const {
 	return std::stoull(suffixes.back().substr(toString(OBracketOpen).size()));
 }
 
+std::optional<PrimitiveFamily> ResolvedType::primitiveFamily () const {
+	if (!suffixes.empty()) return {};
+	if (parameter) return parameter->primitiveSelf;
+	if (name == toString(KFloat)) return PrimitiveFamily::Float;
+	if (name == toString(KInteger) || name == semantic::unsignedIntegerSpelling() || name == toString(KUsize) || name == toString(KIsize))
+		return PrimitiveFamily::Integer;
+	return {};
+}
+
 bool ResolvedType::integer () const {
-	return suffixes.empty() &&
-	       (name == toString(KInteger) || name == semantic::unsignedIntegerSpelling() || name == toString(KUsize) || name == toString(KIsize));
+	return primitiveFamily() == PrimitiveFamily::Integer;
 }
 
 bool ResolvedType::floating () const {
-	return suffixes.empty() && name == toString(KFloat);
+	return primitiveFamily() == PrimitiveFamily::Float;
 }
 
 bool ResolvedType::enumeration () const {
@@ -362,10 +370,10 @@ void Analyzer::registerScope (const SymbolScope &scope, const std::size_t file, 
 			    !program.standardLibraryRoot.empty()) {
 				const SourceFile *sf_source = program.units[file]->getSourceUnit().getSource();
 				std::error_code   ec_file;
-				if (sf_source &&
-				    std::filesystem::equivalent(sf_source->getPath(), program.standardLibraryRoot / "cloth/lang/num/Number.co", ec_file))
+				if (sf_source && std::filesystem::equivalent(sf_source->getPath(), program.standardLibraryRoot / NUMERIC_MODULE, ec_file))
 					sym_number = &sym;
 			}
+			if (const auto *intrinsic = asIntrinsicType(&sym)) m_genericOwners.emplace(&intrinsic->self, &sym);
 			if (sym.kind == SymbolKind::Constructor && dynamic_cast<const PrimaryConstructorDeclaration *>(callable(sym))) {
 				declarations.at(owner).primaryConstructor = &sym;
 			}
@@ -483,6 +491,17 @@ void Analyzer::loadImports (const NativeModules &modules) {
 			throw cde::ClothDiagnostic(Code::InvalidCompilationRequest, "An external library refers to the entry source");
 	}
 	v_sourceRoots.push_back(p_entryRoot);
+	// Primitive members participate in lookup without importing names into the user's module.
+	if (!p_libraryRoot.empty() && fs::is_regular_file(p_libraryRoot / NUMERIC_MODULE)) {
+		const fs::path path       = fs::canonical(p_libraryRoot / NUMERIC_MODULE);
+		const auto [it, inserted] = m_files.emplace(path, program.units.size());
+		m_libraryPaths[it->second].insert(std::string(NUMERIC_MODULE));
+		if (inserted) {
+			Lexer lexer{ SourceFile(path) };
+			program.units.emplace_back(std::make_unique<SymbolTable>(Parser(lexer, program.units.front()->getSourceUnit().grammar).parse()));
+			v_sourceRoots.push_back(p_libraryRoot);
+		}
+	}
 	for (std::size_t st_file = 0; st_file < program.units.size(); ++st_file) {
 		v_names.emplace_back();
 		v_edges.emplace_back();

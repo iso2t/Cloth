@@ -10,6 +10,7 @@
 struct ClothString;
 
 CLOTH_RT_API(_Noreturn void, clothRtError, error, const char *message);
+CLOTH_RT_API(_Noreturn void, clothRtErrorBytes, error_bytes, const unsigned char *message, size_t length);
 CLOTH_RT_API(_Noreturn void, clothRtDivideByZero, divide_by_zero, void);
 CLOTH_RT_API(_Noreturn void, clothRtSignedDivisionOverflow, signed_division_overflow, void);
 CLOTH_RT_API(_Noreturn void, clothRtNegativeIntegerExponent, negative_integer_exponent, void);

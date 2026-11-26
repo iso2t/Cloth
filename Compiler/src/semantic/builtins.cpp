@@ -4,14 +4,12 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstddef>
 #include <format>
 #include <optional>
 #include <span>
 #include <string_view>
 #include <utility>
-#include <variant>
 
 #include <ast/expr/expression.hpp>
 #include <ast/expr/expressions.hpp>
@@ -20,12 +18,11 @@
 #include <diagnostics.hpp>
 #include <semantic/checked_program.hpp>
 #include <semantic/checker.hpp>
-#include <semantic/target_layout.hpp>
 #include <token/token.hpp>
 
 namespace cloth::semantic {
 namespace {
-enum class Family { Function, Numeric, Integer, Character, String, CharacterOrBoolean, CharacterOrString };
+enum class Family { Function, Character, String, CharacterOrBoolean, CharacterOrString };
 enum class Slot { None, Never, Text, NativeInt, Self, Int, Size, NullableSize, Bool, Char, String, NullableString, Chars, Strings, CharOrString };
 
 struct Definition {
@@ -61,16 +58,6 @@ constexpr Definition V_FUNCTIONS[] = {
 };
 
 constexpr Definition V_METHODS[] = {
-	{ .operation = BuiltinOperation::Abs, .name = "abs", .family = Family::Numeric, .result = Slot::Self },
-	{ .operation = BuiltinOperation::Clamp, .name = "clamp", .family = Family::Numeric, .result = Slot::Self, .parameters = { Slot::Self, Slot::Self } },
-	{ .operation = BuiltinOperation::Signum, .name = "signum", .family = Family::Numeric, .result = Slot::Int },
-	{ .operation  = BuiltinOperation::ToStringRadix,
-	  .name       = "toStringRadix",
-	  .family     = Family::Integer,
-	  .result     = Slot::String,
-	  .parameters = { Slot::Int } },
-	{ .operation = BuiltinOperation::LeadingZeros, .name = "leadingZeros", .family = Family::Integer, .result = Slot::Size },
-	{ .operation = BuiltinOperation::TrailingZeros, .name = "trailingZeros", .family = Family::Integer, .result = Slot::Size },
 	{ .operation = BuiltinOperation::ToInt, .name = "toInt", .family = Family::CharacterOrBoolean, .result = Slot::Int },
 	{ .operation = BuiltinOperation::IsWhitespace, .name = "isWhitespace", .family = Family::Character, .result = Slot::Bool },
 	{ .operation = BuiltinOperation::IsLetter, .name = "isLetter", .family = Family::Character, .result = Slot::Bool },
@@ -131,12 +118,8 @@ const Definition *definition (const std::string_view name, const bool method) {
 }
 
 bool acceptsReceiver (const Family family, const ResolvedType &type) {
-	if (type.declaration || type.parameter || !type.suffixes.empty()) return false;
+	if (type.declaration || !type.suffixes.empty()) return false;
 	switch (family) {
-	case Family::Numeric:
-		return type.integer() || type.floating();
-	case Family::Integer:
-		return type.integer();
 	case Family::Character:
 		return type == ResolvedType(KCharacter);
 	case Family::String:
@@ -196,49 +179,20 @@ std::optional<ResolvedType> slotType (const Slot slot, const std::optional<Resol
 	}
 }
 
-void checkNumericMethod (const Definition &builtin, const CallSite &call, const ExpressionInfo &receiver, const std::array<NumericConstant, 2> &arguments,
-                         const TargetLayout layout) {
-	const ResolvedType &rt_receiver = receiver.types.front();
-	const TokenSpan     ts_method   = call.name.getSpan();
-	if (rt_receiver.integer()) {
-		const IntegerConstant *ic_minimum = std::get_if<IntegerConstant>(&arguments[0]), *ic_maximum = std::get_if<IntegerConstant>(&arguments[1]);
-		if (builtin.operation == BuiltinOperation::Abs) {
-			if (const IntegerConstant *ic_value = std::get_if<IntegerConstant>(&receiver.numericConstant);
-			    ic_value && ic_value->negative && receiver.numericConstant == numericLimit(rt_receiver, layout, false))
-				fail(Code::IntegerAbsOverflow, ts_method, "The absolute value of the minimum integer exceeds " + rt_receiver.spelling());
-		} else if (builtin.operation == BuiltinOperation::Clamp && ic_minimum && ic_maximum && compareIntegers(*ic_minimum, *ic_maximum) > 0)
-			fail(Code::InvalidClampBounds, ts_method, "The minimum clamp bound exceeds the maximum");
-		else if (builtin.operation == BuiltinOperation::ToStringRadix && ic_minimum &&
-		         (compareIntegers(*ic_minimum, { .magnitude = { 2 } }) < 0 || compareIntegers(*ic_minimum, { .magnitude = { 36 } }) > 0))
-			fail(Code::InvalidIntegerRadix, call.suppliedArguments.front().expression->getSpan(),
-			     "An integer formatting radix must be between 2 and 36");
-	} else if (rt_receiver.floating()) {
-		if (builtin.operation == BuiltinOperation::Signum) {
-			if (const double *d_value = std::get_if<double>(&receiver.numericConstant); d_value && std::isnan(*d_value))
-				fail(Code::FloatSignumNan, ts_method, "NaN has no signum");
-		} else if (builtin.operation == BuiltinOperation::Clamp) {
-			const double *d_maximum = std::get_if<double>(&arguments[1]);
-			if (const double *d_minimum = std::get_if<double>(&arguments[0]); (d_minimum && std::isnan(*d_minimum)) ||
-			                                                                  (d_maximum && std::isnan(*d_maximum)) ||
-			                                                                  (d_minimum && d_maximum && *d_minimum > *d_maximum))
-				fail(Code::InvalidFloatClampBounds, ts_method, "Floating clamp bounds must be ordered and cannot be NaN");
-		}
-	}
-}
 }
 
 bool builtinFunctionNamed (const std::string_view name) {
 	return definition(name, false) != nullptr;
 }
 
+bool builtinMethodNamed (std::string_view name, const ResolvedType &receiver) {
+	const Definition *method = definition(name, true);
+	return (method && acceptsReceiver(method->family, receiver)) || numericMethodNamed(name, receiver);
+}
+
 bool builtinNeverReturns (const std::string_view name) {
 	const Definition *d_builtin = definition(name, false);
 	return d_builtin && d_builtin->result == Slot::Never;
-}
-
-bool checksNumericMethod (const std::string_view name) {
-	const Definition *bd_method = definition(name, true);
-	return bd_method && (bd_method->family == Family::Numeric || bd_method->operation == BuiltinOperation::ToStringRadix);
 }
 
 void BodyChecker::checkTypeArguments (const TypeArgumentList &arguments) const {
@@ -283,40 +237,22 @@ void BodyChecker::checkBuiltinArguments (const CallSite &call, const TypeArgumen
 	fail(Code::CallArity, call.name.getSpan(), std::format("No overload of '{}' takes {} arguments", call.name.getLexeme(), st_supplied));
 }
 
-ResolvedType BodyChecker::nonReturningNumericReceiver (const CallSite &call) const {
-	// A typed bound supplies its identity even when an earlier bound is an untyped literal.
-	BodyChecker bc_probe = *this;
-	bc_probe.record      = false;
-	bc_probe.we_capture  = nullptr;
-	for (const ElementEvidence ee_tier : { ElementEvidence::Typed, ElementEvidence::Literal }) {
-		for (const CallArgument &ca_argument : call.suppliedArguments) {
-			if (elementEvidence(*ca_argument.expression) != ee_tier) continue;
-			const std::optional<ResolvedType> opt_hint = bc_probe.scalar(*ca_argument.expression);
-			if (!opt_hint || (ee_tier == ElementEvidence::Literal && !opt_hint->floating())) continue;
-			return acceptsReceiver(Family::Numeric, *opt_hint) ? *opt_hint : ResolvedType(KInteger);
-		}
-	}
-	return ResolvedType(KInteger);
-}
-
 std::optional<ExpressionInfo> BodyChecker::builtinCall (const CallSite &call, const TypeArgumentList *typeArguments, const ExpressionInfo *receiver) {
 	const Definition *bd_builtin = definition(call.name.getNameKey(), receiver != nullptr);
 	if (!bd_builtin) return {};
+	const std::size_t           st_maximum = std::ranges::count_if(bd_builtin->parameters, [] (Slot slot) { return slot != Slot::None; });
 	std::optional<ResolvedType> opt_receiver;
 	if (receiver && receiver->fallsThrough) {
 		opt_receiver = receiver->types.front();
 		if (!acceptsReceiver(bd_builtin->family, *opt_receiver)) return {};
 	}
 	const std::size_t st_supplied = call.suppliedArguments.size();
-	const std::size_t st_maximum  = std::ranges::count_if(bd_builtin->parameters, [] (const Slot slot) { return slot != Slot::None; });
 	checkBuiltinArguments(call, typeArguments, st_maximum - bd_builtin->optionalLast, st_maximum);
 
-	if (receiver && !opt_receiver)
-		opt_receiver = bd_builtin->family == Family::Numeric && st_supplied ? nonReturningNumericReceiver(call) : representative(bd_builtin->family);
+	if (receiver && !opt_receiver) opt_receiver = representative(bd_builtin->family);
 	BuiltinCall                    bc_bound{ .operation = bd_builtin->operation, .receiver = opt_receiver, .parameters = {} };
 	bool                           b_continues = !receiver || receiver->fallsThrough;
 	std::optional<BodyChecker>     opt_unreachable;
-	std::array<NumericConstant, 2> v_constants;
 	for (std::size_t st_index = 0; st_index < st_supplied; ++st_index) {
 		const Expression           &e_argument    = *call.suppliedArguments[st_index].expression;
 		const Slot                  bs_slot       = bd_builtin->parameters[st_index];
@@ -353,11 +289,8 @@ std::optional<ExpressionInfo> BodyChecker::builtinCall (const CallSite &call, co
 			     std::format("'{}' requires {}, got {}", bd_builtin->name, s_expected, rt_actual->spelling()));
 		}
 		bc_bound.parameters.push_back(std::move(*opt_parameter));
-		v_constants[st_index] = std::move(ei_actual.numericConstant);
 		b_continues &= ei_actual.fallsThrough;
 	}
-	if ((record || ef_probeConstants) && receiver && receiver->fallsThrough)
-		checkNumericMethod(*bd_builtin, call, *receiver, v_constants, analyzer.program.layout);
 	ExpressionInfo ei_result{ .types = {}, .fallsThrough = b_continues && bd_builtin->result != Slot::Never, .builtin = std::move(bc_bound) };
 	if (std::optional<ResolvedType> opt_result = slotType(bd_builtin->result, opt_receiver)) ei_result.types.push_back(std::move(*opt_result));
 	return ei_result;

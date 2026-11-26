@@ -86,7 +86,32 @@ void BuiltinLowering::guard (LLVMValueRef failure, const char *message) {
 	LLVMPositionBuilderAtEnd(ir_builder, valid);
 }
 
+LLVMValueRef BuiltinLowering::floatAbs (LLVMValueRef value) {
+	const unsigned     id       = LLVMLookupIntrinsicID("llvm.fabs", 9);
+	LLVMTypeRef        overload = LLVMTypeOf(value);
+	const LLVMValueRef fn       = LLVMGetIntrinsicDeclaration(mod_module, id, &overload, 1);
+	return LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(fn), fn, &value, 1, "");
+}
+
+LLVMValueRef BuiltinLowering::integerZeros (LLVMValueRef value, bool leading) {
+	LLVMTypeRef       stored = LLVMTypeOf(value);
+	const unsigned    width  = LLVMGetIntTypeWidth(stored);
+	const LLVMTypeRef size   = LLVMIntPtrTypeInContext(LLVMGetModuleContext(mod_module), LLVMGetModuleDataLayout(mod_module));
+	if (width > 64) return call("cloth_rt_integer_zeros", size, { address(value), number(32, width), number(8, leading) });
+	const unsigned     id         = LLVMLookupIntrinsicID(leading ? "llvm.ctlz" : "llvm.cttz", 9);
+	const LLVMValueRef fn         = LLVMGetIntrinsicDeclaration(mod_module, id, &stored, 1);
+	LLVMValueRef       operands[] = { value, number(1, 0) };
+	const LLVMValueRef result     = LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(fn), fn, operands, 2, "");
+	return LLVMBuildIntCast2(ir_builder, result, size, false, "");
+}
+
+LLVMValueRef BuiltinLowering::integerText (const cloth::ResolvedType &type, LLVMValueRef value, LLVMValueRef radix) {
+	return output("cloth_rt_text_integer", string_value::type(mod_module),
+	              { address(value), number(32, LLVMGetIntTypeWidth(LLVMTypeOf(value))), number(8, !type.unsignedInteger()), radix });
+}
+
 LLVMValueRef BuiltinLowering::numeric (Op op, const cloth::ResolvedType &type, LLVMValueRef value, const std::vector<LLVMValueRef> &args) {
+	// Standalone builds can use numeric methods without loading a primitive-family declaration.
 	const LLVMContextRef context  = LLVMGetModuleContext(mod_module);
 	const bool           floating = type.floating();
 	const LLVMTypeRef    stored   = LLVMTypeOf(value);
@@ -97,12 +122,7 @@ LLVMValueRef BuiltinLowering::numeric (Op op, const cloth::ResolvedType &type, L
 	};
 	switch (op) {
 	case Op::Abs:
-		if (floating) {
-			const unsigned     id       = LLVMLookupIntrinsicID("llvm.fabs", 9);
-			LLVMTypeRef        overload = stored;
-			const LLVMValueRef fn       = LLVMGetIntrinsicDeclaration(mod_module, id, &overload, 1);
-			return LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(fn), fn, &value, 1, "");
-		}
+		if (floating) return floatAbs(value);
 		if (type.unsignedInteger()) return value;
 		guard(LLVMBuildICmp(ir_builder, LLVMIntEQ, value,
 		                    LLVMBuildShl(ir_builder, LLVMConstInt(stored, 1, false), LLVMConstInt(stored, LLVMGetIntTypeWidth(stored) - 1, false), ""),
@@ -119,21 +139,10 @@ LLVMValueRef BuiltinLowering::numeric (Op op, const cloth::ResolvedType &type, L
 		return LLVMBuildSelect(ir_builder, less(value, zero), number(32, UINT32_MAX),
 		                       LLVMBuildZExt(ir_builder, less(zero, value), LLVMInt32TypeInContext(context), ""), "");
 	case Op::LeadingZeros:
-	case Op::TrailingZeros: {
-		if (LLVMGetIntTypeWidth(stored) > 64) {
-			return call("cloth_rt_integer_zeros", LLVMIntPtrTypeInContext(context, LLVMGetModuleDataLayout(mod_module)),
-			            { address(value), number(32, LLVMGetIntTypeWidth(stored)), number(8, op == Op::LeadingZeros) });
-		}
-		const unsigned     id         = LLVMLookupIntrinsicID(op == Op::LeadingZeros ? "llvm.ctlz" : "llvm.cttz", 9);
-		LLVMTypeRef        overload   = stored;
-		const LLVMValueRef fn         = LLVMGetIntrinsicDeclaration(mod_module, id, &overload, 1);
-		LLVMValueRef       operands[] = { value, number(1, 0) };
-		const LLVMValueRef result     = LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(fn), fn, operands, 2, "");
-		return LLVMBuildIntCast2(ir_builder, result, LLVMIntPtrTypeInContext(context, LLVMGetModuleDataLayout(mod_module)), false, "");
-	}
+	case Op::TrailingZeros:
+		return integerZeros(value, op == Op::LeadingZeros);
 	case Op::ToStringRadix:
-		return output("cloth_rt_text_integer", string_value::type(mod_module),
-		              { address(value), number(32, LLVMGetIntTypeWidth(stored)), number(8, !type.unsignedInteger()), args.at(0) });
+		return integerText(type, value, args.at(0));
 	default:
 		throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedLowering, "Unrecognized checked numeric method");
 	}
@@ -265,7 +274,7 @@ LLVMValueRef BuiltinLowering::enumName (const cloth::ResolvedType &type, LLVMVal
 LLVMValueRef BuiltinLowering::formatScalar (const cloth::ResolvedType &type, LLVMValueRef value) {
 	const LLVMTypeRef text = string_value::type(mod_module);
 	if (type == cloth::ResolvedType(cloth::KString)) return value;
-	if (type.integer()) return numeric(Op::ToStringRadix, type, value, { number(32, 10) });
+	if (type.integer()) return integerText(type, value, number(32, 10));
 	if (type.floating()) {
 		auto wide  = type;
 		wide.width = 64;

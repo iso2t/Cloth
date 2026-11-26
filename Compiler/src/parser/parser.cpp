@@ -262,8 +262,9 @@ DeclarationPtr Parser::parseTypeDeclaration (bool nested) {
 	std::optional<Token>         opt_finalKeyword = atKeyword(KFinal) ? std::make_optional(advance()) : std::nullopt;
 	const Token                  t_keyword        = advance();
 	std::optional<TypeReference> opt_payload;
-	const Token                  t_kind = p_delimitedParser.angles([this, &opt_visibility, &opt_finalKeyword, &opt_payload, nested] () -> Token {
-                const Token t_start = peek();
+	std::optional<IntrinsicBinding> opt_intrinsic;
+	const Token                     t_kind = p_delimitedParser.angles([&] () -> Token {
+		const Token t_start = peek();
                 if (atKeyword(KClass)) {
                         return advance();
                 }
@@ -274,7 +275,12 @@ DeclarationPtr Parser::parseTypeDeclaration (bool nested) {
                 if (atKeyword(KStruct) || atKeyword(KEnum) || atKeyword(KInterface)) {
                         return advance();
                 }
-                if (!nested && atKeyword(KState)) {
+		if (!nested && t_start.getLexeme() == toString(KIntrinsic)) {
+			advance();
+			opt_intrinsic = IntrinsicBinding{ expect(TokenType::StringLiteral, "a primitive family ID") };
+			return t_start;
+		}
+		if (!nested && atKeyword(KState)) {
                         const Token t_state = advance();
                         if (opt_visibility) {
                                 throw cde::SyntaxErrors::expected(std::format("state visibility after the '{}' header", toString(KTypeDef)), *opt_visibility);
@@ -292,12 +298,16 @@ DeclarationPtr Parser::parseTypeDeclaration (bool nested) {
 			                                                               toString(KClass), toString(KEnum), toString(KInterface)),
 			                                                   t_start);
                 }
-                throw cde::SyntaxErrors::expected(std::format("'{}', '{}', '{}', '{}', or '{}' as the type declaration kind", toString(KStruct),
-		                                                               toString(KClass), toString(KEnum), toString(KInterface), toString(KState)),
-		                                                   t_start);
-        });
+		throw cde::SyntaxErrors::expected(std::format("'{}', '{}', '{}', '{}', '{}', or '{}' as the type declaration kind", toString(KStruct),
+		                                              toString(KClass), toString(KEnum), toString(KInterface), toString(KState), toString(KIntrinsic)),
+		                                  t_start);
+	});
 
 	const std::string &s_kind = t_kind.getLexeme();
+	if (opt_intrinsic) {
+		return std::make_shared<IntrinsicTypeDeclaration>(
+		        p_structParser.parseIntrinsic(t_keyword, std::move(opt_visibility), std::move(*opt_intrinsic)));
+	}
 	if (s_kind == toString(KClass)) {
 		return std::make_shared<ClassDeclaration>(p_classParser.parse(t_keyword, std::move(opt_visibility), std::move(opt_finalKeyword)));
 	}

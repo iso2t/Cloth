@@ -106,6 +106,11 @@ const StructDeclaration *asStruct (const Symbol *symbol) {
 	return dynamic_cast<const StructDeclaration *>(std::get<const TypeDeclaration *>(symbol->declaration));
 }
 
+const IntrinsicTypeDeclaration *asIntrinsicType (const Symbol *symbol) {
+	if (!symbol || symbol->kind != SymbolKind::Type) return nullptr;
+	return dynamic_cast<const IntrinsicTypeDeclaration *>(std::get<const TypeDeclaration *>(symbol->declaration));
+}
+
 const EnumDeclaration *enumeration (const ResolvedType &type) {
 	return type.declaration && type.suffixes.empty() ?
 	               dynamic_cast<const EnumDeclaration *>(std::get<const TypeDeclaration *>(type.declaration->declaration)) :
@@ -185,6 +190,11 @@ ResolvedType Analyzer::substitute (ResolvedType type, const Substitutions &argum
 }
 
 ResolvedType Analyzer::ownerType (const Symbol &symbol) const {
+	if (const auto *intrinsic = asIntrinsicType(&symbol)) {
+		ResolvedType self(intrinsic->self.name.getNameKey());
+		self.parameter = &intrinsic->self;
+		return self;
+	}
 	ResolvedType rt_type(symbol.name.getNameKey());
 	rt_type.declaration = &symbol;
 	if (const TypeParameterList *tp = typeParameters(symbol)) {
@@ -199,7 +209,17 @@ ResolvedType Analyzer::ownerType (const Symbol &symbol) const {
 	return rt_type;
 }
 
+const Symbol *Analyzer::primitiveOwner (const ResolvedType &type) const {
+	if (const auto family = type.primitiveFamily()) {
+		const auto it = m_primitiveFamilies.find(*family);
+		if (it != m_primitiveFamilies.end()) return it->second;
+	}
+	return nullptr;
+}
+
 Substitutions Analyzer::argumentsOf (const ResolvedType &type) const {
+	// A primitive member specializes on the complete receiver, including width and signedness.
+	if (const auto *owner = primitiveOwner(type)) return { { &asIntrinsicType(owner)->self, type } };
 	Substitutions            m_args;
 	const TypeParameterList *tp = type.declaration ? typeParameters(*type.declaration) : nullptr;
 	if (tp) {
@@ -212,6 +232,7 @@ Substitutions Analyzer::argumentsOf (const ResolvedType &type) const {
 
 const TypeParameterDeclaration *Analyzer::genericParameter (const Symbol &context, const std::string &name) const {
 	for (const Symbol *sym = &context; sym; sym = declarations.at(sym).owner) {
+		if (const auto *intrinsic = asIntrinsicType(sym); intrinsic && name == intrinsic->self.name.getNameKey()) return &intrinsic->self;
 		if (const TypeParameterList *tp = typeParameters(*sym)) {
 			for (const TypeParameterDeclaration &param : tp->parameters) {
 				if (param.name.getNameKey() == name) {
@@ -312,6 +333,10 @@ ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol
 				sym = nested;
 				requireAccess(*sym, context, ts_span);
 			}
+			if (const auto *family = asIntrinsicType(sym))
+				fail(Code::UnsupportedType, ts_span,
+				     std::format("A primitive family requires a concrete {} type here", primitiveFamilyName(*family->self.primitiveSelf)),
+				     &sym->name);
 			rt_type.name                                 = sym->name.getNameKey();
 			rt_type.declaration                          = sym;
 			const TypeParameterList          *tp         = typeParameters(*sym);
@@ -441,6 +466,13 @@ bool Analyzer::sameSignature (const Candidate &left, const Candidate &right, boo
 std::vector<Candidate> Analyzer::members (const ResolvedType &type, std::string_view name, SymbolKind kind, MemberLookup lookup) const {
 	std::vector<Candidate> v_members;
 	if (!type.suffixes.empty()) {
+		return v_members;
+	}
+	if (const Symbol *owner = primitiveOwner(type)) {
+		const auto it = owner->members.find(name);
+		if (it != owner->members.end())
+			for (const Symbol &member : it->second)
+				if (member.kind == kind) v_members.push_back({ .symbol = &member, .arguments = argumentsOf(type) });
 		return v_members;
 	}
 	std::set<const Symbol *>                  s_path;
@@ -841,6 +873,13 @@ void Analyzer::resolveDeclaration (const Symbol &symbol) {
 			}
 			if (std::ranges::none_of(info.parents, [] (const ResolvedType &parent) { return asClass(parent.declaration); }))
 				info.parents.push_back(ownerType(objectRoot()));
+		} else if (const auto *intrinsic = asIntrinsicType(&symbol)) {
+			const ResolvedType parent = valueType(intrinsic->parent);
+			if (!sym_number || parent != ownerType(*sym_number))
+				fail(Code::InvalidIntrinsicBinding, intrinsic->parent.getSpan(),
+				     std::format("The {} family must implement the standard library Number interface",
+				                 primitiveFamilyName(*intrinsic->self.primitiveSelf)));
+			info.parents.push_back(parent);
 		} else if (const auto *id = dynamic_cast<const InterfaceDeclaration *>(td)) {
 			for (const TypeReference &parent : id->parents) {
 				info.parents.push_back(valueType(parent));

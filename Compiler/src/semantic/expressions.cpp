@@ -53,7 +53,7 @@ ExpressionInfo value (ResolvedType type, const Symbol *symbol = nullptr, const R
 ResolvedType literalInteger (const IntegerLiteral &literal, const ResolvedType *expected, const bool negative, const TargetLayout layout,
                              const bool inferenceDefault) {
 	const ResolvedType rt = expected && expected->integer() ? *expected : ResolvedType(KInteger);
-	if (inferenceDefault) return rt;
+	if (inferenceDefault || rt.dependent()) return rt;
 	const bool          isUnsigned = rt.unsignedInteger();
 	const unsigned      width      = rt.width ? rt.width : layout.sizeBits;
 	const IntegerValue &words      = literal.value;
@@ -75,9 +75,9 @@ bool numericLiteral (const Expression &expr) {
 }
 
 bool suppliesFloatingContext (const ResolvedType &type) {
-	return !type.declaration && !type.parameter &&
-	       (type.name == toString(KFloat) ||
-	        (type.name == toString(KRange) && !type.arguments().empty() && suppliesFloatingContext(type.arguments().front())));
+	if (type.parameter) return type.parameter->primitiveSelf == PrimitiveFamily::Float;
+	return !type.declaration && (type.name == toString(KFloat) ||
+	                             (type.name == toString(KRange) && !type.arguments().empty() && suppliesFloatingContext(type.arguments().front())));
 }
 
 bool arithmetic (Operator op) {
@@ -112,7 +112,7 @@ void mergeElementHint (std::optional<ResolvedType> &common, const std::optional<
 }
 
 ResolvedType numericOperationType (const ResolvedType &left, const ResolvedType &right) {
-	if (!left.floating() && !right.floating()) return left;
+	if (left == right || (!left.floating() && !right.floating())) return left;
 	ResolvedType rt_result(KFloat);
 	rt_result.width = std::max(left.floating() ? left.width : rt_result.width, right.floating() ? right.width : rt_result.width);
 	return rt_result;
@@ -790,7 +790,7 @@ ExpressionInfo BodyChecker::elvis (const ElvisExpression &node, const ResultType
 		fail(Code::InvalidElvis, node.op.getSpan(), std::format("Left operand of {} must be nullable", toString(OElvis)));
 	}
 	const ResolvedType rt_element = rt.element();
-	if (rt_element.floating()) floats = { .contextual = true, .width = rt_element.width };
+	if (rt_element.floating()) floats = { .contextual = true, .type = rt_element };
 	BodyChecker bc_missing   = *this;
 	bc_missing.fs_flow.exits = {};
 	if (tp_left && tp_left->place.stable()) forgetPresence(bc_missing.fs_flow.narrowed, tp_left->place);
@@ -821,7 +821,7 @@ ExpressionInfo BodyChecker::elvis (const ElvisExpression &node, const ResultType
 }
 
 void BodyChecker::numericPeers (const Expression &node, NumericPeers &peers, bool contextualFloat) {
-	if (peers.integer && (!contextualFloat || peers.floatingWidth)) return;
+	if (peers.integer && peers.floating) return;
 	std::optional<ResolvedType> opt_type;
 	for (const CapturedOperand *co_operand = captured; co_operand; co_operand = co_operand->previous)
 		if (co_operand->node == &node && co_operand->value.types.size() == 1) opt_type = co_operand->value.types.front();
@@ -861,7 +861,7 @@ void BodyChecker::numericPeers (const Expression &node, NumericPeers &peers, boo
 	}
 	if (!opt_type) return;
 	if (!peers.integer && opt_type->integer()) peers.integer = *opt_type;
-	if (contextualFloat && !peers.floatingWidth && opt_type->floating()) peers.floatingWidth = opt_type->width;
+	if (!peers.floating && opt_type->floating() && (contextualFloat || opt_type->parameter)) peers.floating = *opt_type;
 }
 
 ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const ResolvedType *expected, FloatContext floats, bool allowContexts) {
@@ -955,18 +955,12 @@ ExpressionInfo BodyChecker::builtinBinary (const BinaryExpression &node, const R
 		}
 	}
 	if (!compare && expected && expected->integer() && !np_peers.integer) np_peers.integer = *expected;
-	if (floats.contextual) {
-		if (np_peers.floatingWidth)
-			floats.width = np_peers.floatingWidth;
-		else if (!floats.width && !compare && expected && expected->floating())
-			floats.width = expected->width;
-	}
-	std::optional<ResolvedType> opt_numeric = np_peers.integer;
-	if (!opt_numeric && floats.width) {
-		opt_numeric        = ResolvedType(KFloat);
-		opt_numeric->width = floats.width;
-	}
-	std::optional<ResolvedType> opt_hint = opt_numeric;
+	if (np_peers.floating)
+		floats.type = np_peers.floating;
+	else if (floats.contextual && !floats.type && !compare && expected && expected->floating())
+		floats.type = *expected;
+	const std::optional<ResolvedType> opt_numeric = np_peers.integer ? np_peers.integer : floats.type;
+	std::optional<ResolvedType>       opt_hint    = opt_numeric;
 	if (equality && numericLiteral(*node.left) && hasEqualityHint(*node.right)) {
 		if (const std::optional<ResolvedType> opt_peer = comparisonHint(*node.right); opt_peer && opt_peer->nullable()) opt_hint = opt_peer;
 	}
@@ -1062,6 +1056,7 @@ void BodyChecker::unknownMember (const MemberCallExpression &call, std::string_v
 ExpressionInfo BodyChecker::memberCall (const MemberCallExpression &node) {
 	const ExpressionInfo    ei_receiver = scalarInfo(*node.receiver);
 	const TypeArgumentList *tal_types   = node.typeArguments ? &*node.typeArguments : nullptr;
+	if (auto numeric = numericMethodCall(node, ei_receiver)) return std::move(*numeric);
 	if (std::optional<ExpressionInfo> opt_builtin = builtinCall(node, tal_types, &ei_receiver)) return std::move(*opt_builtin);
 	const std::optional<ArrayMutation> opt_mutation = arrayMutationNamed(node.name.getNameKey());
 	if (!ei_receiver.fallsThrough) {
@@ -1073,7 +1068,9 @@ ExpressionInfo BodyChecker::memberCall (const MemberCallExpression &node) {
 	const ResolvedType &rt_receiver = ei_receiver.types.front();
 	if (rt_receiver.nullable()) {
 		const ResolvedType rt_payload = rt_receiver.element();
-		if (!rt_payload.declaration && !rt_payload.parameter && !rt_payload.array()) unknownMember(node, rt_receiver.spelling());
+		if (!rt_payload.declaration && !rt_payload.parameter && !rt_payload.array() &&
+		    analyzer.members(rt_payload, node.name.getNameKey(), SymbolKind::Method).empty())
+			unknownMember(node, rt_receiver.spelling());
 		fail(Code::NullablePayloadAccess, node.getSpan(), std::format("Use {} to call a member of a nullable receiver", toString(OSafeDot)));
 	}
 	checkValidatorReceiver(node.receiver.get(), node.getSpan());
@@ -1084,7 +1081,7 @@ ExpressionInfo BodyChecker::memberCall (const MemberCallExpression &node) {
 	}
 	const std::vector<Candidate> v_methods = methodCandidates(node, rt_receiver);
 	if (v_methods.empty()) unknownMember(node, rt_receiver.spelling());
-	if (readOnlyDefaultRoot(*node.receiver))
+	if (!rt_receiver.primitiveFamily() && readOnlyDefaultRoot(*node.receiver))
 		fail(Code::InvalidParameterDefault, node.name.getSpan(), "A default cannot call a method on a read-only receiver", &pd_default->name);
 	if (rp_receiverPhase == ReceiverPhase::FieldInitializer && ei_receiver.receiverFieldPath == ReceiverFieldPath::Stored &&
 	    asStruct(rt_receiver.declaration))
@@ -1209,13 +1206,11 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 	}
 	if (const auto *n = dynamic_cast<const FloatingPointLiteral *>(&node)) {
 		ResolvedType rt(KFloat);
-		if (floats.contextual) {
-			if (floats.width)
-				rt.width = floats.width;
-			else if (hint && hint->floating())
-				rt = *hint;
-		}
-		if (!b_inferenceDefaults && !std::isfinite(floatingLiteral(n->value, rt.width))) {
+		if (floats.type)
+			rt = *floats.type;
+		else if (floats.contextual && hint && hint->floating())
+			rt = *hint;
+		if (!b_inferenceDefaults && !rt.dependent() && !std::isfinite(floatingLiteral(n->value, rt.width))) {
 			fail(Code::FloatRange, node.getSpan(), "Floating-point literal is outside " + rt.spelling());
 		}
 		return value(rt);

@@ -25,6 +25,8 @@
 
 namespace cloth::semantic {
 
+inline constexpr std::string_view NUMERIC_MODULE = "cloth/lang/num/Number.co";
+
 // Built-in providers are selected by identifier after the provider-access operator.
 namespace provider {
 inline constexpr std::string_view S_SIZE   = "size";
@@ -50,18 +52,20 @@ enum class ElementEvidence { None, Literal, Typed };
 
 // A numeric expression can have an integer peer and a separate format for floating literals.
 struct FloatContext {
-	bool     contextual = false;
-	unsigned width      = 0;
+	bool                        contextual = false;
+	std::optional<ResolvedType> type       = {};
 };
 
 struct NumericPeers {
 	std::optional<ResolvedType> integer;
-	unsigned                    floatingWidth = 0;
+	std::optional<ResolvedType> floating;
 };
 
 ElementEvidence              elementEvidence (const Expression &operand);
 std::optional<ArrayMutation> arrayMutationNamed (std::string_view name);
 bool                         builtinFunctionNamed (std::string_view name);
+bool                         builtinMethodNamed (std::string_view name, const ResolvedType &receiver);
+bool                         numericMethodNamed (std::string_view name, const ResolvedType &receiver);
 bool                         builtinNeverReturns (std::string_view name);
 bool                         checksNumericMethod (std::string_view name);
 bool                         usesBooleanArgumentConversion (const ResolvedType &parameter, const ResolvedType &argument);
@@ -108,6 +112,7 @@ bool                             acceptsTypeArgumentCount (const TypeParameterLi
 const CallableSignature         *callable (const Symbol &symbol);
 const TypeParameterList         *typeParameters (const Symbol &symbol);
 const StructDeclaration         *asStruct (const Symbol *symbol);
+const IntrinsicTypeDeclaration  *asIntrinsicType (const Symbol *symbol);
 const EnumDeclaration           *enumeration (const ResolvedType &type);
 const ClassDeclaration          *asClass (const Symbol *symbol);
 const Symbol                    &objectRoot ();
@@ -155,6 +160,7 @@ class Analyzer {
 	[[nodiscard]] Candidates                      lookupFile (const Symbol &context, const std::string &name) const;
 	[[nodiscard]] std::vector<Candidate>          members (const ResolvedType &type, std::string_view name, SymbolKind kind,
 	                                                       MemberLookup lookup = MemberLookup::Declaration) const;
+	[[nodiscard]] const Symbol                   *primitiveOwner (const ResolvedType &type) const;
 	[[nodiscard]] bool                            accessible (const Symbol &symbol, const Symbol &context) const;
 	void                                          requireAccess (const Symbol &symbol, const Symbol &context, const TokenSpan &use) const;
 	[[nodiscard]] bool                            accepts (const ResolvedType &expected, const ResolvedType &actual) const;
@@ -213,6 +219,7 @@ class Analyzer {
     private:
 	bool                                             b_hasReferenceDeclarations = false;
 	const Symbol                                    *sym_number                 = nullptr;
+	std::map<PrimitiveFamily, const Symbol *>        m_primitiveFamilies;
 	const Symbol                                    *sym_owningList             = nullptr;
 	std::set<std::string, std::less<>>               s_operatorNames;
 	std::vector<LifetimeBody>                        v_lifetimeBodies;
@@ -428,6 +435,7 @@ class BodyChecker {
 	void                          receiveShape (const Token &binding, const ResolvedType &declared, const ResolvedType &shape, const TokenSpan &use);
 	ExpressionInfo                mutateArray (const MemberCallExpression &call, const ExpressionInfo &receiver, ArrayMutation operation);
 	std::optional<ExpressionInfo> builtinCall (const CallSite &call, const TypeArgumentList *typeArguments, const ExpressionInfo *receiver = nullptr);
+	std::optional<ExpressionInfo> numericMethodCall (const MemberCallExpression &call, const ExpressionInfo &receiver);
 	void              checkBuiltinArguments (const CallSite &call, const TypeArgumentList *typeArguments, std::size_t minimum, std::size_t maximum) const;
 	void              checkArgumentNames (const CallSite &call, std::size_t start) const;
 	[[noreturn]] void checkBuiltinTypeArguments (const CallSite &call, const TypeArgumentList &arguments) const;

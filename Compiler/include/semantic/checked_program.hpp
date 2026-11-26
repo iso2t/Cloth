@@ -62,6 +62,7 @@ struct ResolvedType {
 	[[nodiscard]] bool                             array () const;
 	[[nodiscard]] std::optional<std::uint64_t>     arrayExtent () const;
 	[[nodiscard]] bool                             integer () const;
+	[[nodiscard]] std::optional<PrimitiveFamily>   primitiveFamily () const;
 	[[nodiscard]] bool                             unsignedInteger () const;
 	[[nodiscard]] bool                             floating () const;
 	[[nodiscard]] bool                             enumeration () const;
@@ -94,6 +95,12 @@ const ResolvedType *rangeEndpoint (const ResolvedType &type);
 inline constexpr std::string_view FILE_ERROR_CASES[] = { "InvalidPath", "NotFound", "PermissionDenied", "OpenFailed", "AlreadyOpen", "NotOpen", "ReadFailed" };
 
 enum class LibraryIntrinsic {
+	IntegerLeadingZeros,
+	IntegerTrailingZeros,
+	IntegerToStringRadix,
+	FloatAbs,
+	FloatFormat,
+	NumericError,
 	DecodeUtf8,
 	FileOpen,
 	FileRead,

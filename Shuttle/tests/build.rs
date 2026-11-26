@@ -93,6 +93,39 @@ fn run(path: &Path, code: i32, stdout: &str) {
 }
 
 #[test]
+fn missing_command_shows_the_same_guide_as_the_help_flags() {
+    let shuttle = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_shuttle"))
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let requested = shuttle(&["--help"]);
+    assert!(requested.status.success());
+    assert!(requested.stderr.is_empty());
+    let help = std::str::from_utf8(&requested.stdout).unwrap();
+    for heading in ["Usage", "Examples", "Project options", "Toolchain options"] {
+        assert!(help.lines().any(|line| line == heading), "{help}");
+    }
+    assert!(help.contains("shuttle build arithmetic-lib"));
+
+    let missing = shuttle(&[]);
+    assert!(missing.stdout.is_empty());
+    failure(missing, help);
+
+    for args in [
+        &["-h"][..],
+        &["build", "--help"],
+        &["build", "arithmetic-lib", "-h"],
+    ] {
+        let output = shuttle(args);
+        assert!(output.status.success());
+        assert!(output.stderr.is_empty());
+        assert_eq!(output.stdout, requested.stdout);
+    }
+}
+
+#[test]
 fn separate_objects_rebuild_and_preserve_the_previous_executable_on_failure() {
     let work = Directory::new("native projects π");
     let api = work.0.join("api");

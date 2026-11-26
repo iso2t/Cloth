@@ -1,5 +1,35 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+# RUN: mkdir -p "%t.integer/cloth/lang/num"
+# RUN: echo 'pub typedef<interface> Number {}' > "%t.integer/cloth/lang/num/Number.co"
+# RUN: echo 'pub typedef<intrinsic "primitive.decimal"> Decimal : Number {}' >> "%t.integer/cloth/lang/num/Number.co"
+# RUN: echo 'fn main() {}' > "%t.integer/client.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.integer" --src "%t.integer/client.co" 2> "%t.integer/error"
+# RUN: %filecheck "%s" --check-prefix=FAMILY --input-file "%t.integer/error"
+# FAMILY: [C3136] Error: Invalid compiler binding 'primitive.decimal': unknown primitive family
+# RUN: echo 'pub typedef<intrinsic "primitive.integer"> Local : Number {}' > "%t.integer/client.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --src "%t.integer/client.co" 2> "%t.integer/error"
+# RUN: %filecheck "%s" --check-prefix=LOCAL-FAMILY --input-file "%t.integer/error"
+# LOCAL-FAMILY: [C3136] Error: Invalid compiler binding 'primitive.integer': requires a declaration imported from the selected standard library
+# RUN: echo 'pub typedef<interface> Number {}' > "%t.integer/cloth/lang/num/Number.co"
+# RUN: echo 'pub typedef<intrinsic "primitive.integer"> A : Number {}' >> "%t.integer/cloth/lang/num/Number.co"
+# RUN: echo 'pub typedef<intrinsic "primitive.integer"> B : Number {}' >> "%t.integer/cloth/lang/num/Number.co"
+# RUN: echo 'fn main() {}' > "%t.integer/client.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.integer" --src "%t.integer/client.co" 2> "%t.integer/error"
+# RUN: %filecheck "%s" --check-prefix=DUPLICATE-FAMILY --input-file "%t.integer/error"
+# DUPLICATE-FAMILY: [C3136] Error: Invalid compiler binding 'primitive.integer': the integer family already has a declaration
+
+# RUN: echo 'pub typedef<interface> Number {}' > "%t.integer/cloth/lang/num/Number.co"
+# RUN: echo 'pub typedef<intrinsic "primitive.float"> Float : Number { pub mt<usize> bits() = intrinsic "integer.leading_zeros"; }' >> "%t.integer/cloth/lang/num/Number.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.integer" --src "%t.integer/client.co" 2> "%t.integer/error"
+# RUN: %filecheck "%s" --check-prefix=WRONG-RECEIVER --input-file "%t.integer/error"
+# WRONG-RECEIVER: [C3136] Error: Invalid compiler binding 'integer.leading_zeros': requires a method on the Integer primitive family
+# RUN: echo 'pub typedef<interface> Number {}' > "%t.integer/cloth/lang/num/Number.co"
+# RUN: echo 'pub typedef<intrinsic "primitive.float"> Float : Number { pub mt<float> abs() = intrinsic "float.abs"; }' >> "%t.integer/cloth/lang/num/Number.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.integer" --src "%t.integer/client.co" 2> "%t.integer/error"
+# RUN: %filecheck "%s" --check-prefix=EXACT-SELF --input-file "%t.integer/error"
+# EXACT-SELF: [C3136] Error: Invalid compiler binding 'float.abs': expected parameters () and results (Self)
+
 # RUN: mkdir -p "%t/regular/cloth/text" "%t/library/cloth/text" "%t/library/cloth/collections" "%t/library/cloth/io/fs"
 # RUN: cat "%/S/../../../Stdlib/StandardLibrary/src/cloth/text/Utf8.co" > "%t/library/cloth/text/Utf8.co"
 # RUN: echo "using cloth.text.Utf8: decodeUtf8;" > "%t/regular/user.co"

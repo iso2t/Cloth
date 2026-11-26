@@ -193,7 +193,7 @@ InterfaceMethodFallback FunctionParser::parseInterfaceFallback () {
 	throw cde::SyntaxErrors::expected(std::format("a parenthesized expression or a block after '{}'", toString(KDefault)), p_parser.peek());
 }
 
-MethodDeclaration FunctionParser::parseOperator (std::optional<Token> visibility) {
+MethodDeclaration FunctionParser::parseOperator (std::optional<Token> visibility, bool allowIntrinsic) {
 	const Token       t_keyword     = p_parser.advance();
 	const bool        b_hasSelector = at(OLess) && !at(OParenOpen, 1);
 	const RestoreFlag rf_width(p_parser.b_allowInferredOperatorWidth, false);
@@ -241,7 +241,7 @@ MethodDeclaration FunctionParser::parseOperator (std::optional<Token> visibility
 	}
 	const Operator o_operation      = t_name.getOperator();
 	const bool     b_allowStatement = o_operation == OIndexWrite || isUpdate(o_operation);
-	FunctionBody   fb_body          = parseBody(toString(KOperator), b_allowStatement);
+	FunctionBody   fb_body          = parseBody(toString(KOperator), b_allowStatement, allowIntrinsic);
 	return { t_keyword,
 		 t_name,
 		 std::move(v_returnTypes),

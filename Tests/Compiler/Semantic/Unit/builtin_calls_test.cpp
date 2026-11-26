@@ -19,6 +19,66 @@ const ExpressionInfo &resultOf (const CheckedProgram &program, std::string_view 
 	return program.expressions.at(&bodyExpression(program.units.front()->getGlobals().at(std::string(function)).front()));
 }
 
+const std::filesystem::path NUMERIC_LIBRARY = std::filesystem::path(__FILE__).parent_path() / "../../../../Stdlib/StandardLibrary/src";
+
+CheckedProgram checkNumericSource (const std::string &source, const std::filesystem::path &library) {
+	Lexer lexer{ SourceFile("numeric-client.co", source) };
+	return CheckedProgram(SymbolTable(Parser(lexer).parse()), {}, library);
+}
+
+TEST (BuiltinCalls, NumericLibraryCallsBindDeclaredMethodsAtTheReceiverType) {
+	const CheckedProgram program = checkNumericSource(R"(
+fn<int<12>> magnitude(int<12> x) = x.abs();
+fn<float<16>> half(float<16> x) = x.abs();
+fn<float<64>> bounded(float<64> x) = x.clamp(-2.0, 2.0);
+fn<usize> count(unsigned int<129> x) = x.trailingZeros();
+fn<string> format(float x) = x::str;
+)",
+	                                                  NUMERIC_LIBRARY);
+	for (const auto name : { "magnitude", "half", "bounded", "count", "format" }) {
+		const auto &call = resultOf(program, name);
+		EXPECT_FALSE(call.builtin) << name;
+		ASSERT_NE(call.symbol, nullptr) << name;
+		ASSERT_NE(call.instance, nullptr) << name;
+	}
+	EXPECT_FALSE(program.declarations.at(resultOf(program, "magnitude").symbol).intrinsic);
+	EXPECT_FALSE(program.declarations.at(resultOf(program, "bounded").symbol).intrinsic);
+	EXPECT_EQ(program.declarations.at(resultOf(program, "half").symbol).intrinsic, LibraryIntrinsic::FloatAbs);
+	EXPECT_EQ(program.declarations.at(resultOf(program, "count").symbol).intrinsic, LibraryIntrinsic::IntegerTrailingZeros);
+}
+
+TEST (BuiltinCalls, NumericLibraryDiagnosticsKeepTheStandaloneCodesAndSourceSpans) {
+	const auto diagnose = [] (const std::string &source, const std::filesystem::path &library, Code code) {
+		try {
+			checkNumericSource(source, library);
+			ADD_FAILURE() << "Expected a diagnostic for " << source;
+		} catch (const cde::ClothDiagnostic &error) {
+			EXPECT_EQ(error.getCode(), code) << error.what();
+			if (!error.getSourceLabels().empty()) return error.getSourceLabels().front().span;
+		}
+		return TokenSpan{};
+	};
+	const std::pair<const char *, Code> cases[] = {
+		{ "fn f() { int<129>::min.abs(); }", Code::IntegerAbsOverflow },
+		{ "fn f(int<12> x) { x.clamp(4, 2); }", Code::InvalidClampBounds },
+		{ "fn f(int x) {} fn f(string x) {} fn g() { f(2.toStringRadix(36 + 1)); }", Code::InvalidIntegerRadix },
+		{ "fn f() { (0.0 / 0.0).signum(); }", Code::FloatSignumNan },
+		{ "fn f(float<16> x) { x.clamp(0.0 / 0.0, x); }", Code::InvalidFloatClampBounds },
+		{ "fn f(float<64> x) { x.clamp(2.0, -1.0); }", Code::InvalidFloatClampBounds },
+		{ "fn f(int<8> x, int y) { x.clamp(y, 2); }", Code::InvalidBuiltinArgument },
+		{ "fn f(int x) { x.clamp(2); }", Code::CallArity },
+		{ "fn f(int x) { x.toStringRadix(radix = 16); }", Code::InvalidArgumentBinding },
+		{ "fn f(float x) { x.abs<int>(); }", Code::GenericArity },
+	};
+	for (const auto &[source, code] : cases) {
+		SCOPED_TRACE(source);
+		const TokenSpan standalone = diagnose(source, {}, code), library = diagnose(source, NUMERIC_LIBRARY, code);
+		ASSERT_TRUE(library.source);
+		EXPECT_EQ(library.source->getPath(), "numeric-client.co");
+		EXPECT_EQ(library.toString(), standalone.toString());
+	}
+}
+
 TEST (BuiltinCalls, RecordsAdaptersOverloadsAndControlFlow) {
 	const CheckedProgram  cp_program = checkSource(R"(
 typedef<class> Text<T> { operator ::str() -> string = "text"; }
