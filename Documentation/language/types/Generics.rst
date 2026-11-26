@@ -14,7 +14,7 @@ the same type. Passing an ``int<8>`` keeps the result eight bits wide.
    fn<T> twice<T: Number>(T value) = value + value;
    fn<int<8>> narrow(int<8> value) = twice(value);
 
-Check this example with ``--stdlib Stdlib`` from the repository root.
+Check this example with ``--stdlib Stdlib/StandardLibrary/src`` from the repository root.
 The `numeric bound example <../../../Tests/Compiler/Semantic/generic-number.co>`_
 also calls ``twice`` with unsigned integers, floats and a class that supplies ``+``.
 

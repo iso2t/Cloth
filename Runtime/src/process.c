@@ -3,11 +3,10 @@
 // See Documentation/compiler/driver/Objects.rst
 // See Documentation/language/expressions/Builtins.rst
 
+#include <runtime.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-#include "runtime.h"
 
 #ifdef _WIN32
 #include <fcntl.h>

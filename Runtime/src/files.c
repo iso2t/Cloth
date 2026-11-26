@@ -6,7 +6,6 @@
 #include <cloth/object.h>
 #include <cloth/text.h>
 #include <errno.h>
-#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -106,13 +105,13 @@ static void readFile (void **file, void *argument) {
 	}
 }
 
-int32_t clothRtFileOpen (uint64_t handle, const ClothText *path) {
+int32_t clothRtFileOpen (const uint64_t handle, const ClothText *path) {
 	struct Request request = { .path = path };
 	clothRtObjectResource(handle, openFile, &request, closeFile);
 	return request.result;
 }
 
-int32_t clothRtFileRead (uint64_t handle, size_t limit, ClothArray *bytes) {
+int32_t clothRtFileRead (const uint64_t handle, const size_t limit, ClothArray *bytes) {
 	struct Request request = { .bytes = bytes, .limit = limit };
 	clothRtObjectResource(handle, readFile, &request, closeFile);
 	return request.result;

@@ -36,5 +36,5 @@ fn<bool> fileAccess(string spelling) {
     return opened == null && error == FileError.NotOpen;
 }
 
-// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 32 --stdlib "%/S/../../../Stdlib" --src "%/s"
-// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 64 --stdlib "%/S/../../../Stdlib" --src "%/s"
+// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 32 --stdlib "%/S/../../../Stdlib/StandardLibrary/src" --src "%/s"
+// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 64 --stdlib "%/S/../../../Stdlib/StandardLibrary/src" --src "%/s"

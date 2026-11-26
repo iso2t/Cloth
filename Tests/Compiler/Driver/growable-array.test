@@ -18,7 +18,7 @@
 # RUN: %cloth --kind executable --src "%S/Inputs/growable-array-lifetime.co" --target-bits 64 --emit object -o "%t.64.o"
 # RUN: %cloth --kind executable --src "%S/Inputs/growable-array-lifetime.co" --emit object -o "%t.o"
 # RUN: %cc -I "%S/../../../Runtime/include" -DCLOTH_TEST_TRACK_ARRAYS -include "%S/Inputs/growable-array-allocator.h" -c "%S/../../../Runtime/src/array.c" -o "%t.array.o"
-# RUN: %cc "%t.o" "%t.array.o" -I "%S/Inputs" "%S/Inputs/growable-array-allocator.c" "%S/../../../Runtime/src/errors.c" -o "%t.exe"
+# RUN: %cc "%t.o" "%t.array.o" -I "%S/Inputs" -I "%S/../../../Runtime/include" "%S/Inputs/growable-array-allocator.c" "%S/../../../Runtime/src/errors.c" -o "%t.exe"
 # RUN: %expect_exit --stdout-line "Growable array allocations balanced" --empty-stderr 42 "%t.exe"
 # RUN: env CLOTH_TEST_FAIL_ARRAY_ALLOCATION=1 %expect_exit --empty-stdout --stderr-line "Cloth runtime error: unable to allocate array storage" 1 "%t.exe"
 

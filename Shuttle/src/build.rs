@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-use crate::project::{Graph, Kind, Project};
+use crate::manifest::Kind;
+use crate::project::{Graph, Project};
 use crate::{Options, Result};
 use std::env;
 use std::ffi::OsString;
@@ -182,8 +183,7 @@ fn link(options: &Options, target: &str, objects: &[PathBuf], output: &Path) -> 
 }
 
 pub fn project(mut options: Options) -> Result<PathBuf> {
-    let mut graph = Graph::default();
-    let root = graph.load(&options.manifest)?;
+    let (graph, root) = Graph::load(&options.manifest, options.target.as_deref())?;
     options.compiler = find_compiler(&options.compiler)?;
     let target = target(&options)?;
     let project = &graph.projects[root];

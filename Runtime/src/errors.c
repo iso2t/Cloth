@@ -2,10 +2,9 @@
 
 // See Documentation/compiler/driver/Objects.rst
 
+#include <runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-#include "runtime.h"
 
 _Noreturn void clothRtError (const char *message) {
 	fflush(stdout);

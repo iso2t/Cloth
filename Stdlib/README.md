@@ -1,16 +1,16 @@
 # Cloth Standard Library
 
-The standard library is a Cloth project. All library source files live under
-`cloth/`, with ordinary subfolders for each area of the library.
+The standard library's [build.k](build.k) declares the [StandardLibrary module](StandardLibrary/module.k).
+Its Cloth source root is `StandardLibrary/src/`, with a `cloth/` directory for public import paths.
 
-The library entry, `cloth/Library.co`, imports collection and numeric
-declarations for the compiler's smoke check. A consumer imports the public
-names it uses from their defining modules.
+The library entry is `cloth/Library.co` relative to that root. It imports
+collection and numeric declarations for the compiler's smoke check. A consumer
+imports the public names it uses from their defining modules.
 
-The public generic [List](cloth/collections/README.md) is implemented in
+The public generic [List](StandardLibrary/src/cloth/collections/README.md) is implemented in
 `cloth/collections/List.co`, with independent value storage and explicit lifetime.
 It supports direct foreach through `Snapshot<T>` in `cloth/collections/Snapshot.co`.
-[`OwningList<T>`](cloth/collections/README.md#owninglist) takes deletion authority
+[`OwningList<T>`](StandardLibrary/src/cloth/collections/README.md#owninglist) takes deletion authority
 over class objects and supplies checked reads, snapshot foreach, and ordered cleanup.
 
 Import paths start at the standard library source root, the directory containing
@@ -40,7 +40,7 @@ To run the collection example from the repository root, compile the consumer
 and link its object with the collection and integer-output runtime sources.
 
 ```sh
-build/cloth --kind executable --stdlib Stdlib --src Tests/Compiler/Driver/Inputs/stdlib-collections.co --emit-object build/collections.o
+build/cloth --kind executable --stdlib Stdlib/StandardLibrary/src --src Tests/Compiler/Driver/Inputs/stdlib-collections.co --emit-object build/collections.o
 cc -IRuntime/include build/collections.o Runtime/src/array.c Runtime/src/errors.c Runtime/src/object.c Runtime/src/println.c -o build/collections
 ```
 
@@ -60,8 +60,8 @@ can implement `Number` explicitly and provide the operators their callers use.
 The `cloth.math.Math` module exports `E()`, `PI()`, and `TAU()` as
 64-bit floating-point values. The `magic<T>(T value)` function in
 `cloth.lang.num.NumberUtilities` returns its argument with the same type.
-See the [math functions](cloth/math/Math.co) and
-[numeric utility](cloth/lang/num/NumberUtilities.co).
+See the [math functions](StandardLibrary/src/cloth/math/Math.co) and
+[numeric utility](StandardLibrary/src/cloth/lang/num/NumberUtilities.co).
 
 ## Paths, files, and text
 
@@ -74,7 +74,7 @@ using cloth.io.path.Path: Path, pathOf;
 using cloth.io.fs.File: File, FileError;
 using cloth.text.Utf8: decodeUtf8;
 
-fn<Path> manifest() = pathOf("module.toml");
+fn<Path> manifest() = pathOf("module.k");
 fn<File> reader(Path path) = File::new(path);
 fn<FileError?> openFile(File file) = file.open();
 fn<unsigned int<8>[]?, FileError?> chunk(File file, usize limit) = file.read(limit);
@@ -88,12 +88,12 @@ The declared cases are `InvalidPath`, `NotFound`, `PermissionDenied`,
 decoding takes a byte array and returns an independent string on success
 or `null` on malformed input. A successful read at end of file returns a
 present empty byte array and a null error. Deleting the file closes the
-native stream. See the [file declarations](cloth/io/fs/File.co),
-[path type](cloth/io/path/Path.co), and [UTF-8 declaration](cloth/text/Utf8.co).
+native stream. See the [file declarations](StandardLibrary/src/cloth/io/fs/File.co),
+[path type](StandardLibrary/src/cloth/io/path/Path.co), and [UTF-8 declaration](StandardLibrary/src/cloth/text/Utf8.co).
 
 ## Use library sources
 
 Pass `--stdlib PATH` to the native compiler with the directory containing
 `cloth/`. The frontend resolves the consumer's `using` imports against that
 source root and checks reachable modules together. For collection APIs, see
-the [collections guide](cloth/collections/README.md).
+the [collections guide](StandardLibrary/src/cloth/collections/README.md).

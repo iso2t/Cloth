@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: mkdir -p "%t/regular/cloth/text" "%t/library/cloth/text" "%t/library/cloth/collections" "%t/library/cloth/io/fs"
-# RUN: cat "%/S/../../../Stdlib/cloth/text/Utf8.co" > "%t/library/cloth/text/Utf8.co"
+# RUN: cat "%/S/../../../Stdlib/StandardLibrary/src/cloth/text/Utf8.co" > "%t/library/cloth/text/Utf8.co"
 # RUN: echo "using cloth.text.Utf8: decodeUtf8;" > "%t/regular/user.co"
 # RUN: echo "fn<string?> decode(unsigned int<8>[] bytes) = decodeUtf8(bytes);" >> "%t/regular/user.co"
 # RUN: cat "%t/regular/user.co" > "%t/library/user.co"

@@ -6,7 +6,7 @@
 # RUN: echo '    list.append(item);' >> "%t.co"
 # RUN: echo '    alias::delete;' >> "%t.co"
 # RUN: echo '}' >> "%t.co"
-# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%/S/../../../Stdlib" --src "%t.co" 2> "%t.err"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%/S/../../../Stdlib/StandardLibrary/src" --src "%t.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=OWNER --input-file "%t.err"
 # OWNER: [C3138] Error: Only the owning list can delete this object
 # OWNER: .co:5:5

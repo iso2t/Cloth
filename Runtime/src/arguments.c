@@ -2,12 +2,10 @@
 
 // See Documentation/compiler/driver/Objects.rst
 
-#include <stddef.h>
+#include <runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "runtime.h"
 
 #ifdef _WIN32
 #include <wchar.h>
@@ -67,7 +65,7 @@ struct ClothString *clothRtProcessArguments (int argc, char **argv, size_t *coun
 		char *text = malloc((size_t)bytes);
 		if (!text) clothRtArrayAllocationFailed();
 		if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, source, -1, text, bytes, NULL, NULL)) argumentError();
-		arguments[index] = (struct ClothString){ text, (size_t)(bytes - 1) };
+		arguments[index] = (struct ClothString){ .data = text, .length = (size_t)(bytes - 1) };
 #else
 		const char *text = argv[index + 1];
 		validateUtf8((const unsigned char *)text);
@@ -80,7 +78,7 @@ struct ClothString *clothRtProcessArguments (int argc, char **argv, size_t *coun
 	return arguments;
 }
 
-void clothRtReleaseArguments (struct ClothString *arguments, size_t count) {
+void clothRtReleaseArguments (struct ClothString *arguments, const size_t count) {
 #ifdef _WIN32
 	for (size_t index = 0; index < count; ++index) free((void *)arguments[index].data);
 #else

@@ -36,8 +36,8 @@ The default target builds ``build/cloth`` or ``build/cloth.exe`` and packages th
 native runtime under ``build/lib/cloth/<target>``. Use ``make runtime`` to
 build the archive alone. See the `Shuttle project guide <../../Shuttle/README.rst>`_
 for building Shuttle with Cargo and selecting a second target width. The
-``run`` target is a frontend smoke check. It checks ``Stdlib/cloth/Library.co``
-and its imports in library mode, using ``Stdlib`` as the standard library
+``run`` target is a frontend smoke check. It checks ``Stdlib/StandardLibrary/src/cloth/Library.co``
+and its imports in library mode, using ``Stdlib/StandardLibrary/src`` as the standard library
 root. Success is silent apart from Make's command output.
 
 With the compiler built, `write and run your first Cloth program

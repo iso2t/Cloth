@@ -2,26 +2,25 @@
 
 // See Documentation/compiler/driver/Objects.rst
 
+#include <runtime.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-
-#include "runtime.h"
 
 static ptrdiff_t nativeWordStride (void) {
 	const uint32_t one = 1;
 	return *(const unsigned char *)&one ? 1 : -1;
 }
 
-size_t clothRtIntegerZeros (const unsigned char *bits, uint32_t width, uint8_t leading) {
+size_t clothRtIntegerZeros (const unsigned char *bits, const uint32_t width, const uint8_t leading) {
 	const size_t bytes        = ((size_t)width + 7) / 8;
 	const int    littleEndian = nativeWordStride() == 1;
 	size_t       count        = 0;
 	for (size_t n = 0; n < bytes; ++n) {
 		const size_t   limb = leading ? bytes - 1 - n : n;
 		const unsigned used = limb == bytes - 1 && width % 8 ? width % 8 : 8;
-		unsigned       byte = bits[littleEndian ? limb : bytes - 1 - limb] & ((1u << used) - 1);
+		const unsigned byte = bits[littleEndian ? limb : bytes - 1 - limb] & (1u << used) - 1;
 		if (!byte) {
 			count += used;
 			continue;
@@ -36,13 +35,13 @@ size_t clothRtIntegerZeros (const unsigned char *bits, uint32_t width, uint8_t l
 	return count;
 }
 
-static ptrdiff_t significantWords (const uint32_t *value, ptrdiff_t words, ptrdiff_t stride) {
+static ptrdiff_t significantWords (const uint32_t *value, ptrdiff_t words, const ptrdiff_t stride) {
 	while (words && value[(words - 1) * stride] == 0) --words;
 	return words;
 }
 
 // Write the low wordCount words into a separate output buffer. All buffers use the target's native integer layout.
-void clothRtMulWords (uint32_t *product, const uint32_t *left, const uint32_t *right, uint32_t wordCount) {
+void clothRtMulWords (uint32_t *product, const uint32_t *left, const uint32_t *right, const uint32_t wordCount) {
 	if (!wordCount) return;
 	const ptrdiff_t words  = wordCount;
 	const ptrdiff_t stride = nativeWordStride();
@@ -69,7 +68,7 @@ void clothRtMulWords (uint32_t *product, const uint32_t *left, const uint32_t *r
 	}
 }
 
-static void negateWords (uint32_t *value, ptrdiff_t words, ptrdiff_t stride) {
+static void negateWords (uint32_t *value, const ptrdiff_t words, const ptrdiff_t stride) {
 	uint64_t carry = 1;
 	for (ptrdiff_t i = 0; i < words; ++i) {
 		const uint64_t negated = (uint64_t)~value[i * stride] + carry;
@@ -78,14 +77,14 @@ static void negateWords (uint32_t *value, ptrdiff_t words, ptrdiff_t stride) {
 	}
 }
 
-static bool atLeast (const uint32_t *left, const uint32_t *right, ptrdiff_t words, ptrdiff_t stride) {
+static bool atLeast (const uint32_t *left, const uint32_t *right, const ptrdiff_t words, const ptrdiff_t stride) {
 	for (ptrdiff_t i = words; i-- > 0;) {
 		if (left[i * stride] != right[i * stride]) return left[i * stride] > right[i * stride];
 	}
 	return true;
 }
 
-static void subtractWords (uint32_t *left, const uint32_t *right, ptrdiff_t words, ptrdiff_t stride) {
+static void subtractWords (uint32_t *left, const uint32_t *right, const ptrdiff_t words, const ptrdiff_t stride) {
 	uint64_t borrow = 0;
 	for (ptrdiff_t i = 0; i < words; ++i) {
 		const uint32_t original   = left[i * stride];
@@ -95,7 +94,7 @@ static void subtractWords (uint32_t *left, const uint32_t *right, ptrdiff_t word
 	}
 }
 
-static void divideMagnitudes (uint32_t *dividend, const uint32_t *divisor, uint32_t *remainder, ptrdiff_t words, ptrdiff_t stride) {
+static void divideMagnitudes (uint32_t *dividend, const uint32_t *divisor, uint32_t *remainder, const ptrdiff_t words, const ptrdiff_t stride) {
 	const ptrdiff_t dividendWords = significantWords(dividend, words, stride);
 	const ptrdiff_t divisorWords  = significantWords(divisor, words, stride);
 	if (divisorWords == 1) {

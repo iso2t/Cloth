@@ -247,7 +247,7 @@ TEST (SemanticGenerics, ChecksDeclaredAndSubstitutedBoundsBeforeUse) {
 
 TEST (SemanticGenerics, OnlyTheStandardLibraryNumberGrantsPrimitiveConformance) {
 	using Code                            = cde::DiagnosticCode;
-	const std::filesystem::path p_library = std::filesystem::path(__FILE__).parent_path() / "../../../../Stdlib";
+	const std::filesystem::path p_library = std::filesystem::path(__FILE__).parent_path() / "../../../../Stdlib/StandardLibrary/src";
 	const std::function         check     = [&] (const std::string &source, Code code) {
 		SCOPED_TRACE(source);
 		Lexer l_lexer{ SourceFile("numeric-client.co", "using cloth.lang.num.Number: Number;\n" + source) };

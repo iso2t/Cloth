@@ -4,15 +4,13 @@
 
 #include <cloth/array.h>
 #include <cloth/text.h>
+#include <runtime.h>
 #include <stdatomic.h>
-#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <utf8proc.h>
-
-#include "runtime.h"
 
 struct StringEntry {
 	struct StringEntry *next;
@@ -33,7 +31,7 @@ static void releaseStrings (void) {
 	}
 }
 
-static ClothText intern (const unsigned char *data, size_t length) {
+static ClothText intern (const unsigned char *data, const size_t length) {
 	if (!length) return (ClothText){ 0 };
 	if (length > SIZE_MAX - sizeof(struct StringEntry)) clothRtError("text exceeds addressable memory");
 	uint32_t hash = 2166136261u;
@@ -58,24 +56,24 @@ static ClothText intern (const unsigned char *data, size_t length) {
 	}
 	atomic_flag_clear_explicit(&stringsLock, memory_order_release);
 	if (!entry) clothRtError("unable to allocate text");
-	return (ClothText){ entry->data, length };
+	return (ClothText){ .data = entry->data, .length = length };
 }
 
-static size_t decode (ClothText value, size_t at, int32_t *scalar) {
+static size_t decode (const ClothText value, const size_t at, int32_t *scalar) {
 	if (at >= value.length) return 0;
 	const size_t           left   = value.length - at;
 	const utf8proc_ssize_t length = utf8proc_iterate(value.data + at, left < 4 ? (utf8proc_ssize_t)left : 4, scalar);
 	return length > 0 ? (size_t)length : 0;
 }
 
-static size_t advance (ClothText value, size_t at) {
-	int32_t scalar = 0;
-	size_t  width  = decode(value, at, &scalar);
+static size_t advance (const ClothText value, const size_t at) {
+	int32_t      scalar = 0;
+	const size_t width  = decode(value, at, &scalar);
 	if (!width) clothRtError("invalid string index");
 	return at + width;
 }
 
-static void append (ClothArray *bytes, const unsigned char *data, size_t length) {
+static void append (ClothArray *bytes, const unsigned char *data, const size_t length) {
 	if (!length) return;
 	if (length > SIZE_MAX - bytes->length) clothRtError("text exceeds addressable memory");
 	clothRtArrayReserve(bytes, bytes->length + length, 1, 1);
@@ -89,16 +87,16 @@ static ClothText finish (ClothArray *bytes) {
 	return value;
 }
 
-static ClothText slice (ClothText value, size_t begin, size_t end) {
-	return begin == end ? (ClothText){ 0 } : (ClothText){ value.data + begin, end - begin };
+static ClothText slice (const ClothText value, const size_t begin, const size_t end) {
+	return begin == end ? (ClothText){ 0 } : (ClothText){ .data = value.data + begin, .length = end - begin };
 }
 
-static int matches (ClothText value, size_t at, ClothText search) {
+static int matches (const ClothText value, const size_t at, const ClothText search) {
 	return at <= value.length && search.length <= value.length - at && (!search.length || !memcmp(value.data + at, search.data, search.length));
 }
 
 uint8_t clothRtDecodeUtf8 (ClothText *result, const ClothArray *bytes) {
-	const ClothText value = { bytes->data, bytes->length };
+	const ClothText value = { .data = bytes->data, .length = bytes->length };
 	for (size_t at = 0; at < value.length;) {
 		int32_t      scalar = 0;
 		const size_t width  = decode(value, at, &scalar);
@@ -109,13 +107,13 @@ uint8_t clothRtDecodeUtf8 (ClothText *result, const ClothArray *bytes) {
 	return 1;
 }
 
-void clothRtTextJoin (ClothText *result, const ClothText *parts, size_t count) {
+void clothRtTextJoin (ClothText *result, const ClothText *parts, const size_t count) {
 	ClothArray bytes = { 0 };
 	for (size_t i = 0; i < count; ++i) append(&bytes, parts[i].data, parts[i].length);
 	*result = finish(&bytes);
 }
 
-void clothRtTextWrite (const ClothText *value, uint8_t newline) {
+void clothRtTextWrite (const ClothText *value, const uint8_t newline) {
 	if ((value->length && fwrite(value->data, 1, value->length, stdout) != value->length) || (newline && fputc('\n', stdout) == EOF) ||
 	    fflush(stdout) == EOF)
 		clothRtError("standard output write failed");
@@ -139,15 +137,15 @@ uint8_t clothRtTextInput (ClothText *result, const ClothText *prompt) {
 	return valid;
 }
 
-void clothRtTextInteger (ClothText *out, const unsigned char *bits, uint32_t width, uint8_t isSigned, int32_t radix) {
+void clothRtTextInteger (ClothText *out, const unsigned char *bits, const uint32_t width, const uint8_t isSigned, const int32_t radix) {
 	if (radix < 2 || radix > 36) clothRtError("integer radix must be between 2 and 36");
 	const size_t   bytes     = (width + 7u) / 8u;
 	unsigned char *magnitude = malloc(bytes), *digits = malloc((size_t)width + 1);
 	if (!magnitude || !digits) clothRtError("unable to format integer");
-	const unsigned negative = isSigned && (bits[(width - 1) / 8] & (1u << ((width - 1) % 8)));
+	const unsigned negative = isSigned && bits[(width - 1) / 8] & (1u << ((width - 1) % 8));
 	unsigned       carry    = negative;
 	for (size_t i = 0; i < bytes; ++i) {
-		const unsigned byte = (negative ? (bits[i] ^ 255u) : bits[i]) + carry;
+		const unsigned byte = (negative ? bits[i] ^ 255u : bits[i]) + carry;
 		magnitude[i]        = (unsigned char)byte;
 		carry               = byte >> 8;
 	}
@@ -169,19 +167,19 @@ void clothRtTextInteger (ClothText *out, const unsigned char *bits, uint32_t wid
 	free(magnitude);
 }
 
-void clothRtTextFloat (ClothText *out, double value, int32_t width) {
+void clothRtTextFloat (ClothText *out, const double value, const int32_t width) {
 	char      buffer[64];
 	const int size = snprintf(buffer, sizeof(buffer), "%.*g", width == 64 ? 17 : width == 32 ? 9 : 5, value);
 	if (size < 0 || (size_t)size >= sizeof(buffer)) clothRtError("unable to format float");
 	*out = intern((const unsigned char *)buffer, (size_t)size);
 }
 
-void clothRtTextChar (ClothText *out, int32_t scalar) {
+void clothRtTextChar (ClothText *out, const int32_t scalar) {
 	unsigned char bytes[4];
 	*out = intern(bytes, (size_t)utf8proc_encode_char(scalar, bytes));
 }
 
-uint8_t clothRtCharTest (int32_t scalar, int32_t test) {
+uint8_t clothRtCharTest (const int32_t scalar, const int32_t test) {
 	const utf8proc_category_t category = utf8proc_category(scalar);
 	const int                 letter   = category >= UTF8PROC_CATEGORY_LU && category <= UTF8PROC_CATEGORY_LO;
 	switch (test) {
@@ -202,11 +200,11 @@ uint8_t clothRtCharTest (int32_t scalar, int32_t test) {
 	}
 }
 
-int32_t clothRtCharCase (int32_t value, uint8_t upper) {
+int32_t clothRtCharCase (const int32_t value, const uint8_t upper) {
 	return upper ? utf8proc_toupper(value) : utf8proc_tolower(value);
 }
 
-void clothRtTextCase (ClothText *out, const ClothText *value, uint8_t upper) {
+void clothRtTextCase (ClothText *out, const ClothText *value, const uint8_t upper) {
 	ClothArray result = { 0 };
 	for (size_t i = 0; i < value->length;) {
 		int32_t scalar = 0;
@@ -218,24 +216,24 @@ void clothRtTextCase (ClothText *out, const ClothText *value, uint8_t upper) {
 	*out = finish(&result);
 }
 
-static size_t offset (ClothText value, size_t index) {
+static size_t offset (const ClothText value, size_t index) {
 	size_t at = 0;
 	while (index--) at = advance(value, at);
 	return at;
 }
 
-int32_t clothRtTextAt (const ClothText *value, size_t index) {
+int32_t clothRtTextAt (const ClothText *value, const size_t index) {
 	int32_t scalar = 0;
 	if (!decode(*value, offset(*value, index), &scalar)) clothRtError("string index out of bounds");
 	return scalar;
 }
 
-void clothRtTextSubstring (ClothText *out, const ClothText *value, size_t start, size_t end) {
+void clothRtTextSubstring (ClothText *out, const ClothText *value, const size_t start, const size_t end) {
 	if (end < start) clothRtError("invalid substring bounds");
 	*out = slice(*value, offset(*value, start), offset(*value, end));
 }
 
-size_t clothRtTextFind (const ClothText *value, const ClothText *search, uint8_t last) {
+size_t clothRtTextFind (const ClothText *value, const ClothText *search, const uint8_t last) {
 	size_t found = SIZE_MAX;
 	for (size_t i = 0, index = 0;; ++index) {
 		if (matches(*value, i, *search)) {
@@ -248,18 +246,18 @@ size_t clothRtTextFind (const ClothText *value, const ClothText *search, uint8_t
 	return found;
 }
 
-uint8_t clothRtTextMatches (const ClothText *value, const ClothText *search, int32_t end) {
+uint8_t clothRtTextMatches (const ClothText *value, const ClothText *search, const int32_t end) {
 	if (end == ClothBoth) return value->length == search->length && matches(*value, 0, *search);
 	return search->length <= value->length && matches(*value, end == ClothStart ? 0 : value->length - search->length, *search);
 }
 
-void clothRtTextAffix (ClothText *out, const ClothText *value, const ClothText *search, int32_t end) {
+void clothRtTextAffix (ClothText *out, const ClothText *value, const ClothText *search, const int32_t end) {
 	*out = !clothRtTextMatches(value, search, end) ? *value :
 	       end == ClothStart                       ? slice(*value, search->length, value->length) :
 	                                                 slice(*value, 0, value->length - search->length);
 }
 
-void clothRtTextTrim (ClothText *out, const ClothText *value, int32_t ends) {
+void clothRtTextTrim (ClothText *out, const ClothText *value, const int32_t ends) {
 	size_t first = value->length, last = 0;
 	for (size_t i = 0; i < value->length;) {
 		int32_t      scalar = 0;
@@ -304,7 +302,7 @@ void clothRtTextSplit (ClothArray *out, const ClothText *value, const ClothText 
 	clothRtArrayAppend(out, &part, sizeof(part), _Alignof(ClothText));
 }
 
-void clothRtTextReplace (ClothText *out, const ClothText *value, const ClothText *search, const ClothText *replacement, uint8_t first) {
+void clothRtTextReplace (ClothText *out, const ClothText *value, const ClothText *search, const ClothText *replacement, const uint8_t first) {
 	ClothArray result = { 0 };
 	size_t     start  = 0;
 	for (size_t i = 0;;) {

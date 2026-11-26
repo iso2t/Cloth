@@ -35,5 +35,5 @@ fn use(int<8> small, unsigned int<16> word, isize offset, usize count, float<64>
     Amount total = twice(amount);
 }
 
-// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 32 --stdlib "%/S/../../../Stdlib" --src "%/s"
-// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 64 --stdlib "%/S/../../../Stdlib" --src "%/s"
+// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 32 --stdlib "%/S/../../../Stdlib/StandardLibrary/src" --src "%/s"
+// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 64 --stdlib "%/S/../../../Stdlib/StandardLibrary/src" --src "%/s"

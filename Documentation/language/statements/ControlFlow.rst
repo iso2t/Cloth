@@ -226,7 +226,7 @@ sequence intact.
 For a ``List<int>``, ``for (def value <- values)`` infers ``int``.
 For a ``List<int?>``, the binding needs the explicit ``int?`` shown above.
 The fallback contributes zero to the sum for each absent value. From
-the repository root, use ``--stdlib Stdlib`` to check the `sum example
+the repository root, use ``--stdlib Stdlib/StandardLibrary/src`` to check the `sum example
 <../../../Tests/Compiler/Semantic/Inputs/collection/sum-present.co>`_.
 
 Each iteration binds a writable copy of the element. Reassigning that
@@ -237,7 +237,7 @@ To allow iteration outside the declaring type, give the collection a
 ``pub operator foreach() -> Snapshot<T>``. The operator takes no
 parameters. Import ``Snapshot`` from ``cloth.collections.Snapshot`` in
 the configured standard library. To build a snapshot in traversal order,
-see the `custom collection example <../../../Stdlib/cloth/collections/README.md#snapshot>`_.
+see the `custom collection example <../../../Stdlib/StandardLibrary/src/cloth/collections/README.md#snapshot>`_.
 
 For the loop sources accepted by ``--emit-object``, see the `object-file
 guide <../../compiler/driver/Objects.rst#loop-sources>`_.

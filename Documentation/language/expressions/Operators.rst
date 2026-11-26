@@ -185,7 +185,7 @@ declare ``operator []=(Index i, T value)`` and a bounds validator
 validator can be private and must be read-only. The write captures the
 receiver and index, checks the index before evaluating the new value,
 and checks it again before storing. See the `List implementation
-<../../../Stdlib/cloth/collections/List.co>`_.
+<../../../Stdlib/StandardLibrary/src/cloth/collections/List.co>`_.
 
 A compound update on a user-defined collection requires a getter and
 setter that share the same bounds validator. A dedicated update on a

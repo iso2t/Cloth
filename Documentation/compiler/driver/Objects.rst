@@ -129,7 +129,7 @@ cells. Copying a class reference preserves the object's identity.
 
 Calls to generic functions and directly selected methods use the concrete
 types inferred or written at the call. A numeric bound can use the
-standard library's ``Number`` with ``--stdlib Stdlib``. Arithmetic uses the
+standard library's ``Number`` with ``--stdlib Stdlib/StandardLibrary/src``. Arithmetic uses the
 concrete integer width and signedness, floating-point operation, or selected
 operator body. See `generic types and functions <../../language/types/Generics.rst>`_.
 
@@ -322,7 +322,7 @@ an object starts at ``main`` and follows calls to the helpers used by that
 program. A library declaration can therefore pass source checking even
 when a native caller cannot use it.
 
-To compile a program that imports the shipped library, pass ``--stdlib Stdlib``
+To compile a program that imports the shipped library, pass ``--stdlib Stdlib/StandardLibrary/src``
 from the repository root. The native collection example updates ``list[0]``,
 visits its snapshot while clearing the list, and exits with status 42.
 See the `collection consumer <../../../Tests/Compiler/Driver/Inputs/stdlib-collections.co>`_

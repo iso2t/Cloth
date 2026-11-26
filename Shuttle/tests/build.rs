@@ -33,6 +33,12 @@ impl Drop for Directory {
     }
 }
 
+fn write(root: &Path, relative: &str, contents: &str) {
+    let path = root.join(relative);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, contents).unwrap();
+}
+
 fn build(dir: &Path) -> Command {
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let compiler = env::var_os("CLOTHC").map(PathBuf::from).unwrap_or_else(|| {
@@ -91,21 +97,31 @@ fn separate_objects_rebuild_and_preserve_the_previous_executable_on_failure() {
     let work = Directory::new("native projects π");
     let api = work.0.join("api");
     let app = work.0.join("app");
-    fs::create_dir_all(api.join("src")).unwrap();
-    fs::create_dir_all(&app).unwrap();
-    fs::write(api.join("src/api.co"), API).unwrap();
-    fs::write(api.join("src/offsets.co"), OFFSETS).unwrap();
-    fs::write(app.join("main.co"), MAIN).unwrap();
-    fs::write(app.join("offsets.co"), "pub fn<int> offset() = 99;\n").unwrap();
-    fs::write(api.join("build.toml"), "[project]\nname='arithmetic-lib'\nmodule='Arithmetic'\nkind='library'\nentryPoint='Api.api'\n[modules]\nApi='src'\n").unwrap();
-    let manifest = "[project]\nname='answer'\nentryPoint='App.main.main'\n[modules]\nApp='.'\n[dependencies]\nArithmetic=";
-    fs::write(
-        app.join("build.toml"),
-        format!("{manifest}{{project='../api',prebuilt=true}}\n"),
-    )
-    .unwrap();
+    write(&api, "src/api.co", API);
+    write(&api, "src/offsets.co", OFFSETS);
+    write(&app, "src/main.co", MAIN);
+    write(&app, "src/offsets.co", "pub fn<int> offset() = 99;\n");
+    write(
+        &api,
+        "build.k",
+        r#"project "tools" {
+        target "executable" entry="src/tool.co"
+        target "library" entry="src/api.co" name="arithmetic-lib" module="Arithmetic"
+    }"#,
+    );
+    let consumer = |prebuilt: bool| {
+        format!(
+            r#"project "answer" {{
+        dependency "Arithmetic" path="../api" prebuilt=#{prebuilt}
+        target "executable" entry="src/main.co" {{
+            uses "Arithmetic"
+        }}
+    }}"#
+        )
+    };
+    write(&app, "build.k", &consumer(true));
     failure(build(&app).output().unwrap(), "missing prebuilt library");
-    let library = artifact(&mut build(&api));
+    let library = artifact(build(&api).arg("arithmetic-lib"));
     let executable = artifact(&mut build(&app));
     assert_eq!(
         library.parent().unwrap().file_name(),
@@ -115,10 +131,10 @@ fn separate_objects_rebuild_and_preserve_the_previous_executable_on_failure() {
 
     fs::write(api.join("src/offsets.co"), "pub fn<int> offset() = 3;\n").unwrap();
     run(&artifact(&mut build(&app)), 42, "");
-    artifact(&mut build(&api));
+    artifact(build(&api).arg("arithmetic-lib"));
     run(&artifact(&mut build(&app)), 43, "");
     fs::write(api.join("src/offsets.co"), "pub fn<int> offset() = 4;\n").unwrap();
-    fs::write(app.join("build.toml"), format!("{manifest}'../api'\n")).unwrap();
+    write(&app, "build.k", &consumer(false));
     run(&artifact(&mut build(&app)), 44, "");
 
     let wrong = work.0.join("runtime");
@@ -141,7 +157,7 @@ fn separate_objects_rebuild_and_preserve_the_previous_executable_on_failure() {
     );
     run(&executable, 44, "");
     fs::write(
-        app.join("main.co"),
+        app.join("src/main.co"),
         "using Arithmetic : adjust;\npub fn<int> main() = adjust(40);\n",
     )
     .unwrap();
@@ -152,16 +168,19 @@ fn separate_objects_rebuild_and_preserve_the_previous_executable_on_failure() {
 #[test]
 fn collections_project_links_the_packaged_runtime() {
     let work = Directory::new("collections");
-    fs::write(work.0.join("main.co"), COLLECTIONS).unwrap();
-    fs::write(
-        work.0.join("build.toml"),
-        "[project]\nname='collections'\nentry='main.co'\n[output]\ndirectory='out'\n",
-    )
-    .unwrap();
+    write(&work.0, "src/main.co", COLLECTIONS);
+    write(
+        &work.0,
+        "build.k",
+        r#"project "collections" {
+        target "executable" entry="src/main.co"
+        output "out"
+    }"#,
+    );
     let stdlib = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
-        .join("Stdlib");
+        .join("Stdlib/StandardLibrary/src");
     let path = artifact(build(&work.0).arg("--stdlib").arg(stdlib));
     assert!(
         path.canonicalize()
@@ -174,11 +193,24 @@ fn collections_project_links_the_packaged_runtime() {
 #[test]
 fn rejects_a_cyclic_project_before_creating_output() {
     let work = Directory::new("cycle");
-    fs::write(
-        work.0.join("build.toml"),
-        "[project]\nname='Loop'\nkind='library'\nentry='api.co'\n[dependencies]\nLoop='.'\n",
-    )
-    .unwrap();
+    for (root, name, other, path) in [
+        (work.0.clone(), "Left", "Right", "right"),
+        (work.0.join("right"), "Right", "Left", ".."),
+    ] {
+        write(&root, "src/api.co", "pub fn<int> value() = 7;\n");
+        write(
+            &root,
+            "build.k",
+            &format!(
+                r#"project "{name}" {{
+            dependency "{other}" path="{path}"
+            target "library" entry="src/api.co" {{
+                uses "{other}"
+            }}
+        }}"#
+            ),
+        );
+    }
     failure(
         build(&work.0).output().unwrap(),
         "cyclic project dependency",
@@ -190,34 +222,237 @@ fn rejects_a_cyclic_project_before_creating_output() {
 fn transitive_libraries_keep_identical_signatures_in_their_own_modules() {
     let work = Directory::new("module boundaries");
     let cases = [
-        ("Left", "pub fn<int> value() = 40;\n", ""),
-        ("Right", "pub fn<int> value() = 2;\n", ""),
+        ("Left", "pub fn<int> value() = 40;\n", None),
+        ("Right", "pub fn<int> value() = 2;\n", None),
         (
             "First",
             "using Left : value;\npub fn<int> first() = value();\n",
-            "Left='../Left'\n",
+            Some("Left"),
         ),
         (
             "Second",
             "using Right : value;\npub fn<int> second() = value();\n",
-            "Right='../Right'\n",
+            Some("Right"),
         ),
     ];
-    for (name, source, dependencies) in cases {
+    for (name, source, dependency) in cases {
         let dir = work.0.join(name);
-        fs::create_dir(&dir).unwrap();
-        fs::write(dir.join("api.co"), source).unwrap();
-        fs::write(dir.join("build.toml"), format!("[project]\nname='{name}'\nkind='library'\nentry='api.co'\n[dependencies]\n{dependencies}")).unwrap();
+        write(&dir, "src/api.co", source);
+        let mut manifest = format!("project \"{name}\" {{\n");
+        if let Some(other) = dependency {
+            manifest += &format!("dependency \"{other}\" path=\"../{other}\"\n");
+            manifest +=
+                &format!("target \"library\" entry=\"src/api.co\" {{\nuses \"{other}\"\n}}\n");
+        } else {
+            manifest += "target \"library\" entry=\"src/api.co\"\n";
+        }
+        write(&dir, "build.k", &(manifest + "}\n"));
     }
-    fs::write(
-        work.0.join("main.co"),
+    write(
+        &work.0,
+        "src/main.co",
         "using First : first;\nusing Second : second;\npub fn<int> main() = first() + second();\n",
-    )
-    .unwrap();
-    fs::write(
-        work.0.join("build.toml"),
-        "[project]\nname='sum'\nentry='main.co'\n[dependencies]\nFirst='First'\nSecond='Second'\n",
-    )
-    .unwrap();
+    );
+    write(
+        &work.0,
+        "build.k",
+        r#"project "sum" {
+        dependency "First" path="First/build.k"
+        dependency "Second" path="Second"
+        target "executable" entry="src/main.co" {
+            uses "First"
+            uses "Second"
+        }
+    }"#,
+    );
     run(&artifact(&mut build(&work.0)), 42, "");
+}
+
+#[test]
+fn sibling_modules_supply_an_executable_and_a_named_library() {
+    let work = Directory::new("two modules");
+    let root = work.0.join("calculator");
+    write(
+        &root,
+        "build.k",
+        r#"project "calculator" version="0.1.0" {
+        include "Console"
+        include "Arithmetic"
+        target "executable" entry="Console/src/main.co"
+        target "library" name="arithmetic-lib" module="Arithmetic"
+    }"#,
+    );
+    write(
+        &root,
+        "Console/module.k",
+        "module \"Console\" {\nuses \"Arithmetic\"\n}",
+    );
+    write(&root, "Console/src/main.co", MAIN);
+    write(
+        &root,
+        "Arithmetic/module.k",
+        "module \"Arithmetic\" api=\"src/api.co\"",
+    );
+    write(&root, "Arithmetic/src/api.co", API);
+    write(&root, "Arithmetic/src/offsets.co", OFFSETS);
+
+    let executable = artifact(&mut build(&root));
+    assert_eq!(executable.file_stem().unwrap(), "calculator");
+    run(&executable, 42, "");
+    let library =
+        artifact(build(&work.0).args(["arithmetic-lib", "--manifest-path", "calculator/build.k"]));
+    assert_eq!(library.file_name().unwrap(), "arithmetic-lib.o");
+
+    write(
+        &root,
+        "build.k",
+        "project \"calculator\" {\ninclude \"Arithmetic\"\ntarget \"library\" module=\"Arithmetic\"\n}",
+    );
+    assert_eq!(
+        artifact(&mut build(&root)).file_name().unwrap(),
+        "calculator.o"
+    );
+}
+
+#[test]
+fn root_sources_can_add_targets_and_import_a_local_module() {
+    let work = Directory::new("root sources");
+    write(&work.0, "src/main.co", "pub fn<int> main() = 7;\n");
+    write(
+        &work.0,
+        "build.k",
+        "project \"hello\" {\ntarget \"executable\" entry=\"src/main.co\"\n}",
+    );
+    run(&artifact(&mut build(&work.0)), 7, "");
+
+    write(
+        &work.0,
+        "Arithmetic/module.k",
+        "module \"Arithmetic\" api=\"src/api.co\"",
+    );
+    write(&work.0, "Arithmetic/src/api.co", API);
+    write(&work.0, "Arithmetic/src/offsets.co", OFFSETS);
+    write(&work.0, "src/inspect.co", MAIN);
+    write(
+        &work.0,
+        "build.k",
+        r#"project "hello" {
+        include "Arithmetic"
+        target "executable" entry="src/main.co"
+        target "executable" name="inspect" entry="src/inspect.co" {
+            uses "Arithmetic"
+        }
+    }"#,
+    );
+    run(&artifact(&mut build(&work.0)), 7, "");
+    run(&artifact(build(&work.0).arg("inspect")), 42, "");
+}
+
+#[test]
+fn manifest_errors_identify_the_declaration_before_building() {
+    let work = Directory::new("manifest diagnostics");
+    write(&work.0, "src/main.co", "pub fn<int> main() = 0;\n");
+    write(&work.0, "outside.co", "pub fn<int> main() = 1;\n");
+    let cases = [
+        (
+            "targt \"executable\"",
+            "build.k:2:5: unknown project node 'targt'",
+        ),
+        (
+            "target \"object\" entry=\"src/main.co\"",
+            "build.k:2:5: unknown target kind 'object'",
+        ),
+        (
+            "target \"executable\" entry=\"src/main.co\" entry=\"outside.co\"",
+            "duplicate property 'entry'",
+        ),
+        (
+            "target \"executable\" entry=\"src/main.co\"\n    target \"library\" entry=\"src/main.co\"",
+            "duplicate target name 'test'",
+        ),
+        (
+            "target \"executable\" entry=\"src/../outside.co\"",
+            "outside the project and included module src directories",
+        ),
+        (
+            "target \"executable\" entry=\"src/main.co\" {\nuses \"Missing\"\n}",
+            "unknown module 'Missing'",
+        ),
+        (
+            "target \"executable\" entry=\"src/main.co\"\ninclude \"Missing\"",
+            "module.k",
+        ),
+        (
+            "target \"library\" name=\"one\" module=\"One\" entry=\"src/main.co\"\ntarget \"library\" name=\"two\" module=\"Two\" entry=\"src/main.co\"",
+            "available targets: one, two",
+        ),
+        ("target \"executable\" entry=\"unterminated", "build.k:2:"),
+        (
+            "dependency \"Local\" path=\"../provider\"\ntarget \"library\" module=\"Local\" entry=\"src/main.co\"",
+            "local module and dependency both supply 'Local'",
+        ),
+    ];
+    for (body, expected) in cases {
+        write(
+            &work.0,
+            "build.k",
+            &format!("project \"test\" {{\n    {body}\n}}\n"),
+        );
+        failure(build(&work.0).output().unwrap(), expected);
+        assert!(!work.0.join("build").exists());
+    }
+    for folder in ["First", "Second"] {
+        write(
+            &work.0,
+            &format!("{folder}/module.k"),
+            "module \"Repeated\"",
+        );
+        write(
+            &work.0,
+            &format!("{folder}/src/api.co"),
+            "pub fn<int> value() = 0;\n",
+        );
+    }
+    write(
+        &work.0,
+        "build.k",
+        "project \"test\" {\ninclude \"First\"\ninclude \"Second\"\ntarget \"executable\" entry=\"src/main.co\"\n}",
+    );
+    failure(
+        build(&work.0).output().unwrap(),
+        "duplicate module 'Repeated'",
+    );
+    write(
+        &work.0,
+        "First/module.k",
+        "module \"First\" {\u{2028}    uses \"Missing\"\r\n}",
+    );
+    write(
+        &work.0,
+        "build.k",
+        "project \"test\" {\ninclude \"First\"\ntarget \"executable\" entry=\"First/src/api.co\"\n}",
+    );
+    failure(
+        build(&work.0).output().unwrap(),
+        "module.k:2:5: unknown module 'Missing'",
+    );
+    let (name, second_target) = if cfg!(windows) {
+        (
+            "sample",
+            r#"target "executable" name="SAMPLE" entry="src/main.co""#,
+        )
+    } else {
+        (
+            "sample.o",
+            r#"target "library" name="sample" module="Sample" entry="src/main.co""#,
+        )
+    };
+    write(
+        &work.0,
+        "build.k",
+        &format!(
+            "project \"{name}\" {{\ntarget \"executable\" entry=\"src/main.co\"\n{second_target}\n}}"
+        ),
+    );
+    failure(build(&work.0).output().unwrap(), "same output filename");
 }

@@ -3,9 +3,9 @@
 ## List
 
 Import the public class from `cloth.collections.List`. To check these examples
-from the repository root, pass `--stdlib Stdlib` to `cloth --src` with
+from the repository root, pass `--stdlib Stdlib/StandardLibrary/src` to `cloth --src` with
 the path to the example. Collection methods are checked by the frontend.
-See the [native object guide](../../../Documentation/compiler/driver/Objects.rst#source-checks-and-native-code).
+See the [native object guide](../../../../../Documentation/compiler/driver/Objects.rst#source-checks-and-native-code).
 
 ```cloth
 using cloth.collections.List : List;
@@ -111,7 +111,7 @@ fn main() {
 
 Aliases can read and mutate the live object while the list owns it. After
 `removeAt`, any live alias can delete the object or give it to an owning list.
-For the rules that apply to every alias, see [Object ownership](../../../Documentation/language/objects/Ownership.rst#owning-lists).
+For the rules that apply to every alias, see [Object ownership](../../../../../Documentation/language/objects/Ownership.rst#owning-lists).
 
 Direct foreach captures the entries in order before the first iteration. The
 snapshot holds aliases, so deleting an object also invalidates its snapshot entry.
@@ -120,7 +120,7 @@ snapshot holds aliases, so deleting an object also invalidates its snapshot entr
 the list is empty during cleanup. An element destructor cannot append,
 remove, clear, or delete that list during cleanup. Deleting an element
 invalidates its aliases. See the [owning list implementation](OwningList.co)
-and [ownership checks](../../../Tests/Compiler/Semantic/Unit/ownership_test.cpp).
+and [ownership checks](../../../../../Tests/Compiler/Semantic/Unit/ownership_test.cpp).
 
 ## Snapshot
 
@@ -145,7 +145,7 @@ typedef<class> Pair (def<int> first, def<int> second) {
 
 The loop manages the snapshot's storage. Each iteration receives an
 independent value under the same rules as array foreach. For loop binding types
-and the order in which entries are visited, see [Collection iteration](../../../Documentation/language/statements/ControlFlow.rst#collection-iteration).
+and the order in which entries are visited, see [Collection iteration](../../../../../Documentation/language/statements/ControlFlow.rst#collection-iteration).
 
 ## Deque, Queue, and Stack
 

@@ -43,7 +43,7 @@ include Tests/Makefile
 all: $(program) $(migrator) runtime
 
 run: $(program)
-	"$(run_path)" --kind library --stdlib Stdlib --src Stdlib/cloth/Library.co
+	"$(run_path)" --kind library --stdlib Stdlib/StandardLibrary/src --src Stdlib/StandardLibrary/src/cloth/Library.co
 
 $(program): $(objects) Makefile Compiler/Kbuild Diagnostics/Kbuild Backend/Kbuild
 	$(CXX) $(LDFLAGS) $(driver_ldflags) $(objects) $(backend_ldlibs) $(LDLIBS) -o "$@"

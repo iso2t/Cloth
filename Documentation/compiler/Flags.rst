@@ -20,7 +20,7 @@ for statement boundaries and `Names and visibility
 
 ``--stdlib PATH`` sets the standard library source root. Imports search
 the entry directory first, then this root. To use the library in this
-checkout, pass ``--stdlib Stdlib`` from the repository root. This
+checkout, pass ``--stdlib Stdlib/StandardLibrary/src`` from the repository root. This
 supplies the standard library declaration for `collection iteration
 <../language/statements/ControlFlow.rst#collection-iteration>`_.
 

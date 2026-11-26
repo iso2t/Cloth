@@ -3,84 +3,128 @@
 Building Cloth projects with Shuttle
 ====================================
 
-Run ``shuttle build`` in a directory with a ``build.toml`` to compile and
-link a Cloth program. Shuttle prints the path of the finished executable.
-The program below returns exit status 42.
+Run ``shuttle build`` from a project directory containing ``build.k``.
+Shuttle reads KDL v2 manifests, invokes the Cloth compiler, and prints the
+path of the finished artifact. A project can keep its own sources in ``src/``.
 
-.. code-block:: toml
+A first executable
+------------------
 
-   [project]
-   name = "answer"
-   entry = "main.co"
+Create ``build.k`` alongside the ``src/`` directory.
+
+.. code-block:: text
+
+   project "answer" version="0.1.0" {
+       target "executable" entry="src/main.co"
+   }
+
+Put the program in ``src/main.co``.
 
 .. code-block:: text
 
    pub fn<int> main() = 42;
 
-From a Cloth checkout, build the compiler and its runtime with ``make``
-or ``mingw32-make``. Build Shuttle with
+From the Cloth checkout, build the compiler and runtime with ``make`` or
+``mingw32-make`` and build Shuttle with
 ``cargo build --release --locked --manifest-path Shuttle/Cargo.toml``.
-Put the compiler on ``PATH`` or pass its path explicitly. From the repository
-root, use the compiler and Stdlib in this checkout to build ``examples/answer``.
+Put ``shuttle`` and ``cloth`` on your path or pass the compiler path with
+``--compiler``. From the example project, ``shuttle build`` builds ``answer``
+(``answer.exe`` on Windows). Running it returns exit status 42.
+
+A standalone library can use the same layout. Give the library target
+``entry="src/api.co"`` and the kind ``"library"``. Its import name
+defaults to the project name. Set ``module="Arithmetic"`` to supply another
+Cloth identifier, for example when the project name contains a hyphen.
+
+Build an executable and a library
+---------------------------------
+
+Include sibling module directories in the project's ``build.k``. Each
+directory has a ``module.k`` beside its ``src/``. Project paths are relative
+to ``build.k``. A module's API path is relative to its ``module.k``.
+
+.. code-block:: text
+
+   project "calculator" version="0.1.0" {
+       include "Console"
+       include "Arithmetic"
+
+       target "executable" entry="Console/src/main.co"
+       target "library" name="arithmetic-lib" module="Arithmetic"
+   }
+
+Declare the dependency in ``Console/module.k``.
+
+.. code-block:: text
+
+   module "Console" {
+       uses "Arithmetic"
+   }
+
+Give ``Arithmetic/module.k`` the import name and public source file.
+
+.. code-block:: text
+
+   module "Arithmetic" api="src/api.co"
+
+``Console/src/main.co`` can import public declarations from
+``Arithmetic/src/api.co`` with ``using Arithmetic : pick;``. Shuttle builds
+the modules reached through ``uses``. To use a module from a project-owned
+entry such as ``src/main.co``, put ``uses`` inside that ``target`` node.
+
+``shuttle build`` selects the target that inherits the project name.
+``shuttle build arithmetic-lib`` builds ``arithmetic-lib.o`` independently.
+When every target has an explicit name, a sole target is the default.
+With several named targets, Shuttle lists the choices. Use
+``--manifest-path PATH`` to select a project directory or its manifest
+from a different working directory.
+
+The default output is ``build/<target-triple>/<artifact>``. A project can
+add ``output "out"`` to choose another directory. A failed compile or link
+preserves the previous artifact.
+
+Use a library from another project
+----------------------------------
+
+Declare the provider in the consumer's ``build.k`` and refer to its import
+name from the target or module that uses it.
+
+.. code-block:: text
+
+   project "consumer" {
+       dependency "Arithmetic" path="../calculator"
+       target "executable" entry="src/main.co" {
+           uses "Arithmetic"
+       }
+   }
+
+Shuttle selects the provider's library target by its Cloth module name.
+The path can point to the project directory or its ``build.k``. Each
+reachable source library compiles once per executable build. For an
+existing object, build its named target for the same machine width and
+add ``prebuilt=#true`` to the ``dependency`` node. Keep its manifest,
+API source and imports beside the artifact for type checking and generic
+specialization. See `Native libraries <../Documentation/compiler/driver/Objects.rst#native-libraries>`_.
+
+The shipped `standard library project <../Stdlib/build.k>`_ can be built
+from the checkout with its source root supplied to the native compiler.
 
 .. code-block:: sh
 
-   cargo run --locked --manifest-path Shuttle/Cargo.toml -- build --manifest-path examples/answer/build.toml --compiler build/cloth --stdlib Stdlib
+   cargo run --locked --manifest-path Shuttle/Cargo.toml -- build --manifest-path Stdlib/build.k --compiler build/cloth --stdlib Stdlib/StandardLibrary/src
 
-Project entries and output
---------------------------
+Migrate a TOML manifest
+-----------------------
 
-Paths in the manifest are relative to its directory. ``project.entry``
-takes a Cloth source path. A project using module roots can instead set
-``entryPoint = "App.tools.sample.main"`` with ``App = "src"`` under
-``[modules]``. Shuttle then compiles ``src/tools/sample.co`` as the
-executable entry. For a library the dotted path ends at the source unit.
-
-The output is ``build/<target>/<name>``, with ``.exe`` on Windows or
-``.o`` for a library. Set ``directory`` under ``[output]`` to change
-the build directory. A failed compile or link preserves the last
-successful build. Intermediate objects belong to the current invocation.
-
-Libraries and dependencies
---------------------------
-
-A library manifest names the source unit that supplies its exports.
-The module name defaults to the project name and must be a Cloth
-identifier. Use ``module`` when the artifact has a different name.
-
-.. code-block:: toml
-
-   [project]
-   name = "arithmetic-lib"
-   module = "Arithmetic"
-   kind = "library"
-   entry = "api.co"
-
-A consumer can declare the library by its module name and import its
-public functions with ``using Arithmetic : pick``. The dependency path
-can name a project directory or its manifest.
-
-.. code-block:: toml
-
-   [dependencies]
-   Arithmetic = "../arithmetic"
-
-Shuttle compiles each reachable source dependency into a separate
-object on each executable build. Changes to an imported helper take
-effect when you rebuild the consumer. To link an existing library,
-first run ``shuttle build`` in the library project for the same target,
-then use this dependency entry in the consumer.
-
-.. code-block:: toml
-
-   [dependencies]
-   Arithmetic = { project = "../arithmetic", prebuilt = true }
-
-Keep the library's manifest, entry source and its imports alongside
-the matching object. Cloth uses those sources for visibility, overload
-selection and generic specialization. Rebuild the library to publish
-an implementation change. For the exported signature types and direct
-compiler commands, see `Native libraries <../Documentation/compiler/driver/Objects.rst#native-libraries>`_.
+Move the project name and version from ``[project]`` to the ``project`` node
+in ``build.k``. Convert its kind and entry into a ``target`` and place the
+source under the project's or an included module's ``src/``. Translate a
+dotted ``entryPoint`` using its old ``[modules]`` mapping to find the same
+source file. For example, the old standard library entry
+``StandardLibrary.cloth.Library`` becomes ``src/cloth/Library.co`` in
+``StandardLibrary/module.k``. Convert module roots into ``include`` nodes,
+dependencies into ``dependency`` and ``uses`` nodes, and ``[output].directory``
+into an ``output`` node. Cargo reads ``Shuttle/Cargo.toml`` to build the Rust CLI.
 
 Target and tool selection
 -------------------------

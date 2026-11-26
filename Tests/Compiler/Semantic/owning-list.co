@@ -22,4 +22,4 @@ fn main() {
     list::delete;
 }
 
-// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --stdlib "%/S/../../../Stdlib" --src "%/s"
+// RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --stdlib "%/S/../../../Stdlib/StandardLibrary/src" --src "%/s"

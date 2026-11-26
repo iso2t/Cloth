@@ -21,7 +21,7 @@ namespace {
 using Code = cde::DiagnosticCode;
 
 const std::filesystem::path P_SEMANTIC = std::filesystem::path(__FILE__).parent_path().parent_path();
-const std::filesystem::path P_STDLIB   = (P_SEMANTIC / "../../../Stdlib").lexically_normal();
+const std::filesystem::path P_STDLIB   = (P_SEMANTIC / "../../../Stdlib/StandardLibrary/src").lexically_normal();
 
 const std::string S_DECLARATIONS = R"(using cloth.collections.OwningList: OwningList;
 fn opaque(OwningList<Object> list) { list.removeAt(0); }

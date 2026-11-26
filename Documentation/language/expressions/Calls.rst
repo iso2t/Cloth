@@ -100,7 +100,7 @@ The primary constructor is private. A public secondary constructor gives
 outside callers a way to create the class. For example, an empty
 ``List<int>::new`` calls the public zero-argument constructor, which supplies
 an empty array to the private primary constructor. See the `List declaration
-<../../../Stdlib/cloth/collections/List.co>`_.
+<../../../Stdlib/StandardLibrary/src/cloth/collections/List.co>`_.
 
 A secondary constructor delegates to the primary constructor of its own class.
 Both operate on the same instance. The primary constructor runs the

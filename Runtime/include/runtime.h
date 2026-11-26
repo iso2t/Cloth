@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "../include/cloth/abi.h"
+#include "cloth/abi.h"
 
 struct ClothString;
 

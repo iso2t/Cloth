@@ -4,36 +4,35 @@
 // See Documentation/compiler/driver/Objects.rst
 
 #include <cloth/array.h>
-#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "runtime.h"
+#include <runtime.h>
 
 _Static_assert(offsetof(ClothArray, length) == sizeof(size_t) && offsetof(ClothArray, capacity) == 2 * sizeof(size_t) &&
                        offsetof(ClothArray, owner) == 3 * sizeof(size_t) && sizeof(ClothArray) == 4 * sizeof(size_t),
                "Cloth rank-one array descriptor requires four native words");
 
-static size_t capacityLimit (size_t stride, size_t alignment) {
+static size_t capacityLimit (const size_t stride, const size_t alignment) {
 	// LLVM addresses cells using signed pointer offsets. Allow space to align the first cell within the allocation.
-	if (!stride || !alignment || (alignment & (alignment - 1)) || alignment - 1 > (size_t)PTRDIFF_MAX) clothRtArrayCapacityOverflow();
+	if (!stride || !alignment || alignment & alignment - 1 || alignment - 1 > (size_t)PTRDIFF_MAX) clothRtArrayCapacityOverflow();
 	return ((size_t)PTRDIFF_MAX - (alignment - 1)) / stride;
 }
 
-static ClothArray allocateBuffer (size_t capacity, size_t stride, size_t alignment) {
+static ClothArray allocateBuffer (const size_t capacity, const size_t stride, const size_t alignment) {
 	unsigned char *owner = malloc(capacity * stride + (alignment - 1));
 	if (!owner) clothRtArrayAllocationFailed();
-	const size_t offset = (size_t)(-(uintptr_t)owner & (uintptr_t)(alignment - 1));
+	const size_t offset = -(uintptr_t)owner & alignment - 1;
 	return (ClothArray){ .data = owner + offset, .capacity = capacity, .owner = owner };
 }
 
-static void replace (ClothArray *array, ClothArray next) {
+static void replace (ClothArray *array, const ClothArray next) {
 	if (array->owner) free(array->owner);
 	*array = next;
 }
 
-static ClothArray allocateGrownBuffer (const ClothArray *array, size_t minimum, size_t limit, size_t stride, size_t alignment) {
+static ClothArray allocateGrownBuffer (const ClothArray *array, const size_t minimum, const size_t limit, const size_t stride, const size_t alignment) {
 	const size_t current  = array->owner ? array->capacity : array->length;
 	size_t       capacity = minimum > array->length ? minimum : array->length;
 	if (current < capacity && current <= limit / 2 && current * 2 > capacity) capacity = current * 2;
@@ -47,7 +46,7 @@ void clothRtArrayClear (ClothArray *array) {
 		*array = (ClothArray){ 0 };
 }
 
-void clothRtArrayAssign (ClothArray *array, const void *data, size_t count, size_t stride, size_t alignment) {
+void clothRtArrayAssign (ClothArray *array, const void *data, const size_t count, const size_t stride, const size_t alignment) {
 	if (count > capacityLimit(stride, alignment)) clothRtArrayCapacityOverflow();
 	if (!count) {
 		clothRtArrayClear(array);
@@ -64,7 +63,7 @@ void clothRtArrayAssign (ClothArray *array, const void *data, size_t count, size
 	replace(array, next);
 }
 
-void clothRtArrayReserve (ClothArray *array, size_t minimum, size_t stride, size_t alignment) {
+void clothRtArrayReserve (ClothArray *array, const size_t minimum, const size_t stride, const size_t alignment) {
 	const size_t limit = capacityLimit(stride, alignment);
 	if (minimum > limit || array->length > limit) clothRtArrayCapacityOverflow();
 	if (minimum <= array->capacity && (array->owner || !array->capacity)) return;
@@ -74,7 +73,7 @@ void clothRtArrayReserve (ClothArray *array, size_t minimum, size_t stride, size
 	replace(array, next);
 }
 
-void clothRtArrayInsert (ClothArray *array, size_t index, const void *cell, size_t stride, size_t alignment) {
+void clothRtArrayInsert (ClothArray *array, const size_t index, const void *cell, const size_t stride, const size_t alignment) {
 	if (index > array->length) clothRtArrayIndexOutOfBounds();
 	const size_t limit = capacityLimit(stride, alignment);
 	if (array->length >= limit) clothRtArrayCapacityOverflow();
@@ -101,11 +100,11 @@ void clothRtArrayInsert (ClothArray *array, size_t index, const void *cell, size
 	replace(array, next);
 }
 
-void clothRtArrayAppend (ClothArray *array, const void *cell, size_t stride, size_t alignment) {
+void clothRtArrayAppend (ClothArray *array, const void *cell, const size_t stride, const size_t alignment) {
 	clothRtArrayInsert(array, array->length, cell, stride, alignment);
 }
 
-void clothRtArrayRemoveAt (ClothArray *array, size_t index, void *removed, size_t stride, size_t alignment) {
+void clothRtArrayRemoveAt (ClothArray *array, const size_t index, void *removed, const size_t stride, const size_t alignment) {
 	if (index >= array->length) clothRtArrayIndexOutOfBounds();
 	if (!array->owner) clothRtArrayReserve(array, array->length, stride, alignment);
 	unsigned char *at = array->data + index * stride;
