@@ -83,7 +83,7 @@ test-file: test_file_flag := --single
 lit-all test-driver test-file: $(migrator) $(runtime_archive)
 lit-all lit-lexer lit-diagnostics test-driver test-file: $(program)
 	@"$(PYTHON)" Tests/Support/run_lit.py $(test_file_flag) "$(program)" "$(test_input)" \
-		--runtime "$(runtime_archive)" --readobj "$(call llvm_query,--bindir)/llvm-readobj$(exe_suffix)" --llvm-mc "$(call llvm_query,--bindir)/llvm-mc$(exe_suffix)" --cc $(CC)
+		--runtime "$(runtime_archive)" --readobj "$(call llvm_query,--bindir)/llvm-readobj$(exe_suffix)" --llvm-mc "$(call llvm_query,--bindir)/llvm-mc$(exe_suffix)" --cc $(CC) $(LDFLAGS)
 
 unit-all: unit_filter := *
 unit-lexer: unit_filter := Lexer*.*
