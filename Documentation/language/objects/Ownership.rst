@@ -76,7 +76,6 @@ valid. Deleting ``list`` destroys the remaining entry. See the
    list::delete;
 
 Use ``list.clear()`` to delete the entries in list order and keep the
-empty list available for reuse. To check the example from the repository
-root, pass ``--stdlib Stdlib/StandardLibrary/src`` to the compiler. See the `OwningList API
+empty list available for reuse. See the `OwningList API
 <../../../Stdlib/StandardLibrary/src/cloth/collections/README.md#owninglist>`_ for its element
 types and operations.

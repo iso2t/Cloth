@@ -18,10 +18,12 @@ and literals <../language/source/Source.rst#names-and-statement-boundaries>`_
 for statement boundaries and `Names and visibility
 <../language/source/Visibility.rst>`_ for import selection.
 
-``--stdlib PATH`` sets the standard library source root. Imports search
-the entry directory first, then this root. To use the library in this
-checkout, pass ``--stdlib Stdlib/StandardLibrary/src`` from the repository root. This
-supplies the standard library declaration for `collection iteration
+Imports search the entry directory first, then the standard library.
+By default, Cloth finds the library in ``lib/cloth/stdlib`` relative to
+the compiler executable. Use ``--stdlib PATH`` to select a different
+directory containing ``cloth/``, such as ``Stdlib/StandardLibrary/src``
+when developing the library. The selected library also supplies the
+declaration for `collection iteration
 <../language/statements/ControlFlow.rst#collection-iteration>`_.
 
 Migrating legacy semicolons

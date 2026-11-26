@@ -3,25 +3,28 @@
 Run your first Cloth program
 ============================
 
-From the repository root, follow the `build instructions
-<../building/Building.rst>`_.
+After `building Cloth <../building/Building.rst>`_, work from the
+repository root.
 
-Save this program as ``build/hello.co``. A copy is available in the
-`println example <../../Tests/Compiler/Driver/Inputs/println.co>`_.
+Save this program as ``build/hello.co``. You can also copy the
+`example source <../../Tests/Compiler/Driver/Inputs/println.co>`_.
 
 .. code-block:: text
 
-   pub fn<int> main() {
-       println(1);
-       return 42;
+   using cloth.Console : println;
+
+   pub fn main() {
+       println("Hello, world!");
    }
 
-Execution starts at ``main``. The ``int`` in ``fn<int>`` is its return
-type. ``println`` writes its argument in decimal followed by a newline.
+The ``using`` line imports ``println`` from ``cloth.Console``. Execution
+starts at ``main``, where ``println`` writes the greeting followed by a
+newline.
 
-The first Cloth command below checks the source. The second writes an
-object file. Link that object with ``Runtime/src/println.c`` to supply
-the print function, then run the executable.
+The compiler finds ``cloth.Console`` in its bundled standard library.
+The first Cloth command checks the source. The second writes an object
+file. Link the object with the runtime archive for your target, then run
+the executable.
 
 On Linux
 --------
@@ -30,9 +33,8 @@ On Linux
 
    ./build/cloth --kind executable --src build/hello.co
    ./build/cloth --kind executable --src build/hello.co --emit-object build/hello.o
-   cc build/hello.o Runtime/src/println.c -o build/hello
+   cc build/hello.o "build/lib/cloth/$(./build/cloth --print-target)/libcloth_runtime.a" -o build/hello
    ./build/hello
-   echo $?
 
 On Windows with MinGW
 ---------------------
@@ -43,12 +45,15 @@ In PowerShell, run the following commands.
 
    .\build\cloth.exe --kind executable --src build/hello.co
    .\build\cloth.exe --kind executable --src build/hello.co --emit-object build/hello.o
-   gcc build/hello.o Runtime/src/println.c -o build/hello.exe
+   $target = .\build\cloth.exe --print-target
+   gcc build/hello.o "build/lib/cloth/$target/libcloth_runtime.a" -lshell32 -o build/hello.exe
    .\build\hello.exe
-   $LASTEXITCODE
 
-In either shell, the program prints ``1`` on its own line. The last
-command displays ``42``, the exit status returned by ``main``.
+You should see one line in your terminal.
+
+.. code-block:: text
+
+   Hello, world!
 
 To call a function defined in a second source file, see `Functions in
 another file <../compiler/driver/Objects.rst#functions-in-another-file>`_.

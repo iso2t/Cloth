@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 fn<bool> matches(final int<65> start, final int<65> end, final bool inclusive, final bool referenceInclusive, final bool expected) {
     def bounds := if (inclusive) start..=end else start..end;
     range<int<65>> reference := if (referenceInclusive) 13..=16 else 13..16;

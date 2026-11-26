@@ -113,6 +113,10 @@ std::optional<std::uint64_t> ResolvedType::arrayExtent () const {
 std::optional<PrimitiveFamily> ResolvedType::primitiveFamily () const {
 	if (!suffixes.empty()) return {};
 	if (parameter) return parameter->primitiveSelf;
+	if (declaration) return {};
+	if (name == toString(KString)) return PrimitiveFamily::String;
+	if (name == toString(KCharacter)) return PrimitiveFamily::Char;
+	if (name == toString(KBoolean)) return PrimitiveFamily::Bool;
 	if (name == toString(KFloat)) return PrimitiveFamily::Float;
 	if (name == toString(KInteger) || name == semantic::unsignedIntegerSpelling() || name == toString(KUsize) || name == toString(KIsize))
 		return PrimitiveFamily::Integer;
@@ -394,7 +398,7 @@ void Analyzer::registerScope (const SymbolScope &scope, const std::size_t file, 
 				}
 			}
 			if (!owner) {
-				v_names[file][entry.first].push_back(&sym);
+				v_names[file][entry.first].symbols.push_back(&sym);
 			}
 			registerScope(sym.members, file, &sym);
 		}
@@ -470,6 +474,7 @@ void Analyzer::loadImports (const NativeModules &modules) {
 	};
 
 	std::vector<std::vector<Edge>>  v_edges;
+	std::optional<std::size_t>      preludeFile;
 	std::map<fs::path, std::size_t> m_files;
 	ModuleDirectories               m_directories;
 	const SourceFile               *sf_entry      = program.units.front()->getSourceUnit().getSource();
@@ -486,20 +491,26 @@ void Analyzer::loadImports (const NativeModules &modules) {
 		const fs::path p_entry = fs::weakly_canonical(fs::absolute(sf_entry->getPath()));
 		p_entryRoot            = p_entry.parent_path();
 		m_files.emplace(p_entry, 0);
+		if (!p_libraryRoot.empty() && p_entry.lexically_relative(fs::weakly_canonical(p_libraryRoot)) == CONSOLE_MODULE)
+			m_libraryPaths[0].insert(std::string(CONSOLE_MODULE));
 
 		if (m_moduleNames.contains(p_entry))
 			throw cde::ClothDiagnostic(Code::InvalidCompilationRequest, "An external library refers to the entry source");
 	}
 	v_sourceRoots.push_back(p_entryRoot);
-	// Primitive members participate in lookup without importing names into the user's module.
-	if (!p_libraryRoot.empty() && fs::is_regular_file(p_libraryRoot / NUMERIC_MODULE)) {
-		const fs::path path       = fs::canonical(p_libraryRoot / NUMERIC_MODULE);
+	for (const auto module : { NUMERIC_MODULE, PRIMITIVE_MODULE, PRELUDE_MODULE }) {
+		if (p_libraryRoot.empty() || !fs::is_regular_file(p_libraryRoot / module)) continue;
+		const fs::path path       = fs::canonical(p_libraryRoot / module);
 		const auto [it, inserted] = m_files.emplace(path, program.units.size());
-		m_libraryPaths[it->second].insert(std::string(NUMERIC_MODULE));
+		m_libraryPaths[it->second].insert(std::string(module));
 		if (inserted) {
 			Lexer lexer{ SourceFile(path) };
 			program.units.emplace_back(std::make_unique<SymbolTable>(Parser(lexer, program.units.front()->getSourceUnit().grammar).parse()));
 			v_sourceRoots.push_back(p_libraryRoot);
+		}
+		if (module == PRELUDE_MODULE) {
+			preludeFile                 = it->second;
+			v_sourceRoots[*preludeFile] = p_libraryRoot;
 		}
 	}
 	for (std::size_t st_file = 0; st_file < program.units.size(); ++st_file) {
@@ -513,13 +524,13 @@ void Analyzer::loadImports (const NativeModules &modules) {
 			v_roots.push_back({ .path = p_sourceRoot, .standardLibrary = false });
 		if (!p_libraryRoot.empty()) v_roots.push_back({ .path = p_libraryRoot, .standardLibrary = true });
 		for (const ImportDeclaration &id_import : st_unit.getSourceUnit().imports) {
-			if (p_entryRoot.empty()) {
+			if (p_sourceRoot.empty()) {
 				fail(Code::MissingImportContext, id_import.path.getSpan(), "A source path is required to resolve imports");
 			}
 			fs::path    p_target;
 			std::string s_libraryPath;
 			const auto &v_parts = id_import.path.components;
-			if (v_parts.size() == 1) {
+			if (v_parts.size() == 1 && st_file != preludeFile) {
 				const auto it_module = modules.imports.find(v_parts.front().getNameKey());
 				if (it_module != modules.imports.end()) p_target = fs::canonical(it_module->second);
 			}
@@ -582,7 +593,7 @@ void Analyzer::loadImports (const NativeModules &modules) {
                                         }
                                         return;
                                 }
-                                Candidates &v_slot = v_names[st_file][name];
+                                Candidates &v_slot = v_names[st_file][name].symbols;
                                 if (!v_slot.empty() && v_slot != v_public) {
                                         const std::string &s_spelling = explicitName ? use.getLexeme() : v_public.front()->name.getLexeme();
                                         fail(Code::ImportNameConflict, use.getSpan(), "Conflicting import of '" + s_spelling + "'", &v_slot.front()->name);
@@ -600,9 +611,19 @@ void Analyzer::loadImports (const NativeModules &modules) {
 			}
 		}
 	}
+	if (preludeFile) {
+		// Install defaults after explicit imports have resolved, including their ordinary conflicts.
+		for (const auto &[name, binding] : v_names[*preludeFile]) {
+			FileNameBinding shared{ .symbols = {}, .fromPrelude = true };
+			for (const Symbol *symbol : binding.symbols)
+				if (symbol->visibility == Visibility::Public) shared.symbols.push_back(symbol);
+			if (shared.symbols.empty()) continue;
+			for (Names &scope : v_names) scope.try_emplace(name, shared);
+		}
+	}
 }
 
-Candidates Analyzer::lookup (const Symbol &context, const std::string &name, std::optional<SymbolKind> kind) const {
+Candidates Analyzer::lookup (const Symbol &context, const std::string &name, std::optional<SymbolKind> kind, bool includePrelude) const {
 	for (const Symbol *sym = &context; sym; sym = declarations.at(sym).owner) {
 		Candidates v_found;
 		if (sym->kind == SymbolKind::Type && (!kind || *kind == SymbolKind::Type) && sym->name.getNameKey() == name) {
@@ -617,7 +638,7 @@ Candidates Analyzer::lookup (const Symbol &context, const std::string &name, std
 			return v_found;
 		}
 	}
-	Candidates v_found = lookupFile(context, name);
+	Candidates v_found = lookupFile(context, name, includePrelude);
 	if (kind) std::erase_if(v_found, [&] (const Symbol *symbol) { return symbol->kind != *kind; });
 	return v_found;
 }
@@ -632,16 +653,21 @@ bool Analyzer::hasTypeName (const Symbol &context, const Token &name, bool quali
 	return genericParameter(context, name.getNameKey()) || lookupTypeRoot(context, name.getNameKey(), qualified);
 }
 
+bool Analyzer::hasExplicitTypeName (const Symbol &context, const Token &name) const {
+	return genericParameter(context, name.getNameKey()) || !lookup(context, name.getNameKey(), SymbolKind::Type, /*includePrelude=*/false).empty();
+}
+
 const Symbol *Analyzer::lookupFileState (const Symbol &context, const std::string &name) const {
 	for (const Symbol *sym_candidate : lookupFile(context, name))
 		if (sym_candidate->kind == SymbolKind::State) return sym_candidate;
 	return nullptr;
 }
 
-Candidates Analyzer::lookupFile (const Symbol &context, const std::string &name) const {
-	const Names &names   = v_names[declarations.at(&context).file];
-	const auto   it      = names.find(name);
-	Candidates   v_found = it == names.end() ? Candidates{} : it->second;
+Candidates Analyzer::lookupFile (const Symbol &context, const std::string &name, bool includePrelude) const {
+	const Names &names = v_names[declarations.at(&context).file];
+	const auto   it    = names.find(name);
+	Candidates   v_found;
+	if (it != names.end() && (includePrelude || !it->second.fromPrelude)) v_found = it->second.symbols;
 	if (name == objectRoot().name.getNameKey()) v_found.push_back(&objectRoot());
 	return v_found;
 }

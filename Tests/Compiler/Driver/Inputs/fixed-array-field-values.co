@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<struct> Matrix { pub int<12>[2][3] rows, pub bool marked; }
 typedef<struct> Box { pub Matrix inner, pub int stamp; }
 

@@ -5,6 +5,7 @@
 #include <backend/backend.hpp>
 
 #include <algorithm>
+#include <filesystem>
 #include <format>
 #include <functional>
 #include <stdexcept>
@@ -19,8 +20,42 @@
 #include <system/compiler_options.hpp>
 #include <token/token.hpp>
 
+#ifdef _WIN32
+#include <errhandlingapi.h>
+#include <libloaderapi.h>
+#include <minwindef.h>
+#include <system_error>
+#elif defined(__APPLE__)
+#include <cstdint>
+
+#include <mach-o/dyld.h>
+#endif
+
 namespace cloth::sys {
 namespace {
+std::filesystem::path compilerExecutable () {
+#ifdef _WIN32
+	std::wstring path(MAX_PATH, L'\0');
+	for (;;) {
+		const DWORD length = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
+		if (length == 0) throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "Could not locate the Cloth compiler");
+		if (length < path.size()) {
+			path.resize(length);
+			return std::filesystem::canonical(path);
+		}
+		path.resize(path.size() * 2);
+	}
+#elif defined(__APPLE__)
+	std::uint32_t size = 0;
+	_NSGetExecutablePath(nullptr, &size);
+	std::vector<char> path(size);
+	if (_NSGetExecutablePath(path.data(), &size) != 0) throw std::runtime_error("Could not locate the Cloth compiler");
+	return std::filesystem::canonical(path.data());
+#else
+	return std::filesystem::canonical("/proc/self/exe");
+#endif
+}
+
 std::string moduleName (std::string_view name) {
 	const std::vector<Token> v_tokens = Lexer(std::string(name)).scanTokens();
 	if (v_tokens.size() != 2 || v_tokens.front().getType() != TokenType::Identifier || v_tokens.front().getLexeme() != name)
@@ -65,6 +100,7 @@ CompilerOptions::CompilerOptions (const int argc, const char *const argv[]) : ar
 			throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidCompilationRequest, std::format("{} requires --src PATH", s_emitFlag));
 		if (!p_outputPath) p_outputPath.emplace(*p_sourcePath).replace_extension(emitKind == backend::EmitKind::Assembly ? ".s" : ".o");
 	}
+	if (p_sourcePath && !i_lexer && standardLibraryRoot.empty()) standardLibraryRoot = compilerExecutable().parent_path() / "lib/cloth/stdlib";
 }
 
 void CompilerOptions::addFlag (const CompilerFlag &flag) {

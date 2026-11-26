@@ -1,32 +1,32 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # REQUIRES: x86 && (linux || win32)
 
-# RUN: %cloth --kind executable --src "%S/Inputs/call-results.co" --target-bits 32 --emit object -o "%t.32.o"
-# RUN: %cloth --kind executable --src "%S/Inputs/call-results.co" --target-bits 64 --emit object -o "%t.64.o"
-# RUN: %cloth --kind executable --src "%S/Inputs/call-results.co" --emit object -o "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/call-results.co" --target-bits 32 --emit object -o "%t.32.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/call-results.co" --target-bits 64 --emit object -o "%t.64.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/call-results.co" --emit object -o "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 4 --stdout-line 1 --stdout-line 2 --stdout-line 3 --stdout-line 8 --stdout-line 9 --stdout-line 10 --stdout-line 11 --stdout-line 5 --stdout-line 6 --stdout-line 20 --stdout-line 21 --stdout-line 32 --stdout-line 42 --stdout-line 33 --stdout-line 43 --stdout-line 34 --stdout-line 44 --empty-stderr 42 "%t.exe"
 
 # A default can exit after explicit arguments and earlier defaults have run.
-# RUN: echo "fn<int> mark(int n) { println(n); return n; }" > "%t.co"
+# RUN: echo "using cloth.Console : println; fn<int> mark(int n) { println(n); return n; }" > "%t.co"
 # RUN: echo "fn<int> stop(opt<int> a ?: mark(2), opt<int> b ?: exit(7), opt<int> c ?: mark(3), opt<int> d ?: 0) = 99;" >> "%t.co"
 # RUN: echo "pub fn<int> main() = stop(d = mark(1));" >> "%t.co"
-# RUN: %cloth --kind executable --src "%t.co" --emit object -o "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t.co" --emit object -o "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 1 --stdout-line 2 --empty-stderr 7 "%t.exe"
 
 # The first operand of a result list runs even if the next one exits.
-# RUN: echo "fn<int> mark(int n) { println(n); return n; }" > "%t.co"
+# RUN: echo "using cloth.Console : println; fn<int> mark(int n) { println(n); return n; }" > "%t.co"
 # RUN: echo "fn<int,int,int> stop() = mark(4), exit(7), mark(6);" >> "%t.co"
 # RUN: echo "pub fn<int> main() { stop(); return 42; }" >> "%t.co"
-# RUN: %cloth --kind executable --src "%t.co" --emit object -o "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t.co" --emit object -o "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 4 --empty-stderr 7 "%t.exe"
 
 # A terminating supplied argument skips remaining explicit arguments and every default.
-# RUN: echo "fn<int> mark(int n) { println(n); return n; }" > "%t.co"
+# RUN: echo "using cloth.Console : println; fn<int> mark(int n) { println(n); return n; }" > "%t.co"
 # RUN: echo "fn<int> pick(int a, int b, int c, opt<int> d ?: mark(4)) = 0;" >> "%t.co"
 # RUN: echo "pub fn<int> main() = pick(c = mark(1), a = exit(7), b = mark(3));" >> "%t.co"
-# RUN: %cloth --kind executable --src "%t.co" --emit object -o "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t.co" --emit object -o "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 1 --empty-stderr 7 "%t.exe"

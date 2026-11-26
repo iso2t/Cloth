@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // A slot preserves the complete value, including an array's independent shape.
 typedef<struct> SnapshotSlot<T> { pub T value; }
 

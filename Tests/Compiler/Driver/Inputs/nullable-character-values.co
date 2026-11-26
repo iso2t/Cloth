@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<struct> Cell { pub bool ready, pub char? value; }
 typedef<enum> Glyph(pub def<char?> value = null) { pub Missing, pub Nul('\0' -> char?), pub Face('😀'); }
 

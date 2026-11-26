@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<struct> Sample { pub int? value; }
 typedef<struct> Box { pub Sample? sample; }
 

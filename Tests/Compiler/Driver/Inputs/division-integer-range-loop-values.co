@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 pub fn<int> main() {
     if (!signedSteps(-2) || !wideSteps(4294967297, 4294967297)) return 1;
     int calls = 0;

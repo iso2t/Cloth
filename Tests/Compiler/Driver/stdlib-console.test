@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/stdlib-console.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/stdlib-console.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/stdlib-console.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %python -c "from pathlib import Path; Path(r'%t.in').write_bytes(b'yes\n\n')"
+# RUN: %expect_exit --stdout-line "" --stdout-line 42 --stdout-line "" --stdout-line "[1, null, 3]" --stdout-line "[7]true" --empty-stderr 42 "%t.exe" < "%t.in"
+
+# Each value uses the selected String formatter once. The newline is literal output.
+# RUN: mkdir -p "%t.lib/cloth/lang"
+# RUN: cat "%S/../../../Stdlib/StandardLibrary/src/cloth/Console.co" > "%t.lib/cloth/Console.co"
+# RUN: echo 'pub typedef<intrinsic "primitive.string"> String { pub operator ::str() -> string = "formatted"; }' > "%t.lib/cloth/lang/Primitive.co"
+# RUN: echo 'using cloth.Console : print, println, input; pub fn<int> main() { print("a"); println("b"); if (input("c") != "yes") return 1; println(); return 42; }' > "%t.co"
+# RUN: %cloth --kind executable --stdlib "%t.lib" --src "%t.co" --emit-object "%t.custom.o"
+# RUN: %cc "%t.custom.o" %runtime -o "%t.custom.exe"
+# RUN: %expect_exit --stdout-line formattedformatted --stdout-line formatted --empty-stderr 42 "%t.custom.exe" < "%t.in"
+
+# An explicit import resolves the selected library implementation.
+# RUN: echo 'pub fn<string?> input() = "library";' > "%t.lib/cloth/Console.co"
+# RUN: echo 'using cloth.Console : input; pub fn<int> main() { return if (input() == "library") 42 else 1; }' > "%t.co"
+# RUN: %cloth --kind executable --stdlib "%t.lib" --src "%t.co" --emit-object "%t.alternate.o"
+# RUN: %cc "%t.alternate.o" %runtime -o "%t.alternate.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.alternate.exe"
+
+# RUN: echo 'using cloth.Console : input; typedef<struct> Silent {} fn<string?> ask(Silent prompt) = input(prompt);' > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=PROMPT --input-file "%t.err"
+# PROMPT: [C3049] Error: 'input' requires a printable value, got Silent
+# PROMPT: {{.*}}stdlib-console.test.tmp.co:1:{{[0-9]+}}

@@ -24,7 +24,7 @@
 # RUN: echo "    int unused := (1.0 : 0.0..2.0).toInt();" >> "%t/entry.co"
 # RUN: echo "    return 42;" >> "%t/entry.co"
 # RUN: echo "}" >> "%t/entry.co"
-# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object answer.o 2> "%t.err"
+# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --stdlib "%stdlib" --src entry.co --emit-object answer.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=INITIALIZER --input-file "%t.err"
 # INITIALIZER: [C4040] Error: LLVM range membership requires integer endpoints
 # INITIALIZER: entry.co:2:20
@@ -36,7 +36,7 @@
 # RUN: echo "    answer += (1.0 : 0.0..2.0).toInt();" >> "%t/entry.co"
 # RUN: echo "    return answer;" >> "%t/entry.co"
 # RUN: echo "}" >> "%t/entry.co"
-# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object answer.o 2> "%t.err"
+# RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --stdlib "%stdlib" --src entry.co --emit-object answer.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=COMPOUND --input-file "%t.err"
 # COMPOUND: [C4040] Error: LLVM range membership requires integer endpoints
 # COMPOUND: entry.co:3:16

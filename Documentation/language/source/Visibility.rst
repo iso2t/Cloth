@@ -35,11 +35,26 @@ colon, or use ``*`` to bring in all the file's public declarations.
    fn<Path> manifest() = pathOf("module.k");
    fn<float<64>> circleConstant() = TAU();
 
-From the repository root, pass ``--stdlib Stdlib/StandardLibrary/src`` to check this example.
 The module ``cloth.io.path.Path`` maps to ``cloth/io/path/Path.co`` under
-that root. If both ``.co`` and ``.clib`` match the same module in the selected
-directory, the import is ambiguous. Listing a name twice in one import
-reports ``C2010``. An importing file's own imports do not re-export those names.
+the standard library root. If both ``.co`` and ``.clib`` match the same
+module in the selected directory, the import is ambiguous. Listing a name
+twice in one import reports ``C2010``. An importing file's own imports do
+not re-export those names.
+
+Standard library prelude
+------------------------
+
+When a build selects a standard library, ``cloth/lang/Prelude.co`` supplies
+default names to every source file. Its header imports select public names
+from other modules. Public declarations in the prelude itself are also visible.
+Local declarations and explicit imports take precedence over prelude names.
+With a library that omits the prelude, a file can still select names with
+ordinary ``using`` imports.
+
+The shipped prelude selects ``Number``, so a bound such as ``T: Number``
+works throughout the program. To use console I/O, import the functions in
+each file that calls them, for example ``using cloth.Console : println;``.
+See the `prelude declaration <../../../Stdlib/StandardLibrary/src/cloth/lang/Prelude.co>`_.
 
 Member visibility
 -----------------

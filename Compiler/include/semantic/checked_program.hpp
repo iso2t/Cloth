@@ -95,6 +95,24 @@ const ResolvedType *rangeEndpoint (const ResolvedType &type);
 inline constexpr std::string_view FILE_ERROR_CASES[] = { "InvalidPath", "NotFound", "PermissionDenied", "OpenFailed", "AlreadyOpen", "NotOpen", "ReadFailed" };
 
 enum class LibraryIntrinsic {
+	ConsoleWrite,
+	ConsoleReadLine,
+	CharCodePoint,
+	CharFormat,
+	CharWhitespace,
+	CharLetter,
+	CharDigit,
+	CharUpper,
+	CharLower,
+	CharMapCase,
+	StringFind,
+	StringMatchesAffix,
+	StringCharAt,
+	StringSubstring,
+	StringToChars,
+	StringSplit,
+	StringEncodeChars,
+	StringConcatParts,
 	IntegerLeadingZeros,
 	IntegerTrailingZeros,
 	IntegerToStringRadix,
@@ -222,51 +240,12 @@ enum class ProviderKind { Type, Format, StorageSize, ArraySize, StringSize, Mini
 enum class MetadataQuery { Element, Rank, Extent, Width, IsArray, HasExtent, IsUnsigned, IsNumeric };
 enum class ArrayMutation { Append, Insert, RemoveAt, Clear, Reserve };
 
-enum class BuiltinOperation {
-	Print,
-	Println,
-	Input,
-	Exit,
-	Abs,
-	Clamp,
-	Signum,
-	ToStringRadix,
-	LeadingZeros,
-	TrailingZeros,
-	ToInt,
-	ToUpperCase,
-	ToLowerCase,
-	IsWhitespace,
-	IsLetter,
-	IsDigit,
-	IsLetterOrDigit,
-	IsUpperCase,
-	IsLowerCase,
-	IsEmpty,
-	Contains,
-	StartsWith,
-	EndsWith,
-	CharAt,
-	Substring,
-	IndexOf,
-	LastIndexOf,
-	ToChars,
-	Split,
-	Replace,
-	ReplaceFirst,
-	RemovePrefix,
-	RemoveSuffix,
-	Trim,
-	TrimStart,
-	TrimEnd,
-	IsBlank
-};
+enum class BuiltinOperation { Exit };
 
 // Operand expressions retain their source types. These are the types after the selected call's adapters.
 struct BuiltinCall {
-	BuiltinOperation            operation;
-	std::optional<ResolvedType> receiver;
-	ResultTypes                 parameters;
+	BuiltinOperation operation;
+	ResultTypes parameters;
 };
 
 struct ProviderSelection {

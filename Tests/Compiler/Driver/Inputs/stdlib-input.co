@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : print, println, input;
+
 fn<int> runtimeInt(int value) = value;
 fn<usize> runtimeIndex(usize value) = value;
 fn<float<64>> zero() = 0.0;

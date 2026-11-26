@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using cloth.Console : print, println, input;
+
+typedef<struct> Prompt {
+    pub int id;
+    operator ::str() -> string {
+        print("[");
+        return #"{id}]";
+    }
+}
+
+fn<string?> ask<T>(T prompt) = input(prompt);
+fn<string> format<T>(T? value) = if (value == null) "" else value::str;
+
+pub fn<int> main() {
+    string? absent = null;
+    print(null);
+    println(absent);
+    println(format(42));
+    println(format<string>(absent));
+    int?[] values = [1, null, 3];
+    println(values);
+    Prompt prompt = {7};
+    if (ask(prompt) != "yes") return 1;
+    if (input<bool>(true) != "") return 2;
+    if (input(absent) != null) return 3;
+    println();
+    return 42;
+}

@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-using cloth.lang.num.Number: Number;
-
 fn<T> twice<T: Number>(T value) = value + value;
 fn<T> forward<T: Number>(T value) = twice(value);
 fn<range<T>> interval<T: Number>(T first, T last) = first .. last;

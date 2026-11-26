@@ -13,7 +13,6 @@ def tool_path(path):
 
 
 suite = Path(__file__).resolve().parent
-runtime = suite.parent / "Runtime" / "src"
 config.name = "Cloth"
 config.test_format = lit.formats.ShTest(execute_external=False)
 config.suffixes = [".co", ".clib", ".test"]
@@ -21,7 +20,7 @@ config.excludes = ["Inputs", "Unit", "Support"]
 config.test_source_root = str(suite)
 
 params = lit_config.params
-if not all(key in params for key in ("exec_root", "cloth", "filecheck")):
+if not all(key in params for key in ("exec_root", "cloth", "filecheck", "runtime")):
     lit_config.fatal("Run the suite from the repository root with 'make test' or 'mingw32-make test'.")
 if "case" in params:
     case = Path(params["case"])
@@ -42,9 +41,8 @@ config.substitutions.extend([
     ("%llvm_readobj", tool_path(params.get("readobj", "llvm-readobj"))),
     ("%llvm_mc", tool_path(params.get("llvm_mc", "llvm-mc"))),
     ("%cc", params.get("cc", "gcc" if sys.platform == "win32" else "cc")),
-    ("%stdlib_runtime", "-DUTF8PROC_STATIC -I " + tool_path(suite.parent / "ThirdParty/utf8proc") + " " + " ".join(tool_path(p) for p in (runtime / "text.c", runtime / "files.c", suite.parent / "ThirdParty/utf8proc/utf8proc.c"))),
-    ("%runtime", "-I " + tool_path(runtime.parent / "include") + " " + " ".join(tool_path(runtime / name) for name in ("arguments.c", "array.c", "errors.c", "integer.c", "object.c", "println.c", "process.c"))
-     + (" -lshell32" if sys.platform == "win32" else "")),
+    ("%stdlib", tool_path(suite.parent / "Stdlib/StandardLibrary/src")),
+    ("%runtime", "-I " + tool_path(suite.parent / "Runtime/include") + " " + tool_path(params["runtime"]) + (" -lshell32" if sys.platform == "win32" else "")),
     ("%host_os", sys.platform),
     ("%expect_exit", tool_path(sys.executable) + " " + tool_path(suite / "Support" / "expect_exit.py")),
 ])

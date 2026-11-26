@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using cloth.Console : println;
+
+fn<string?> trimMaybe(string? text) = text?.trim();
+fn<string> trimmed(string value, opt<string> result ?: value.trim()) = result;
+
+pub fn<int> main(string[] args) {
+    string text = "é\0😀é";
+    if (args::size != 0) {
+        if (args[0] == "index") return text.charAt(4).toInt();
+        if (args[0] == "reversed") return text.substring(2, 1)::size -> int;
+        return text.substring(0, 5)::size -> int;
+    }
+    if (true.toInt() != 1 || false.toInt() != 0 || '😀'.toInt() != 128512) return 1;
+    if (!'λ'.isLetter() || !'٣'.isDigit() || !'٣'.isLetterOrDigit() || '😀'.isLetterOrDigit()) return 2;
+    if (!'É'.isUpperCase() || !'é'.isLowerCase() || 'é'.toUpperCase() != 'É' || 'É'.toLowerCase() != 'é') return 3;
+    if (text.toChars() != ['é', '\0', '😀', 'é'] || text.charAt(2) != '😀' || text.substring(1, 3) != "\0😀") return 4;
+    if (!text.contains("\0😀") || text.indexOf("é") != 0 || text.lastIndexOf("é") != 3 || text.indexOf("x") != null) return 5;
+    if (text.indexOf("") != 0 || text.lastIndexOf("") != 4 || !text.startsWith("é\0") || !text.endsWith("😀é")) return 6;
+    if (text.removePrefix("é\0") != "😀é" || text.removeSuffix("😀é") != "é\0" || text.removePrefix("x") != text) return 7;
+    if (!"".isEmpty() || "\0".isEmpty() || !" \t".isBlank() || " \0".isBlank()) return 8;
+    if (" é ".trimStart() != "é " || " é ".trimEnd() != " é" || trimmed(" é ") != "é" || "  ".trim() != "") return 9;
+    if (trimMaybe(null) != null || trimMaybe(" x ") != "x") return 10;
+    if ("aé\0".toUpperCase() != "AÉ\0" || "AÉ😀".toLowerCase() != "aé😀") return 11;
+    if ("a😀😀".split('😀') != ["a", "", ""] || "a😀😀".split("😀") != ["a", "", ""]) return 12;
+    if ("é😀".split("") != ["", "é", "😀", ""] || "".split("") != ["", ""]) return 13;
+    if ("é😀".replace("", "|") != "|é|😀|" || "".replace("", "x") != "x" || "aaa".replace("aa", "x") != "xa") return 14;
+    if ("ababa".replaceFirst("ba", "X") != "aXba" || "é😀".replaceFirst("", "X") != "Xé😀" || text.replaceFirst("x", "y") != text) return 15;
+    if (text.replace("\0", "XX") != "éXX😀é" || text.replace("X", "not found") != text) return 16;
+    println(#"{true::str} {false} {'😀'::str} {text.substring(2, 3)}");
+    println(['λ', '٣']);
+    return 0;
+}

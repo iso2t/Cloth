@@ -71,8 +71,8 @@ the claim. A frontend check can show that the compiler accepts a program.
 For a claim about output, use a test that runs the program.
 
 Link to the tested source so readers can run the same example. The
-``println`` test checks that the program prints ``1`` on a line and exits
-with status ``42``. See the
+``println`` test checks that the program prints ``Hello, world!`` on its own
+line and exits successfully. See the
 `example program <../../Tests/Compiler/Driver/Inputs/println.co>`_ and
 its `driver test <../../Tests/Compiler/Driver/println.test>`_.
 

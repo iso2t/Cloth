@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 pub fn<int> main() {
     if (!factors() || !limits(5, -1)) return 1;
     if (!wideProducts(-4294967299, 4294967297)) return 5;

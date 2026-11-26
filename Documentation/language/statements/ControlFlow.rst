@@ -225,8 +225,7 @@ sequence intact.
 
 For a ``List<int>``, ``for (def value <- values)`` infers ``int``.
 For a ``List<int?>``, the binding needs the explicit ``int?`` shown above.
-The fallback contributes zero to the sum for each absent value. From
-the repository root, use ``--stdlib Stdlib/StandardLibrary/src`` to check the `sum example
+The fallback contributes zero to the sum for each absent value. See the `sum example
 <../../../Tests/Compiler/Semantic/Inputs/collection/sum-present.co>`_.
 
 Each iteration binds a writable copy of the element. Reassigning that

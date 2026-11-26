@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--single", action="store_true")
     parser.add_argument("compiler", type=Path)
     parser.add_argument("selection", type=Path)
+    parser.add_argument("--runtime", type=Path, help="Packaged runtime archive used to link native fixtures")
     parser.add_argument("--readobj", default="llvm-readobj")
     parser.add_argument("--llvm-mc", default="llvm-mc")
     parser.add_argument("--cc", nargs=argparse.REMAINDER, help="C driver and flags used to link native objects")
@@ -40,12 +41,17 @@ def main():
     cc = args.cc or ["gcc" if os.name == "nt" else "cc"]
     cc_path = Path(shutil.which(cc[0]) or cc[0]).as_posix()
     compiler = args.compiler.resolve()
+    runtime = args.runtime
+    if runtime is None:
+        triple = subprocess.check_output([compiler, "--print-target"], text=True).strip()
+        runtime = compiler.parent / "lib" / "cloth" / triple / "libcloth_runtime.a"
     output = compiler.parent / "Tests"
     output.mkdir(exist_ok=True)
     run_dir = tempfile.mkdtemp(prefix="run-", dir=output)
     command = [
         lit, "-v",
         "-D", f"cloth={compiler}",
+        "-D", f"runtime={runtime.resolve()}",
         "-D", f"filecheck={filecheck}",
         "-D", f"readobj={args.readobj}",
         "-D", f"llvm_mc={args.llvm_mc}",

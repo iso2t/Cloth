@@ -32,9 +32,12 @@ On Windows, use MinGW Make.
    mingw32-make
    mingw32-make run
 
-The default target builds ``build/cloth`` or ``build/cloth.exe`` and packages the
-native runtime under ``build/lib/cloth/<target>``. Use ``make runtime`` to
-build the archive alone. See the `Shuttle project guide <../../Shuttle/README.rst>`_
+The default target builds ``build/cloth`` or ``build/cloth.exe``, copies the
+standard library sources to ``build/lib/cloth/stdlib``, and packages the
+native runtime under ``build/lib/cloth/<target>``. Keep the compiler and
+its ``lib/`` directory together when moving a build. Use ``make stdlib`` to
+refresh the bundled sources or ``make runtime`` to build the runtime archive.
+See the `Shuttle project guide <../../Shuttle/README.rst>`_
 for building Shuttle with Cargo and selecting a second target width. The
 ``run`` target is a frontend smoke check. It checks ``Stdlib/StandardLibrary/src/cloth/Library.co``
 and its imports in library mode, using ``Stdlib/StandardLibrary/src`` as the standard library

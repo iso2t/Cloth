@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<enum> Mode(pub def<int> code = 0) {
     pub Off, pub On(42), pub Alias(42);
     pub operator !=(Mode other) -> bool = true;

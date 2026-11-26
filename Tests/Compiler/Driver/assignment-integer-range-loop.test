@@ -7,19 +7,19 @@
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
 
-# RUN: %cloth --kind executable --src "%S/Inputs/assignment-integer-range-loop-values.co" --emit-object "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/assignment-integer-range-loop-values.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
 
-# RUN: echo "fn<int> same(final int value) { println(value); return value; }" > "%t.co"
+# RUN: echo "using cloth.Console : println; fn<int> same(final int value) { println(value); return value; }" > "%t.co"
 # RUN: echo "pub fn<int> main() { int visits = 0; for (int n <- 7..=7; n = if (n == 7) { n = 9; same(7); } else n) { visits++; if (visits > 1) return 2; } return 3; }" >> "%t.co"
-# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 7 --stderr-line "Cloth runtime error: range counter update made no progress" 1 "%t.exe"
 
-# RUN: echo "fn<int> zero(final int value) { println(value); return 0; }" > "%t.co"
+# RUN: echo "using cloth.Console : println; fn<int> zero(final int value) { println(value); return 0; }" > "%t.co"
 # RUN: echo "pub fn<int> main() { for (int n <- 4..=4; n = n / zero(n)) continue; return 2; }" >> "%t.co"
-# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 4 --stderr-line "Cloth runtime error: integer division by zero" 1 "%t.exe"
 

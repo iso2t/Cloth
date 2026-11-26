@@ -31,11 +31,11 @@
 # RUN: %cc "%t.o" -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
 
-# RUN: echo "pub fn<int> main () { def unused := identity(42); return 7; }" > "%t.co"
+# RUN: echo "using cloth.Console : println; pub fn<int> main () { def unused := identity(42); return 7; }" > "%t.co"
 # RUN: echo "fn<int> identity(int value) {" >> "%t.co"
 # RUN: echo "    println(value);" >> "%t.co"
 # RUN: echo "    return value;" >> "%t.co"
 # RUN: echo "}" >> "%t.co"
-# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 42 --empty-stderr 7 "%t.exe"

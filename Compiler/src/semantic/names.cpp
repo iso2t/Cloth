@@ -191,7 +191,7 @@ void BodyChecker::resolveNames (const Statement &node) {
 void BodyChecker::resolveCallName (const CallExpression &call) {
 	validateArgumentLabels(call.suppliedArguments);
 	const std::vector<Candidate> v_candidates = callCandidates(call);
-	if (v_candidates.empty() && builtinFunctionNamed(call.name.getNameKey())) {
+	if (v_candidates.empty() && isBuiltinExitName(call.name.getNameKey())) {
 		if (call.typeArguments) checkBuiltinTypeArguments(call, *call.typeArguments);
 		return;
 	}
@@ -229,8 +229,7 @@ void BodyChecker::resolveNames (const Expression &node) {
 			if (mc_call->typeArguments) checkTypeArguments(*mc_call->typeArguments);
 			if (isSelfReference(*mc_call->receiver)) {
 				const ResolvedType self = selfType();
-				if (analyzer.members(self, mc_call->name.getNameKey(), SymbolKind::Method).empty() &&
-				    (analyzer.primitiveOwner(self) || !builtinMethodNamed(mc_call->name.getNameKey(), self)))
+				if (analyzer.members(self, mc_call->name.getNameKey(), SymbolKind::Method).empty())
 					throw cde::ClothDiagnostic(Code::UnknownMember,
 					                           std::format("Type '{}' has no member method '{}'", selfType().spelling(),
 					                                       mc_call->name.getLexeme()),
@@ -259,7 +258,7 @@ void BodyChecker::resolveNames (const Expression &node) {
 		if (!t_name || !analyzer.hasStateName(context, t_name->getNameKey())) analyzer.useWidthAnnotation(ce_cast->target, context);
 	} else if (const auto *tc_test = dynamic_cast<const TypeCheckExpression *>(&node)) {
 		const Token *t_name = tc_test->target.getBareIdentifier();
-		if (t_name && !tc_test->valueCandidate && !hasValueName(*t_name) && !analyzer.hasTypeName(context, *t_name) &&
+		if (t_name && !tc_test->valueCandidate && !hasValueName(*t_name) && !analyzer.hasExplicitTypeName(context, *t_name) &&
 		    initialStateTest(*tc_test, t_name))
 			return;
 		resolveNames(*tc_test->operand);

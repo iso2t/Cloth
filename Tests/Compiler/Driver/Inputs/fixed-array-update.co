@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 pub fn<int> main() {
     int<65>[2] values = [7, 40];
     def saved := values;

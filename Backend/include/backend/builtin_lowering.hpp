@@ -12,15 +12,13 @@
 
 namespace backend::detail {
 
-class ValueTypes;
 class ScalarLowering;
 
 class BuiltinLowering {
     public:
-	BuiltinLowering (LLVMModuleRef module, LLVMBuilderRef builder, ValueTypes &types, ScalarLowering &scalars);
-	LLVMValueRef method (const cloth::BuiltinCall &call, const cloth::ResolvedType &receiverType, LLVMValueRef receiver,
-	                     const std::vector<LLVMValueRef> &args, const cloth::ResolvedType &result);
-	LLVMValueRef formatScalar (const cloth::ResolvedType &type, LLVMValueRef value);
+	BuiltinLowering (LLVMModuleRef module, LLVMBuilderRef builder, ScalarLowering &scalars);
+	LLVMValueRef floatText (const cloth::ResolvedType &type, LLVMValueRef value);
+	LLVMValueRef textIntrinsic (cloth::LibraryIntrinsic operation, LLVMTypeRef result, std::span<const LLVMValueRef> operands);
 	LLVMValueRef floatAbs (LLVMValueRef value);
 	LLVMValueRef integerZeros (LLVMValueRef value, bool leading);
 	LLVMValueRef integerText (const cloth::ResolvedType &type, LLVMValueRef value, LLVMValueRef radix);
@@ -34,12 +32,11 @@ class BuiltinLowering {
 	void         guard (LLVMValueRef failure, const char *message);
 
     private:
-	LLVMValueRef    output (const char *name, LLVMTypeRef result, std::initializer_list<LLVMValueRef> arguments);
-	LLVMValueRef    invoke (const char *name, LLVMTypeRef result, std::vector<LLVMValueRef> arguments);
-	LLVMValueRef    numeric (cloth::BuiltinOperation op, const cloth::ResolvedType &type, LLVMValueRef value, const std::vector<LLVMValueRef> &args);
+	LLVMValueRef output (const char *name, LLVMTypeRef result, std::initializer_list<LLVMValueRef> arguments);
+	LLVMValueRef invoke (const char *name, LLVMTypeRef result, std::vector<LLVMValueRef> arguments);
+
 	LLVMModuleRef   mod_module;
 	LLVMBuilderRef  ir_builder;
-	ValueTypes     &vt_types;
 	ScalarLowering &sl_scalars;
 };
 }

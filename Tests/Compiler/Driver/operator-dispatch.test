@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # REQUIRES: x86 && (linux || win32)
 
-# RUN: %cloth --kind executable --src "%S/Inputs/equality-dispatch.co" --emit-object "%t.eq.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/equality-dispatch.co" --emit-object "%t.eq.o"
 # RUN: %cc "%t.eq.o" %runtime -o "%t.eq.exe"
 # RUN: %expect_exit --stdout-line 8 --stdout-line 7 --stdout-line 42 --empty-stderr 42 "%t.eq.exe"
 # RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: access to a class instance during destruction" 1 "%t.eq.exe" destroying-peer
 # RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: ambiguous reference equality overload" 1 "%t.eq.exe" ambiguous peer
 
-# RUN: %cloth --kind executable --src "%S/Inputs/operator-dispatch.co" --emit-object "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/operator-dispatch.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 0 --stdout-line 1 --stdout-line 2 --stdout-line 3 --stdout-line 4 --stdout-line 2 --stdout-line 5 --stdout-line 2 --stdout-line 3 --stdout-line 2 --stdout-line 5 --stdout-line 2 --stdout-line 3 --stdout-line 6 --stdout-line 8 --stdout-line 8 --stdout-line 8 --stdout-line 9 --empty-stderr 42 "%t.exe"
 # RUN: %expect_exit --stdout-line 0 --stdout-line 1 --stdout-line 2 --stderr-line "Cloth runtime error: array index out of bounds" 1 "%t.exe" invalid

@@ -36,7 +36,7 @@ Expressions and statements
 * `Local bindings and assignment <statements/Bindings.rst>`_
 * `Operators, arithmetic, conversions, and equality <expressions/Operators.rst>`_
 * `Member access, data providers, and type information <expressions/Access.rst>`_
-* `Built-in functions and methods <expressions/Builtins.rst>`_
+* `Console functions, exit, and primitive methods <expressions/Builtins.rst>`_
 * `Control flow <statements/ControlFlow.rst>`_ covers conditionals, loops,
   ``break``, and ``continue``. For ``operator foreach()``, see
   `Collection iteration <statements/ControlFlow.rst#collection-iteration>`_.

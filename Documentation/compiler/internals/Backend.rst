@@ -472,9 +472,8 @@ checked receiver determines the signedness of integer operations and the
 floating-point format in the specialized body. Numeric library intrinsics
 lower to bit counting, radix conversion, floating-point absolute value,
 floating-point formatting, and runtime error reporting. Printing calls the
-selected standard-library formatter. Without a
-formatter binding, ``println`` on a signed 32-bit integer calls
-``cloth_rt_println_i32``. An integer division
+selected formatter inside the imported Cloth console function. Its write
+intrinsic passes UTF-8 bytes to ``cloth_rt_text_write``. An integer division
 with a variable divisor needs a failure path for zero. The runtime writes
 the diagnostic and terminates the process. The `runtime dependencies
 <../driver/Objects.rst#runtime-dependencies>`_ identify the C source a

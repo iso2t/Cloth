@@ -398,9 +398,9 @@ typedef<class> Item : More {
 	EXPECT_TRUE(cp_program.expressions.at(&mc_alias).receiverChecks.beforeArguments);
 	EXPECT_TRUE(cp_program.expressions.at(&mc_alias).receiverChecks.atAccess);
 
-	for (const char *s_use : { "def alias = self -> More; (alias -> Read).report();", "(self -> Read)::delete;", "def alias = self -> Read; println(alias);" })
+	for (const char *s_use : { "def alias = self -> More; (alias -> Read).report();", "(self -> Read)::delete;", "def alias = self -> Read; alias::str;" })
 		expectError(s_views + s_use + " } }", Code::DeletedClassAccess);
-	EXPECT_NO_THROW(checkSource(s_views + "println((self -> Read)::str); } }"));
+	EXPECT_NO_THROW(checkSource(s_views + "(self -> Read)::str; } }"));
 }
 
 TEST (SemanticFlow, ChecksTheObjectReturnedByACastOperatorDuringDestruction) {

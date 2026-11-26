@@ -7,32 +7,34 @@
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
 
-# RUN: %cloth --kind executable --src "%S/Inputs/growable-array-values.co" --target-bits 32 --emit object -o "%t.32.o"
-# RUN: %cloth --kind executable --src "%S/Inputs/growable-array-values.co" --target-bits 64 --emit object -o "%t.64.o"
-# RUN: %cloth --kind executable --src "%S/Inputs/growable-array-values.co" --emit object -o "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/growable-array-values.co" --target-bits 32 --emit object -o "%t.32.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/growable-array-values.co" --target-bits 64 --emit object -o "%t.64.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/growable-array-values.co" --emit object -o "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 1 --stdout-line 2 --stdout-line 3 --stdout-line 4 --stdout-line 5 --stdout-line 6 --empty-stderr 42 "%t.exe"
 
 # Instrument only the runtime allocator and check its live count at Cloth scope boundaries.
-# RUN: %cloth --kind executable --src "%S/Inputs/growable-array-lifetime.co" --target-bits 32 --emit object -o "%t.32.o"
-# RUN: %cloth --kind executable --src "%S/Inputs/growable-array-lifetime.co" --target-bits 64 --emit object -o "%t.64.o"
-# RUN: %cloth --kind executable --src "%S/Inputs/growable-array-lifetime.co" --emit object -o "%t.o"
+# RUN: mkdir -p "%t.instrument/cloth"
+# RUN: echo 'pub fn checkLive(string count) = intrinsic "console.write";' > "%t.instrument/cloth/Console.co"
+# RUN: %cloth --kind executable --stdlib "%t.instrument" --src "%S/Inputs/growable-array-lifetime.co" --target-bits 32 --emit object -o "%t.32.o"
+# RUN: %cloth --kind executable --stdlib "%t.instrument" --src "%S/Inputs/growable-array-lifetime.co" --target-bits 64 --emit object -o "%t.64.o"
+# RUN: %cloth --kind executable --stdlib "%t.instrument" --src "%S/Inputs/growable-array-lifetime.co" --emit object -o "%t.o"
 # RUN: %cc -I "%S/../../../Runtime/include" -DCLOTH_TEST_TRACK_ARRAYS -include "%S/Inputs/growable-array-allocator.h" -c "%S/../../../Runtime/src/array.c" -o "%t.array.o"
 # RUN: %cc "%t.o" "%t.array.o" -I "%S/Inputs" -I "%S/../../../Runtime/include" "%S/Inputs/growable-array-allocator.c" "%S/../../../Runtime/src/errors.c" -o "%t.exe"
 # RUN: %expect_exit --stdout-line "Growable array allocations balanced" --empty-stderr 42 "%t.exe"
 # RUN: env CLOTH_TEST_FAIL_ARRAY_ALLOCATION=1 %expect_exit --empty-stdout --stderr-line "Cloth runtime error: unable to allocate array storage" 1 "%t.exe"
 
 # Capacity can exceed length. An invalid index suppresses the right-hand side.
-# RUN: echo "fn<int> trace(final int n) { println(n); return n; }" > "%t.co"
+# RUN: echo "using cloth.Console : println; fn<int> trace(final int n) { println(n); return n; }" > "%t.co"
 # RUN: echo "pub fn<int> main() { int[] values = [7]; values.reserve(64); values[trace(1)] = trace(99); return 42; }" >> "%t.co"
-# RUN: %cloth --kind executable --src "%t.co" --emit object -o "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t.co" --emit object -o "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 1 --stderr-line "Cloth runtime error: array index out of bounds" 1 "%t.exe"
 
 # The coordinate is checked again if the right-hand side replaces the array with a shorter one.
-# RUN: echo "fn<int> trace(final int n) { println(n); return n; }" > "%t.co"
+# RUN: echo "using cloth.Console : println; fn<int> trace(final int n) { println(n); return n; }" > "%t.co"
 # RUN: echo "pub fn<int> main() { int[] values = [7, 42]; values[trace(1)] += (if (trace(2) == 2) { values = []; 2; } else 0); return 42; }" >> "%t.co"
-# RUN: %cloth --kind executable --src "%t.co" --emit object -o "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t.co" --emit object -o "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 1 --stdout-line 2 --stderr-line "Cloth runtime error: array index out of bounds" 1 "%t.exe"
 

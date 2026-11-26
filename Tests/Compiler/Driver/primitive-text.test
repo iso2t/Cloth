@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/primitive-text.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/primitive-text.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/primitive-text.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line "true false 😀 😀" --stdout-line "[λ, ٣]" --empty-stderr 0 "%t.exe"
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: string index out of bounds" 1 "%t.exe" index
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: invalid substring bounds" 1 "%t.exe" reversed
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: invalid string index" 1 "%t.exe" past-end
+
+# Console alone cannot supply primitive methods or formatters.
+# RUN: mkdir -p "%t.console/cloth"
+# RUN: cat "%S/../../../Stdlib/StandardLibrary/src/cloth/Console.co" > "%t.console/cloth/Console.co"
+# RUN: echo 'fn<bool> f(string s) = s.isEmpty();' > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.console" --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=NO-METHOD --input-file "%t.err"
+# NO-METHOD: [C3071] Error: Unknown method 'isEmpty' on string
+# RUN: echo 'using cloth.Console : print; fn f(bool b) { print(b); }' > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.console" --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=NO-FORMAT --input-file "%t.err"
+# NO-FORMAT: [C3049] Error: 'print' requires a printable value, got bool
+
+# Load a replacement Primitive.co independently of the numeric module.
+# RUN: mkdir -p "%t.lib/cloth/lang"
+# RUN: cat "%S/../../../Stdlib/StandardLibrary/src/cloth/Console.co" > "%t.lib/cloth/Console.co"
+# RUN: echo 'pub typedef<intrinsic "primitive.bool"> Bool { pub mt<int> toInt() = 7; pub operator ::str() -> string = "flag"; }' > "%t.lib/cloth/lang/Primitive.co"
+# RUN: echo 'pub typedef<intrinsic "primitive.char"> Char { pub mt<int> toInt() = 8; pub operator ::str() -> string = "scalar"; }' >> "%t.lib/cloth/lang/Primitive.co"
+# RUN: echo 'pub typedef<intrinsic "primitive.string"> String { pub mt<bool> contains(Self other) = false; pub mt<bool> contains(int i) = true; pub operator ::str() -> string = "text"; }' >> "%t.lib/cloth/lang/Primitive.co"
+# RUN: echo "using cloth.Console : println; pub fn<int> main() { if (true.toInt() != 7 || 'x'.toInt() != 8) return 1;" > "%t.co"
+# RUN: echo '    if ("abc".contains("b")) return 2;' >> "%t.co"
+# RUN: echo '    string value = "hi"; if (#"L{value}/{"hi"}/{true}R" != "Ltext/text/flagR") return 3;' >> "%t.co"
+# RUN: echo "    println(true); println('x'); println(\"abc\"); return 0; }" >> "%t.co"
+# RUN: %cloth --kind executable --stdlib "%t.lib" --src "%t.co" --emit-object "%t.custom.o"
+# RUN: %cc "%t.custom.o" %runtime -o "%t.custom.exe"
+# RUN: %expect_exit --stdout-line "flag" --stdout-line "scalar" --stdout-line "text" --empty-stderr 0 "%t.custom.exe"
+# RUN: echo 'fn<int> f(string s) = if (s.contains(i = 0)) 1 else 0;' > "%t.co"
+# RUN: %cloth --stdlib "%t.lib" --src "%t.co"
+# RUN: echo 'fn<bool> f(string s) = s.contains(other = "x");' > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.lib" --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=POSITIONAL --input-file "%t.err"
+# POSITIONAL: [C3065] Error: 'contains' takes positional arguments
+# RUN: echo 'fn<string> f(string s) = s.trim();' > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.lib" --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=MISSING --input-file "%t.err"
+# MISSING: [C3071] Error:
+
+# A partial library supplies exactly its declared receiver families and overloads.
+# RUN: echo 'pub typedef<intrinsic "primitive.char"> Char { pub mt<int> toInt() = 9; }' > "%t.lib/cloth/lang/Primitive.co"
+# RUN: echo 'pub typedef<intrinsic "primitive.string"> String { pub mt<string[]> split(string separator) = [self]; }' >> "%t.lib/cloth/lang/Primitive.co"
+# RUN: echo 'fn never(string s) { s.split(exit(0)); } fn stopped() { exit(0).toInt(); }' > "%t.co"
+# RUN: %cloth --stdlib "%t.lib" --src "%t.co"
+# RUN: echo 'fn f(bool b) { b.toInt(); }' > "%t.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.lib" --src "%t.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=NO-BOOL --input-file "%t.err"
+# NO-BOOL: [C3071] Error: Unknown method 'toInt' on bool

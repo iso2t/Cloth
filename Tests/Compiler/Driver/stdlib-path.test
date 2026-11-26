@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# A separate project invokes the relocated compiler by name on PATH.
+# RUN: mkdir -p "%t/moved toolchain/lib/cloth/stdlib/cloth" "%t/project/override/cloth"
+# RUN: %python -c "import shutil, sys; shutil.copy2(sys.argv[1], sys.argv[2])" %cloth "%t/moved toolchain/cloth.exe"
+# RUN: echo "pub fn bundled() {}" > "%t/moved toolchain/lib/cloth/stdlib/cloth/Probe.co"
+# RUN: echo "using cloth.Probe: bundled;" > "%t/project/main.co"
+# RUN: cd "%t/project" && %python -c "import os, subprocess, sys; os.environ['PATH'] = sys.argv[1] + os.pathsep + os.environ['PATH']; subprocess.run(['cloth.exe', '--src', 'main.co'], check=True)" "%t/moved toolchain"
+
+# A relative override selects its own copy of the same module.
+# RUN: echo "pub fn replacement() {}" > "%t/project/override/cloth/Probe.co"
+# RUN: echo "using cloth.Probe: replacement;" > "%t/project/main.co"
+# RUN: cd "%t/project" && %expect_exit --empty-stdout --empty-stderr 0 "../moved toolchain/cloth.exe" --stdlib override --src main.co

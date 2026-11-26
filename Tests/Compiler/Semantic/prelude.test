@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# Each source file resolves its own declarations and imports before the shared Number.
+# RUN: mkdir -p "%t/app/cloth/lang" "%t/lib/cloth/lang/num"
+# RUN: echo 'pub typedef<struct> Number { pub int tag; }' > "%t/app/custom.co"
+# RUN: echo 'using custom: Number; pub fn<int> selected(Number n) = n.tag;' > "%t/app/named.co"
+# RUN: echo 'using custom: *; pub fn<int> selectedAll(Number n) = n.tag;' > "%t/app/wildcard.co"
+# RUN: echo 'pub fn<T> twice<T: Number>(T n) = n + n;' > "%t/app/numeric.co"
+# RUN: echo 'using named: selected; using wildcard: selectedAll; using numeric: twice;' > "%t/app/main.co"
+# RUN: echo 'typedef<struct> Number { pub bool local; } fn<bool> local(Number n) = n.local;' >> "%t/app/main.co"
+# RUN: echo 'fn<int> f() = twice(selected({10}) + selectedAll({11}));' >> "%t/app/main.co"
+# RUN: %cloth --stdlib "%stdlib" --src "%t/app/main.co"
+# RUN: echo 'using custom: Number; typedef<interface> Number {}' > "%t/app/conflict.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%stdlib" --src "%t/app/conflict.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=CONFLICT --input-file "%t.err"
+# CONFLICT: [C3104] Error: Conflicting import of 'Number'
+
+# The bundled prelude works by default. Only the selected standard library can supply it.
+# RUN: echo 'pub typedef<interface> Number {}' > "%t/lib/cloth/lang/num/Number.co"
+# RUN: echo 'using Nowhere: Stolen;' > "%t/app/cloth/lang/Prelude.co"
+# RUN: echo 'fn f<T: Number>() {}' > "%t/app/client.co"
+# RUN: %cloth --src "%t/app/client.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/lib" --src "%t/app/client.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=NO-NUMBER --input-file "%t.err"
+# NO-NUMBER: [C3012] Error: Unknown type 'Number'
+
+# The selected library can curate different names with ordinary public declarations and using selections.
+# RUN: echo 'pub typedef<struct> Shared { pub bool flag; } pub typedef<struct> Extra {}' > "%t/lib/Api.co"
+# RUN: echo 'pub typedef<struct> Shared { pub int local; }' > "%t/app/Api.co"
+# RUN: echo 'using Api: Shared; pub typedef<struct> Marker {} typedef<struct> Hidden {}' > "%t/lib/cloth/lang/Prelude.co"
+# RUN: %cloth --stdlib "%t/lib" --src "%t/lib/cloth/lang/Prelude.co"
+# RUN: echo 'pub fn<bool> flag(Shared s, Marker m) = s.flag;' > "%t/app/helper.co"
+# RUN: echo 'using helper: flag; fn<bool> client(Shared s) = flag(s, {});' > "%t/app/client.co"
+# RUN: %cloth --stdlib "%t/lib" --extern "Api=%t/app/Api.co" --src "%t/app/client.co"
+# RUN: echo 'using helper: Shared;' > "%t/app/client.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/lib" --src "%t/app/client.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=NO-REEXPORT --input-file "%t.err"
+# NO-REEXPORT: [C3102] Error: Unknown imported name 'Shared'
+# RUN: echo 'fn f(Extra x) {}' > "%t/app/client.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/lib" --src "%t/app/client.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=UNSELECTED --input-file "%t.err"
+# UNSELECTED: [C3012] Error: Unknown type 'Extra'
+# RUN: echo 'fn f(Hidden x) {}' > "%t/app/client.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/lib" --src "%t/app/client.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=PRIVATE --input-file "%t.err"
+# PRIVATE: [C3012] Error: Unknown type 'Hidden'
+
+# Bad selections use the original import token in the prelude for the diagnostic.
+# RUN: echo 'using Api: Missing;' > "%t/lib/cloth/lang/Prelude.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/lib" --src "%t/app/client.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=BAD-SELECTION --input-file "%t.err"
+# BAD-SELECTION: [C3102] Error: Unknown imported name 'Missing'
+# BAD-SELECTION: Prelude.co:1:12

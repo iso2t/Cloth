@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <cloth/text.h>
 #include <growable-array-allocator.h>
 
 static size_t live_allocations;
@@ -35,8 +36,10 @@ void cloth_test_array_free (void *memory) {
 	free(memory);
 }
 
-// The lifetime fixture uses println to inspect its in-scope array allocations.
-void cloth_rt_println_i32 (int32_t expected) {
+// The fixture writes a single decimal digit at each allocation checkpoint.
+void clothRtTextWrite (const ClothText *text, uint8_t newline) {
+	if (newline || text->length != 1 || text->data[0] < '0' || text->data[0] > '9') abort();
+	const int expected = text->data[0] - '0';
 	if (live_allocations != (size_t)expected) {
 		fprintf(stderr, "Expected %d live growable array allocations, found %zu\n", (int)expected, live_allocations);
 		_Exit(2);

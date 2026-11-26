@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 pub fn<int> main() {
     int total = 0;
     for (def n <- trace(1)..trace(4)) total += n;

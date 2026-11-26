@@ -30,6 +30,22 @@
 # RUN: %filecheck "%s" --check-prefix=EXACT-SELF --input-file "%t.integer/error"
 # EXACT-SELF: [C3136] Error: Invalid compiler binding 'float.abs': expected parameters () and results (Self)
 
+# RUN: mkdir -p "%t.text/cloth/lang/num"
+# RUN: echo 'fn main() {}' > "%t.text/client.co"
+# RUN: echo 'pub typedef<intrinsic "primitive.string"> String {}' > "%t.text/cloth/lang/num/Number.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.text" --src "%t.text/client.co" 2> "%t.text/error"
+# RUN: %filecheck "%s" --check-prefix=TEXT-MODULE --input-file "%t.text/error"
+# TEXT-MODULE: [C3136] Error: Invalid compiler binding 'primitive.string': requires a public top-level declaration in cloth/lang/Primitive.co
+# RUN: echo 'pub typedef<interface> Number {}' > "%t.text/cloth/lang/num/Number.co"
+# RUN: echo 'pub typedef<intrinsic "primitive.bool"> Bool { mt<int> value() = intrinsic "char.code_point"; }' > "%t.text/cloth/lang/Primitive.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.text" --src "%t.text/client.co" 2> "%t.text/error"
+# RUN: %filecheck "%s" --check-prefix=CHAR-RECEIVER --input-file "%t.text/error"
+# CHAR-RECEIVER: [C3136] Error: Invalid compiler binding 'char.code_point': requires a method on the Char primitive family in cloth/lang/Primitive.co
+# RUN: echo 'pub typedef<intrinsic "primitive.string"> String { mt<char> charAt(int index) = intrinsic "string.char_at"; }' > "%t.text/cloth/lang/Primitive.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.text" --src "%t.text/client.co" 2> "%t.text/error"
+# RUN: %filecheck "%s" --check-prefix=INDEX-TYPE --input-file "%t.text/error"
+# INDEX-TYPE: [C3136] Error: Invalid compiler binding 'string.char_at': expected parameters (usize) and results (char)
+
 # RUN: mkdir -p "%t/regular/cloth/text" "%t/library/cloth/text" "%t/library/cloth/collections" "%t/library/cloth/io/fs"
 # RUN: cat "%/S/../../../Stdlib/StandardLibrary/src/cloth/text/Utf8.co" > "%t/library/cloth/text/Utf8.co"
 # RUN: echo "using cloth.text.Utf8: decodeUtf8;" > "%t/regular/user.co"
@@ -148,3 +164,20 @@
 # RUN: %filecheck "%s" --check-prefix=NESTED --input-file "%t.err"
 # NESTED: [C3136] Error:
 # NESTED-SAME: requires the registered declaration in cloth/io/fs/File.co on class 'File'
+
+# RUN: mkdir -p "%t.console/cloth"
+# RUN: echo 'fn<string?> read(string prompt) = intrinsic "console.read_line";' > "%t.console/client.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.console" --src "%t.console/client.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=CONSOLE-SITE --input-file "%t.err"
+# CONSOLE-SITE: [C3136] Error: Invalid compiler binding 'console.read_line': requires a declaration imported from the selected standard library
+# RUN: echo 'fn use() {}' > "%t.console/client.co"
+# RUN: echo 'fn<string> read(string prompt) = intrinsic "console.read_line";' > "%t.console/cloth/Console.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --stdlib "%t.console" --src "%t.console/client.co"
+# RUN: echo 'using cloth.Console : *; fn use() {}' > "%t.console/client.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.console" --src "%t.console/client.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=READ-LINE --input-file "%t.err"
+# READ-LINE: [C3136] Error: Invalid compiler binding 'console.read_line': expected parameters (string) and results (string?)
+# RUN: echo 'fn write(string? text) = intrinsic "console.write";' > "%t.console/cloth/Console.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t.console" --src "%t.console/client.co" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=WRITE-TEXT --input-file "%t.err"
+# WRITE-TEXT: [C3136] Error: Invalid compiler binding 'console.write': expected parameters (string) and results ()

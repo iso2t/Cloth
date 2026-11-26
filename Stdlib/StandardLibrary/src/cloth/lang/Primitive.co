@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<string> encodeChars(char[] scalars) = intrinsic "string.encode_chars";
+fn<string> concatParts(string[] parts) = intrinsic "string.concat_parts";
+
+pub typedef<intrinsic "primitive.bool"> Bool {
+    pub mt<int> toInt() = if (self) 1 else 0;
+    pub operator ::str() -> string = if (self) "true" else "false";
+}
+
+pub typedef<intrinsic "primitive.char"> Char {
+    pub mt<int> toInt() = intrinsic "char.code_point";
+    pub mt<bool> isWhitespace() = intrinsic "char.is_whitespace";
+    pub mt<bool> isLetter() = intrinsic "char.is_letter";
+    pub mt<bool> isDigit() = intrinsic "char.is_digit";
+    pub mt<bool> isLetterOrDigit() = self.isLetter() || self.isDigit();
+    pub mt<bool> isUpperCase() = intrinsic "char.is_upper";
+    pub mt<bool> isLowerCase() = intrinsic "char.is_lower";
+    mt<Self> mapCase(bool upper) = intrinsic "char.map_case";
+    pub mt<Self> toUpperCase() = self.mapCase(true);
+    pub mt<Self> toLowerCase() = self.mapCase(false);
+    pub operator ::str() -> string = intrinsic "char.format";
+}
+
+pub typedef<intrinsic "primitive.string"> String {
+    pub operator ::str() -> string = self;
+    pub mt<bool> isEmpty() = self == "";
+
+    mt<usize?> find(string text, bool last) = intrinsic "string.find";
+    pub mt<usize?> indexOf(string text) = self.find(text, false);
+    pub mt<usize?> lastIndexOf(string text) = self.find(text, true);
+    pub mt<bool> contains(string text) = self.indexOf(text) != null;
+
+    mt<bool> matchesAffix(string text, bool suffix) = intrinsic "string.matches_affix";
+    pub mt<bool> startsWith(string prefix) = self.matchesAffix(prefix, false);
+    pub mt<bool> endsWith(string suffix) = self.matchesAffix(suffix, true);
+    pub mt<Self> removePrefix(string prefix) = if (self.startsWith(prefix)) self.substring(prefix::size, self::size) else self;
+    pub mt<Self> removeSuffix(string suffix) = if (self.endsWith(suffix)) self.substring(0, self::size - suffix::size) else self;
+
+    pub mt<char> charAt(usize index) = intrinsic "string.char_at";
+    pub mt<Self> substring(usize start, usize end) = intrinsic "string.substring";
+    pub mt<char[]> toChars() = intrinsic "string.to_chars";
+    pub mt<string[]> split(string separator) = intrinsic "string.split";
+    pub mt<string[]> split(char separator) = self.split(encodeChars([separator]));
+
+    pub mt<Self> replace(string search, string replacement) {
+        string[] parts = self.split(search);
+        if (parts::size == 1) return self;
+        string[] output = [parts[0]];
+        for (def i <- 1..parts::size) {
+            output.append(replacement);
+            output.append(parts[i]);
+        }
+        return concatParts(output);
+    }
+
+    pub mt<Self> replaceFirst(string search, string replacement) {
+        usize? at = self.indexOf(search);
+        if (at == null) return self;
+        return concatParts([self.substring(0, at), replacement, self.substring(at + search::size, self::size)]);
+    }
+
+    mt<Self> mapCase(bool upper) {
+        char[] scalars = self.toChars();
+        for (def i <- 0..scalars::size) {
+            scalars[i] = if (upper) scalars[i].toUpperCase() else scalars[i].toLowerCase();
+        }
+        return encodeChars(scalars);
+    }
+
+    pub mt<Self> toUpperCase() = self.mapCase(true);
+    pub mt<Self> toLowerCase() = self.mapCase(false);
+
+    mt<Self> trimEdges(bool start, bool end) {
+        char[] scalars = self.toChars();
+        usize first = 0;
+        usize last = scalars::size;
+        while (start && first < last && scalars[first].isWhitespace()) first++;
+        while (end && first < last && scalars[last - 1].isWhitespace()) last--;
+        return if (first == 0 && last == scalars::size) self else self.substring(first, last);
+    }
+
+    pub mt<Self> trim() = self.trimEdges(true, true);
+    pub mt<Self> trimStart() = self.trimEdges(true, false);
+    pub mt<Self> trimEnd() = self.trimEdges(false, true);
+
+    pub mt<bool> isBlank() {
+        for (char scalar <- self.toChars()) {
+            if (!scalar.isWhitespace()) return false;
+        }
+        return true;
+    }
+}

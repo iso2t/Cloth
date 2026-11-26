@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<struct> Status { pub int<12> code, pub bool ready; }
 typedef<enum> Mode(pub def<int> code = 7, pub def<Status> status = {-3, 0}, pub def<char> label = 'A' -> char) {
     Hidden(90), pub Off, pub On(42, {21, 256}, '*'), pub Alias(42);

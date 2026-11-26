@@ -86,8 +86,12 @@ std::vector<StructFieldDeclaration> StructParser::parseFields () const {
 
 IntrinsicTypeDeclaration StructParser::parseIntrinsic (const Token &keyword, std::optional<Token> visibility, IntrinsicBinding binding) const {
 	const Token t_name = p_parser.expect(TokenType::Identifier, "an intrinsic type name");
-	p_parser.expect(OColon);
-	TypeReference                  tr_parent = p_parser.p_typeParser.parse();
+	std::optional<TypeReference> tr_parent;
+	const auto                   family = primitiveFamilyForBinding(binding.getId());
+	if (p_parser.peek().getOperator() == OColon || (family && numericFamily(*family))) {
+		p_parser.expect(OColon);
+		tr_parent = p_parser.p_typeParser.parse();
+	}
 	std::vector<MethodDeclaration> v_methods = p_parser.p_delimitedParser.braces([this] {
 		p_parser.skipNewLines();
 		return parseMembers(nullptr);

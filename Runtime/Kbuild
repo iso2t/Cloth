@@ -7,5 +7,4 @@ runtime-obj-y := arguments.o \
                errors.o \
                integer.o \
                object.o \
-               println.o \
                process.o

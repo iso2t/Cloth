@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<struct> Slot { pub int<12>? value, pub bool ready; }
 typedef<enum> Reading(pub def<int<12>?> code = null) { pub Missing, pub Zero(0), pub Minimum(-2048); }
 

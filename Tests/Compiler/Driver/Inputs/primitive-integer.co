@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : print, println;
+
 fn<int<12>?> capped(int<12>? n) = n?.smaller(7);
 fn<usize> capSize(usize size, usize limit) = size.smaller(limit);
 fn<int<12>> cappedDefault(int<12> value, opt<int<12>> limit ?: value.smaller(5)) = limit;

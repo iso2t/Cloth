@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 pub fn<int> main() {
     if ([trace(1, 7), trace(2, 9)] == [trace(3, 8), trace(4, 9)]) return 1;
     if ([trace(5, 7)] == [trace(6, 7), trace(7, 9)]) return 2;

@@ -548,7 +548,7 @@ TEST (SemanticChecking, ResolvesBodyNamesInDeclarationOrderBeforeCheckingOperand
 	expectDiagnosticLabels("fn f(final int n){n=missing;}", Code::ImmutableBinding, "Cannot reassign final parameter 'n'",
 	                       { { "1:16-1:17", "final parameter declared here" }, { "1:19-1:20", "reassigned here" } });
 	expectError("fn z(){true+false;}\nfn a(){bool x=0;}", Code::BinaryOperands);
-	expectError("fn f(){println<int>(missing);}", Code::GenericArity);
+	expectError("fn f(){exit<int>(missing);}", Code::GenericArity);
 	expectError("fn f(int n){n.absent(x=other,x=2);}", Code::UnknownName);
 	expectError("typedef<class> C {pub mt f(){self.absent(x=other,x=2);}}", Code::UnknownMember);
 }

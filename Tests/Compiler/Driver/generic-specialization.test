@@ -4,10 +4,10 @@
 # RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/generic-specialization.co" --target-bits 32 --emit object -o "%t.32.o"
 # RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/generic-specialization.co" --target-bits 64 --emit object -o "%t.64.o"
 # RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%S/Inputs/generic-specialization.co" --emit object -o "%t.o"
-# RUN: %cc "%t.o" %stdlib_runtime %runtime -o "%t.exe"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 44 --stdout-line 2 --stdout-line 7 --stdout-line 7 --empty-stderr 42 "%t.exe"
 
-# RUN: %cloth --kind executable --src "%S/Inputs/generic-borrow.co" --emit object -o "%t.borrow.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/generic-borrow.co" --emit object -o "%t.borrow.o"
 # RUN: %cc "%t.borrow.o" %runtime -o "%t.borrow.exe"
 # RUN: %expect_exit --stdout-line 1 --stdout-line 42 --stderr-line "Cloth runtime error: access to a deleted class instance" 1 "%t.borrow.exe"
 # RUN: %expect_exit --stdout-line 1 --stdout-line 42 --stderr-line "Cloth runtime error: access to a deleted class instance" 1 "%t.borrow.exe" read

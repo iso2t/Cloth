@@ -32,7 +32,7 @@ def main():
     return values[0] == {marker} && values[1] == {wrapped} && values[2] == {marker};
 }}""")
     entry = "\n".join(["pub fn<int> main() {", *checks, "    return 42;", "}"])
-    Path(sys.argv[1]).write_text("\n\n".join([entry, *functions]) + "\n", encoding="utf-8")
+    Path(sys.argv[1]).write_text("\n\n".join(["using cloth.Console : println;", entry, *functions]) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

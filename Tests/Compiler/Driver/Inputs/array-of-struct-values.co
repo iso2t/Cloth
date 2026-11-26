@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<struct> Row { pub int<12>[2] cells, pub int stamp; }
 typedef<struct> Batch { pub Row[2] rows; }
 typedef<struct> Pair { pub Row[2] left, pub Row[2] right; }

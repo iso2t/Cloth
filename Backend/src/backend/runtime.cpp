@@ -59,11 +59,6 @@ LLVMValueRef declareReleaseArguments (LLVMModuleRef module) {
 	return declareVoidFunction(module, "cloth_rt_release_arguments", v_parameters);
 }
 
-LLVMValueRef declarePrintlnInt32 (LLVMModuleRef module) {
-	LLVMTypeRef v_parameters[] = { LLVMInt32TypeInContext(LLVMGetModuleContext(module)) };
-	return declareVoidFunction(module, "cloth_rt_println_i32", v_parameters);
-}
-
 LLVMValueRef declareExit (LLVMModuleRef module) {
 	LLVMTypeRef v_parameters[] = { LLVMInt32TypeInContext(LLVMGetModuleContext(module)) };
 	return declareVoidFunction(module, "cloth_rt_exit", v_parameters, /*noReturn=*/true);

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<struct> Leaf<T> { pub bool ready, pub T value; }
 typedef<struct> Pair<T> { pub T left, pub T right; }
 typedef<struct> Sample<T> { pub bool tagged, pub Pair<Leaf<T>> inner; }

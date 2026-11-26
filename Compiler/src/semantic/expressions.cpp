@@ -270,7 +270,7 @@ ExpressionInfo BodyChecker::name (const Token &token, NameUse use) {
 		remember(token, owner->name);
 		return value(readType({ .root = &owner->name }, rt_payload), owner);
 	}
-	const bool b_builtinName = builtinFunctionNamed(spelling);
+	const bool b_builtinName = isBuiltinExitName(spelling);
 	if (hasInstance() && !b_builtinName) {
 		const std::vector<Candidate> fields = analyzer.members(selfType(), spelling, SymbolKind::Field);
 		if (!fields.empty()) {
@@ -394,7 +394,7 @@ ExpressionInfo BodyChecker::field (const FieldAccessExpression &node) {
 	return ei_field;
 }
 
-std::optional<Candidate> BodyChecker::stateTarget (const ResolvedType &receiver, const Token &name, const Expression &operand) const {
+std::optional<Candidate> BodyChecker::stateTarget (const ResolvedType &receiver, const Token &name, const Expression &operand, bool allowType) const {
 	const bool               b_attachedSelf = rt_attachment && isSelfReference(operand);
 	const ResolvedType       host           = b_attachedSelf ? *rt_attachment : receiver.nullable() ? receiver.element() : receiver;
 	std::optional<Candidate> opt_state;
@@ -417,8 +417,7 @@ std::optional<Candidate> BodyChecker::stateTarget (const ResolvedType &receiver,
 		if (!b_attachedSelf || analyzer.declarations.at(opt_state->symbol).attachedState != owner)
 			analyzer.requireAccess(*opt_state->symbol, context, name.getSpan());
 		remember(name, opt_state->symbol->name);
-	}
-	if (!opt_state && (b_attachedSelf || analyzer.hasStateName(context, name.getNameKey()))) {
+	} else if ((!allowType || !analyzer.hasTypeName(context, name)) && (b_attachedSelf || analyzer.hasStateName(context, name.getNameKey()))) {
 		fail(Code::InvalidStateTarget, name.getSpan(), host.spelling() + " does not support state '" + name.getLexeme() + "'");
 	}
 	return opt_state;
@@ -447,13 +446,13 @@ ExpressionInfo BodyChecker::transition (const Candidate &state, const Expression
 
 std::optional<Candidate> BodyChecker::initialStateTest (const TypeCheckExpression &test, const Token *state) const {
 	if (state && rp_receiverPhase == ReceiverPhase::FieldInitializer && isSelfReference(*test.operand))
-		return stateTarget(selfType(), *state, *test.operand);
+		return stateTarget(selfType(), *state, *test.operand, /*allowType=*/true);
 	return {};
 }
 
 ExpressionInfo BodyChecker::typeCheck (const TypeCheckExpression &node) {
 	const Token                *identifier    = node.target.getBareIdentifier();
-	const bool                  b_unboundName = identifier && !analyzer.hasTypeName(context, *identifier);
+	const bool                  b_unboundName = identifier && !analyzer.hasExplicitTypeName(context, *identifier);
 	ExpressionPtr               valueTarget;
 	std::optional<ResolvedType> opt_type;
 	if (node.valueCandidate) {
@@ -475,7 +474,7 @@ ExpressionInfo BodyChecker::typeCheck (const TypeCheckExpression &node) {
 	}
 	const std::optional<ResolvedType> opt_source = scalar(*node.operand);
 	if (b_unboundName && opt_source) {
-		if (const std::optional<Candidate> state = stateTarget(*opt_source, *identifier, *node.operand)) {
+		if (const std::optional<Candidate> state = stateTarget(*opt_source, *identifier, *node.operand, /*allowType=*/true)) {
 			return value(ResolvedType(KBoolean), state->symbol);
 		}
 	}
@@ -1003,8 +1002,8 @@ std::vector<Candidate> BodyChecker::callCandidates (const CallExpression &node) 
 	if (const Binding *b_local = local(node.name.getNameKey()))
 		fail(Code::NotCallable, node.name.getSpan(), "Local binding '" + node.name.getLexeme() + "' is not callable", b_local->name);
 	std::vector<Candidate> group;
-	// Built-ins occupy the lexical function namespace. Explicit receivers still select their own members.
-	const bool b_builtinName = builtinFunctionNamed(node.name.getNameKey());
+	// The built-in exit occupies the lexical function namespace.
+	const bool b_builtinName = isBuiltinExitName(node.name.getNameKey());
 	if (!b_builtinName && owner && owner->kind == SymbolKind::State) {
 		group = analyzer.members(analyzer.substitute(analyzer.ownerType(*owner), m_arguments), node.name.getNameKey(), SymbolKind::Method,
 		                         MemberLookup::CallContract);
@@ -1036,11 +1035,16 @@ std::vector<Candidate> BodyChecker::callCandidates (const CallExpression &node) 
 }
 
 ExpressionInfo BodyChecker::call (const CallExpression &node) {
-	const std::vector<Candidate> group = callCandidates(node);
-	if (group.empty() && builtinFunctionNamed(node.name.getNameKey()))
-		return builtinCall(node, node.typeArguments ? &*node.typeArguments : nullptr).value();
+	const std::vector<Candidate> group         = callCandidates(node);
+	const auto                  *typeArguments = node.typeArguments ? &*node.typeArguments : nullptr;
+	if (group.empty() && isBuiltinExitName(node.name.getNameKey())) return exitCall(node, typeArguments);
 	if (group.empty() && node.typeArguments) checkTypeArguments(*node.typeArguments);
-	ExpressionInfo ei_call = invoke(node.name, node.getSpan(), node.suppliedArguments, group, node.typeArguments ? &*node.typeArguments : nullptr);
+	const auto console      = [&] (const Candidate &candidate) { return analyzer.consoleOverload(*candidate.symbol); };
+	const bool consoleOnly  = !group.empty() && std::ranges::all_of(group, console);
+	const auto checkConsole = [&] { checkBuiltinArguments(node, nullptr, node.name.getNameKey() == "print" ? 1 : 0, 1); };
+	if (consoleOnly) checkConsole();
+	ExpressionInfo ei_call = invoke(node.name, node.getSpan(), node.suppliedArguments, group, typeArguments);
+	if (!consoleOnly && analyzer.consoleOverload(*ei_call.symbol)) checkConsole();
 	if (ei_call.fallsThrough && ei_call.symbol->kind == SymbolKind::Method && owner && owner->kind == SymbolKind::Type &&
 	    dynamic_cast<const StructDeclaration *>(std::get<const TypeDeclaration *>(owner->declaration)))
 		invalidate({ .root = &context.name }, true);
@@ -1057,7 +1061,7 @@ ExpressionInfo BodyChecker::memberCall (const MemberCallExpression &node) {
 	const ExpressionInfo    ei_receiver = scalarInfo(*node.receiver);
 	const TypeArgumentList *tal_types   = node.typeArguments ? &*node.typeArguments : nullptr;
 	if (auto numeric = numericMethodCall(node, ei_receiver)) return std::move(*numeric);
-	if (std::optional<ExpressionInfo> opt_builtin = builtinCall(node, tal_types, &ei_receiver)) return std::move(*opt_builtin);
+	if (auto text = textMethodCall(node, ei_receiver)) return std::move(*text);
 	const std::optional<ArrayMutation> opt_mutation = arrayMutationNamed(node.name.getNameKey());
 	if (!ei_receiver.fallsThrough) {
 		if (!opt_mutation) unknownMember(node, "a non-returning receiver");
@@ -1069,7 +1073,7 @@ ExpressionInfo BodyChecker::memberCall (const MemberCallExpression &node) {
 	if (rt_receiver.nullable()) {
 		const ResolvedType rt_payload = rt_receiver.element();
 		if (!rt_payload.declaration && !rt_payload.parameter && !rt_payload.array() &&
-		    analyzer.members(rt_payload, node.name.getNameKey(), SymbolKind::Method).empty())
+		    (textMethodNamed(node.name.getNameKey(), rt_payload) || analyzer.members(rt_payload, node.name.getNameKey(), SymbolKind::Method).empty()))
 			unknownMember(node, rt_receiver.spelling());
 		fail(Code::NullablePayloadAccess, node.getSpan(), std::format("Use {} to call a member of a nullable receiver", toString(OSafeDot)));
 	}
@@ -1162,8 +1166,8 @@ ExpressionInfo BodyChecker::cast (const CastExpression &node) {
 		return ei_operand.fallsThrough ? ExpressionInfo{} : ExpressionInfo::never();
 	}
 	const ExpressionInfo ei_operand = scalarInfo(*node.operand);
-	if (const Token *id = node.target.getBareIdentifier(); ei_operand.fallsThrough && id && !analyzer.hasTypeName(context, *id)) {
-		if (const std::optional<Candidate> state = stateTarget(ei_operand.types.front(), *id, *node.operand)) {
+	if (const Token *id = node.target.getBareIdentifier(); ei_operand.fallsThrough && id && !analyzer.hasExplicitTypeName(context, *id)) {
+		if (const std::optional<Candidate> state = stateTarget(ei_operand.types.front(), *id, *node.operand, /*allowType=*/true)) {
 			if (readOnlyDefaultRoot(*node.operand))
 				fail(Code::InvalidParameterDefault, node.getSpan(), "A default cannot change the state of a read-only receiver",
 				     &pd_default->name);
@@ -1230,10 +1234,11 @@ ExpressionInfo BodyChecker::infer (const Expression &node, const ResultTypes *ex
 	if (const auto *n = dynamic_cast<const InterpolatedString *>(&node)) {
 		bool                       b_continues = true;
 		std::optional<BodyChecker> opt_unreachable;
-		for (const ExpressionPtr &part : n->parts) {
+		for (std::size_t i = 0; i < n->parts.size(); ++i) {
+			const ExpressionPtr              &part     = n->parts[i];
 			BodyChecker                      &bc_part  = onPath(b_continues, opt_unreachable);
 			const std::optional<ResolvedType> opt_part = bc_part.scalar(*part);
-			if (opt_part && !dynamic_cast<const StringLiteral *>(part.get())) {
+			if (opt_part && i % 2 == 1) {
 				if (!bc_part.bindText(*part, *opt_part))
 					fail(Code::UnsupportedInterpolationType, part->getSpan(), "No text conversion for " + opt_part->spelling());
 			}

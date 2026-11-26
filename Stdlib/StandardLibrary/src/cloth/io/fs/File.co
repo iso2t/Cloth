@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 using cloth.io.path.Path: Path, pathOf;
 
 pub typedef<enum> FileError {

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<struct> Box { pub int[3]?[2]? rows; }
 typedef<struct> Cell { pub int[1] parts; }
 typedef<enum> Pattern(pub def<Cell[2]?[1]> rows = [null, [{[42]}]]) { pub Default; }

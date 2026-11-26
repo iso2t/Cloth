@@ -7,7 +7,7 @@
 # RUN: %cc "%t.o" -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
 
-# RUN: %cloth --kind executable --src "%S/Inputs/nullable-struct-values.co" --emit-object "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/nullable-struct-values.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 42 --empty-stderr 42 "%t.exe"
 

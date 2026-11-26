@@ -480,7 +480,7 @@ void Analyzer::buildStates (const ResolvedType &receiver, TypeDispatch &table) c
 
 bool Analyzer::hasStateName (const Symbol &context, const std::string_view name) const {
 	for (const auto &val : v_names[declarations.at(&context).file] | std::views::values) {
-		for (const Symbol *sym : val) {
+		for (const Symbol *sym : val.symbols) {
 			if (sym->kind == SymbolKind::State && sym->name.getNameKey() == name) return true;
 			if (asClass(sym) && dispatchFor(ownerType(*sym)).states.contains(name)) return true;
 		}

@@ -139,14 +139,19 @@ std::optional<ProviderSelection> BodyChecker::textConversion (const ResolvedType
 		ps_format.callsFormatter = true;
 		return ps_format;
 	}
+	if (rt_element.primitiveFamily()) return {};
 	if (analyzer.referenceType(rt_element)) {
 		ps_format.callsFormatter = analyzer.anyReceiverClass(rt_element, [&] (const ResolvedType &host) {
 			return !dataProviders(analyzer, host, provider::S_STRING).empty();
 		});
 		return ps_format;
 	}
-	if (enumeration(rt_element) || analyzer.numeric(rt_element) || rt_element == ResolvedType(KBoolean) || rt_element == ResolvedType(KCharacter) ||
-	    rt_element == ResolvedType(KString) || rt_element == ResolvedType(KTypeinfo) || rt_element == ResolvedType(KNull))
+	// Specialization checks the concrete type. Until then a user formatter can have effects.
+	if (rt_element.parameter) {
+		ps_format.callsFormatter = true;
+		return ps_format;
+	}
+	if (enumeration(rt_element) || rt_element == ResolvedType(KTypeinfo) || rt_element == ResolvedType(KNull))
 		return ps_format;
 	return {};
 }

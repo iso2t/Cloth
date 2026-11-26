@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<enum> Reading(pub def<int> code = 7) {
     pub Idle, pub First(42), pub Second(42);
     pub operator !=(Reading other) -> bool = true;

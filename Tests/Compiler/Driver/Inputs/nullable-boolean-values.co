@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<struct> Switch { pub bool? enabled, pub bool locked; }
 typedef<enum> Signal(pub def<bool?> flag = null) { pub Missing, pub Off(false), pub On(256 -> int?); }
 

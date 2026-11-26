@@ -3,11 +3,11 @@
 # DEFINE: %{cast_error} = Cloth runtime error: invalid float-to-integer cast (NaN or out of range)
 
 # A failing cast evaluates its operand once and exits before the next statement.
-# RUN: echo "pub fn<int> main() { int<8> n := sample() -> int<8>; println(99); return n -> int; }" > "%t.co"
+# RUN: echo "using cloth.Console : println; pub fn<int> main() { int<8> n := sample() -> int<8>; println(99); return n -> int; }" > "%t.co"
 # RUN: echo "fn<float> sample() { println(7); return 128.0; }" >> "%t.co"
-# RUN: %cloth --kind executable --src "%t.co" --target-bits 32 --emit-object "%t.32.o"
-# RUN: %cloth --kind executable --src "%t.co" --target-bits 64 --emit-object "%t.64.o"
-# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 7 --stderr-line "%{cast_error}" 1 "%t.exe"
 

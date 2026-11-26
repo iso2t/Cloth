@@ -288,6 +288,7 @@ struct StringLiteral : Expression {
 };
 
 struct InterpolatedString : Expression {
+	// Even positions are literal text segments (possibly empty). Odd positions are expressions in braces.
 	std::vector<ExpressionPtr> parts;
 	TokenSpan                  span;
 

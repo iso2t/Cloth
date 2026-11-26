@@ -1,2 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // Marks a deliberately inline value.
 pub fn<T> magic<T>(T value) = value;

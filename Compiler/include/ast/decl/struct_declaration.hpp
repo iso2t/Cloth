@@ -73,19 +73,17 @@ struct StructDeclaration : TypeDeclaration {
 
 struct IntrinsicTypeDeclaration : TypeDeclaration {
 	IntrinsicBinding               binding;
-	TypeReference                  parent;
+	std::optional<TypeReference>   parent;
 	std::vector<MethodDeclaration> methods;
 	TypeParameterDeclaration       self;
 
-	IntrinsicTypeDeclaration (const Token &name, std::optional<Token> visibility, TokenSpan span, IntrinsicBinding binding, TypeReference parent,
-	                          std::vector<MethodDeclaration> methods) :
+	IntrinsicTypeDeclaration (const Token &name, std::optional<Token> visibility, TokenSpan span, IntrinsicBinding binding,
+	                          std::optional<TypeReference> parent, std::vector<MethodDeclaration> methods) :
 	        TypeDeclaration(name, std::move(visibility), std::move(span)),
 	        binding(std::move(binding)),
 	        parent(std::move(parent)),
 	        methods(std::move(methods)),
-	        self{ .name = Token("Self", TokenType::Identifier, name.getSpan()) } {
-		if (this->binding.getId() == "primitive.integer") self.primitiveSelf = PrimitiveFamily::Integer;
-		if (this->binding.getId() == "primitive.float") self.primitiveSelf = PrimitiveFamily::Float;
+	        self{ .name = Token("Self", TokenType::Identifier, name.getSpan()), .primitiveSelf = primitiveFamilyForBinding(this->binding.getId()) } {
 	}
 };
 }

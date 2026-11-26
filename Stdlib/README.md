@@ -18,6 +18,10 @@ Import paths start at the standard library source root, the directory containing
 declaration from `cloth/collections/List.co`. A declaration must be `pub` for
 another module to import it.
 
+Import the console functions a source file uses, for example
+`using cloth.Console : println;`. The standard library defines `print`,
+`println`, and `input` in [Console.co](StandardLibrary/src/cloth/Console.co).
+
 ## Validate the library sources
 
 Run these commands from this directory (`Stdlib/`) in the Cloth checkout.
@@ -40,7 +44,7 @@ To run the collection example from the repository root, compile the consumer
 and link its object with the runtime archive for the target.
 
 ```sh
-build/cloth --kind executable --stdlib Stdlib/StandardLibrary/src --src Tests/Compiler/Driver/Inputs/stdlib-collections.co --emit-object build/collections.o
+build/cloth --kind executable --src Tests/Compiler/Driver/Inputs/stdlib-collections.co --emit-object build/collections.o
 cc build/collections.o "build/lib/cloth/$(build/cloth --print-target)/libcloth_runtime.a" -o build/collections
 ```
 
@@ -50,13 +54,23 @@ owned children are destroyed, then exits with status 42. On Windows use
 `-lshell32` to the link command. For the
 additional text and file link inputs, see the [runtime dependencies](../Documentation/compiler/driver/Objects.rst#runtime-dependencies).
 
+## Strings, characters, and booleans
+
+`String`, `Char`, and `Bool` supply methods on the primitive types
+`string`, `char`, and `bool`. With the standard library selected, a call
+such as `text.trim()` needs no import. String indices count Unicode scalar
+values, and `split` accepts either a character or a string separator.
+See the [primitive declarations](StandardLibrary/src/cloth/lang/Primitive.co)
+and [method reference](../Documentation/language/expressions/Builtins.rst#character-and-string-methods).
+
 ## Numbers and math
 
-Import `using cloth.lang.num.Number : Number` to write a numeric bound such
-as `fn<T> twice<T: Number>(T value) = value + value;`. Signed and unsigned
+The standard library prelude makes `Number` available in every source file.
+Use it in a bound such as `fn<T> twice<T: Number>(T value) = value + value;`. Signed and unsigned
 integers, target-sized integers, and floating-point types satisfy this
 interface. A numeric type parameter retains its caller's exact type. Classes
 can implement `Number` explicitly and provide the operators their callers use.
+See the [prelude](StandardLibrary/src/cloth/lang/Prelude.co).
 
 The library declares `abs`, `clamp`, `signum`, and `::str` on both
 `Integer` and `Float`. Integers also provide `smaller`, `leadingZeros`,
@@ -100,7 +114,8 @@ native stream. See the [file declarations](StandardLibrary/src/cloth/io/fs/File.
 
 ## Use library sources
 
-Pass `--stdlib PATH` to the native compiler with the directory containing
-`cloth/`. The frontend resolves the consumer's `using` imports against that
-source root and checks reachable modules together. For collection APIs, see
+The compiler finds the bundled sources in `lib/cloth/stdlib` relative to
+its executable. To use a working copy, pass `--stdlib PATH` with the directory
+containing `cloth/`. The frontend checks reachable modules together.
+For collection APIs, see
 the [collections guide](StandardLibrary/src/cloth/collections/README.md).

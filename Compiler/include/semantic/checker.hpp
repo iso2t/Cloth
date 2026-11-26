@@ -26,6 +26,9 @@
 namespace cloth::semantic {
 
 inline constexpr std::string_view NUMERIC_MODULE = "cloth/lang/num/Number.co";
+inline constexpr std::string_view PRIMITIVE_MODULE = "cloth/lang/Primitive.co";
+inline constexpr std::string_view PRELUDE_MODULE   = "cloth/lang/Prelude.co";
+inline constexpr std::string_view CONSOLE_MODULE   = "cloth/Console.co";
 
 // Built-in providers are selected by identifier after the provider-access operator.
 namespace provider {
@@ -63,10 +66,8 @@ struct NumericPeers {
 
 ElementEvidence              elementEvidence (const Expression &operand);
 std::optional<ArrayMutation> arrayMutationNamed (std::string_view name);
-bool                         builtinFunctionNamed (std::string_view name);
-bool                         builtinMethodNamed (std::string_view name, const ResolvedType &receiver);
-bool                         numericMethodNamed (std::string_view name, const ResolvedType &receiver);
-bool                         builtinNeverReturns (std::string_view name);
+bool                         isBuiltinExitName (std::string_view name);
+bool                         textMethodNamed (std::string_view name, const ResolvedType &receiver);
 bool                         checksNumericMethod (std::string_view name);
 bool                         usesBooleanArgumentConversion (const ResolvedType &parameter, const ResolvedType &argument);
 void                         requireRangeMember (const Expression &member, const ResolvedType &actual, const ResolvedType &endpoint);
@@ -76,7 +77,11 @@ ResolvedType                 commonShape (ResolvedType left, const ResolvedType 
 
 using Code       = cde::DiagnosticCode;
 using Candidates = std::vector<const Symbol *>;
-using Names      = std::map<std::string, Candidates, std::less<>>;
+struct FileNameBinding {
+	Candidates symbols;
+	bool       fromPrelude = false;
+};
+using Names = std::map<std::string, FileNameBinding, std::less<>>;
 
 struct GenericLimit {
 	Code        code;
@@ -137,6 +142,7 @@ class Analyzer {
 	explicit Analyzer (CheckedProgram &program, const NativeModules &modules);
 	CheckedProgram                                      &program;
 	std::unordered_map<const Symbol *, DeclarationInfo> &declarations;
+	[[nodiscard]] bool                                   consoleOverload (const Symbol &symbol) const;
 
 	[[nodiscard]] const Symbol            *indexValidator (const Symbol &operation) const;
 	void                                   resolveOperator (const Symbol &operation, const MethodDeclaration &method);
@@ -152,12 +158,14 @@ class Analyzer {
 	void                       applyArguments (ResolvedType &type, ResultTypes arguments) const;
 	[[nodiscard]] const TypeParameterDeclaration *genericParameter (const Symbol &context, const std::string &name) const;
 	[[nodiscard]] bool                            hasTypeName (const Symbol &context, const Token &name, bool qualified = false) const;
+	[[nodiscard]] bool                            hasExplicitTypeName (const Symbol &context, const Token &name) const;
 	[[nodiscard]] ResolvedType                    ownerType (const Symbol &symbol) const;
 	[[nodiscard]] Substitutions                   argumentsOf (const ResolvedType &type) const;
-	[[nodiscard]] Candidates                      lookup (const Symbol &context, const std::string &name, std::optional<SymbolKind> kind = {}) const;
+	[[nodiscard]] Candidates                      lookup (const Symbol &context, const std::string &name, std::optional<SymbolKind> kind = {},
+	                                                      bool includePrelude = true) const;
 	[[nodiscard]] const Symbol                   *lookupTypeRoot (const Symbol &context, const std::string &name, bool qualified) const;
 	[[nodiscard]] const Symbol                   *lookupFileState (const Symbol &context, const std::string &name) const;
-	[[nodiscard]] Candidates                      lookupFile (const Symbol &context, const std::string &name) const;
+	[[nodiscard]] Candidates                      lookupFile (const Symbol &context, const std::string &name, bool includePrelude = true) const;
 	[[nodiscard]] std::vector<Candidate>          members (const ResolvedType &type, std::string_view name, SymbolKind kind,
 	                                                       MemberLookup lookup = MemberLookup::Declaration) const;
 	[[nodiscard]] const Symbol                   *primitiveOwner (const ResolvedType &type) const;
@@ -434,7 +442,9 @@ class BodyChecker {
 	[[nodiscard]] ResolvedType    shapeOf (const Expression &value, const ResolvedType &fallback, std::size_t slot = 0) const;
 	void                          receiveShape (const Token &binding, const ResolvedType &declared, const ResolvedType &shape, const TokenSpan &use);
 	ExpressionInfo                mutateArray (const MemberCallExpression &call, const ExpressionInfo &receiver, ArrayMutation operation);
-	std::optional<ExpressionInfo> builtinCall (const CallSite &call, const TypeArgumentList *typeArguments, const ExpressionInfo *receiver = nullptr);
+	ExpressionInfo                exitCall (const CallSite &call, const TypeArgumentList *typeArguments);
+	void                          checkConsoleText (const Token &name, const Expression &argument, const ResolvedType &type);
+	std::optional<ExpressionInfo> textMethodCall (const MemberCallExpression &call, const ExpressionInfo &receiver);
 	std::optional<ExpressionInfo> numericMethodCall (const MemberCallExpression &call, const ExpressionInfo &receiver);
 	void              checkBuiltinArguments (const CallSite &call, const TypeArgumentList *typeArguments, std::size_t minimum, std::size_t maximum) const;
 	void              checkArgumentNames (const CallSite &call, std::size_t start) const;
@@ -630,7 +640,7 @@ class BodyChecker {
 	std::optional<ResolvedType>   receiverType (const Expression &node, bool forConstruction = false) const;
 	std::optional<Receiver>       receiver (const Expression &node);
 	ExpressionInfo                field (const FieldAccessExpression &node);
-	std::optional<Candidate>      stateTarget (const ResolvedType &receiver, const Token &name, const Expression &operand) const;
+	std::optional<Candidate>      stateTarget (const ResolvedType &receiver, const Token &name, const Expression &operand, bool allowType = false) const;
 	bool                          statePayload (const ExpressionPtr &payload, const ResolvedType &required, const TokenSpan &span, const Token &state);
 	ExpressionInfo                transition (const Candidate &state, const ExpressionPtr &payload, const TokenSpan &span);
 	ExpressionInfo                typeCheck (const TypeCheckExpression &node);

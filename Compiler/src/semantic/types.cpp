@@ -34,6 +34,13 @@
 namespace cloth::semantic {
 namespace {
 
+ResolvedType parameterType (const TypeParameterDeclaration &parameter) {
+	if (const auto family = parameter.primitiveSelf; family && !numericFamily(*family)) return ResolvedType(std::string(primitiveFamilyName(*family)));
+	ResolvedType type(parameter.name.getNameKey());
+	type.parameter = &parameter;
+	return type;
+}
+
 template <typename Matches> bool hasTypeView (const Analyzer &analyzer, const ResolvedType &actual, Matches matches) {
 	std::set<ResolvedType> s_seen;
 	ResultTypes            v_pending{ actual };
@@ -190,20 +197,12 @@ ResolvedType Analyzer::substitute (ResolvedType type, const Substitutions &argum
 }
 
 ResolvedType Analyzer::ownerType (const Symbol &symbol) const {
-	if (const auto *intrinsic = asIntrinsicType(&symbol)) {
-		ResolvedType self(intrinsic->self.name.getNameKey());
-		self.parameter = &intrinsic->self;
-		return self;
-	}
+	if (const auto *intrinsic = asIntrinsicType(&symbol)) return parameterType(intrinsic->self);
 	ResolvedType rt_type(symbol.name.getNameKey());
 	rt_type.declaration = &symbol;
 	if (const TypeParameterList *tp = typeParameters(symbol)) {
 		ResultTypes v_arguments;
-		for (const TypeParameterDeclaration &param : tp->parameters) {
-			ResolvedType rt_arg(param.name.getNameKey());
-			rt_arg.parameter = &param;
-			v_arguments.push_back(std::move(rt_arg));
-		}
+		for (const auto &parameter : tp->parameters) v_arguments.push_back(parameterType(parameter));
 		applyArguments(rt_type, std::move(v_arguments));
 	}
 	return rt_type;
@@ -374,7 +373,8 @@ ResolvedType Analyzer::resolveType (const TypeReference &reference, const Symbol
 			applyArguments(rt_type, std::move(v_arguments));
 		} else if (reference.getApplication()) {
 			fail(Code::InvalidGenericArgument, ts_span, "A type parameter cannot take type arguments");
-		}
+		} else
+			rt_type = parameterType(*rt_type.parameter);
 	} else if (reference.isPlaceholder()) {
 		fail(Code::InvalidGenericArgument, ts_span, "This type argument needs a concrete type");
 	}
@@ -874,12 +874,16 @@ void Analyzer::resolveDeclaration (const Symbol &symbol) {
 			if (std::ranges::none_of(info.parents, [] (const ResolvedType &parent) { return asClass(parent.declaration); }))
 				info.parents.push_back(ownerType(objectRoot()));
 		} else if (const auto *intrinsic = asIntrinsicType(&symbol)) {
-			const ResolvedType parent = valueType(intrinsic->parent);
-			if (!sym_number || parent != ownerType(*sym_number))
-				fail(Code::InvalidIntrinsicBinding, intrinsic->parent.getSpan(),
-				     std::format("The {} family must implement the standard library Number interface",
-				                 primitiveFamilyName(*intrinsic->self.primitiveSelf)));
-			info.parents.push_back(parent);
+			const auto family = *intrinsic->self.primitiveSelf;
+			if (!numericFamily(family)) {
+				if (intrinsic->parent)
+					fail(Code::InvalidIntrinsicBinding, intrinsic->parent->getSpan(), "This primitive family has no parent type");
+			} else {
+				if (!intrinsic->parent || !sym_number || valueType(*intrinsic->parent) != ownerType(*sym_number))
+					fail(Code::InvalidIntrinsicBinding, intrinsic->parent ? intrinsic->parent->getSpan() : intrinsic->name.getSpan(),
+					     std::format("The {} family must implement the standard library Number interface", primitiveFamilyName(family)));
+				info.parents.push_back(ownerType(*sym_number));
+			}
 		} else if (const auto *id = dynamic_cast<const InterfaceDeclaration *>(td)) {
 			for (const TypeReference &parent : id->parents) {
 				info.parents.push_back(valueType(parent));

@@ -237,7 +237,6 @@ class FunctionLowering {
 	bool                      hasTerminatingDefault (const cloth::ExpressionInfo &info) const;
 	LLVMValueRef              afterTerminatingDefault (const cloth::ExpressionInfo &info);
 	LLVMValueRef              lowerConstruction (const cloth::ClassCreationExpression &creation, const cloth::ExpressionInfo &info);
-	LLVMValueRef              lowerPrint (const cloth::CallExpression &call, bool newline);
 	LLVMValueRef lowerExit (const cloth::CallExpression &call, const cloth::BuiltinCall &builtin);
 
 	void                lowerBinding (const cloth::BindingDeclaration &binding);
@@ -284,7 +283,7 @@ FunctionLowering::FunctionLowering (ModuleFunctions &functions, LLVMBuilderRef b
         bf_body(functions.bodyFacts(body, rt_self)),
         rv_returns(di_function.returns),
         sl_scalars(functions.module, builder, functions.program.layout),
-        bl_builtins(functions.module, builder, functions.valueTypes, sl_scalars),
+        bl_builtins(functions.module, builder, sl_scalars),
         al_arrays(functions.module, builder) {
 }
 
@@ -524,19 +523,6 @@ LLVMValueRef FunctionLowering::lowerExpression (const cloth::Expression &express
 		if (!ef_expressions.at(mc_call->receiver.get()).fallsThrough) return lowerExpression(*mc_call->receiver);
 		if (ei_value.arrayMutation) return lowerArrayMutation(*mc_call, *ei_value.arrayMutation);
 		if (ei_value.symbol && ei_value.symbol->kind == cloth::SymbolKind::Method) return lowerObjectCall(*mc_call, ei_value, mc_call->receiver.get());
-		if (ei_value.builtin) {
-			const auto &builtin = *ei_value.builtin;
-			if (!builtin.receiver) throw cde::ClothDiagnostic(Code::UnsupportedLowering, "Missing checked built-in method receiver");
-			const LLVMValueRef receiver = lowerAs(*mc_call->receiver, *builtin.receiver);
-			if (!receiver) return nullptr;
-			std::vector<LLVMValueRef> args;
-			for (std::size_t index = 0; index < mc_call->suppliedArguments.size(); ++index) {
-				const auto &source = *mc_call->suppliedArguments[index].expression;
-				if (!bf_body.expressions.at(&source).fallsThrough) return lowerExpression(source);
-				args.push_back(lowerAs(source, builtin.parameters.at(index)));
-			}
-			return adoptResults(bl_builtins.method(builtin, *builtin.receiver, receiver, args, *rt_result), ei_value.types);
-		}
 	}
 	if (const auto *pa_provider = dynamic_cast<const cloth::ProviderAccessExpression *>(&expression)) {
 		if (!ei_value.fallsThrough && isBuiltinOperation(ei_value)) return lowerExpression(*pa_provider->receiver);
@@ -1676,28 +1662,7 @@ LLVMValueRef FunctionLowering::callMember (const cloth::Symbol &symbol, const cl
 
 LLVMValueRef FunctionLowering::lowerCall (const cloth::CallExpression &call) {
 	const cloth::ExpressionInfo &ei_call = bf_body.expressions.at(&call);
-	if (ei_call.builtin) {
-		switch (ei_call.builtin->operation) {
-		case cloth::BuiltinOperation::Print:
-		case cloth::BuiltinOperation::Println:
-			return lowerPrint(call, ei_call.builtin->operation == cloth::BuiltinOperation::Println);
-		case cloth::BuiltinOperation::Input: {
-			LLVMValueRef prompt = LLVMConstNull(detail::string_value::type(mf_functions.module));
-			if (!call.suppliedArguments.empty()) {
-				const auto &argument = *call.suppliedArguments.front().expression;
-				if (!bf_body.expressions.at(&argument).fallsThrough) return lowerExpression(argument);
-				const LLVMValueRef optional = lowerAs(argument, ei_call.builtin->parameters.front());
-				prompt = LLVMBuildSelect(ir_builder, sl_scalars.predicate(detail::nullable::presence(ir_builder, optional)),
-				                         detail::nullable::payload(ir_builder, optional), prompt, "");
-			}
-			return bl_builtins.optionalText("cloth_rt_text_input", storeInEntrySlot(prompt));
-		}
-		case cloth::BuiltinOperation::Exit:
-			return lowerExit(call, *ei_call.builtin);
-		default:
-			break;
-		}
-	}
+	if (ei_call.builtin && ei_call.builtin->operation == cloth::BuiltinOperation::Exit) return lowerExit(call, *ei_call.builtin);
 	const cloth::Symbol *sym_callee = ei_call.symbol;
 	if (sym_callee && sym_callee->kind == cloth::SymbolKind::Method) return lowerObjectCall(call, ei_call, nullptr);
 	if (!sym_callee || sym_callee->kind != cloth::SymbolKind::Function || ei_call.dispatch) {
@@ -1842,7 +1807,9 @@ LLVMValueRef FunctionLowering::formatValue (const cloth::ResolvedType &type, LLV
 	}
 	if (type.objectReference()) return mf_functions.dispatch.format(ir_builder, type, value, bf_body.isDirectReceiver(at), format.callsFormatter);
 	if (type == cloth::ResolvedType(cloth::KTypeinfo)) return LLVMBuildLoad2(ir_builder, text, value, "");
-	return bl_builtins.formatScalar(type, value);
+	if (type.enumeration()) return bl_builtins.enumName(type, value);
+	if (type == cloth::ResolvedType(cloth::KNull)) return detail::string_value::constant(module, cloth::toString(cloth::KNull));
+	throw cde::ClothDiagnostic(Code::UnsupportedLowering, "Missing checked text formatter", { { .span = at.getSpan(), .text = type.spelling() } });
 }
 
 LLVMValueRef FunctionLowering::lowerProvider (const cloth::ProviderAccessExpression &expr, const cloth::ExpressionInfo &info,
@@ -1914,30 +1881,6 @@ LLVMValueRef FunctionLowering::lowerProvider (const cloth::ProviderAccessExpress
 	}
 	throw cde::ClothDiagnostic(Code::UnsupportedLowering, "Missing native implementation for a checked data provider",
 	                           { { .span = expr.getSpan(), .text = "data provider used here" } });
-}
-
-LLVMValueRef FunctionLowering::lowerPrint (const cloth::CallExpression &call, bool newline) {
-	if (call.suppliedArguments.size() == 1) {
-		const cloth::Expression &e_argument = *call.suppliedArguments.front().expression;
-
-		if (!bf_body.expressions.at(&e_argument).fallsThrough) return lowerExpression(e_argument);
-
-		const cloth::ProviderSelection &ps_text = bf_body.textConversions.at(&e_argument);
-		if (newline && ps_text.kind == cloth::ProviderKind::Format && !ps_text.callsFormatter &&
-		    ps_text.receiver == cloth::ResolvedType(cloth::KInteger)) {
-			LLVMValueRef       ir_argument = lowerExpression(e_argument);
-			const LLVMValueRef fn_println  = detail::declarePrintlnInt32(mf_functions.module);
-			return LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(fn_println), fn_println, &ir_argument, 1, "");
-		}
-	}
-	const auto        &arguments = call.suppliedArguments;
-	const LLVMValueRef text      = arguments.empty() ?
-	                                       LLVMConstNull(detail::string_value::type(mf_functions.module)) :
-	                                       formatExpression(*arguments.front().expression, bf_body.textConversions.at(arguments.front().expression.get()));
-	if (text)
-		bl_builtins.call("cloth_rt_text_write", LLVMVoidTypeInContext(LLVMGetModuleContext(mf_functions.module)),
-		                 { storeInEntrySlot(text), bl_builtins.number(8, newline) });
-	return nullptr;
 }
 
 LLVMValueRef FunctionLowering::lowerExit (const cloth::CallExpression &call, const cloth::BuiltinCall &builtin) {
@@ -2772,8 +2715,16 @@ void FunctionLowering::lowerLibraryIntrinsic (cloth::LibraryIntrinsic intrinsic,
 	using Operation = detail::ObjectOperation;
 	using Intrinsic = cloth::LibraryIntrinsic;
 	const LLVMContextRef context = LLVMGetModuleContext(mf_functions.module);
-	if (intrinsic == Intrinsic::DecodeUtf8) {
-		const LLVMValueRef result = bl_builtins.optionalText("cloth_rt_decode_utf8", storeInEntrySlot(LLVMGetParam(function, 0)));
+	std::vector<LLVMValueRef> operands(LLVMCountParams(function));
+	LLVMGetParams(function, operands.data());
+	if (const auto result = bl_builtins.textIntrinsic(intrinsic, LLVMGetReturnType(LLVMGlobalGetValueType(function)), operands)) {
+		al_arrays.releaseSince({});
+		LLVMBuildRet(ir_builder, result);
+		return;
+	}
+	if (intrinsic == Intrinsic::DecodeUtf8 || intrinsic == Intrinsic::ConsoleReadLine) {
+		const char        *runtime = intrinsic == Intrinsic::DecodeUtf8 ? "cloth_rt_decode_utf8" : "cloth_rt_text_input";
+		const LLVMValueRef result  = bl_builtins.optionalText(runtime, storeInEntrySlot(LLVMGetParam(function, 0)));
 		al_arrays.releaseSince({});
 		LLVMBuildRet(ir_builder, result);
 		return;
@@ -2813,6 +2764,9 @@ void FunctionLowering::lowerLibraryIntrinsic (cloth::LibraryIntrinsic intrinsic,
 		return;
 	}
 	switch (intrinsic) {
+	case Intrinsic::ConsoleWrite:
+		bl_builtins.call("cloth_rt_text_write", LLVMVoidTypeInContext(context), { storeInEntrySlot(operands.front()), bl_builtins.number(8, 0) });
+		break;
 	case Intrinsic::IntegerLeadingZeros:
 	case Intrinsic::IntegerTrailingZeros:
 		LLVMBuildRet(ir_builder, bl_builtins.integerZeros(ir_self, intrinsic == Intrinsic::IntegerLeadingZeros));
@@ -2824,7 +2778,7 @@ void FunctionLowering::lowerLibraryIntrinsic (cloth::LibraryIntrinsic intrinsic,
 		LLVMBuildRet(ir_builder, bl_builtins.floatAbs(ir_self));
 		return;
 	case Intrinsic::FloatFormat:
-		LLVMBuildRet(ir_builder, bl_builtins.formatScalar(rt_self, ir_self));
+		LLVMBuildRet(ir_builder, bl_builtins.floatText(rt_self, ir_self));
 		return;
 	case Intrinsic::NumericError: {
 		const auto message = detail::string_value::bytes(ir_builder, LLVMGetParam(function, 0));

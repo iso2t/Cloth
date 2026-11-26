@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 fn<float<16>> half(float<16> value) = value.abs();
 fn<float<64>> clamp(float<64> value, float<64> low, float<64> high) = value.clamp(low, high);
 fn<float<64>> nan(float<64> zero) = zero / zero;

@@ -250,7 +250,7 @@ TEST (SemanticGenerics, OnlyTheStandardLibraryNumberGrantsPrimitiveConformance) 
 	const std::filesystem::path p_library = std::filesystem::path(__FILE__).parent_path() / "../../../../Stdlib/StandardLibrary/src";
 	const std::function         check     = [&] (const std::string &source, Code code) {
 		SCOPED_TRACE(source);
-		Lexer l_lexer{ SourceFile("numeric-client.co", "using cloth.lang.num.Number: Number;\n" + source) };
+		Lexer l_lexer(source);
 		try {
 			CheckedProgram const cp_program(SymbolTable(Parser(l_lexer).parse()), {}, p_library);
 			FAIL() << "Expected a semantic diagnostic";
@@ -268,8 +268,29 @@ TEST (SemanticGenerics, OnlyTheStandardLibraryNumberGrantsPrimitiveConformance) 
 	check("fn<bool> same<T: Number>(T a,T b) = a === b;", Code::IncomparableTypes);
 	check("typedef<class> Empty : Number {}\nfn<T> sum<T:Number>(T v) = v+v;\nfn<Empty> use(Empty v) = sum(v);", Code::BinaryOperands);
 	expectError("fn f<T:Number>() {}", Code::UnsupportedType);
+	check("typedef<interface> Number {}\nfn f<T:Number>() {}\nfn use() { f<int>(); }", Code::UnsatisfiedGenericBound);
 	expectError("typedef<interface> Number {}\nfn f<T:Number>() {}\nfn use() { f<int>(); }", Code::UnsatisfiedGenericBound);
 	expectError("typedef<interface> Number {}\nfn<T> f<T:Number>(T v) = v+v;", Code::BinaryOperands);
+}
+
+TEST (SemanticGenerics, PreludeNumberYieldsToValueStateAndTypeParameterNames) {
+	const std::filesystem::path library = std::filesystem::path(__FILE__).parent_path() / "../../../../Stdlib/StandardLibrary/src";
+	Lexer                       lexer(R"(typedef<class> Choice { pub operator is(Choice other) = true; }
+typedef<class> Gate { pub default state<void> Number {} }
+fn<bool> compare(Choice a, Choice Number) = a is Number;
+fn<bool> active(Gate g) = g is Number;
+fn change(Gate g) = g -> Number;
+fn<bool> numeric(int n) = n is Number;
+fn<Number> identity<Number>(Number value) = value;
+fn<string> text() = identity("ok");)");
+	const CheckedProgram        program(SymbolTable(Parser(lexer).parse()), {}, library);
+	const auto                 &globals = program.units.front()->getGlobals();
+	EXPECT_EQ(callIn(program, "compare").argumentContract, &globals.at("Choice").front().members.at("is").front());
+	const auto *state = &globals.at("Gate").front().members.at("Number").front();
+	EXPECT_EQ(callIn(program, "active").symbol, state);
+	EXPECT_EQ(callIn(program, "change").symbol, state);
+	EXPECT_TRUE(callIn(program, "numeric").primitiveMatchesTest);
+	EXPECT_EQ(callIn(program, "text").types, ResultTypes{ ResolvedType(KString) });
 }
 
 TEST (SemanticGenerics, SpecializesFieldsMetadataAndCapturedLocalsOnEachReceiver) {

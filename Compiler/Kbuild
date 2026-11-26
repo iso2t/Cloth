@@ -44,6 +44,8 @@ obj-y := cloth.o \
          semantic/loop_writes.o \
          semantic/names.o \
          semantic/numeric_methods.o \
+         semantic/text_methods.o \
+         semantic/console.o \
          semantic/operators.o \
          semantic/shapes.o \
          semantic/storage_layout.o \

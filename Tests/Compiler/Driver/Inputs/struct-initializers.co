@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<struct> Reading<T> { pub bool valid, pub T amount, pub int<8> code; }
 
 pub fn<int> main() {

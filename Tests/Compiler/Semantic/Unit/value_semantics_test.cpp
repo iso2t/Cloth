@@ -456,8 +456,8 @@ fn broadcast(bool flag, int? x) { int? a, b = 1; a, b = x ?: if(flag) { null; } 
 	EXPECT_TRUE(returned(cp_program, "row").types.front().element().nullable());
 	EXPECT_EQ(returned(cp_program, "left").types.front(), ResolvedType(KInteger));
 	expectError("fn f(bool flag) { def x = [if(flag) { null; } else { 3; }]; }", Code::ExplicitNullableType);
-	expectError("fn f(int? x) { println(x ?: true); }", Code::InvalidElvis);
-	expectError("fn f() { print(null ?: null); }", Code::ExplicitNullableType);
+	expectError("fn f(int? x) { x ?: true; }", Code::InvalidElvis);
+	expectError("fn f() { null ?: null; }", Code::ExplicitNullableType);
 }
 
 TEST (SemanticValues, RangeCompoundStepsRetainTheirTypedUpdate) {
@@ -680,7 +680,7 @@ TEST (SemanticValues, MetadataFlowsThroughBindingsAndContinuingBranches) {
 		}
 	}
 	EXPECT_TRUE(b_runtime);
-	expectError("fn<string> bad(int? n) = n::str;", Code::NullablePayloadAccess);
+	expectError("fn<string> bad(typeinfo? info) = info::str;", Code::NullablePayloadAccess);
 }
 
 TEST (SemanticValues, InterpolationRetainsTheSelectedFormatter) {

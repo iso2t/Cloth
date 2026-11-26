@@ -35,11 +35,15 @@ struct IntrinsicSite {
 };
 
 constexpr IntrinsicSite UTF8{ .path = "cloth/text/Utf8.co", .owner = {} };
+constexpr IntrinsicSite CONSOLE{ .path = CONSOLE_MODULE, .owner = {} };
 constexpr IntrinsicSite FILE_IO{ .path = "cloth/io/fs/File.co", .owner = "File" };
 constexpr IntrinsicSite OWNERSHIP{ .path = "cloth/collections/OwningList.co", .owner = "OwningList", .ownership = true };
 constexpr IntrinsicSite INTEGER{ .path = NUMERIC_MODULE, .owner = "Integer", .family = PrimitiveFamily::Integer };
 constexpr IntrinsicSite FLOAT{ .path = NUMERIC_MODULE, .owner = "Float", .family = PrimitiveFamily::Float };
 constexpr IntrinsicSite NUMERIC{ .path = NUMERIC_MODULE, .owner = {} };
+constexpr IntrinsicSite CHARACTER{ .path = PRIMITIVE_MODULE, .owner = "Char", .family = PrimitiveFamily::Char };
+constexpr IntrinsicSite STRING{ .path = PRIMITIVE_MODULE, .owner = "String", .family = PrimitiveFamily::String };
+constexpr IntrinsicSite TEXT{ .path = PRIMITIVE_MODULE, .owner = {} };
 
 struct IntrinsicSpec {
 	std::string_view     id;
@@ -48,6 +52,24 @@ struct IntrinsicSpec {
 };
 
 constexpr IntrinsicSpec INTRINSICS[] = {
+	{ .id = "console.write", .operation = LibraryIntrinsic::ConsoleWrite, .site = CONSOLE },
+	{ .id = "console.read_line", .operation = LibraryIntrinsic::ConsoleReadLine, .site = CONSOLE },
+	{ .id = "char.code_point", .operation = LibraryIntrinsic::CharCodePoint, .site = CHARACTER },
+	{ .id = "char.format", .operation = LibraryIntrinsic::CharFormat, .site = CHARACTER },
+	{ .id = "char.is_whitespace", .operation = LibraryIntrinsic::CharWhitespace, .site = CHARACTER },
+	{ .id = "char.is_letter", .operation = LibraryIntrinsic::CharLetter, .site = CHARACTER },
+	{ .id = "char.is_digit", .operation = LibraryIntrinsic::CharDigit, .site = CHARACTER },
+	{ .id = "char.is_upper", .operation = LibraryIntrinsic::CharUpper, .site = CHARACTER },
+	{ .id = "char.is_lower", .operation = LibraryIntrinsic::CharLower, .site = CHARACTER },
+	{ .id = "char.map_case", .operation = LibraryIntrinsic::CharMapCase, .site = CHARACTER },
+	{ .id = "string.find", .operation = LibraryIntrinsic::StringFind, .site = STRING },
+	{ .id = "string.matches_affix", .operation = LibraryIntrinsic::StringMatchesAffix, .site = STRING },
+	{ .id = "string.char_at", .operation = LibraryIntrinsic::StringCharAt, .site = STRING },
+	{ .id = "string.substring", .operation = LibraryIntrinsic::StringSubstring, .site = STRING },
+	{ .id = "string.to_chars", .operation = LibraryIntrinsic::StringToChars, .site = STRING },
+	{ .id = "string.split", .operation = LibraryIntrinsic::StringSplit, .site = STRING },
+	{ .id = "string.encode_chars", .operation = LibraryIntrinsic::StringEncodeChars, .site = TEXT },
+	{ .id = "string.concat_parts", .operation = LibraryIntrinsic::StringConcatParts, .site = TEXT },
 	{ .id = "integer.leading_zeros", .operation = LibraryIntrinsic::IntegerLeadingZeros, .site = INTEGER },
 	{ .id = "integer.trailing_zeros", .operation = LibraryIntrinsic::IntegerTrailingZeros, .site = INTEGER },
 	{ .id = "integer.to_string_radix", .operation = LibraryIntrinsic::IntegerToStringRadix, .site = INTEGER },
@@ -96,6 +118,12 @@ ResolvedType bytes () {
 	rt_bytes.width = 8;
 	rt_bytes.suffixes.emplace_back(arraySuffix());
 	return rt_bytes;
+}
+
+ResolvedType arrayOf (Keyword element) {
+	ResolvedType type(element);
+	type.suffixes.emplace_back(arraySuffix());
+	return type;
 }
 
 std::string typeList (const ResultTypes &types) {
@@ -150,8 +178,9 @@ void Analyzer::registerIntrinsics () {
 		if (it_paths == m_libraryPaths.end()) invalidIntrinsic(ib_body, "requires a declaration imported from the selected standard library");
 		if (const auto *type = asIntrinsicType(&sym)) {
 			if (!type->self.primitiveSelf) invalidIntrinsic(ib_body, "unknown primitive family");
-			if (!it_paths->second.contains(NUMERIC_MODULE) || di_signature.owner || sym.visibility != Visibility::Public)
-				invalidIntrinsic(ib_body, "requires a public top-level declaration in " + std::string(NUMERIC_MODULE));
+			const auto module = numericFamily(*type->self.primitiveSelf) ? NUMERIC_MODULE : PRIMITIVE_MODULE;
+			if (!it_paths->second.contains(module) || di_signature.owner || sym.visibility != Visibility::Public)
+				invalidIntrinsic(ib_body, "requires a public top-level declaration in " + std::string(module));
 			if (!m_primitiveFamilies.emplace(*type->self.primitiveSelf, &sym).second)
 				invalidIntrinsic(ib_body,
 				                 std::format("the {} family already has a declaration", primitiveFamilyName(*type->self.primitiveSelf)));
@@ -166,7 +195,7 @@ void Analyzer::registerIntrinsics () {
 		                      cd_owner->name.getNameKey() == is_site.owner;
 		if (is_site.family) {
 			const auto *owner     = asIntrinsicType(di_signature.owner);
-			const bool  formatter = is_spec->operation == LibraryIntrinsic::FloatFormat;
+			const bool  formatter = is_spec->operation == LibraryIntrinsic::FloatFormat || is_spec->operation == LibraryIntrinsic::CharFormat;
 			const bool  member    = formatter ? sym.kind == SymbolKind::Operator && sym.name.getNameKey() == provider::S_STRING :
 			                                    sym.kind == SymbolKind::Method;
 			if (!member || !owner || owner->self.primitiveSelf != is_site.family || !it_paths->second.contains(is_site.path))
@@ -202,6 +231,51 @@ void Analyzer::checkIntrinsicSignature (const Symbol &symbol, LibraryIntrinsic o
 	const auto            &ib_body      = std::get<IntrinsicBody>(callable(symbol)->executableBody()->value);
 	ResultTypes            v_parameters, v_results;
 	switch (operation) {
+	case LibraryIntrinsic::CharCodePoint:
+		v_results = { ResolvedType(KInteger) };
+		break;
+	case LibraryIntrinsic::CharWhitespace:
+	case LibraryIntrinsic::CharLetter:
+	case LibraryIntrinsic::CharDigit:
+	case LibraryIntrinsic::CharUpper:
+	case LibraryIntrinsic::CharLower:
+		v_results = { ResolvedType(KBoolean) };
+		break;
+	case LibraryIntrinsic::CharMapCase:
+		v_parameters = { ResolvedType(KBoolean) };
+		v_results    = { ResolvedType(KCharacter) };
+		break;
+	case LibraryIntrinsic::StringFind:
+		v_parameters = { ResolvedType(KString), ResolvedType(KBoolean) };
+		v_results    = { nullable(ResolvedType(KUsize)) };
+		break;
+	case LibraryIntrinsic::StringMatchesAffix:
+		v_parameters = { ResolvedType(KString), ResolvedType(KBoolean) };
+		v_results    = { ResolvedType(KBoolean) };
+		break;
+	case LibraryIntrinsic::StringCharAt:
+		v_parameters = { ResolvedType(KUsize) };
+		v_results    = { ResolvedType(KCharacter) };
+		break;
+	case LibraryIntrinsic::StringSubstring:
+		v_parameters = { ResolvedType(KUsize), ResolvedType(KUsize) };
+		v_results    = { ResolvedType(KString) };
+		break;
+	case LibraryIntrinsic::StringToChars:
+		v_results = { arrayOf(KCharacter) };
+		break;
+	case LibraryIntrinsic::StringSplit:
+		v_parameters = { ResolvedType(KString) };
+		v_results    = { arrayOf(KString) };
+		break;
+	case LibraryIntrinsic::StringEncodeChars:
+		v_parameters = { arrayOf(KCharacter) };
+		v_results    = { ResolvedType(KString) };
+		break;
+	case LibraryIntrinsic::StringConcatParts:
+		v_parameters = { arrayOf(KString) };
+		v_results    = { ResolvedType(KString) };
+		break;
 	case LibraryIntrinsic::IntegerLeadingZeros:
 	case LibraryIntrinsic::IntegerTrailingZeros:
 		v_results = { ResolvedType(KUsize) };
@@ -210,13 +284,19 @@ void Analyzer::checkIntrinsicSignature (const Symbol &symbol, LibraryIntrinsic o
 		v_parameters = { ResolvedType(KInteger) };
 		[[fallthrough]];
 	case LibraryIntrinsic::FloatFormat:
+	case LibraryIntrinsic::CharFormat:
 		v_results = { ResolvedType(KString) };
 		break;
 	case LibraryIntrinsic::FloatAbs:
 		v_results = { ownerType(*di_signature.owner) };
 		break;
+	case LibraryIntrinsic::ConsoleWrite:
 	case LibraryIntrinsic::NumericError:
 		v_parameters = { ResolvedType(KString) };
+		break;
+	case LibraryIntrinsic::ConsoleReadLine:
+		v_parameters = { ResolvedType(KString) };
+		v_results    = { nullable(ResolvedType(KString)) };
 		break;
 	case LibraryIntrinsic::DecodeUtf8:
 		v_parameters = { bytes() };

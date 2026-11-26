@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 fn<bool> mixed(final bool present) {
     def plain := usize::max..=usize::max;
     range<usize>? maybe := if (present) plain else null;

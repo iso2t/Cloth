@@ -26,8 +26,13 @@ runtime_archive := $(BUILD_DIR)/lib/cloth/$(runtime_triple)/libcloth_runtime.a
 .PHONY: runtime
 runtime: $(runtime_archive)
 
-$(runtime_archive): $(runtime_members)
+$(runtime_archive): $(runtime_members) Runtime/Kbuild
 	@$(make_dir)
+ifeq ($(OS),Windows_NT)
+	@powershell.exe -NoProfile -Command "[System.IO.File]::Delete('$@')"
+else
+	@$(RM) "$@"
+endif
 	$(RUNTIME_AR) rcs "$@" $(runtime_members)
 
 $(runtime_dir)/%.o: Runtime/src/%.c Runtime/Kbuild Runtime/Makefile

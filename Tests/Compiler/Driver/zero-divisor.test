@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # REQUIRES: x86 && (linux || win32)
 
-# RUN: %cloth --kind executable --src "%S/Inputs/zero-divisor.co" --target-bits 32 --emit-object "%t.32.o"
-# RUN: %cloth --kind executable --src "%S/Inputs/zero-divisor.co" --target-bits 64 --emit-object "%t.64.o"
-# RUN: %cloth --kind executable --src "%S/Inputs/zero-divisor.co" --emit-object "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/zero-divisor.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/zero-divisor.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/zero-divisor.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 84 --stdout-line 2 --stderr-line "Cloth runtime error: integer division by zero" 1 "%t.exe"
 # RUN: %expect_exit 1 "%t.exe" > "%t.log" 2>&1
@@ -12,9 +12,9 @@
 # ORDER-NEXT: 2
 # ORDER-NEXT: Cloth runtime error: integer division by zero
 
-# RUN: echo "pub fn<int> main() { println(quotient(18446744073709551616) -> int); return quotient(0) -> int; }" > "%t.co"
+# RUN: echo "using cloth.Console : println; pub fn<int> main() { println(quotient(18446744073709551616) -> int); return quotient(0) -> int; }" > "%t.co"
 # RUN: echo "fn<unsigned int<97>> quotient(final unsigned int<97> d) { unsigned int<97> n = d * 42; n /= d; return n; }" >> "%t.co"
-# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 42 --stderr-line "Cloth runtime error: integer division by zero" 1 "%t.exe"
 

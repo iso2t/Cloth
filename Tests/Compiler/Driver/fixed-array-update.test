@@ -2,20 +2,20 @@
 # REQUIRES: x86 && (linux || win32)
 
 # RUN: mkdir -p "%t"
-# RUN: %cloth --kind executable --src "%S/Inputs/fixed-array-update.co" --target-bits 32 --emit-object "%t/32.o"
-# RUN: %cloth --kind executable --src "%S/Inputs/fixed-array-update.co" --target-bits 64 --emit-object "%t/64.o"
-# RUN: %cloth --kind executable --src "%S/Inputs/fixed-array-update.co" --emit-object "%t/program.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/fixed-array-update.co" --target-bits 32 --emit-object "%t/32.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/fixed-array-update.co" --target-bits 64 --emit-object "%t/64.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/fixed-array-update.co" --emit-object "%t/program.o"
 # RUN: %cc "%t/program.o" %runtime -o "%t/program.exe"
 # RUN: %expect_exit --stdout-line 1 --empty-stderr 42 "%t/program.exe"
 
-# RUN: %cloth --kind executable --src "%S/Inputs/fixed-array-update-values.co" --emit-object "%t/program.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/fixed-array-update-values.co" --emit-object "%t/program.o"
 # RUN: %cc "%t/program.o" %runtime -o "%t/program.exe"
 # RUN: %expect_exit --stdout-line 1 --stdout-line 2 --stdout-line 3 --stdout-line 4 --stdout-line 5 --stdout-line 6 --empty-stderr 42 "%t/program.exe"
 
-# RUN: echo "fn<int> index() { println(1); return -1; }" > "%t/case.co"
+# RUN: echo "using cloth.Console : println; fn<int> index() { println(1); return -1; }" > "%t/case.co"
 # RUN: echo "fn<int> rhs() { println(99); return 0; }" >> "%t/case.co"
 # RUN: echo "pub fn<int> main() { int[2] a = [7, 40]; a[index()] /= rhs(); return a[1]; }" >> "%t/case.co"
-# RUN: %cloth --kind executable --src "%t/case.co" --emit-object "%t/program.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t/case.co" --emit-object "%t/program.o"
 # RUN: %cc "%t/program.o" %runtime -o "%t/program.exe"
 # RUN: %expect_exit --stdout-line 1 --stderr-line "Cloth runtime error: array index out of bounds" 1 "%t/program.exe"
 

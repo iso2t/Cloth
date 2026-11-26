@@ -204,14 +204,24 @@ int32_t clothRtCharCase (const int32_t value, const uint8_t upper) {
 	return upper ? utf8proc_toupper(value) : utf8proc_tolower(value);
 }
 
+static void appendScalar (ClothArray *result, int32_t scalar) {
+	unsigned char bytes[4];
+	const size_t  width = (size_t)utf8proc_encode_char(scalar, bytes);
+	append(result, bytes, width);
+}
+
+void clothRtTextFromChars (ClothText *out, const int32_t *scalars, const size_t count) {
+	ClothArray result = { 0 };
+	for (size_t i = 0; i < count; ++i) appendScalar(&result, scalars[i]);
+	*out = finish(&result);
+}
+
 void clothRtTextCase (ClothText *out, const ClothText *value, const uint8_t upper) {
 	ClothArray result = { 0 };
 	for (size_t i = 0; i < value->length;) {
 		int32_t scalar = 0;
 		i += decode(*value, i, &scalar);
-		unsigned char bytes[4];
-		const size_t  width = (size_t)utf8proc_encode_char(clothRtCharCase(scalar, upper), bytes);
-		append(&result, bytes, width);
+		appendScalar(&result, clothRtCharCase(scalar, upper));
 	}
 	*out = finish(&result);
 }

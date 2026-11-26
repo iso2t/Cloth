@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 using cloth.collections.Deque : Deque;
 
 pub typedef<class> Queue<T>(def<Deque<T>> items) {

@@ -396,6 +396,8 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 	std::vector<PlacedCandidate> v_placed = bindCandidates(name, span, arguments, group, validateArgumentLabels(arguments), typeArguments);
 	const auto it_firstGeneric = std::stable_partition(v_placed.begin(), v_placed.end(), [] (const PlacedCandidate &placed) { return !placed.parameters; });
 	const bool b_singleTemplate = v_placed.end() - it_firstGeneric == 1;
+	const bool                   consoleOnly =
+	        std::ranges::all_of(v_placed, [&] (const PlacedCandidate &placed) { return analyzer.consoleOverload(*placed.candidate->symbol); });
 	std::vector<std::optional<ResolvedType>> explicitTypes;
 	if (typeArguments) {
 		for (const TypeReference &ref : typeArguments->arguments) {
@@ -422,7 +424,7 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 		} else {
 			BodyChecker bc_operand = bc_input;
 			try {
-				ap_probe.result              = bc_operand.expression(*arg.expression);
+				ap_probe.result              = consoleOnly ? bc_operand.scalarInfo(*arg.expression) : bc_operand.expression(*arg.expression);
 				const ResultKind rk_argument = ap_probe.result->resultKind();
 				if (rk_argument == ResultKind::Empty)
 					fail(Code::NoMatchingCall, span, "No overload of '" + spelling + "' accepts an argument that produces no value",
@@ -432,6 +434,8 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 				ap_probe.after = bc_input.fs_flow = std::move(bc_operand.fs_flow);
 				b_naturalContinues &= ap_probe.result->fallsThrough;
 			} catch (const cde::ClothDiagnostic &error) {
+				// An inferred console argument has no destination to supply a width or an array element type.
+				if (consoleOnly && (!typeArguments || error.getCode() == Code::VoidValue)) throw;
 				if (!contextualFailure(error)) throw;
 				if (it_firstGeneric != v_placed.end()) {
 					BodyChecker bc_default = bc_input;
@@ -587,6 +591,10 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 		}
 	}
 	if (b_continues) requireReceiverProofs(proofs);
+	if (b_continues && !arguments.empty() && analyzer.consoleOverload(*best.symbol)) {
+		const auto &actual = v_probes.front().result;
+		checkConsoleText(name, *arguments.front().expression, actual ? actual->types.front() : best.parameters.front());
+	}
 	ResultTypes results;
 	if (best.operatorWidth)
 		results = analyzer.widthSignature(*best.contract, best.substitutions, best.operatorWidth).returns;

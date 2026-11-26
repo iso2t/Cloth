@@ -129,7 +129,7 @@ cells. Copying a class reference preserves the object's identity.
 
 Calls to generic functions and directly selected methods use the concrete
 types inferred or written at the call. A numeric bound can use the
-standard library's ``Number`` with ``--stdlib Stdlib/StandardLibrary/src``. Arithmetic uses the
+standard library's ``Number``. Arithmetic uses the
 concrete integer width and signedness, floating-point operation, or selected
 operator body. See `generic types and functions <../../language/types/Generics.rst>`_.
 
@@ -322,8 +322,7 @@ an object starts at ``main`` and follows calls to the helpers used by that
 program. A library declaration can therefore pass source checking even
 when a native caller cannot use it.
 
-To compile a program that imports the shipped library, pass ``--stdlib Stdlib/StandardLibrary/src``
-from the repository root. The native collection example updates ``list[0]``,
+The native collection example updates ``list[0]``,
 visits its snapshot while clearing the list, and exits with status 42.
 See the `collection consumer <../../../Tests/Compiler/Driver/Inputs/stdlib-collections.co>`_
 and the `standard library guide <../../../Stdlib/README.md>`_.
@@ -338,14 +337,9 @@ Runtime dependencies
 
 Include the runtime sources for the operations your program uses in the
 C compiler's link command. For the effects of printing and exiting, see
-`Built-in functions and methods <../../language/expressions/Builtins.rst>`_.
+`Console functions, exit, and primitive methods <../../language/expressions/Builtins.rst>`_.
 
-* With the standard-library integer formatter, ``println`` uses the general
-  text runtime. When compiling without that formatter, ``println`` on a
-  signed 32-bit ``int`` uses the small C entry point
-  ``void cloth_rt_println_i32(int32_t value)`` in
-  `Runtime/src/println.c <../../../Runtime/src/println.c>`_.
-* General text I/O, formatting, string comparison and methods, Unicode
+* The standard-library console functions, formatting, string comparison and methods, Unicode
   character methods, and UTF-8 decoding use `Runtime/src/text.c
   <../../../Runtime/src/text.c>`_, the array and error runtimes, and the
   bundled `utf8proc source <../../../ThirdParty/utf8proc/utf8proc.c>`_.

@@ -7,7 +7,7 @@
 # RUN: %cc "%t.o" -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 7 "%t.exe"
 
-# RUN: %cloth --kind executable --src "%S/Inputs/struct-field-writes.co" --emit-object "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/struct-field-writes.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 256 --stdout-line 7 --stdout-line 0 --empty-stderr 7 "%t.exe"
 

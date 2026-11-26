@@ -1,12 +1,14 @@
 .. SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-Built-in functions and methods
-==============================
+Console functions, exit, and primitive methods
+==============================================
 
 ``println`` writes a line to standard output. ``exit`` ends the process.
 This program prints ``1`` and exits with status 7.
 
 .. code-block:: text
+
+   using cloth.Console : println;
 
    pub fn<int> main() {
        println(1);
@@ -25,14 +27,21 @@ a program using ``println``, see `Run your first Cloth program
 Text input and output
 ---------------------
 
-``print(value)`` takes one value with a text representation.
-For either printing function, a class or struct can supply its text with
-``operator ::str() -> string``. ``input()`` returns ``string?`` and accepts an
-optional ``string?`` prompt. The prompt is flushed before reading a line.
-End of input and malformed UTF-8 yield ``null``. A blank input line yields
-an empty string. These functions take positional arguments.
-A function declared under the same name takes precedence over the built-in
-overloads.
+Import the console functions each module uses. For example,
+``using cloth.Console : print, input;`` brings those two functions into
+scope. The console functions take positional arguments.
+
+``print(value)`` writes the value's text. ``println(value)`` also writes a
+newline. Both use the same ``::str`` formatter as string interpolation.
+For a null argument, ``print`` writes an empty string and ``println`` writes
+just the newline. Struct arguments follow Cloth's usual value semantics.
+A formatter that updates a struct field changes the copy passed to the
+console function.
+
+``input(prompt)`` accepts any printable value, formats it once, and flushes
+the prompt before reading a line. For example, ``input(42)`` displays ``42``.
+``input()`` and ``input(null)`` read silently. The result is ``string?``.
+A blank line yields ``""``. End of input and malformed UTF-8 yield ``null``.
 
 Ending the process
 ------------------
@@ -89,9 +98,11 @@ the comparison is unsigned and the result has all 65 bits. The same methods
 are available on ``isize`` and ``usize``.
 
 The compiler loads ``Integer`` and ``Float`` from ``cloth/lang/num/Number.co``
-under the ``--stdlib`` source root. Their methods are available without an
-import. Inside either declaration, ``self`` is the receiver value and
-``Self`` is its exact type, including the width and integer signedness.
+under the selected standard library root. The methods and formatters
+declared by these bindings are available on numeric receivers without
+an import. Inside either declaration, ``self``
+is the receiver value and ``Self`` is its exact type, including width and
+integer signedness.
 For example, these members of ``Integer`` use both forms of method body.
 
 .. code-block:: text
@@ -113,6 +124,12 @@ interpolation use the family's formatter. See the `numeric declarations
 Character and string methods
 ----------------------------
 
+The compiler loads ``cloth/lang/Primitive.co`` from the selected standard
+library. Its ``String``, ``Char``, and ``Bool`` declarations provide methods
+on ``string``, ``char``, and ``bool`` without an import. Each declaration's
+``Self`` denotes its primitive type. Printing, interpolation, and explicit
+``value::str`` require the formatter declared on that type.
+
 A ``char`` supplies the boolean tests ``isWhitespace()``, ``isLetter()``,
 ``isDigit()``, ``isLetterOrDigit()``, ``isUpperCase()``, and ``isLowerCase()``.
 Both ``char`` and ``string`` supply ``toUpperCase()`` and ``toLowerCase()``,
@@ -132,6 +149,11 @@ returning the same type as the receiver.
 Indices and substring bounds count Unicode scalar values. The substring
 includes the start and stops before the end. A missing search result is
 ``null``. Case conversion uses Unicode simple case mappings.
+An empty separator splits before the first scalar, between adjacent
+scalars, and after the last. Replacing an empty search string inserts the
+replacement at those same positions. See the `Cloth implementations
+<../../../Stdlib/StandardLibrary/src/cloth/lang/Primitive.co>`_ and
+`native examples <../../../Tests/Compiler/Driver/Inputs/primitive-text.co>`_.
 
 For a call on a nullable receiver, see `Member access
 <Access.rst>`_. The `built-in call tests

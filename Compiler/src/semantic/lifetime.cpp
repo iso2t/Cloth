@@ -588,7 +588,7 @@ Values LifetimeChecker::call (const CallSite &node, const ExpressionInfo &info, 
 	if (opt_operation == ListOperation::Append)
 		h_argument = scalar(*node.suppliedArguments.front().expression, path);
 	else
-		arguments(node, path, info.builtin ? &checks.atAccess : nullptr);
+		arguments(node, path, &checks.atAccess);
 	defaults(info, path);
 	if (!path.reachable) return {};
 	if (sc_state || b_method) access(h_receiver, path, ts_receiver, b_self, checks.atAccess);

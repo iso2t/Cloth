@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 fn<int> mark(int n) { println(n); return n; }
 typedef<interface> Tagged {}
 typedef<class> Base(pub def<int> initial, bool checked) : Tagged {

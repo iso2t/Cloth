@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<class> Cell<T>(pub def<T> value, pub def<bool> valid) {
     pub Cell(T seed) : (seed, true) {}
     operator []?(int i) -> bool { println(2); return valid && i == 0; }

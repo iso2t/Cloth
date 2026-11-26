@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 using cloth.Library : *;
 using cloth.collections.List : List;
 using cloth.collections.OwningList : OwningList;

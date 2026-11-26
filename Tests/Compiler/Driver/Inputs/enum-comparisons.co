@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<enum> Mode { Reserved, pub Standby, pub On, pub Off; }
 typedef<struct> Setting { pub bool enabled, pub Mode mode; }
 typedef<struct> Device { pub typedef<enum> Mode { pub On, pub Off; } }

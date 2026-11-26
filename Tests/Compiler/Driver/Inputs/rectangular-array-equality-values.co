@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<enum> Mode { pub Off, pub On; }
 
 fn<int> trace(final int label) {

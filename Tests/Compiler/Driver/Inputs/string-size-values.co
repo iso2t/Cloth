@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<struct> Box { pub string text; }
 typedef<enum> Label(pub def<string?> text = null) { pub None, pub Mixed("é\0😀"); }
 

@@ -176,4 +176,4 @@ Build options take precedence over the corresponding environment variables.
      - Directory containing the per-triple runtime directories.
    * - ``--stdlib``
      - ``CLOTH_STDLIB``
-     - Source root for imports such as ``cloth.collections.List``.
+     - Override the standard library bundled with the selected compiler.

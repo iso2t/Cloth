@@ -38,6 +38,7 @@ CLOTH_RT_API(uint8_t, clothRtTextInput, text_input, ClothText *result, const Clo
 CLOTH_RT_API(void, clothRtTextInteger, text_integer, ClothText *out, const unsigned char *bits, uint32_t width, uint8_t isSigned, int32_t radix);
 CLOTH_RT_API(void, clothRtTextFloat, text_float, ClothText *out, double value, int32_t width);
 CLOTH_RT_API(void, clothRtTextChar, text_char, ClothText *out, int32_t scalar);
+CLOTH_RT_API(void, clothRtTextFromChars, text_from_chars, ClothText *out, const int32_t *scalars, size_t count);
 CLOTH_RT_API(uint8_t, clothRtCharTest, char_test, int32_t scalar, int32_t test);
 CLOTH_RT_API(int32_t, clothRtCharCase, char_case, int32_t value, uint8_t upper);
 CLOTH_RT_API(void, clothRtTextCase, text_case, ClothText *out, const ClothText *value, uint8_t upper);

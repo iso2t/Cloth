@@ -25,8 +25,11 @@ and `diagnostic label conventions <../../../Diagnostics/README.rst>`_.
 Declaration collection builds a ``SymbolTable`` for each file, including
 the scopes of types and states. Overloads share a name and retain their
 own signatures. The checker follows imports from the entry file and
-indexes each source once. Each importing file sees its selected public
-names. Resolving signatures across these scopes before checking bodies
+indexes each source once. After resolving each file's declarations and
+explicit imports, the checker adds each public name from the selected library's
+``cloth/lang/Prelude.co`` wherever the file has no binding for it. See the
+`prelude lookup rules <../../language/source/Visibility.rst#standard-library-prelude>`_.
+Resolving signatures across these scopes before checking bodies
 allows a call to a later declaration and mutually recursive functions.
 See `symbol collection <../../../Compiler/src/semantic/symbol_table.cpp>`_
 and `import resolution <../../../Compiler/src/semantic/checked_program.cpp>`_.
@@ -79,12 +82,22 @@ The `program boundary checks <../../../Compiler/src/semantic/program_boundaries.
 also select the entry point for executable checking. For what the selected
 program can emit, see `Lowering a checked program <Backend.rst>`_.
 
-The checker also loads ``cloth/lang/num/Number.co`` from the selected
-standard library when that module exists. The public ``primitive.integer``
-and ``primitive.float`` declarations supply members for numeric receivers.
+The checker loads ``cloth/lang/num/Number.co`` and ``cloth/lang/Primitive.co``
+independently when they exist under the selected standard-library root. The
+first module supplies members for integer and floating-point receivers.
+The second binds ``primitive.string``, ``primitive.char``, and ``primitive.bool``.
 Member lookup binds each declaration's implicit ``Self`` parameter
 to the receiver's resolved type. The generic instance key carries that type
 through body checking and native code generation. The checker diagnoses
-invalid constant arguments at the call site. Builds without a binding for
-the family use the standalone compiler's numeric methods. See the
-`numeric declarations <../../../Stdlib/StandardLibrary/src/cloth/lang/num/Number.co>`_.
+invalid constant arguments at the call site for matching library overloads.
+A primitive method or formatter is available only when its backing declaration
+supplies that member. See the
+`numeric declarations <../../../Stdlib/StandardLibrary/src/cloth/lang/num/Number.co>`_
+and `text and boolean declarations <../../../Stdlib/StandardLibrary/src/cloth/lang/Primitive.co>`_.
+
+Importing names from ``cloth.Console`` loads
+`cloth/Console.co <../../../Stdlib/StandardLibrary/src/cloth/Console.co>`_.
+Calls to the imported functions use ordinary lexical lookup. The checker diagnoses an
+unprintable argument at the call site and specializes the generic body
+with the inferred payload type. The console module binds its two I/O
+intrinsics to the runtime's UTF-8 write and prompted line-read operations.

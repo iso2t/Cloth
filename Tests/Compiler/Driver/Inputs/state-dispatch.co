@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 pub typedef<interface> Identified { pub mt<int> id(); }
 typedef<state<int>> pub Loaded for Identified {
     init { println(state); }

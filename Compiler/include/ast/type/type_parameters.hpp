@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <initializer_list>
 #include <optional>
 #include <string_view>
 #include <variant>
@@ -30,10 +31,35 @@ struct TypeParameterBound {
 	}
 };
 
-enum class PrimitiveFamily { Integer, Float };
+enum class PrimitiveFamily { Integer, Float, String, Char, Bool };
+
+constexpr bool numericFamily (PrimitiveFamily family) {
+	return family == PrimitiveFamily::Integer || family == PrimitiveFamily::Float;
+}
 
 constexpr std::string_view primitiveFamilyName (PrimitiveFamily family) {
-	return family == PrimitiveFamily::Integer ? "integer" : "float";
+	switch (family) {
+	case PrimitiveFamily::Integer:
+		return "integer";
+	case PrimitiveFamily::Float:
+		return "float";
+	case PrimitiveFamily::String:
+		return "string";
+	case PrimitiveFamily::Char:
+		return "char";
+	case PrimitiveFamily::Bool:
+		return "bool";
+	}
+	return {};
+}
+
+constexpr std::optional<PrimitiveFamily> primitiveFamilyForBinding (std::string_view id) {
+	constexpr std::string_view prefix = "primitive.";
+	if (!id.starts_with(prefix)) return {};
+	id.remove_prefix(prefix.size());
+	for (const auto family : { PrimitiveFamily::Integer, PrimitiveFamily::Float, PrimitiveFamily::String, PrimitiveFamily::Char, PrimitiveFamily::Bool })
+		if (id == primitiveFamilyName(family)) return family;
+	return {};
 }
 
 struct TypeParameterDeclaration {

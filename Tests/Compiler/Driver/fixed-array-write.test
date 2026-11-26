@@ -7,19 +7,19 @@
 # RUN: %cc "%t.o" -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
 
-# RUN: %cloth --kind executable --src "%S/Inputs/fixed-array-write-values.co" --emit-object "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/fixed-array-write-values.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 1 --stdout-line 2 --stdout-line 3 --stdout-line 4 --empty-stderr 42 "%t.exe"
 
 # RUN: %python "%S/Inputs/fixed_array_write_widths.py" "%t.co"
-# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
 
-# RUN: echo "fn<int> put(final int<1> i) { int[2] a = [7, 9]; a[i] = rhs(); return 42; }" > "%t.co"
+# RUN: echo "using cloth.Console : println; fn<int> put(final int<1> i) { int[2] a = [7, 9]; a[i] = rhs(); return 42; }" > "%t.co"
 # RUN: echo "fn<int> rhs() { println(99); return 42; }" >> "%t.co"
 # RUN: echo "pub fn<int> main() = put(-1);" >> "%t.co"
-# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: array index out of bounds" 1 "%t.exe"
 

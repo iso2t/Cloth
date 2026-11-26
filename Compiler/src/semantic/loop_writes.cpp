@@ -110,17 +110,17 @@ BodyChecker::SourceFlow BodyChecker::collectWrites (const Expression &node, Writ
 	if (const auto *ce_call = dynamic_cast<const CallExpression *>(&node)) {
 		const std::string &s_name = ce_call->name.getNameKey();
 		if (!local(s_name)) {
-			if (builtinNeverReturns(s_name) && callCandidates(*ce_call).empty()) sf_operands.fallsThrough = false;
-			if (hasInstance() && asStruct(owner) && !builtinFunctionNamed(s_name) &&
+			if (isBuiltinExitName(s_name) && callCandidates(*ce_call).empty()) sf_operands.fallsThrough = false;
+			if (hasInstance() && asStruct(owner) && !isBuiltinExitName(s_name) &&
 			    !analyzer.members(selfType(), s_name, SymbolKind::Method, MemberLookup::CallContract).empty())
 				writes.receivers.insert({ .root = &context.name });
 		}
 	} else if (const auto *tc_test = dynamic_cast<const TypeCheckExpression *>(&node)) {
-		// A dotted value starts at its lexical binding. For a bare right operand a type of that name takes precedence.
+		// A dotted value starts at its lexical binding. A bare value can shadow an implicit prelude type.
 		if (tc_test->valueCandidate)
 			sf_operands = sf_operands.then(collectWrites(*tc_test->valueCandidate, writes));
 		else if (const Token *t_name = tc_test->target.getBareIdentifier();
-		         t_name && local(t_name->getNameKey()) && !analyzer.hasTypeName(context, *t_name))
+		         t_name && local(t_name->getNameKey()) && !analyzer.hasExplicitTypeName(context, *t_name))
 			sf_operands = sf_operands.then(collectWrites(NameExpression(*t_name), writes));
 	}
 	sf_operands.truth.reset();

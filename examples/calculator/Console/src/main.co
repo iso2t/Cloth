@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 using Arithmetic : add, subtract, multiply, divide;
+using cloth.Console : println;
 
 pub fn<int> main(string[] args) {
     if (args::size != 3) return usage();

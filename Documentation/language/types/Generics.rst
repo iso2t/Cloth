@@ -6,22 +6,20 @@ Generic types and functions
 Declare a type parameter after the name of a function, method or type.
 Here the two uses of ``T`` in ``twice`` give the parameter and the result
 the same type. Passing an ``int<8>`` keeps the result eight bits wide.
+The standard library prelude brings ``Number`` into scope.
 
 .. code-block:: text
-
-   using cloth.lang.num.Number: Number;
 
    fn<T> twice<T: Number>(T value) = value + value;
    fn<int<8>> narrow(int<8> value) = twice(value);
 
-Check this example with ``--stdlib Stdlib/StandardLibrary/src`` from the repository root.
 The `numeric bound example <../../../Tests/Compiler/Semantic/generic-number.co>`_
 also calls ``twice`` with unsigned integers, floats and a class that supplies ``+``.
 
 The same function can be compiled to a native object for several types.
 For example, ``twice<int<12>>(21)`` returns 42, and
 ``twice<unsigned int<8>>(150)`` returns 44 after eight-bit addition.
-A class that implements the imported ``Number`` interface can supply
+A class that implements the ``Number`` interface can supply
 its own ``+`` for the same call. For a complete executable, see the
 `linked specialization example <../../../Tests/Compiler/Driver/Inputs/generic-specialization.co>`_.
 

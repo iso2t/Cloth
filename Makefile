@@ -35,6 +35,7 @@ objects := $(addprefix $(BUILD_DIR)/obj/,$(obj-y)) \
            $(musubi_object) $(utf8proc_object)
 program := $(BUILD_DIR)/cloth$(exe_suffix)
 
+include Stdlib/Makefile
 include Runtime/Makefile
 include Compiler/migration.mk
 include Tests/Makefile

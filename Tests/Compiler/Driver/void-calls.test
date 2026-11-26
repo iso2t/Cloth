@@ -20,11 +20,11 @@
 # HELPER-linux-NOT: }
 # HELPER-linux: Binding: Local
 
-# RUN: echo "pub fn<int> main () { touch(); return 42; }" > "%t.co"
+# RUN: echo "using cloth.Console : println; pub fn<int> main () { touch(); return 42; }" > "%t.co"
 # RUN: echo "fn<void> touch() {" >> "%t.co"
 # RUN: echo "    println(1);" >> "%t.co"
 # RUN: echo "}" >> "%t.co"
-# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 1 --empty-stderr 42 "%t.exe"
 

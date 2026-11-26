@@ -31,7 +31,6 @@ CLOTH_RT_API(void, clothRtDivmodWords, divmod_words, uint32_t *dividend, uint32_
 CLOTH_RT_API(struct ClothString *, clothRtProcessArguments, process_arguments, int argc, char **argv, size_t *count);
 CLOTH_RT_API(void, clothRtReleaseArguments, release_arguments, struct ClothString *arguments, size_t count);
 
-CLOTH_RT_API(void, clothRtPrintlnI32, println_i32, int32_t value);
 
 CLOTH_RT_API(_Noreturn void, clothRtExit, exit, int32_t status);
 CLOTH_RT_API(_Noreturn void, clothRtExitMessage, exit_message, int32_t status, const unsigned char *data, size_t length);

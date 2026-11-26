@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.Console : println;
+
 typedef<class> Item(pub def<int> value, bool checked) {
     pub Item(int n) : (n, true) {}
     pub def<int[8]> cells = [0, 0, 0, 0, 0, 0, 0, 0];
