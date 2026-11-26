@@ -25,7 +25,7 @@ class LoweredModule {
 	// The LLVM handle is valid for the lifetime of this object.
 	[[nodiscard]] LLVMModuleRef          get () const;
 	void                                 verify () const;
-	[[nodiscard]] std::vector<std::byte> emit (EmitKind kind);
+	[[nodiscard]] std::vector<std::byte> emit (EmitKind kind) const;
 
     private:
 	// The module borrows its context and must be destroyed first.

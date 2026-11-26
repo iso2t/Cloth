@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using cloth.Console : println;
+
+typedef<class> Item { pub Item(int tag) : () {} }
+typedef<struct> Box {
+    pub Item item;
+    pub operator<Item> ==() = item;
+    pub operator<Item> ===() = item;
+}
+
+typedef<struct> Label {
+    pub string text;
+    pub operator<string> ==() = text;
+    pub operator<OtherLabel> ==() -> string { println(1); return text; }
+}
+typedef<struct> OtherLabel {
+    pub string text;
+    pub operator<Label> ==() -> string { println(2); return text; }
+}
+typedef<struct> MaybeLabel { pub string? text; pub operator<string> ==() = text; }
+
+typedef<interface> View {}
+typedef<class> Key(pub def<int> code) : View {
+    pub Key(int value, int tag) : (value) {}
+    pub operator ==(Key other) = code == other.code;
+}
+typedef<struct> ViewBox { pub View value; pub operator<View> ==() = value; }
+fn<bool> matches(ViewBox boxed, View other) = boxed == other;
+typedef<struct> MaybeKey { pub Key? key; pub operator<Key> ==() = key; }
+
+typedef<struct> Row { pub int[] cells; pub operator<int[]> ==() = cells; }
+typedef<class> Table(pub def<int[2]> cells) { pub Table(int tag) : ([7, 8]) {} }
+typedef<struct> EditRow {
+    pub Table table;
+    pub operator<int[2]> ==() -> int[2] { table.cells[0] = 9; return table.cells; }
+}
+
+pub fn<int> main() {
+    def a = Item::new(0);
+    def b = Item::new(0);
+    Box box = {a};
+    if (box == b || b == box || box != a || a != box) return 1;
+    if (!(box != b) || !(box == a) || box === b || !(a === box)) return 2;
+    a::delete;
+    b::delete;
+
+    Label label = {"a\0b"};
+    OtherLabel other = {"a\0c"};
+    if (label != "a\0b" || "a\0b" != label || label == "a\0c" || "a\0c" == label) return 3;
+    if (!(label != other)) return 4;
+    MaybeLabel absent = {null};
+    MaybeLabel present = {""};
+    if (absent == "" || "" == absent || present != "" || "" != present) return 5;
+
+    def first = Key::new(7, 0);
+    def equal = Key::new(7, 0);
+    def different = Key::new(8, 0);
+    ViewBox wrapped = {first};
+    if (!matches(wrapped, equal) || matches(wrapped, different)) return 6;
+    MaybeKey some = {first};
+    MaybeKey none = {null};
+    if (some != equal || some == different || none == first) return 7;
+    first::delete;
+    equal::delete;
+    different::delete;
+
+    int[] cells = [7, 8];
+    Row row = {cells};
+    if (row != cells || cells != row) return 8;
+    cells[0] = 9;
+    if (row == cells || cells == row) return 9;
+    def table = Table::new(0);
+    EditRow edit = {table};
+    if (table.cells == edit || table.cells != [9, 8]) return 10;
+    table::delete;
+    return 42;
+}
