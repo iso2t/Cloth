@@ -70,7 +70,7 @@ LLVMTypeRef ValueTypes::nullableType (LLVMTypeRef payload) const {
 }
 
 LLVMTypeRef ValueTypes::localType (const cloth::ResolvedType &type) {
-	if (growable_array::supported(type)) return array_descriptor::type(mod_module, cp_program, type);
+	if (growable_array::supported(type)) return flatCell(type.element()) ? array_descriptor::type(mod_module, cp_program, type) : nullptr;
 	if (type.nullable()) {
 		if (growable_array::supported(type.element())) return nullableType(localType(type.element()));
 		return slotType(type) ? nullableType(localType(type.element())) : nullptr;
@@ -88,13 +88,14 @@ LLVMTypeRef ValueTypes::localType (const cloth::ResolvedType &type) {
 
 LLVMTypeRef ValueTypes::slotType (const cloth::ResolvedType &type) {
 	if (type.nullable()) return nullableType(slotType(type.element()));
-	if (!type.array()) return get(type);
+	if (!type.array() || growable_array::supported(type)) return get(type);
 	const ArrayTypes *at_types = arrayTypes(type);
 	return at_types ? at_types->buffer : nullptr;
 }
 
 std::uint64_t ValueTypes::backingBytes (const cloth::ResolvedType &field) {
 	if (field.nullable()) return backingBytes(field.element());
+	if (field.array() && !field.arrayExtent()) return 0;
 	if (field.array()) {
 		const ArrayTypes &at_types = *arrayTypes(field);
 		return std::max<std::uint64_t>(at_types.backingBytes, LLVMABISizeOfType(LLVMGetModuleDataLayout(mod_module), at_types.buffer));
@@ -108,6 +109,7 @@ const ArrayTypes *ValueTypes::arrayTypes (const cloth::ResolvedType &type) {
 	const std::optional<std::uint64_t> opt_count = type.arrayExtent();
 	if (!opt_count) return nullptr;
 	const cloth::ResolvedType rt_element = type.element();
+	if (rt_element.array() && !rt_element.arrayExtent()) return nullptr;
 	const LLVMTypeRef         ty_stored  = arrayElementPlace(rt_element) == StoragePlace::Embedded ? get(rt_element) : slotType(rt_element);
 	if (!ty_stored) return nullptr;
 	const LLVMTypeRef ty_element = localType(rt_element);
@@ -143,12 +145,14 @@ const ArrayTypes *ValueTypes::arrayTypes (const cloth::ResolvedType &type) {
 LLVMTypeRef ValueTypes::get (const cloth::ResolvedType &type) {
 	const LLVMContextRef ctx_context = LLVMGetModuleContext(mod_module);
 	if (type.nullable()) return nullableType(get(type.element()));
+	if (growable_array::supported(type)) return localType(type);
 	if (type.array()) {
 		const ArrayTypes *at_types = arrayTypes(type);
 		return at_types ? at_types->descriptor : nullptr;
 	}
 	if (const LLVMTypeRef ty_scalar = scalarType(ctx_context, cp_program.layout, type)) return ty_scalar;
 	if (type == cloth::ResolvedType(cloth::KString)) return string_value::type(mod_module);
+	if (type == cloth::ResolvedType(cloth::KTypeinfo)) return LLVMPointerTypeInContext(ctx_context, 0);
 	if (const cloth::ResolvedType *rt_endpoint = cloth::semantic::rangeEndpoint(type); rt_endpoint && rt_endpoint->integer()) {
 		const LLVMTypeRef ty_endpoint = get(*rt_endpoint);
 		return ty_endpoint ? IntegerRange::type(ty_endpoint) : nullptr;
@@ -173,6 +177,7 @@ const StructTypes *ValueTypes::structTypes (const cloth::ResolvedType &type) {
 	v_elements.reserve(sl_layout.fields.size());
 	v_values.reserve(sl_layout.fields.size());
 	for (const cloth::StructLayout::Field &field : sl_layout.fields) {
+		if (field.type.nullable() && growable_array::supported(field.type.element())) return nullptr;
 		const LLVMTypeRef ty_field = get(field.type);
 		if (!ty_field) return nullptr;
 		const LLVMTypeRef ty_value = localType(field.type);
@@ -222,6 +227,7 @@ const StructTypes *ValueTypes::structTypes (const cloth::ResolvedType &type) {
 		ty_value = LLVMStructTypeInContext(ctx_context, v_values.data(), static_cast<unsigned>(v_values.size()), false);
 		if (LLVMABISizeOfType(td_target, ty_value) != opt_value->size) return nullptr;
 	}
+	if (ty_value != ty_struct && ownsBuffers(type)) return nullptr;
 	return &m_structs
 	                .emplace(&sl_layout,
 	                         StructTypes{ .storage = ty_struct, .value = ty_value, .witnesses = std::move(m_witnesses), .backingBytes = u64_backing })

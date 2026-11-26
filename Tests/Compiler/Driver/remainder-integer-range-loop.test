@@ -7,7 +7,7 @@
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
 
-# RUN: echo "pub fn<int> main() { int visits = 0; for (int n <- 35..=7; n %= 14) { println(n); visits++; if (visits > 2) return 2 }; return 3 }" > "%t.co"
+# RUN: echo "pub fn<int> main() { int visits = 0; for (int n <- 35..=7; n %= 14) { println(n); visits++; if (visits > 2) return 2; } return 3; }" > "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 35 --stdout-line 7 --stderr-line "Cloth runtime error: range counter update made no progress" 1 "%t.exe"
@@ -16,25 +16,25 @@
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
 
-# RUN: echo "fn<unsigned int<65>> zero() { println(14); return 0 }" > "%t.co"
-# RUN: echo "pub fn<int> main() { for (unsigned int<65> n <- 35..=7; n %= zero()) { n = 0; continue }; return 2 }" >> "%t.co"
+# RUN: echo "fn<unsigned int<65>> zero() { println(14); return 0; }" > "%t.co"
+# RUN: echo "pub fn<int> main() { for (unsigned int<65> n <- 35..=7; n %= zero()) { n = 0; continue; } return 2; }" >> "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 14 --stderr-line "Cloth runtime error: integer division by zero" 1 "%t.exe"
 
-# RUN: echo "fn<int<97>> divisor() = -1" > "%t.co"
-# RUN: echo "pub fn<int> main() { for (int<97> n <- int<97>::min..=0; n %= divisor()) continue; return 2 }" >> "%t.co"
+# RUN: echo "fn<int<97>> divisor() = -1;" > "%t.co"
+# RUN: echo "pub fn<int> main() { for (int<97> n <- int<97>::min..=0; n %= divisor()) continue; return 2; }" >> "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: signed integer division overflow" 1 "%t.exe"
 
-# RUN: echo "pub fn<int> main() { for (int n <- 35..=7; n %= 0) continue; return 2 }" > "%t.co"
+# RUN: echo "pub fn<int> main() { for (int n <- 35..=7; n %= 0) continue; return 2; }" > "%t.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=ZERO --input-file "%t.err"
 # ZERO: [C3050] Error: Integer divisor is zero
 
-# RUN: echo "typedef<struct> Divisor { pub int value; pub operator %(int left, self) -> int = left % value }" > "%t.co"
-# RUN: echo "pub fn<int> main() { Divisor d = { 14 }; for (int n <- 35..=7; n %= d) continue; return 0 }" >> "%t.co"
+# RUN: echo "typedef<struct> Divisor { pub int value; pub operator %(int left, self) -> int = left % value; }" > "%t.co"
+# RUN: echo "pub fn<int> main() { Divisor d = { 14 }; for (int n <- 35..=7; n %= d) continue; return 0; }" >> "%t.co"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co"
 # RUN: %expect_exit 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" > "%t.log" 2>&1
 # RUN: %filecheck "%/s" --check-prefix=OVERLOAD --input-file "%t.log"

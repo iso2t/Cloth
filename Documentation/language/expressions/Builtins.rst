@@ -9,17 +9,17 @@ This program prints ``1`` and exits with status 7.
 .. code-block:: text
 
    pub fn<int> main() {
-       println(1)
-       exit(7)
+       println(1);
+       exit(7);
    }
 
 Printing a line
 ---------------
 
-The source checker accepts ``println()`` or one positional value that
-can be formatted as text. For native output, pass one signed 32-bit
-``int``. Its decimal representation is followed by a newline. To link
-and run a program using ``println``, see `Run your first Cloth program
+``println()`` writes a newline. With one positional argument it writes the
+value's text followed by a newline. For example, ``println(true)`` writes
+``true``, and ``println([40, 2])`` writes ``[40, 2]``. To link and run
+a program using ``println``, see `Run your first Cloth program
 <../../getting-started/FirstProgram.rst>`_.
 
 Text input and output
@@ -28,7 +28,9 @@ Text input and output
 ``print(value)`` takes one value with a text representation.
 For either printing function, a class or struct can supply its text with
 ``operator ::str() -> string``. ``input()`` returns ``string?`` and accepts an
-optional ``string?`` prompt. These functions take positional arguments.
+optional ``string?`` prompt. The prompt is flushed before reading a line.
+End of input and malformed UTF-8 yield ``null``. A blank input line yields
+an empty string. These functions take positional arguments.
 A function declared under the same name takes precedence over the built-in
 overloads.
 
@@ -94,6 +96,10 @@ returning the same type as the receiver.
 * ``replace(old, new)`` and ``replaceFirst(old, new)`` take two strings.
   ``removePrefix(text)`` and ``removeSuffix(text)`` take one.
   These operations and ``trim()``, ``trimStart()``, and ``trimEnd()`` return strings.
+
+Indices and substring bounds count Unicode scalar values. The substring
+includes the start and stops before the end. A missing search result is
+``null``. Case conversion uses Unicode simple case mappings.
 
 For a call on a nullable receiver, see `Member access
 <Access.rst>`_. The `built-in call tests

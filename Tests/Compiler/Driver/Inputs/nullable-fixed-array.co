@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    int[2]? pair = null
-    if (pair != null) return 1
-    pair = [0, 0]
-    if (pair == null || pair[0] != 0 || pair[1] != 0) return 2
+    int[2]? pair = null;
+    if (pair != null) return 1;
+    pair = [0, 0];
+    if (pair == null || pair[0] != 0 || pair[1] != 0) return 2;
 
-    int[2]? saved := pair
-    pair[0] = 7
-    if (pair[0] != 7) return 3
-    pair = null
-    if (pair != null || null == saved) return 4
-    return if (saved[0] == 0 && saved[1] == 0) 42 else 5
+    int[2]? saved := pair;
+    pair[0] = 7;
+    if (pair[0] != 7) return 3;
+    pair = null;
+    if (pair != null || null == saved) return 4;
+    return if (saved[0] == 0 && saved[1] == 0) 42 else 5;
 }

@@ -8,15 +8,15 @@ the path to the example. Collection methods are checked by the frontend.
 See the [native object guide](../../../Documentation/compiler/driver/Objects.rst#source-checks-and-native-code).
 
 ```cloth
-using cloth.collections.List : List
+using cloth.collections.List : List;
 
 fn main() {
-    def values := List<int>::new
-    values.append(1)
-    values.insert(0, 2)
-    def saved = values.toArray()
-    values::delete
-    println(saved)
+    def values := List<int>::new;
+    values.append(1);
+    values.insert(0, 2);
+    def saved = values.toArray();
+    values::delete;
+    println(saved);
 }
 ```
 
@@ -78,24 +78,24 @@ object can occupy only one slot in one owning list. Inserting an already owned
 object or creating an ownership cycle raises an ownership error.
 
 ```cloth
-using cloth.collections.OwningList : OwningList
+using cloth.collections.OwningList : OwningList;
 
 typedef<class> Item {
-    pub def<int> value = 0
-    pub Item(int initial) : () { value = initial }
-    pub ~Item { println(value) }
+    pub def<int> value = 0;
+    pub Item(int initial) : () { value = initial; }
+    pub ~Item { println(value); }
 }
 
 fn main() {
-    def items = OwningList<Item>::new
-    items.append(Item::new(1))
-    items.append(Item::new(2))
-    items[0].value = 10
-    for (def item <- items) println(item.value)
+    def items = OwningList<Item>::new;
+    items.append(Item::new(1));
+    items.append(Item::new(2));
+    items[0].value = 10;
+    for (def item <- items) println(item.value);
 
-    def taken = items.removeAt(0)
-    items::delete
-    taken::delete
+    def taken = items.removeAt(0);
+    items::delete;
+    taken::delete;
 }
 ```
 
@@ -131,14 +131,14 @@ order and return the snapshot. The module also exposes the nested
 snapshot used by `emptySnapshot<E>()`. See the [snapshot declaration](Snapshot.co).
 
 ```cloth
-using cloth.collections.Snapshot : Snapshot, emptySnapshot
+using cloth.collections.Snapshot : Snapshot, emptySnapshot;
 
 typedef<class> Pair (def<int> first, def<int> second) {
     pub operator foreach() -> Snapshot<int> {
-        def snapshot = emptySnapshot<int>()
-        snapshot.append(first)
-        snapshot.append(second)
-        return snapshot
+        def snapshot = emptySnapshot<int>();
+        snapshot.append(first);
+        snapshot.append(second);
+        return snapshot;
     }
 }
 ```
@@ -152,16 +152,16 @@ and the order in which entries are visited, see [Collection iteration](../../../
 Import each class from its own source file.
 
 ```cloth
-using cloth.collections.Deque : Deque
-using cloth.collections.Queue : Queue
-using cloth.collections.Stack : Stack
+using cloth.collections.Deque : Deque;
+using cloth.collections.Queue : Queue;
+using cloth.collections.Stack : Stack;
 
 fn main() {
-    def jobs := Queue<string>::new
-    jobs.enqueue("first")
-    jobs.enqueue("second")
-    while (!jobs.isEmpty()) println(jobs.dequeue())
-    jobs::delete
+    def jobs := Queue<string>::new;
+    jobs.enqueue("first");
+    jobs.enqueue("second");
+    while (!jobs.isEmpty()) println(jobs.dequeue());
+    jobs::delete;
 }
 ```
 

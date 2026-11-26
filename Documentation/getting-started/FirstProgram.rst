@@ -12,8 +12,8 @@ Save this program as ``build/hello.co``. A copy is available in the
 .. code-block:: text
 
    pub fn<int> main() {
-       println(1)
-       return 42
+       println(1);
+       return 42;
    }
 
 Execution starts at ``main``. The ``int`` in ``fn<int>`` is its return

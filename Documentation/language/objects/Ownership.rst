@@ -15,11 +15,11 @@ In the following function, the compiler rejects the read through ``alias``.
 
 .. code-block:: text
 
-   pub typedef<class> Item (pub def<int> value)
+   pub typedef<class> Item (pub def<int> value);
    fn<int> read(Item item) {
-       def alias = item
-       item::delete
-       return alias.value
+       def alias = item;
+       item::delete;
+       return alias.value;
    }
 
 The diagnostic ``C3092`` points to ``alias.value`` and the earlier
@@ -47,7 +47,7 @@ instance stale. See the `linked lifetime examples
 Owning lists
 ------------
 
-Import ``OwningList`` with ``using cloth.collections.OwningList: OwningList``.
+Import ``OwningList`` with ``using cloth.collections.OwningList: OwningList;``.
 ``OwningList<Item>::new`` creates an empty list. Appending an object gives
 the list responsibility for deleting it. ``list.get(i)`` and ``list[i]``
 return aliases. A write such as ``list[i].value = 10`` changes the object's
@@ -71,9 +71,9 @@ valid. Deleting ``list`` destroys the remaining entry. See the
 
 .. code-block:: text
 
-   list.removeAt(0)
-   first::delete
-   list::delete
+   list.removeAt(0);
+   first::delete;
+   list::delete;
 
 Use ``list.clear()`` to delete the entries in list order and keep the
 empty list available for reuse. To check the example from the repository

@@ -2,7 +2,7 @@
 
 pub typedef<struct> Account {
     pub int id, int balance;
-    pub mt<Account> withBalance(int amount) = {self.id, amount}
+    pub mt<Account> withBalance(int amount) = {self.id, amount};
 }
 
-pub typedef<struct> Pair { pub int private, pub int priv }
+pub typedef<struct> Pair { pub int private, pub int priv; }

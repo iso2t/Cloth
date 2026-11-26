@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# RUN: echo 'using cloth.collections.OwningList: OwningList' > "%t.co"
+# RUN: echo 'using cloth.collections.OwningList: OwningList;' > "%t.co"
 # RUN: echo 'fn dispose(OwningList<Object> list, Object item) {' >> "%t.co"
-# RUN: echo '    def alias = item' >> "%t.co"
-# RUN: echo '    list.append(item)' >> "%t.co"
-# RUN: echo '    alias::delete' >> "%t.co"
+# RUN: echo '    def alias = item;' >> "%t.co"
+# RUN: echo '    list.append(item);' >> "%t.co"
+# RUN: echo '    alias::delete;' >> "%t.co"
 # RUN: echo '}' >> "%t.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%/S/../../../Stdlib" --src "%t.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=OWNER --input-file "%t.err"
@@ -14,9 +14,9 @@
 # OWNER-DAG: invalid ownership operation
 
 # RUN: echo 'fn mutate() {' > "%t.co"
-# RUN: echo '    int[]? items = [1]' >> "%t.co"
-# RUN: echo '    int arg = { items = null; return 1 }' >> "%t.co"
-# RUN: echo '    if (items != null) items.append(arg)' >> "%t.co"
+# RUN: echo '    int[]? items = [1];' >> "%t.co"
+# RUN: echo '    int arg = { items = null; return 1; };' >> "%t.co"
+# RUN: echo '    if (items != null) items.append(arg);' >> "%t.co"
 # RUN: echo '}' >> "%t.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --src "%t.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=PRESENCE --input-file "%t.err"

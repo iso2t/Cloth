@@ -8,4 +8,6 @@ name = "shuttle"
 path = "src/main.rs"
 
 [dependencies]
-kcl-lib = "0.2.196"
+dunce = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "1.1"

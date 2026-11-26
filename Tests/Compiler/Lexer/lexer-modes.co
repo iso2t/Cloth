@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-pub fn<bool> ready() = true
+pub fn<bool> ready() = true;
 
 // RUN: %expect_exit --empty-stdout --empty-stderr 0xD00001 %cloth -l --src "%/s"
 // RUN: %expect_exit --empty-stderr 0xD00002 %cloth -L --src "%/s" > "%t.tokens"

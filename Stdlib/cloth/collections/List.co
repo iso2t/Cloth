@@ -1,54 +1,54 @@
-using cloth.collections.Snapshot : Snapshot, emptySnapshot
+using cloth.collections.Snapshot : Snapshot, emptySnapshot;
 
 // Each slot owns an independent value, including its array shape witnesses.
-typedef<struct> ListSlot<T> { pub T value }
+typedef<struct> ListSlot<T> { pub T value; }
 
 pub typedef<class> List<T>(def<ListSlot<T>[]> items) {
     pub List() : ([]) {}
 
-    pub mt append(T value) { items.append({ value }) }
+    pub mt append(T value) { items.append({ value }); }
 
-    pub mt<T> get(usize index) = items[index].value
+    pub mt<T> get(usize index) = items[index].value;
 
-    pub operator [](usize index) -> T = get(index)
+    pub operator [](usize index) -> T = get(index);
 
-    pub mt set(usize index, T value) { items[index] = { value } }
+    pub mt set(usize index, T value) { items[index] = { value }; }
 
-    pub operator []=(usize index, T value) { set(index, value) }
+    pub operator []=(usize index, T value) { set(index, value); }
 
-    operator []?(usize index) -> bool = index < items::size
+    operator []?(usize index) -> bool = index < items::size;
 
-    pub mt insert(usize index, T value) { items.insert(index, { value }) }
+    pub mt insert(usize index, T value) { items.insert(index, { value }); }
 
     pub mt<T> removeAt(usize index) {
-        ListSlot<T> removed = items.removeAt(index)
-        return removed.value
+        ListSlot<T> removed = items.removeAt(index);
+        return removed.value;
     }
 
-    pub mt<usize> size() = items::size
+    pub mt<usize> size() = items::size;
 
-    pub mt clear() { items.clear() }
+    pub mt clear() { items.clear(); }
 
-    pub mt reserve(usize minimum) { items.reserve(minimum) }
+    pub mt reserve(usize minimum) { items.reserve(minimum); }
 
     pub operator foreach() -> Snapshot<T> {
-        def snapshot = emptySnapshot<T>()
-        for (ListSlot<T> item <- items) snapshot.append(item.value)
-        return snapshot
+        def snapshot = emptySnapshot<T>();
+        for (ListSlot<T> item <- items) snapshot.append(item.value);
+        return snapshot;
     }
 
     // Ordinary array reception checks rectangular shape when T is an array.
     pub mt<T[]> toArray() {
-        T[] result = []
-        result.reserve(items::size)
-        for (ListSlot<T> item <- items) result.append(item.value)
-        return result
+        T[] result = [];
+        result.reserve(items::size);
+        for (ListSlot<T> item <- items) result.append(item.value);
+        return result;
     }
 
     // Copy complete slots so absent nullable fields retain their witnesses.
     pub mt<List<T>> copy() {
-        def result = List<T>::new
-        result.items = items
-        return result
+        def result = List<T>::new;
+        result.items = items;
+        return result;
     }
 }

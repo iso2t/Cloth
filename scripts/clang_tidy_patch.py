@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""Run clang-tidy on a Cloth patch or the whole project's C++ files."""
+"""Run clang-tidy on Cloth's C++ code and C runtime."""
 
 import argparse
 import json
@@ -15,6 +15,10 @@ import tempfile
 
 
 CPP_SOURCE_SUFFIXES = (".cpp", ".cc", ".cxx", ".C")
+SOURCE_SUFFIXES = (*CPP_SOURCE_SUFFIXES, ".c")
+HEADER_SUFFIXES = (".hpp", ".h")
+PROJECT_PATTERNS = [*(f"*{suffix}" for suffix in (*CPP_SOURCE_SUFFIXES, ".hpp")),
+                    "Runtime/*.c", "Runtime/*.h", ":(top,exclude)ThirdParty/**", ":(top,exclude)build/**"]
 DIAGNOSTIC = re.compile(rb"^(?:(.+?):\d+:\d+: )?(warning|error|fatal error|remark): ")
 
 
@@ -23,10 +27,8 @@ def git_paths(root, listing):
 
 
 def project_files(root):
-    patterns = [f"*{suffix}" for suffix in (*CPP_SOURCE_SUFFIXES, ".hpp")]
     listing = subprocess.check_output(
-        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *patterns,
-         ":(top,exclude)ThirdParty/**", ":(top,exclude)build/**"], cwd=root,
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *PROJECT_PATTERNS], cwd=root,
     )
     members = git_paths(root, listing)
     # A symlink's target is eligible when it is itself a project file.
@@ -42,12 +44,11 @@ def changed_files(root, base):
         base = origin_head.stdout.strip() or "HEAD"
     ancestor = subprocess.check_output(["git", "merge-base", "HEAD", base], cwd=root, text=True).strip()
     print(f"Checking the working tree against {base} ({ancestor[:12]}).", flush=True)
-    patterns = ["--", "*.cpp", "*.hpp"]
     tracked = subprocess.check_output(
-        ["git", "diff", "--no-renames", "--name-only", "-z", ancestor, *patterns], cwd=root,
+        ["git", "diff", "--no-renames", "--name-only", "-z", ancestor, "--", *PROJECT_PATTERNS], cwd=root,
     )
     untracked = subprocess.check_output(
-        ["git", "ls-files", "--others", "--exclude-standard", "-z", *patterns], cwd=root,
+        ["git", "ls-files", "--others", "--exclude-standard", "-z", "--", *PROJECT_PATTERNS], cwd=root,
     )
     return git_paths(root, tracked + untracked)
 
@@ -92,13 +93,35 @@ def quote_command(arguments):
     return subprocess.list2cmdline(arguments) if os.name == "nt" else shlex.join(arguments)
 
 
-def cpp_commands(database, members):
-    entries = []
+def set_windows_gnu_target(entry, driver_targets):
+    # Windows LLVM otherwise interprets a plain gcc command as targeting the MSVC CRT.
+    arguments = entry.get("arguments")
+    invocation = quote_command(arguments) if arguments else entry["command"]
+    driver = arguments[0] if arguments else re.match(r'^\s*("[^"]+"|\S+)', invocation)[1].strip('"')
+    if Path(driver).stem.lower() not in {"gcc", "g++"} or re.search(r"(?:^|\s)--?target[=\s]", invocation):
+        return
+    if driver not in driver_targets:
+        executable = shutil.which(driver)
+        if not executable:
+            return
+        driver_targets[driver] = subprocess.check_output([executable, "-dumpmachine"], text=True).strip()
+    flag = f"--target={driver_targets[driver]}"
+    if arguments:
+        entry["arguments"] = [*arguments, flag]
+    else:
+        entry["command"] += " " + flag
+
+
+def project_commands(database, members):
+    entries, driver_targets = [], {}
     for entry in json.loads(database.read_text(encoding="utf-8-sig")):
         directory = (database.parent / entry["directory"]).resolve()
         source = (directory / entry["file"]).resolve()
-        if source.suffix in CPP_SOURCE_SUFFIXES and source in members:
-            entries.append(dict(entry, file=str(source), directory=str(directory)))
+        if source.suffix in SOURCE_SUFFIXES and source in members:
+            entry = dict(entry, file=str(source), directory=str(directory))
+            if os.name == "nt":
+                set_windows_gnu_target(entry, driver_targets)
+            entries.append(entry)
     return entries
 
 
@@ -122,9 +145,11 @@ def header_consumers(entries, headers, work, tidy):
     output = subprocess.check_output([scanner, "-format=experimental-full", "-compilation-database", scan_db])
     covered = set()
     consumers = set()
+    header_names = {os.path.normcase(header.name) for header in headers}
     for unit in json.loads(output)["translation-units"]:
         for command in unit["commands"]:
-            dependencies = (Path(name).resolve() for name in command["file-deps"] if name.endswith(".hpp"))
+            dependencies = (Path(name).resolve() for name in command["file-deps"]
+                            if os.path.normcase(os.path.basename(name)) in header_names)
             included = headers.intersection(dependencies)
             if included:
                 covered.update(included)
@@ -208,10 +233,10 @@ def apply_selected_fixes(export, before, root, work, tidy):
 def check_files(args, root, work):
     project = project_files(root)
     targets = project if args.all_files else changed_files(root, args.base)
-    sources = {path for path in targets if path.suffix in CPP_SOURCE_SUFFIXES and path.is_file()}
-    headers = {path for path in targets if path.suffix == ".hpp"}
+    sources = {path for path in targets if path.suffix in SOURCE_SUFFIXES and path.is_file()}
+    headers = {path for path in targets if path.suffix in HEADER_SUFFIXES}
     if args.all_files:
-        print(f"Checking the project in {root} ({len(sources)} C++ sources and {len(headers)} headers).", flush=True)
+        print(f"Checking the project in {root} ({len(sources)} sources and {len(headers)} headers).", flush=True)
     if not sources and not headers:
         print("clang-tidy checked 0 files.")
         if not args.all_files:
@@ -220,7 +245,8 @@ def check_files(args, root, work):
 
     tidy = llvm_tool("clang-tidy")
     database = compilation_database(root, args.build_dir, work)
-    entries = cpp_commands(database, project | sources)
+    entries = project_commands(database, project | sources)
+    (work / "compile_commands.json").write_text(json.dumps(entries), encoding="utf-8")
     selected = sources.intersection(Path(entry["file"]) for entry in entries)
     missing = sources - selected
     for path in sorted(missing):
@@ -249,7 +275,7 @@ def check_files(args, root, work):
     ]}), encoding="utf-8")
     line_filter = json.dumps([{"name": name} for name in names])
     options = [
-        "-p", str(database.parent), f"--config-file={root / '.clang-tidy'}",
+        "-p", str(work), f"--config-file={root / '.clang-tidy'}",
         f"--vfsoverlay={overlay}", f"--line-filter={line_filter}",
         *(str(path.relative_to(root)) for path in sorted(selected)),
     ]
@@ -282,7 +308,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     scope = parser.add_mutually_exclusive_group()
     scope.add_argument("--all", dest="all_files", action="store_true",
-                       help="check all project C++ sources and .hpp headers, including untracked files")
+                       help="check all project C++ files and runtime C files, including untracked files")
     scope.add_argument("--base", help="compare from the merge base with this ref (default: origin/HEAD, then HEAD)")
     parser.add_argument("-p", "--build-dir", type=Path, help="directory containing compile_commands.json")
     parser.add_argument("--fix", action="store_true", help="apply suggested fixes and check for remaining findings")

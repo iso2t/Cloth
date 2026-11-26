@@ -13,25 +13,25 @@
 # RUN: %cc "%t.o" %runtime -lm -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
 
-# RUN: echo "pub fn<int> main() = power(int<97>::min) -> int" > "%t.co"
-# RUN: echo "fn<int<97>> power(int<97> exponent) = 2 ** exponent" >> "%t.co"
+# RUN: echo "pub fn<int> main() = power(int<97>::min) -> int;" > "%t.co"
+# RUN: echo "fn<int<97>> power(int<97> exponent) = 2 ** exponent;" >> "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: negative integer exponent" 1 "%t.exe"
 
-# RUN: echo "pub fn<int> main() = power(unsigned int<12>::max) -> int" > "%t.co"
-# RUN: echo "fn<unsigned int<12>> power(unsigned int<12> exponent) = 1 ** exponent" >> "%t.co"
+# RUN: echo "pub fn<int> main() = power(unsigned int<12>::max) -> int;" > "%t.co"
+# RUN: echo "fn<unsigned int<12>> power(unsigned int<12> exponent) = 1 ** exponent;" >> "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 1 "%t.exe"
 
-# RUN: echo "pub fn<int> main() = 2 ** -1" > "%t.co"
+# RUN: echo "pub fn<int> main() = 2 ** -1;" > "%t.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=EXPONENT --input-file "%t.err"
 # EXPONENT: [C3018] Error: An integer exponent must be nonnegative
 
-# RUN: echo "pub fn<int> main() = remainder(0) -> int" > "%t.co"
-# RUN: echo "fn<unsigned int<12>> remainder(unsigned int<12> divisor) = 4095 % divisor" >> "%t.co"
+# RUN: echo "pub fn<int> main() = remainder(0) -> int;" > "%t.co"
+# RUN: echo "fn<unsigned int<12>> remainder(unsigned int<12> divisor) = 4095 % divisor;" >> "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: integer division by zero" 1 "%t.exe"

@@ -1,47 +1,47 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<struct> Sample { pub bool ready, pub int<33> value }
+typedef<struct> Sample { pub bool ready, pub int<33> value; }
 
 pub fn<int> main() {
-    int<17>[3] values = [-7, 9, 3]
-    def saved := values
+    int<17>[3] values = [-7, 9, 3];
+    def saved := values;
     values[trace(1, 1)] = (if (trace(2, 1) == 1) {
-        values[0] = -4097
-        32769
-    } else 0)
-    if (values[0] != -4097 || values[1] != 32769 || saved[1] != 9) return 1
+        values[0] = -4097;
+        32769;
+    } else 0);
+    if (values[0] != -4097 || values[1] != 32769 || saved[1] != 9) return 1;
 
-    values[if (trace(3, 1) == 1) { values = [1, 2, 3]; 1 } else 0] = (if (trace(4, 1) == 1) {
-        values = [7, 8, 9]
-        42
-    } else 0)
-    if (values[0] != 7 || values[1] != 42 || values[2] != 9) return 2
+    values[if (trace(3, 1) == 1) { values = [1, 2, 3]; 1; } else 0] = (if (trace(4, 1) == 1) {
+        values = [7, 8, 9];
+        42;
+    } else 0);
+    if (values[0] != 7 || values[1] != 42 || values[2] != 9) return 2;
 
-    bool[2] flags = [true, false]
-    flags[0] = 0
-    flags[1] = 256
-    if (flags[0] || !flags[1]) return 3
-    int<9>?[2] optional = [0, null]
-    if (optional[0] == null) return 4
-    optional[0] = null
-    optional[1] = 0
-    if (optional[0] != null || optional[1] == null || optional[1] != 0) return 5
+    bool[2] flags = [true, false];
+    flags[0] = 0;
+    flags[1] = 256;
+    if (flags[0] || !flags[1]) return 3;
+    int<9>?[2] optional = [0, null];
+    if (optional[0] == null) return 4;
+    optional[0] = null;
+    optional[1] = 0;
+    if (optional[0] != null || optional[1] == null || optional[1] != 0) return 5;
 
-    Sample[2] samples = [{true, 7}, {false, 2147483648}]
-    samples[0] = samples[1]
-    samples[1] = {true, 9}
-    if (samples[0].ready || samples[0].value != 2147483648 || samples[1].value != 9) return 6
-    if (early(true) != 42 || early(false) != 42) return 7
-    return values[1] -> int
+    Sample[2] samples = [{true, 7}, {false, 2147483648}];
+    samples[0] = samples[1];
+    samples[1] = {true, 9};
+    if (samples[0].ready || samples[0].value != 2147483648 || samples[1].value != 9) return 6;
+    if (early(true) != 42 || early(false) != 42) return 7;
+    return values[1] -> int;
 }
 
 fn<int> early(final bool stopAtIndex) {
-    int[2] values = [7, 9]
-    values[if (stopAtIndex) { return 42 } else 1] = (if (!stopAtIndex) { return 42 } else trace(99, 0))
-    return values[1]
+    int[2] values = [7, 9];
+    values[if (stopAtIndex) { return 42; } else 1] = (if (!stopAtIndex) { return 42; } else trace(99, 0));
+    return values[1];
 }
 
 fn<int> trace(final int label, final int value) {
-    println(label)
-    return value
+    println(label);
+    return value;
 }

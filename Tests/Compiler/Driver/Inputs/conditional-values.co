@@ -2,24 +2,24 @@
 
 pub fn<int> main() {
     int answer := if (choose(true) == 42 && choose(false) == 7) {
-        int sum := guarded(true, 1, 0) + guarded(false, 0, 1)
-        if (sum == 49) 42 else 1
-    } else 2
+        int sum := guarded(true, 1, 0) + guarded(false, 0, 1);
+        if (sum == 49) 42; else 1;
+    } else 2;
     return if (offset(true, 8, 0) != 8 || offset(false, 8, 2) != 5) 3
         else if (!truth(true, 256) || truth(true, 0) || truth(false, 7)) 4
         else if (update(true) != 42 || update(false) != 7) 5
-        else answer
+        else answer;
 }
 
-fn<int> choose(bool flag) { return if (flag) 42 else 7 }
-fn<int> guarded(bool flag, int left, int right) = if (flag) 42 / left else 7 / right
+fn<int> choose(bool flag) { return if (flag) 42 else 7; }
+fn<int> guarded(bool flag, int left, int right) = if (flag) 42 / left else 7 / right;
 fn<int<12>> offset(bool flag, int<12> n, int<12> divisor) {
-    int<12> selected := if (flag) { return n } else n / divisor
-    return selected + 1
+    int<12> selected := if (flag) { return n; } else n / divisor;
+    return selected + 1;
 }
-fn<bool> truth(bool flag, int<12> n) = if (flag) n else false
+fn<bool> truth(bool flag, int<12> n) = if (flag) n else false;
 fn<int> update(bool flag) {
-    int n = 0
-    if (flag) { n = 42 } else { return 7 }
-    return n
+    int n = 0;
+    if (flag) { n = 42; } else { return 7; }
+    return n;
 }

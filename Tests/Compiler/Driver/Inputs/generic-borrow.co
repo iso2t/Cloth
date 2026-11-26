@@ -2,21 +2,21 @@
 
 typedef<struct> Cell<T> {
     pub T value;
-    pub mt<T> peek() = value
-    pub mt<int> ignore(int n) = n
-    pub mt<T> readAfter(Holder holder) { drop(holder); return value }
-    pub mt<int> writeAfter(Holder holder) { self.value = dropValue(holder, value); return 7 }
+    pub mt<T> peek() = value;
+    pub mt<int> ignore(int n) = n;
+    pub mt<T> readAfter(Holder holder) { drop(holder); return value; }
+    pub mt<int> writeAfter(Holder holder) { self.value = dropValue(holder, value); return 7; }
 }
 typedef<class> Holder(pub def<Cell<int>> cell, bool checked) {
     pub Holder(int n) : ({n}, true) {}
-    pub ~Holder { println(self.cell.peek()) }
+    pub ~Holder { println(self.cell.peek()); }
 }
-fn<int> drop(Holder holder) { println(1); holder::delete; return 7 }
-fn<T> dropValue<T>(Holder holder, T value) { drop(holder); return value }
+fn<int> drop(Holder holder) { println(1); holder::delete; return 7; }
+fn<T> dropValue<T>(Holder holder, T value) { drop(holder); return value; }
 
 pub fn<int> main(string[] args) {
-    Holder holder := Holder::new(42)
-    if (args::size == 0) return holder.cell.ignore(drop(holder))
-    if (args::size == 1) return holder.cell.readAfter(holder)
-    return holder.cell.writeAfter(holder)
+    Holder holder := Holder::new(42);
+    if (args::size == 0) return holder.cell.ignore(drop(holder));
+    if (args::size == 1) return holder.cell.readAfter(holder);
+    return holder.cell.writeAfter(holder);
 }

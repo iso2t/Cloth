@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-using cloth.collections.List : List
+using cloth.collections.List : List;
 
 fn<int> sumPresent(List<int?> values) {
-    int total = 0
-    for (int? value <- values) total += value ?: 0
-    return total
+    int total = 0;
+    for (int? value <- values) total += value ?: 0;
+    return total;
 }

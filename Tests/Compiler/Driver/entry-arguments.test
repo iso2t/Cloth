@@ -9,15 +9,15 @@
 # RUN: %python "%S/Inputs/entry_arguments.py" "%t.exe" nullable
 
 # A narrow signed result is sign extended. A wider one contributes its low 32 bits.
-# RUN: echo "pub fn<int<7>> main() = -2" > "%t.co"
+# RUN: echo "pub fn<int<7>> main() = -2;" > "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit object -o "%t.o"
 # RUN: %cc "%t.o" -o "%t.exe"
 # RUN: %python "%S/Inputs/entry_arguments.py" "%t.exe" status
-# RUN: echo "pub fn<int<65536>> main() = 4294967338" > "%t.co"
+# RUN: echo "pub fn<int<65536>> main() = 4294967338;" > "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit object -o "%t.o"
 # RUN: %cc "%t.o" -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
-# RUN: echo "pub fn<void> main() { println(7) }" > "%t.co"
+# RUN: echo "pub fn<void> main() { println(7); }" > "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit object -o "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 7 --empty-stderr 0 "%t.exe"

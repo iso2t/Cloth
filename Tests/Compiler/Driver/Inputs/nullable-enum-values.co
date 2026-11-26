@@ -1,40 +1,40 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<enum> Mode(pub def<int> code = 7) { pub Off, Reserved(9), pub On(42), pub Alias(42) }
-typedef<struct> Setting { pub Mode? mode, pub bool ready }
-typedef<enum> Preset(pub def<Mode?> initial = null) { pub Empty }
+typedef<enum> Mode(pub def<int> code = 7) { pub Off, Reserved(9), pub On(42), pub Alias(42); }
+typedef<struct> Setting { pub Mode? mode, pub bool ready; }
+typedef<enum> Preset(pub def<Mode?> initial = null) { pub Empty; }
 
 pub fn<int> main() {
-    Mode? missing = choose(false, Mode.On)
-    Mode? off = choose(true, Mode.Off)
-    Mode? on = choose(true, Mode.On)
-    if (missing != Preset.Empty.initial || missing == off || Mode.Off == missing) return 1
-    if (Mode.Off != off || off == on || on != Mode.On || on == Mode.Alias) return 2
-    if (traced(1, off) == traced(2, on)) return 3
-    if (orFallback(off, 99) != Mode.Off || orFallback(missing, 3) != Mode.On) return 4
-    if (prefer(missing, off) != Mode.Off || prefer(off, on) != off || prefer(missing, missing) != null) return 5
-    if (ordinal(missing) != null || ordinal(off) != 0 || ordinal(on) != 2) return 6
+    Mode? missing = choose(false, Mode.On);
+    Mode? off = choose(true, Mode.Off);
+    Mode? on = choose(true, Mode.On);
+    if (missing != Preset.Empty.initial || missing == off || Mode.Off == missing) return 1;
+    if (Mode.Off != off || off == on || on != Mode.On || on == Mode.Alias) return 2;
+    if (traced(1, off) == traced(2, on)) return 3;
+    if (orFallback(off, 99) != Mode.Off || orFallback(missing, 3) != Mode.On) return 4;
+    if (prefer(missing, off) != Mode.Off || prefer(off, on) != off || prefer(missing, missing) != null) return 5;
+    if (ordinal(missing) != null || ordinal(off) != 0 || ordinal(on) != 2) return 6;
 
-    Setting setting = {off, true}
-    def saved := setting
-    setting.mode = null
-    if (setting.mode != null || saved.mode == null || saved.mode.code != 7 || !saved.ready) return 7
-    setting.mode = on
-    if (setting.mode == null) return 8
-    return setting.mode.code
+    Setting setting = {off, true};
+    def saved := setting;
+    setting.mode = null;
+    if (setting.mode != null || saved.mode == null || saved.mode.code != 7 || !saved.ready) return 7;
+    setting.mode = on;
+    if (setting.mode == null) return 8;
+    return setting.mode.code;
 }
 
-fn<Mode?> choose(final bool present, final Mode mode) = if (present) mode else null
-fn<Mode?> prefer(final Mode? value, final Mode? other) = value ?: other
-fn<Mode> orFallback(final Mode? value, final int label) = value ?: fallback(label)
-fn<int?> ordinal(final Mode? value) = value -> int?
+fn<Mode?> choose(final bool present, final Mode mode) = if (present) mode else null;
+fn<Mode?> prefer(final Mode? value, final Mode? other) = value ?: other;
+fn<Mode> orFallback(final Mode? value, final int label) = value ?: fallback(label);
+fn<int?> ordinal(final Mode? value) = value -> int?;
 
 fn<Mode?> traced(final int label, final Mode? value) {
-    println(label)
-    return value
+    println(label);
+    return value;
 }
 
 fn<Mode> fallback(final int label) {
-    println(label)
-    return Mode.On
+    println(label);
+    return Mode.On;
 }

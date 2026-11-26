@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    float[2] positive := [0.0, 7.0]
-    float[2] negative = [-0.0, 7.0]
-    if (positive != negative) return 1
-    negative[1] = nan(0.0)
-    return if (negative != negative && !(negative == negative)) 42 else 2
+    float[2] positive := [0.0, 7.0];
+    float[2] negative = [-0.0, 7.0];
+    if (positive != negative) return 1;
+    negative[1] = nan(0.0);
+    return if (negative != negative && !(negative == negative)) 42 else 2;
 }
 
-fn<float> nan(final float zero) = zero / zero
+fn<float> nan(final float zero) = zero / zero;

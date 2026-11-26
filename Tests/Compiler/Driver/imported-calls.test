@@ -34,30 +34,30 @@
 
 # RUN: mkdir -p "%t.dir"
 # RUN: %python -c "import shutil, sys; shutil.copyfile(sys.argv[1], sys.argv[2])" "%S/Inputs/imported-calls/main.co" "%t.dir/main.co"
-# RUN: echo "fn<int> identity(int value) = value" > "%t.dir/helpers.co"
+# RUN: echo "fn<int> identity(int value) = value;" > "%t.dir/helpers.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.dir/main.co" --emit-object "%t.o" 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=PRIVATE --input-file "%t.err"
 # PRIVATE: [C3103] Error: 'identity' is private
 
 # RUN: echo "pub fn<int> identity(int value) {" > "%t.dir/helpers.co"
-# RUN: echo "    print(value)" >> "%t.dir/helpers.co"
-# RUN: echo "    return value" >> "%t.dir/helpers.co"
+# RUN: echo "    1.0 : 0.0..2.0;" >> "%t.dir/helpers.co"
+# RUN: echo "    return value;" >> "%t.dir/helpers.co"
 # RUN: echo "}" >> "%t.dir/helpers.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.dir/main.co" --emit-object "%t.o" 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=BODY --input-file "%t.err"
 # BODY: [C4040] Error:
 # BODY: helpers.co:2:5
-# BODY: print(value)
+# BODY: 1.0 : 0.0..2.0
 
 # Each file calls its own private pick. Selecting the first parameter twice
 # would return 7, and selecting the last twice would return 19.
-# RUN: echo "using helpers: selectLast" > "%t.dir/main.co"
-# RUN: echo "pub fn<int> main() = pick(selectLast(7, selectLast(23)), 19)" >> "%t.dir/main.co"
-# RUN: echo "fn<int> pick(int first, int last) = first" >> "%t.dir/main.co"
-# RUN: echo "pub fn<int> selectLast(bool first, int last) { println(first); return 99 }" > "%t.dir/helpers.co"
-# RUN: echo "pub fn<int> selectLast(int value) = value" >> "%t.dir/helpers.co"
-# RUN: echo "pub fn<int> selectLast(int first, int last) = pick(first, last)" >> "%t.dir/helpers.co"
-# RUN: echo "fn<int> pick(int first, int last) = last" >> "%t.dir/helpers.co"
+# RUN: echo "using helpers: selectLast;" > "%t.dir/main.co"
+# RUN: echo "pub fn<int> main() = pick(selectLast(7, selectLast(23)), 19);" >> "%t.dir/main.co"
+# RUN: echo "fn<int> pick(int first, int last) = first;" >> "%t.dir/main.co"
+# RUN: echo "pub fn<int> selectLast(bool first, int last) { println(first); return 99; }" > "%t.dir/helpers.co"
+# RUN: echo "pub fn<int> selectLast(int value) = value;" >> "%t.dir/helpers.co"
+# RUN: echo "pub fn<int> selectLast(int first, int last) = pick(first, last);" >> "%t.dir/helpers.co"
+# RUN: echo "fn<int> pick(int first, int last) = last;" >> "%t.dir/helpers.co"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.dir/main.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 23 "%t.exe"

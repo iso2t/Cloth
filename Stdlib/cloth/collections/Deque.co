@@ -1,75 +1,75 @@
-typedef<struct> DequeSlot<T> { pub T value }
-typedef<struct> DequeSide<T> { pub DequeSlot<T>[] items }
+typedef<struct> DequeSlot<T> { pub T value; }
+typedef<struct> DequeSide<T> { pub DequeSlot<T>[] items; }
 
 pub typedef<class> Deque<T>(def<DequeSide<T>[2]> sides) {
     // The front side is reversed. Both ends grow and shrink at an array tail.
     pub Deque() : ([{ [] }, { [] }]) {}
 
-    pub mt pushFront(T value) { sides[0].items.append({ value }) }
+    pub mt pushFront(T value) { sides[0].items.append({ value }); }
 
-    pub mt pushBack(T value) { sides[1].items.append({ value }) }
+    pub mt pushBack(T value) { sides[1].items.append({ value }); }
 
-    pub mt<T> popFront() = popSide(0)
+    pub mt<T> popFront() = popSide(0);
 
-    pub mt<T> popBack() = popSide(1)
+    pub mt<T> popBack() = popSide(1);
 
-    pub mt<T> peekFront() = peekSide(0)
+    pub mt<T> peekFront() = peekSide(0);
 
-    pub mt<T> peekBack() = peekSide(1)
+    pub mt<T> peekBack() = peekSide(1);
 
-    pub mt<usize> size() = sides[0].items::size + sides[1].items::size
+    pub mt<usize> size() = sides[0].items::size + sides[1].items::size;
 
-    pub mt<bool> isEmpty() = size() == 0
+    pub mt<bool> isEmpty() = size() == 0;
 
     pub mt clear() {
-        sides[0].items.clear()
-        sides[1].items.clear()
+        sides[0].items.clear();
+        sides[1].items.clear();
     }
 
     pub mt reserve(usize minimum) {
         // A caller can fill the deque from either end.
-        sides[0].items.reserve(minimum)
-        sides[1].items.reserve(minimum)
+        sides[0].items.reserve(minimum);
+        sides[1].items.reserve(minimum);
     }
 
     mt<T> peekSide(usize end) {
-        usize count = sides[end].items::size
+        usize count = sides[end].items::size;
         if (count != 0) {
-            usize index = count - 1
-            return sides[end].items[index].value
+            usize index = count - 1;
+            return sides[end].items[index].value;
         }
-        usize opposite = 1 - end
-        return sides[opposite].items[0].value
+        usize opposite = 1 - end;
+        return sides[opposite].items[0].value;
     }
 
     mt<T> popSide(usize end) {
-        if (sides[end].items::size == 0) refill(end)
-        usize count = sides[end].items::size
+        if (sides[end].items::size == 0) refill(end);
+        usize count = sides[end].items::size;
         // Index zero of an empty side follows the ordinary bounds error path.
-        usize index = 0
-        if (count != 0) index = count - 1
-        DequeSlot<T> removed = sides[end].items.removeAt(index)
-        return removed.value
+        usize index = 0;
+        if (count != 0) index = count - 1;
+        DequeSlot<T> removed = sides[end].items.removeAt(index);
+        return removed.value;
     }
 
     mt refill(usize end) {
-        usize opposite = 1 - end
-        usize count = sides[opposite].items::size
-        if (count == 0) return
+        usize opposite = 1 - end;
+        usize count = sides[opposite].items::size;
+        if (count == 0) return;
 
         // Save the outer half, reverse the inner half onto the empty side,
         // then restore the saved half. Only tail operations touch either side.
-        DequeSlot<T>[] saved = []
-        usize keep = count / 2
-        saved.reserve(keep)
+        DequeSlot<T>[] saved = [];
+        usize keep = count / 2;
+        saved.reserve(keep);
         while (saved::size < keep) {
-            saved.append(sides[opposite].items.removeAt(sides[opposite].items::size - 1))
+            saved.append(sides[opposite].items.removeAt(sides[opposite].items::size - 1));
         }
         while (sides[opposite].items::size != 0) {
-            sides[end].items.append(sides[opposite].items.removeAt(sides[opposite].items::size - 1))
+            sides[end].items.append(sides[opposite].items.removeAt(sides[opposite].items::size - 1));
         }
         while (saved::size != 0) {
-            sides[opposite].items.append(saved.removeAt(saved::size - 1))
+            sides[opposite].items.append(saved.removeAt(saved::size - 1));
         }
     }
 }

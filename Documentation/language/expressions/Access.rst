@@ -8,8 +8,8 @@ use ``?.`` to perform the access only when the receiver is present.
 
 .. code-block:: text
 
-   fn<usize?> find(string? text) = text?.indexOf("needle")
-   fn<bool> hasNeedle(string? text) = text?.contains("needle") ?: false
+   fn<usize?> find(string? text) = text?.indexOf("needle");
+   fn<bool> hasNeedle(string? text) = text?.contains("needle") ?: false;
 
 An absent ``text`` skips the call and its arguments. In ``find``, the result
 is ``usize?`` whether the receiver is absent or the search yields no index.
@@ -78,9 +78,9 @@ extents. Use a second ``::`` to inspect it.
 
 .. code-block:: text
 
-   fn<usize> rows() = int[2][3]::type::extent
-   fn<usize> columns() = int[2][3]::type::element::extent
-   fn<bool> unsignedByte() = unsigned int<8>::type::isunsigned
+   fn<usize> rows() = int[2][3]::type::extent;
+   fn<usize> columns() = int[2][3]::type::element::extent;
+   fn<bool> unsignedByte() = unsigned int<8>::type::isunsigned;
 
 ``::isarray`` and ``::hasextent`` test for an array and a known outer extent.
 ``::rank`` counts the dimensions. ``::element`` removes the outer dimension

@@ -2,6 +2,8 @@
 
 runtime-obj-y := arguments.o \
                array.o \
+               files.o \
+               text.o \
                errors.o \
                integer.o \
                object.o \

@@ -14,8 +14,8 @@
 # RUN: %expect_exit --stdout-line 1 --stdout-line 2 --stdout-line 3 --stdout-line 4 --empty-stderr 42 "%t.exe"
 
 # Check the row index before evaluating a replacement row.
-# RUN: echo "fn<int> trace(final int n) { println(n); return n }" > "%t.co"
-# RUN: echo "pub fn<int> main() { int[2]?[2] rows = [null, [0, 42]]; rows[trace(2)] = [trace(99), 7]; return 42 }" >> "%t.co"
+# RUN: echo "fn<int> trace(final int n) { println(n); return n; }" > "%t.co"
+# RUN: echo "pub fn<int> main() { int[2]?[2] rows = [null, [0, 42]]; rows[trace(2)] = [trace(99), 7]; return 42; }" >> "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit object -o "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 2 --stderr-line "Cloth runtime error: array index out of bounds" 1 "%t.exe"

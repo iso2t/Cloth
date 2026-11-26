@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# RUN: mkdir -p "%t"
+# RUN: echo "using Bridge: through;" > "%t/main.co"
+# RUN: echo "pub fn<int> main() = through();" >> "%t/main.co"
+# RUN: echo "using Library: read;" > "%t/Bridge.co"
+# RUN: echo "pub fn<int> through() = read();" >> "%t/Bridge.co"
+# RUN: echo "pub typedef<class> Marker;" > "%t/Library.clib"
+# RUN: echo "pub fn<int> read() = 42;" >> "%t/Library.clib"
+# RUN: %cloth --src "%t/Library.clib"
+# RUN: %cloth --src "%t/main.co" --kind executable
+
+# A missing terminator has the same insertion point in a library entry and a transitive import.
+# RUN: echo "pub typedef<class> Marker;" > "%t/Library.clib"
+# RUN: echo "pub fn<int> read() = 42 // result" >> "%t/Library.clib"
+# RUN: %expect_exit --empty-stdout 1 %cloth --src "%t/Library.clib" 2> "%t/direct.err"
+# RUN: %filecheck "%s" --input-file "%t/direct.err"
+# RUN: %expect_exit --empty-stdout 1 %cloth --src "%t/main.co" 2> "%t/import.err"
+# RUN: %filecheck "%s" --input-file "%t/import.err"
+
+# CHECK: [C2013] Error: Expected ';' after function
+# CHECK: Library.clib:2:24
+# CHECK: pub fn<int> read() = 42 // result

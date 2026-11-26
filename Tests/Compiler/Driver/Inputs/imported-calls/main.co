@@ -1,4 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-using helpers: identity
+using helpers: identity;
 
-pub fn<int> main () = identity(42)
+pub fn<int> main () = identity(42);

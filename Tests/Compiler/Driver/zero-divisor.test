@@ -12,14 +12,14 @@
 # ORDER-NEXT: 2
 # ORDER-NEXT: Cloth runtime error: integer division by zero
 
-# RUN: echo "pub fn<int> main() { println(quotient(18446744073709551616) -> int); return quotient(0) -> int }" > "%t.co"
-# RUN: echo "fn<unsigned int<97>> quotient(final unsigned int<97> d) { unsigned int<97> n = d * 42; n /= d; return n }" >> "%t.co"
+# RUN: echo "pub fn<int> main() { println(quotient(18446744073709551616) -> int); return quotient(0) -> int; }" > "%t.co"
+# RUN: echo "fn<unsigned int<97>> quotient(final unsigned int<97> d) { unsigned int<97> n = d * 42; n /= d; return n; }" >> "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 42 --stderr-line "Cloth runtime error: integer division by zero" 1 "%t.exe"
 
-# RUN: echo "pub fn<int> main() = remainder(0) -> int" > "%t.co"
-# RUN: echo "fn<isize> remainder(final isize d) { isize n = -17; n %= d; return n }" >> "%t.co"
+# RUN: echo "pub fn<int> main() = remainder(0) -> int;" > "%t.co"
+# RUN: echo "fn<isize> remainder(final isize d) { isize n = -17; n %= d; return n; }" >> "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: integer division by zero" 1 "%t.exe"

@@ -2,7 +2,7 @@
 
 # RUN: mkdir -p "%t/source files"
 # RUN: echo "fn main() {}" > "%t/source files/-日本語 main.co"
-# RUN: echo "pub fn<bool> ready() = true" > "%t/source files/helper.clib"
+# RUN: echo "pub fn<bool> ready() = true;" > "%t/source files/helper.clib"
 # RUN: echo "fn main() {}" > "%t/source files/main.txt"
 # RUN: cd "%t/source files" && %expect_exit --empty-stdout --empty-stderr 0 %cloth --src "-日本語 main.co"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --src "%t/source files/helper.clib"

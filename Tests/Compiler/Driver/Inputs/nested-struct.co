@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<struct> Inner { pub bool ready, pub int<12> value }
-typedef<struct> Sample { pub bool tagged, pub Inner inner }
+typedef<struct> Inner { pub bool ready, pub int<12> value; }
+typedef<struct> Sample { pub bool tagged, pub Inner inner; }
 
 pub fn<int> main() {
-    Sample sample = {true, {true, 42}}
-    def original := sample
-    sample.inner.value = 7
-    return if (sample.tagged && sample.inner.ready && original.inner.value == 42) sample.inner.value -> int else 1
+    Sample sample = {true, {true, 42}};
+    def original := sample;
+    sample.inner.value = 7;
+    return if (sample.tagged && sample.inner.ready && original.inner.value == 42) sample.inner.value -> int else 1;
 }

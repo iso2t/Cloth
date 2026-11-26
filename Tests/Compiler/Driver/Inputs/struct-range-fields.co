@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<struct> Window { pub range<int> span, pub range<int>? bounds }
+typedef<struct> Window { pub range<int> span, pub range<int>? bounds; }
 
 pub fn<int> main() {
-    Window window = {13..16, 13..=15}
-    def saved := window
-    window.bounds = null
-    if (window.bounds != null || window.span != (13..16)) return 1
-    window.span = 0..0
-    if (saved.bounds == null || saved.bounds != (13..=15)) return 2
-    if (saved.span != (13..16) || window.span != (0..0)) return 3
-    return if (15 : saved.bounds) 42 else 4
+    Window window = {13..16, 13..=15};
+    def saved := window;
+    window.bounds = null;
+    if (window.bounds != null || window.span != (13..16)) return 1;
+    window.span = 0..0;
+    if (saved.bounds == null || saved.bounds != (13..=15)) return 2;
+    if (saved.span != (13..16) || window.span != (0..0)) return 3;
+    return if (15 : saved.bounds) 42 else 4;
 }

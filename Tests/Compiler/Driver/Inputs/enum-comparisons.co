@@ -1,29 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<enum> Mode { Reserved, pub Standby, pub On, pub Off }
-typedef<struct> Setting { pub bool enabled, pub Mode mode }
-typedef<struct> Device { pub typedef<enum> Mode { pub On, pub Off } }
+typedef<enum> Mode { Reserved, pub Standby, pub On, pub Off; }
+typedef<struct> Setting { pub bool enabled, pub Mode mode; }
+typedef<struct> Device { pub typedef<enum> Mode { pub On, pub Off; } }
 
 pub fn<int> main() {
-    Mode mode = choose(false)
-    def original := mode
-    mode = choose(true)
-    if (mode != Mode.On || original != Mode.Off || mode == original) return 1
-    if ((Mode.Standby -> int) != 1 || (mode -> int) != 2 || (original -> int) != 3) return 2
-    if ((Device.Mode.Off -> int) != 1) return 3
+    Mode mode = choose(false);
+    def original := mode;
+    mode = choose(true);
+    if (mode != Mode.On || original != Mode.Off || mode == original) return 1;
+    if ((Mode.Standby -> int) != 1 || (mode -> int) != 2 || (original -> int) != 3) return 2;
+    if ((Device.Mode.Off -> int) != 1) return 3;
 
-    Setting setting = {true, Mode.Standby}
-    def saved := setting
-    setting.mode = mode
-    if (!setting.enabled || saved.mode != Mode.Standby || setting.mode != Mode.On) return 4
-    if (traced(1, setting.mode) != traced(2, Mode.On)) return 5
-    if (!(traced(3, saved.mode) == traced(4, Mode.Standby))) return 6
-    return 42
+    Setting setting = {true, Mode.Standby};
+    def saved := setting;
+    setting.mode = mode;
+    if (!setting.enabled || saved.mode != Mode.Standby || setting.mode != Mode.On) return 4;
+    if (traced(1, setting.mode) != traced(2, Mode.On)) return 5;
+    if (!(traced(3, saved.mode) == traced(4, Mode.Standby))) return 6;
+    return 42;
 }
 
-fn<Mode> choose(final bool on) = if (on) Mode.On else Mode.Off
+fn<Mode> choose(final bool on) = if (on) Mode.On else Mode.Off;
 
 fn<Mode> traced(final int label, final Mode value) {
-    println(label)
-    return value
+    println(label);
+    return value;
 }

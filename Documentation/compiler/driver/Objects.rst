@@ -22,7 +22,7 @@ number of arguments.
 
 .. code-block:: text
 
-   pub fn<isize> main(string[] args) = args::size -> isize
+   pub fn<isize> main(string[] args) = args::size -> isize;
 
 Arguments are UTF-8 strings. On Windows the runtime reads the wide
 command line. On Linux it validates the supplied bytes. Invalid input
@@ -57,6 +57,37 @@ format. Linux uses ELF and Windows uses COFF. The default width is the
 native pointer width. The choice also affects `integer size and alignment
 <../storage/Integers.rst>`_.
 
+Native libraries
+----------------
+
+Give a library entry file a module name to emit its public, concrete
+top-level functions. The same name binds the library when compiling a
+consumer. The examples below use the sources from the
+`native library fixture <../../../Tests/Compiler/Driver/Inputs/native-library>`_.
+
+.. code-block:: sh
+
+   ./build/cloth --kind library --module-name Arithmetic --src Tests/Compiler/Driver/Inputs/native-library/api.co -o build/arithmetic.o
+   ./build/cloth --kind executable --extern Arithmetic=Tests/Compiler/Driver/Inputs/native-library/api.co --src Tests/Compiler/Driver/Inputs/native-library/main.co -o build/answer.o
+   cc build/answer.o build/arithmetic.o -o build/answer
+
+The consumer selects both ``pick(int)`` and ``pick(bool)`` and returns 42.
+Imports from a library resolve relative to its entry directory and the
+configured Stdlib root. Callers can use defaults from the library.
+The source-backed interface also supplies generic bodies for local
+specialization.
+
+The native export ABI supports integers, floats, booleans, characters
+and strings, their nullable forms, and multiple results of those types.
+Functions may also return ``void``. An unsupported concrete export is
+diagnosed at its declaration. Ordinary source imports still support
+the full set of types the backend can lower within one object.
+
+For calls that use the runtime, pass the target's
+``libcloth_runtime.a`` after the objects on the linker command line.
+The `Shuttle build command <../../../Shuttle/README.rst>`_ selects the
+archive and system libraries automatically.
+
 Functions in another file
 -------------------------
 
@@ -65,15 +96,15 @@ declare the function ``pub`` so another Cloth file can import it.
 
 .. code-block:: text
 
-   pub fn<int> identity(int value) = value
+   pub fn<int> identity(int value) = value;
 
 In ``build/main.co``, import the function by name.
 
 .. code-block:: text
 
-   using helpers: identity
+   using helpers: identity;
 
-   pub fn<int> main () = identity(42)
+   pub fn<int> main () = identity(42);
 
 From the repository root, compile the entry file and link the resulting
 object.
@@ -291,18 +322,16 @@ an object starts at ``main`` and follows calls to the helpers used by that
 program. A library declaration can therefore pass source checking even
 when a native caller cannot use it.
 
-For example, ``println(true)`` and ``int[2]::type::rank`` both pass source
-checking. Either expression in a reachable body produces ``C4040`` during
-object emission. ``println(true.toInt())`` has a native implementation.
-Of the built-in functions and primitive methods, native code supports
-``println(int)``, ``exit(status)``, ``exit(status, message)``, and ``toInt()`` on a
-character or boolean. See the `object emission diagnostics
-<../../../Tests/Compiler/Driver/emit-object-errors.test>`_.
+To compile a program that imports the shipped library, pass ``--stdlib Stdlib``
+from the repository root. The native collection example updates ``list[0]``,
+visits its snapshot while clearing the list, and exits with status 42.
+See the `collection consumer <../../../Tests/Compiler/Driver/Inputs/stdlib-collections.co>`_
+and the `standard library guide <../../../Stdlib/README.md>`_.
 
-Primitive boxing into an interface value, multidimensional growable arrays,
-and the standard library's file and UTF-8 intrinsics still require source
-checking with ``--src``. See the `standard library guide <../../../Stdlib/README.md>`_
-for the module interfaces.
+The frontend also accepts primitive boxing into an interface value,
+multidimensional growable arrays, and floating-point range membership.
+A reachable use of these forms can produce an object emission diagnostic.
+See the `driver tests <../../../Tests/Compiler/Driver/emit-object-errors.test>`_.
 
 Runtime dependencies
 --------------------
@@ -311,9 +340,19 @@ Include the runtime sources for the operations your program uses in the
 C compiler's link command. For the effects of printing and exiting, see
 `Built-in functions and methods <../../language/expressions/Builtins.rst>`_.
 
-* ``println`` takes a signed 32-bit ``int``. On both target widths its
-  C entry point is ``void cloth_rt_println_i32(int32_t value)`` in
+* ``println`` on a signed 32-bit ``int`` uses the small C entry point
+  ``void cloth_rt_println_i32(int32_t value)`` in
   `Runtime/src/println.c <../../../Runtime/src/println.c>`_.
+* General text I/O, formatting, string comparison and methods, Unicode
+  character methods, and UTF-8 decoding use `Runtime/src/text.c
+  <../../../Runtime/src/text.c>`_, the array and error runtimes, and the
+  bundled `utf8proc source <../../../ThirdParty/utf8proc/utf8proc.c>`_.
+  Compile these sources with ``-IRuntime/include``, ``-IThirdParty/utf8proc``
+  and ``-DUTF8PROC_STATIC``. The numeric and metadata runtime checks also use
+  the error reporter.
+* File access uses `Runtime/src/files.c <../../../Runtime/src/files.c>`_
+  with the object, array, and error runtimes. A file closes when its Cloth
+  object is deleted or the process releases its live objects.
 * Both forms of ``exit`` use `Runtime/src/process.c <../../../Runtime/src/process.c>`_.
   An optional string message is written to standard output before the
   process exits. See `Ending the process
@@ -334,5 +373,7 @@ C compiler's link command. For the effects of printing and exiting, see
 * When a `range counter <../../language/statements/ControlFlow.rst#integer-ranges>`_
   is wider than the target pointer, ``*=``, ``/=``, and ``%=`` steps also
   need `Runtime/src/integer.c <../../../Runtime/src/integer.c>`_.
+* Counting leading or trailing zero bits on an integer wider than 64 bits
+  also uses `Runtime/src/integer.c <../../../Runtime/src/integer.c>`_.
 * On Unix, floating-point remainder and exponentiation can require the
   platform math library. Put ``-lm`` after the object file when linking.

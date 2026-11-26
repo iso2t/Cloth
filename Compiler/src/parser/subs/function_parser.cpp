@@ -283,7 +283,7 @@ BlockBody FunctionParser::parseBlockBody () {
 
 FunctionBody FunctionParser::parseBody (std::string_view kind, bool allowStatement, bool allowIntrinsic) {
 	p_parser.skipNewLines();
-	return inBody([this, kind, allowStatement, allowIntrinsic] () -> FunctionBody {
+	FunctionBody body = inBody([this, kind, allowStatement, allowIntrinsic] () -> FunctionBody {
 		if (at(OBraceOpen)) {
 			return { p_parser.parseBlock() };
 		}
@@ -305,6 +305,10 @@ FunctionBody FunctionParser::parseBody (std::string_view kind, bool allowStateme
 		const TokenSpan ts_span       = TokenSpan::spanThrough(t_equals.getSpan(), p_parser.previous().getSpan());
 		return { ExpressionBody{ .equals = t_equals, .expression = std::move(ep_expression), .span = ts_span } };
 	});
+	if (p_parser.explicitSemicolons() && body.getEquals() && !(allowStatement && Parser::isSemiColon(p_parser.previous()))) {
+		p_parser.requireSemicolon(kind);
+	}
+	return body;
 }
 
 FunctionBody FunctionParser::parseVoidBody (const Token &equals) const {

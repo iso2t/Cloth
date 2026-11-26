@@ -1,212 +1,212 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    int total = 0
-    for (def n <- trace(1)..trace(4)) total += n
-    if (total != 6) return 1
-    for (int n <- trace(5)..trace(5)) return 2
-    for (def n <- trace(7)..trace(6)) return 3
-    if (!capturedBounds() || !mutableCounter()) return 4
-    if (!integerLimits() || !wideUnsigned()) return 5
-    if (nested() != 42) return 6
-    if (leaveAtStart(true) != 42 || leaveAtEnd(true) != 42) return 7
-    if (leaveAtStart(false) != 7 || leaveAtEnd(false) != 7) return 8
-    if (!inclusiveLimits() || !revisitEndpoint()) return 9
-    if (decrementDigits(5, 2) != 543 || decrementDigits(2, 5) != 2 || decrementDigits(4, 4) != 0) return 10
-    if (!decrementLimits() || !decrementAfterContinue()) return 11
-    if (!incrementBounds() || !incrementLimits()) return 12
-    return 42
+    int total = 0;
+    for (def n <- trace(1)..trace(4)) total += n;
+    if (total != 6) return 1;
+    for (int n <- trace(5)..trace(5)) return 2;
+    for (def n <- trace(7)..trace(6)) return 3;
+    if (!capturedBounds() || !mutableCounter()) return 4;
+    if (!integerLimits() || !wideUnsigned()) return 5;
+    if (nested() != 42) return 6;
+    if (leaveAtStart(true) != 42 || leaveAtEnd(true) != 42) return 7;
+    if (leaveAtStart(false) != 7 || leaveAtEnd(false) != 7) return 8;
+    if (!inclusiveLimits() || !revisitEndpoint()) return 9;
+    if (decrementDigits(5, 2) != 543 || decrementDigits(2, 5) != 2 || decrementDigits(4, 4) != 0) return 10;
+    if (!decrementLimits() || !decrementAfterContinue()) return 11;
+    if (!incrementBounds() || !incrementLimits()) return 12;
+    return 42;
 }
 
 fn<bool> incrementBounds() {
-    int digits = 0
-    for (int n <- 2..5; n++) digits = digits * 10 + n
+    int digits = 0;
+    for (int n <- 2..5; n++) digits = digits * 10 + n;
     for (int n <- 3..=1; n++) {
-        if (digits != 234) return false
-        digits = digits * 10 + n
+        if (digits != 234) return false;
+        digits = digits * 10 + n;
     }
-    if (digits != 2343) return false
-    for (int n <- 3..3; n++) return false
+    if (digits != 2343) return false;
+    for (int n <- 3..3; n++) return false;
 
-    int last = 1
-    digits = 0
+    int last = 1;
+    digits = 0;
     for (def n <- trace(4)..trace(last); n++) {
-        last = 4
-        digits = digits * 10 + n
-        if (digits == 4) { n = 1; continue }
-        if (digits == 42) { n = 0; continue }
-        return false
+        last = 4;
+        digits = digits * 10 + n;
+        if (digits == 4) { n = 1; continue; }
+        if (digits == 42) { n = 0; continue; }
+        return false;
     }
-    return digits == 42
+    return digits == 42;
 }
 
 fn<bool> incrementLimits() {
-    int visits = 0
+    int visits = 0;
     for (usize n <- usize::max..=usize::max; n++) {
-        if (n != usize::max || visits != 0) return false
-        visits++
+        if (n != usize::max || visits != 0) return false;
+        visits++;
     }
-    if (visits != 1) return false
+    if (visits != 1) return false;
     for (int<1> n <- int<1>::min..=int<1>::max; n++) {
-        if (visits == 3) return false
-        visits++
+        if (visits == 3) return false;
+        visits++;
     }
-    return visits == 3
+    return visits == 3;
 }
 
 fn<int> decrementDigits(final int first, final int last) {
-    int digits = 0
+    int digits = 0;
     for (def n <- first..last; n--) {
-        digits = digits * 10 + n
-        if (digits > 999) return -1
+        digits = digits * 10 + n;
+        if (digits > 999) return -1;
     }
-    return digits
+    return digits;
 }
 
 fn<bool> decrementLimits() {
-    int visits = 0
+    int visits = 0;
     for (int<1> n <- int<1>::max..=int<1>::min; n--) {
-        if (visits == 2) return false
-        visits++
+        if (visits == 2) return false;
+        visits++;
     }
-    if (visits != 2) return false
+    if (visits != 2) return false;
     for (usize n <- usize::min..=usize::min; n--) {
-        if (n != 0 || visits != 2) return false
-        visits++
+        if (n != 0 || visits != 2) return false;
+        visits++;
     }
-    if (visits != 3) return false
-    unsigned int<65> highBit := 18446744073709551616
+    if (visits != 3) return false;
+    unsigned int<65> highBit := 18446744073709551616;
     for (def n <- highBit + 1..=highBit - 1; n--) {
-        visits++
-        if (visits > 6 || (visits == 6 && n != highBit - 1)) return false
+        visits++;
+        if (visits > 6 || (visits == 6 && n != highBit - 1)) return false;
     }
-    return visits == 6
+    return visits == 6;
 }
 
 fn<bool> decrementAfterContinue() {
-    int last = 3
-    int digits = 0
+    int last = 3;
+    int digits = 0;
     for (def n <- trace(1)..=trace(last); n--) {
-        last = 1
-        digits = digits * 10 + n
-        if (digits == 1) { n = 4; continue }
-        if (digits == 13) continue
-        break
+        last = 1;
+        digits = digits * 10 + n;
+        if (digits == 1) { n = 4; continue; }
+        if (digits == 13) continue;
+        break;
     }
-    return digits == 132
+    return digits == 132;
 }
 
 fn<bool> inclusiveLimits() {
-    int visits = 0
+    int visits = 0;
     for (int<1> n <- int<1>::min..=int<1>::max) {
-        if (visits > 1) return false
-        visits++
+        if (visits > 1) return false;
+        visits++;
     }
-    if (visits != 2) return false
-    unsigned int<65> last := unsigned int<65>::max
+    if (visits != 2) return false;
+    unsigned int<65> last := unsigned int<65>::max;
     for (def n <- last - 1..=last) {
-        if (visits > 3) return false
-        visits++
+        if (visits > 3) return false;
+        visits++;
     }
-    for (def n <- last..=last - 1) return false
-    return visits == 4
+    for (def n <- last..=last - 1) return false;
+    return visits == 4;
 }
 
 fn<bool> revisitEndpoint() {
-    int visits = 0
+    int visits = 0;
     for (def n <- (trace(9)..=trace(9))) {
-        visits++
-        if (n != 9 || visits > 2) return false
-        if (visits == 1) { n = 8; continue }
+        visits++;
+        if (n != 9 || visits > 2) return false;
+        if (visits == 1) { n = 8; continue; }
     }
-    return visits == 2
+    return visits == 2;
 }
 
 fn<bool> capturedBounds() {
-    int first = 1
-    int last = 4
-    int digits = 0
-    for (def n <- first..(if (last == 4) { first = 9; last } else 0)) {
-        last = 1
-        digits = digits * 10 + n
+    int first = 1;
+    int last = 4;
+    int digits = 0;
+    for (def n <- first..(if (last == 4) { first = 9; last; } else 0)) {
+        last = 1;
+        digits = digits * 10 + n;
     }
-    return digits == 123 && first == 9
+    return digits == 123 && first == 9;
 }
 
 fn<bool> mutableCounter() {
-    int digits = 0
+    int digits = 0;
     for (int n <- 1..9) {
-        digits = digits * 10 + n
-        if (n == 1) { n = 3; continue }
-        if (n == 4) n = 5
-        else break
+        digits = digits * 10 + n;
+        if (n == 1) { n = 3; continue; }
+        if (n == 4) n = 5;
+        else break;
     }
-    if (digits != 146) return false
-    int visits = 0
+    if (digits != 146) return false;
+    int visits = 0;
     for (def n <- 4..7) {
-        visits++
-        if (visits == 1) n = 3
-        else if (visits == 2 && n == 4) n = 1
-        else return false
+        visits++;
+        if (visits == 1) n = 3;
+        else if (visits == 2 && n == 4) n = 1;
+        else return false;
     }
-    return visits == 2
+    return visits == 2;
 }
 
 fn<bool> integerLimits() {
-    int visits = 0
+    int visits = 0;
     for (int<1> n <- int<1>::min..int<1>::max) {
-        if (n != int<1>::min || visits != 0) return false
-        visits++
+        if (n != int<1>::min || visits != 0) return false;
+        visits++;
     }
     for (unsigned int<1> n <- 0..1) {
-        if (n != 0 || visits != 1) return false
-        visits++
+        if (n != 0 || visits != 1) return false;
+        visits++;
     }
     for (isize n <- isize::min..isize::max) {
-        if (visits != 2) return false
-        visits++
-        n = isize::max
+        if (visits != 2) return false;
+        visits++;
+        n = isize::max;
     }
     for (usize n <- 0..usize::max) {
-        if (visits != 3) return false
-        visits++
-        n = usize::max
-        continue
+        if (visits != 3) return false;
+        visits++;
+        n = usize::max;
+        continue;
     }
-    return visits == 4
+    return visits == 4;
 }
 
 fn<bool> wideUnsigned() {
-    unsigned int<65> first := 18446744073709551615
-    unsigned int<65> last := 18446744073709551618
-    int visits = 0
+    unsigned int<65> first := 18446744073709551615;
+    unsigned int<65> last := 18446744073709551618;
+    int visits = 0;
     for (def n <- (first..last)) {
-        if (n < first || visits == 3) return false
-        visits++
+        if (n < first || visits == 3) return false;
+        visits++;
     }
-    return visits == 3
+    return visits == 3;
 }
 
 fn<int> nested() {
-    int digits = 0
+    int digits = 0;
     for (int row <- 1..5) {
-        for (int n <- 4..(if (row == 2) { continue } else if (row == 4) { break } else 5)) {
-            if (row == 1) digits = n
-            else digits = digits * 10 + 2
+        for (int n <- 4..(if (row == 2) { continue; } else if (row == 4) { break; } else 5)) {
+            if (row == 1) digits = n;
+            else digits = digits * 10 + 2;
         }
     }
-    return digits
+    return digits;
 }
 
 fn<int> leaveAtStart(final bool early) {
-    for (int n <- (if (early) { return 42 } else { return 7 })..trace(99)) return 99
+    for (int n <- (if (early) { return 42; } else { return 7; })..trace(99)) return 99;
 }
 
 fn<int> leaveAtEnd(final bool early) {
-    for (int n <- trace(8)..(if (early) { return 42 } else { return 7 })) return 99
+    for (int n <- trace(8)..(if (early) { return 42; } else { return 7; })) return 99;
 }
 
 fn<int> trace(final int value) {
-    println(value)
-    return value
+    println(value);
+    return value;
 }

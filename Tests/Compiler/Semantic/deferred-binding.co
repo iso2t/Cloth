@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-fn<int> later() = 2
+fn<int> later() = 2;
 fn<int> read() {
-    int later = { return 1 }
-    return later()
+    int later = { return 1; };
+    return later();
 }
 
 // RUN: %expect_exit --empty-stdout 1 %cloth --src "%/s" 2> "%t.err"

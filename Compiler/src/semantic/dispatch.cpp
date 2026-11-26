@@ -505,6 +505,7 @@ void Analyzer::publishDispatch () const {
 	}
 	for (auto &[owner, table] : program.dispatchTables) {
 		if (!owner.classReference() || owner.dependent()) continue;
+		table.formatter = formatterFor(owner);
 		for (const Operator op : { OEqual, ONotEqual }) table.referenceEquality.emplace(op, referenceEquality(owner, op));
 	}
 }

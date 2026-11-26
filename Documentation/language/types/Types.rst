@@ -11,10 +11,10 @@ after assigning ``null`` to ``value``.
 .. code-block:: text
 
    pub fn<int> main() {
-       int? value = 0
-       if (value == null || value != 0) return 1
-       value = null
-       return if (value == null) 42 else 2
+       int? value = 0;
+       if (value == null || value != 0) return 1;
+       value = null;
+       return if (value == null) 42 else 2;
    }
 
 Numeric types

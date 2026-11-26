@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    def numbers := 13..16
-    def copy := numbers
-    if (copy == numbers && numbers != 13..=16) return 42
-    return 1
+    def numbers := 13..16;
+    def copy := numbers;
+    if (copy == numbers && numbers != 13..=16) return 42;
+    return 1;
 }

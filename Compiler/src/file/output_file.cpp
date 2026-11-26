@@ -4,18 +4,13 @@
 
 #include <backend/backend.hpp>
 
-#include <cerrno>
-#include <cstddef>
-#include <cstdio>
 #include <filesystem>
 #include <format>
 #include <memory>
-#include <random>
-#include <span>
 #include <system_error>
-#include <wchar.h>
 
 #include <diagnostics.hpp>
+#include <file/atomic_file.hpp>
 #include <file/output_file.hpp>
 #include <file/source_file.hpp>
 #include <semantic/checked_program.hpp>
@@ -47,38 +42,17 @@ void checkDestination (const CheckedProgram &program, const fs::path &output) {
 	}
 }
 
-void publishFile (const fs::path &output, const std::span<const std::byte> bytes) {
-	// Use a short sibling name distinct from the destination, even when its filename is at the filesystem limit.
-	const char *s_prefix = output.filename().native().starts_with('.') ? "cloth-" : ".cloth-";
-	unsigned    u_nonce  = std::random_device{}();
-	fs::path    p_temp;
-	std::FILE  *fp_temp = nullptr;
-	do {
-		p_temp = output.parent_path() / std::format("{}{:08x}.tmp", s_prefix, u_nonce++);
-#ifdef _WIN32
-		fp_temp = _wfopen(p_temp.c_str(), L"wbx");
-#else
-		fp_temp = std::fopen(p_temp.c_str(), "wbx");
-#endif
-		if (!fp_temp && errno != EEXIST) outputError(output, { errno, std::generic_category() });
-	} while (!fp_temp);
-
-	std::error_code ec;
-	if (std::fwrite(bytes.data(), 1, bytes.size(), fp_temp) != bytes.size()) ec = { errno ? errno : EIO, std::generic_category() };
-	if (std::fclose(fp_temp) != 0 && !ec) ec = { errno ? errno : EIO, std::generic_category() };
-	if (!ec) fs::rename(p_temp, output, ec);
-	if (ec) {
-		std::error_code ec_cleanup;
-		fs::remove(p_temp, ec_cleanup);
-		outputError(output, ec);
-	}
-}
 
 }
 
 void emitFile (const CheckedProgram &program, backend::EmitKind kind, const fs::path &output) {
 	checkDestination(program, output);
-	publishFile(output, backend::emit(program, kind));
+	const auto bytes = backend::emit(program, kind);
+	try {
+		publishFile(output, bytes);
+	} catch (const std::system_error &error) {
+		outputError(output, error.code());
+	}
 }
 
 }

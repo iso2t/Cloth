@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    int[2][3] rows = [[1, 2, 3], [4, 5, 42]]
-    def saved := rows
-    rows[1][2] = 7
-    if (saved[1][2] != 42 || rows[0][2] != 3 || rows[1][1] != 5) return 1
-    return rows[1][2]
+    int[2][3] rows = [[1, 2, 3], [4, 5, 42]];
+    def saved := rows;
+    rows[1][2] = 7;
+    if (saved[1][2] != 42 || rows[0][2] != 3 || rows[1][1] != 5) return 1;
+    return rows[1][2];
 }

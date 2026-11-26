@@ -1,105 +1,105 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 fn<bool> trace(final int label) {
-    println(label)
-    return true
+    println(label);
+    return true;
 }
 
 fn<bool> iteration() {
-    int[] empty = []
-    for (def n <- empty) return false
-    empty.reserve(8)
-    for (def n <- empty) return false
+    int[] empty = [];
+    for (def n <- empty) return false;
+    empty.reserve(8);
+    for (def n <- empty) return false;
 
-    int[] one = [42]
-    one.reserve(8)
+    int[] one = [42];
+    one.reserve(8);
     for (def n <- one) {
-        if (one::size != 1 || n != 42) return false
-        one.append(9)
+        if (one::size != 1 || n != 42) return false;
+        one.append(9);
     }
-    if (one::size != 2) return false
+    if (one::size != 2) return false;
 
-    int[] digits = [4, 2]
-    int result = 0
+    int[] digits = [4, 2];
+    int result = 0;
     for (def digit <- digits) {
-        digits[1] = 9
-        digits.reserve(32)
-        result = result * 10 + digit
-        digit = 0
+        digits[1] = 9;
+        digits.reserve(32);
+        result = result * 10 + digit;
+        digit = 0;
     }
-    if (result != 42 || digits[0] != 4 || digits[1] != 9) return false
+    if (result != 42 || digits[0] != 4 || digits[1] != 9) return false;
     for (int n <- (if (trace(1)) digits else empty)) {
-        if (n == 4) continue
-        return n == 9
+        if (n == 4) continue;
+        return n == 9;
     }
-    return false
+    return false;
 }
 
 fn<bool> equality() {
-    int[] a = []
-    int[] b = []
-    b.reserve(8)
-    int[0] empty := []
-    if (a != b || a != empty || empty != b) return false
-    a.append(0)
-    if (a == b || empty == a) return false
-    a.append(42)
-    b = [0, 42]
-    int[2] fixed := [0, 42]
-    if (a != b || fixed != a || b != fixed) return false
-    b[1] = 7
-    if (a == b) return false
-    b = [42, 0]
-    return a != b
+    int[] a = [];
+    int[] b = [];
+    b.reserve(8);
+    int[0] empty := [];
+    if (a != b || a != empty || empty != b) return false;
+    a.append(0);
+    if (a == b || empty == a) return false;
+    a.append(42);
+    b = [0, 42];
+    int[2] fixed := [0, 42];
+    if (a != b || fixed != a || b != fixed) return false;
+    b[1] = 7;
+    if (a == b) return false;
+    b = [42, 0];
+    return a != b;
 }
 
 fn<bool> nullableFixed(final bool present) {
-    int[] values = []
-    int[0]? empty := if (present) [] else null
-    if ((values == empty) != present || (empty != values) == present) return false
-    values.append(42)
-    int[1]? cell := if (present) [42] else null
-    return (cell == values) == present && (values != cell) != present
+    int[] values = [];
+    int[0]? empty := if (present) [] else null;
+    if ((values == empty) != present || (empty != values) == present) return false;
+    values.append(42);
+    int[1]? cell := if (present) [42] else null;
+    return (cell == values) == present && (values != cell) != present;
 }
 
 fn<bool> operandOrder() {
-    int[] values = [4, 2]
-    int[] saved := values
-    if (values != (if (trace(2)) { values.reserve(16); values[0] = 7; saved } else values)) return false
-    if ((if (trace(3)) values else saved) == (if (trace(4)) { values.clear(); saved } else values)) return false
-    int[2] fixed = [4, 2]
-    if (fixed != (if (trace(5)) { fixed[0] = 7; saved } else values)) return false
-    return fixed[0] == 7 && values::size == 0
+    int[] values = [4, 2];
+    int[] saved := values;
+    if (values != (if (trace(2)) { values.reserve(16); values[0] = 7; saved; } else values)) return false;
+    if ((if (trace(3)) values else saved) == (if (trace(4)) { values.clear(); saved; } else values)) return false;
+    int[2] fixed = [4, 2];
+    if (fixed != (if (trace(5)) { fixed[0] = 7; saved; } else values)) return false;
+    return fixed[0] == 7 && values::size == 0;
 }
 
 fn<bool> widthAndBinding() {
-    unsigned int<65>[] wide = [0, 18446744073709551616]
-    unsigned int<65>[] saved := wide
-    int seen = 0
+    unsigned int<65>[] wide = [0, 18446744073709551616];
+    unsigned int<65>[] saved := wide;
+    int seen = 0;
     for (def cell <- wide) {
-        wide[1] = 0
-        if (cell == 18446744073709551616) seen++
+        wide[1] = 0;
+        if (cell == 18446744073709551616) seen++;
     }
-    if (seen != 1 || saved == wide) return false
-    int<65536>[] high = [int<65536>::min, 0]
-    int<65536>[] previous := high
+    if (seen != 1 || saved == wide) return false;
+    int<65536>[] high = [int<65536>::min, 0];
+    int<65536>[] previous := high;
     for (def cell <- high) {
-        high.clear()
-        if (cell == int<65536>::min) seen++
+        high.clear();
+        if (cell == int<65536>::min) seen++;
     }
-    if (seen != 2 || high::size != 0 || previous == high) return false
-    high = [0, 0]
-    if (previous == high) return false
-    int<12>[] small := [0, -7, 42]
-    int count = 0
-    for (bool flag <- small) if (flag) count++
-    return count == 2
+    if (seen != 2 || high::size != 0 || previous == high) return false;
+    high = [0, 0];
+    if (previous == high) return false;
+    int<12>[] small := [0, -7, 42];
+    int count = 0;
+    for (bool flag <- small) if (flag) count++;
+    return count == 2;
 }
 
 pub fn<int> main() {
-    if (!iteration()) return 1
-    if (!equality() || !nullableFixed(false) || !nullableFixed(true)) return 2
-    if (!operandOrder()) return 3
-    if (!widthAndBinding()) return 4
-    return 42
+    if (!iteration()) return 1;
+    if (!equality() || !nullableFixed(false) || !nullableFixed(true)) return 2;
+    if (!operandOrder()) return 3;
+    if (!widthAndBinding()) return 4;
+    return 42;
 }

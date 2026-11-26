@@ -24,9 +24,9 @@
 namespace {
 
 cloth::CheckedProgram descriptorProgram (unsigned    bits,
-                                         std::string source = R"(typedef<struct> Record { pub bool enabled, pub int<12>[2][0] rows, pub usize stamp }
+                                         std::string source = R"(typedef<struct> Record { pub bool enabled, pub int<12>[2][0] rows, pub usize stamp; }
 fn shapes(Record record, int[] growable, int[]?[] nullableRows, Record[1] records) {}
-pub fn<int> main() { Record value = {false, [[], []], 42}; return value.stamp -> int })") {
+pub fn<int> main() { Record value = {false, [[], []], 42}; return value.stamp -> int; })") {
 	cloth::Lexer l_lexer{ cloth::SourceFile("entry.co", std::move(source)) };
 	return cloth::CheckedProgram(cloth::SymbolTable(cloth::Parser(l_lexer).parse()), { .sizeBits = bits }, {}, cloth::ProgramKind::Executable);
 }
@@ -110,12 +110,12 @@ TEST (BackendArrayDescriptor, AggregateSnapshotsMustFitTheTarget) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const std::uint64_t u64_chunk = std::uint64_t{ 1 } << (u_bits - 4);
-		std::string         s_source  = "typedef<struct> Part { int<8>[" + std::to_string(u64_chunk) + "] cells }\ntypedef<struct> Whole { ";
+		std::string         s_source  = "typedef<struct> Part { int<8>[" + std::to_string(u64_chunk) + "] cells; }\ntypedef<struct> Whole { ";
 		for (unsigned u_index = 0; u_index < 16; ++u_index) {
 			if (u_index) s_source += ", ";
 			s_source += "Part part" + std::to_string(u_index);
 		}
-		s_source += " }\nfn shapes(Part part, Whole whole) {}\npub fn<int> main() = 42";
+		s_source += "; }\nfn shapes(Part part, Whole whole) {}\npub fn<int> main() = 42;";
 		const cloth::CheckedProgram  cp_program = descriptorProgram(u_bits, std::move(s_source));
 		const backend::LoweredModule lm_module(cp_program);
 		backend::detail::ValueTypes  vt_types(lm_module.get(), cp_program);
@@ -132,9 +132,9 @@ TEST (BackendArrayDescriptor, NullableFieldsAppendIndependentPointerFreeShapeWit
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const cloth::CheckedProgram cp_program =
-		        descriptorProgram(u_bits, R"(typedef<struct> Record { pub int<12>[2][0]? rows, pub usize stamp, pub int[3]? cells }
+		        descriptorProgram(u_bits, R"(typedef<struct> Record { pub int<12>[2][0]? rows, pub usize stamp, pub int[3]? cells; }
 fn shape(Record value) {}
-pub fn<int> main() { Record value = {[[], []], 42, null}; value.rows = null; Record copy = value; return copy.stamp -> int })");
+pub fn<int> main() { Record value = {[[], []], 42, null}; value.rows = null; Record copy = value; return copy.stamp -> int; })");
 		const backend::LoweredModule lm_module(cp_program);
 		ASSERT_NO_THROW(lm_module.verify());
 		backend::detail::ValueTypes vt_types(lm_module.get(), cp_program);
@@ -200,9 +200,9 @@ pub fn<int> main() { Record value = {[[], []], 42, null}; value.rows = null; Rec
 TEST (BackendArrayDescriptor, StructArrayCopiesUseOneBackingBlockPerFieldPathAndDestination) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const cloth::CheckedProgram  cp_program = descriptorProgram(u_bits, R"(typedef<struct> Cell { pub int<12>[2]? cells, pub usize stamp }
+		const cloth::CheckedProgram  cp_program = descriptorProgram(u_bits, R"(typedef<struct> Cell { pub int<12>[2]? cells, pub usize stamp; }
 fn shapes(Cell?[3][2] small, Cell?[3][4096] large, Cell?[268435455][0] empty) {}
-pub fn<int> main() = 42)");
+pub fn<int> main() = 42;)");
 		const backend::LoweredModule lm_module(cp_program);
 		backend::detail::ValueTypes  vt_types(lm_module.get(), cp_program);
 		const cloth::ResultTypes    &v_types     = cp_program.declarations.at(&cp_program.units.front()->getGlobals().at("shapes").front()).parameters;
@@ -263,8 +263,8 @@ TEST (BackendArrayDescriptor, BackingBlocksMustFitAcrossAllEnclosingExtents) {
 		const std::uint64_t         u64_count  = u64_chunk / (std::uint64_t{ 4 } * (u_bits / 8));
 		const cloth::CheckedProgram cp_program = descriptorProgram(
 		        u_bits,
-		        "typedef<struct> Cell { int<8>[0] cells }\ntypedef<struct> Branch { Cell[" + std::to_string(u64_count) +
-		                "] items }\nfn shapes(Branch item, Branch[16] tooLarge, Branch[0] empty, Branch[16][0] rows) {}\npub fn<int> main() = 42");
+		        "typedef<struct> Cell { int<8>[0] cells; }\ntypedef<struct> Branch { Cell[" + std::to_string(u64_count) +
+		                "] items; }\nfn shapes(Branch item, Branch[16] tooLarge, Branch[0] empty, Branch[16][0] rows) {}\npub fn<int> main() = 42;");
 		const backend::LoweredModule lm_module(cp_program);
 		backend::detail::ValueTypes  vt_types(lm_module.get(), cp_program);
 		const cloth::ResultTypes    &v_types  = cp_program.declarations.at(&cp_program.units.front()->getGlobals().at("shapes").front()).parameters;
@@ -282,9 +282,9 @@ TEST (BackendArrayDescriptor, BackingBlocksMustFitAcrossAllEnclosingExtents) {
 TEST (BackendArrayDescriptor, NullableRowsUseCheckedStridesAndShareKnownShapeSuffixes) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const cloth::CheckedProgram  cp_program = descriptorProgram(u_bits, R"(typedef<struct> Grid { pub int[2]?[3]?[0]? rows }
+		const cloth::CheckedProgram  cp_program = descriptorProgram(u_bits, R"(typedef<struct> Grid { pub int[2]?[3]?[0]? rows; }
 fn shape(Grid grid) {}
-pub fn<int> main() { Grid grid = {[null, [[], null, []]]}; Grid copy = grid; grid.rows = null; return 42 })");
+pub fn<int> main() { Grid grid = {[null, [[], null, []]]}; Grid copy = grid; grid.rows = null; return 42; })");
 		const backend::LoweredModule lm_module(cp_program);
 		ASSERT_NO_THROW(lm_module.verify());
 		backend::detail::ValueTypes vt_types(lm_module.get(), cp_program);
@@ -356,8 +356,8 @@ TEST (BackendArrayDescriptor, NullableRowBackingMustFitEvenWhenSnapshotsAreSmall
 		const std::uint64_t         u64_chunk = std::uint64_t{ 1 } << (u_bits - 4);
 		const std::string           s_count   = std::to_string(u64_chunk / (std::uint64_t{ 4 } * (u_bits / 8)));
 		const cloth::CheckedProgram cp_program =
-		        descriptorProgram(u_bits, "typedef<struct> Cell { int<8>[0] cells }\nfn shapes(Cell[16]?[" + s_count + "] tooLarge, Cell[0]?[" +
-		                                          s_count + "] empty, Cell[16]?[0] emptyRows, Cell[2]?[] growableRow) {}\npub fn<int> main() = 42");
+		        descriptorProgram(u_bits, "typedef<struct> Cell { int<8>[0] cells; }\nfn shapes(Cell[16]?[" + s_count + "] tooLarge, Cell[0]?[" +
+		                                          s_count + "] empty, Cell[16]?[0] emptyRows, Cell[2]?[] growableRow) {}\npub fn<int> main() = 42;");
 		const backend::LoweredModule lm_module(cp_program);
 		backend::detail::ValueTypes  vt_types(lm_module.get(), cp_program);
 		const cloth::ResultTypes    &v_types = cp_program.declarations.at(&cp_program.units.front()->getGlobals().at("shapes").front()).parameters;

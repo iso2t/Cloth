@@ -1,21 +1,21 @@
-using cloth.collections.Deque : Deque
+using cloth.collections.Deque : Deque;
 
 pub typedef<class> Queue<T>(def<Deque<T>> items) {
     pub Queue() : (Deque<T>::new) {}
 
-    pub mt enqueue(T value) = items.pushBack(value)
+    pub mt enqueue(T value) = items.pushBack(value);
 
-    pub mt<T> dequeue() = items.popFront()
+    pub mt<T> dequeue() = items.popFront();
 
-    pub mt<T> peek() = items.peekFront()
+    pub mt<T> peek() = items.peekFront();
 
-    pub mt<usize> size() = items.size()
+    pub mt<usize> size() = items.size();
 
-    pub mt<bool> isEmpty() = items.isEmpty()
+    pub mt<bool> isEmpty() = items.isEmpty();
 
-    pub mt clear() = items.clear()
+    pub mt clear() = items.clear();
 
-    pub mt reserve(usize minimum) = items.reserve(minimum)
+    pub mt reserve(usize minimum) = items.reserve(minimum);
 
-    pub ~Queue { items::delete }
+    pub ~Queue { items::delete; }
 }

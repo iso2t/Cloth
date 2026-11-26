@@ -30,12 +30,12 @@ void expectSymbol (const SymbolScope &scope, std::string_view name, SymbolKind k
 }
 
 TEST (SemanticSymbols, CollectsForwardDeclarationsAndOverloadsWithoutResolvingBodies) {
-	const SymbolTable  st_table   = collect(R"(using shapes: Imported
-fn<Later> private(Later x) = convert(x)
-pub fn<Later> convert(Later x) = private(x)
-fn<int> convert(int x) = missing(x)
-fn work() { def local = missing() }
-typedef<struct> Later { int private }
+	const SymbolTable  st_table   = collect(R"(using shapes: Imported;
+fn<Later> private(Later x) = convert(x);
+pub fn<Later> convert(Later x) = private(x);
+fn<int> convert(int x) = missing(x);
+fn work() { def local = missing(); }
+typedef<struct> Later { int private; }
 )");
 	const SymbolScope &ss_globals = st_table.getGlobals();
 	EXPECT_EQ(ss_globals.size(), 4u);
@@ -57,7 +57,7 @@ typedef<struct> Later { int private }
 TEST (SemanticSymbols, AcceptsPrivateAndPrivAsFieldTypeNames) {
 	const SymbolTable  st_table   = collect(R"(typedef<struct> private {}
 pub typedef<struct> priv {}
-typedef<struct> Pair { private left, priv right }
+typedef<struct> Pair { private left, priv right; }
 )");
 	const SymbolScope &ss_globals = st_table.getGlobals();
 	expectSymbol(ss_globals, "private", SymbolKind::Type);
@@ -69,19 +69,19 @@ typedef<struct> Pair { private left, priv right }
 
 TEST (SemanticSymbols, KeepsClassAndStateMembersInTheirOwningScopes) {
 	const SymbolTable  st_table   = collect(R"(pub typedef<class> Lamp(pub def<int> light, int setting) {
-    def<int> power = unknown()
+    def<int> power = unknown();
     pub Lamp() : (0, 0) {}
     pub ~Lamp {}
-    pub mt<int> level() = power
-    operator +(int value) -> int = value
-    pub operator ::power() -> int = 42
-    state<void> ::switchOn()
+    pub mt<int> level() = power;
+    operator +(int value) -> int = value;
+    pub operator ::power() -> int = 42;
+    state<void> ::switchOn();
     pub state<void> On {
         init {}
         mt switchOn() {}
     }
-    state Off
-    typedef<struct> Part { pub int light }
+    state Off;
+    typedef<struct> Part { pub int light; }
 }
 typedef<state<void>> pub Off for Lamp {
     pub init {}
@@ -129,17 +129,17 @@ typedef<state<void>> pub Off for Lamp {
 TEST (SemanticSymbols, RequiresExplicitPublicVisibilityOnStructEnumAndInterfaceMembers) {
 	const SymbolTable  st_table   = collect(R"(pub typedef<struct> Pair {
     pub int left, int right;
-    pub mt<int> first() = left
-    mt<int> second() = right
-    pub operator +(int delta) -> int = delta
+    pub mt<int> first() = left;
+    mt<int> second() = right;
+    pub operator +(int delta) -> int = delta;
 }
 pub typedef<enum> Mode(pub def<int> code) {
     pub On(1), Off(0);
-    pub operator +(int delta) -> int = delta
+    pub operator +(int delta) -> int = delta;
 }
 typedef<interface> Sized {
-    pub mt<int> size()
-    mt<bool> empty() = default (unknown())
+    pub mt<int> size();
+    mt<bool> empty() = default (unknown());
 }
 )");
 	const SymbolScope &ss_globals = st_table.getGlobals();

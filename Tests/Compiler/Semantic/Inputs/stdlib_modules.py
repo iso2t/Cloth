@@ -21,7 +21,7 @@ def main():
         if path != entry:
             module = ".".join(relative.with_suffix("").parts)
             source = consumers / f"import-{index}.co"
-            source.write_text(f"using {module}: *\n", encoding="utf-8")
+            source.write_text(f"using {module}: *;\n", encoding="utf-8")
 
         for bits in ("32", "64"):
             result = subprocess.run(

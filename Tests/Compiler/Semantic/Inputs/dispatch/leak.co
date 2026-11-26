@@ -2,4 +2,4 @@
 
 pub typedef<class> Box<T> {}
 typedef<class> Internal { pub typedef<class> Nested {} }
-pub typedef<interface> API { pub mt<Box<Internal.Nested>> read() }
+pub typedef<interface> API { pub mt<Box<Internal.Nested>> read(); }

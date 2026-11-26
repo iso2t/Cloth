@@ -26,6 +26,8 @@ int main (int argc, char **argv) {
 	const uint64_t other = cloth_rt_object_create(1, 1, NULL, NULL, NULL);
 	const uint64_t child = cloth_rt_object_create(sizeof(int), 64, views, destroy, dispose);
 	int           *field = cloth_rt_object_data(child, 0);
+	// The C implementation name and the native ABI name access the same object.
+	assert(clothRtObjectData(child, 0) == field);
 	assert((uintptr_t)field % 64 == 0 && *field == 0);
 	*field       = 42;
 	void *buffer = cloth_rt_object_backing(child, 128, 128);

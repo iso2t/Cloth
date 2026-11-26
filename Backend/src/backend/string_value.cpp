@@ -44,14 +44,19 @@ LLVMValueRef literal (LLVMModuleRef module, const cloth::StringLiteral &value) {
 	if (value.value.size() >= LLVMConstIntGetZExtValue(LLVMConstAllOnes(ty_length)))
 		throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedLowering, "String literal storage exceeds the target address space",
 		                           { { .span = value.getSpan(), .text = "string literal is too large" } });
+	return constant(module, value.value);
+}
+
+LLVMValueRef constant (LLVMModuleRef module, std::string_view text) {
+	const LLVMTypeRef    ty_length   = LLVMStructGetTypeAtIndex(type(module), ByteLength);
 	const LLVMContextRef ctx_context = LLVMGetModuleContext(module);
-	const LLVMValueRef   ir_bytes    = literalBytes(ctx_context, value.value);
+	const LLVMValueRef   ir_bytes    = literalBytes(ctx_context, text);
 	const LLVMValueRef   ir_data     = LLVMAddGlobal(module, LLVMTypeOf(ir_bytes), "cloth.string.data");
 	LLVMSetInitializer(ir_data, ir_bytes);
 	LLVMSetGlobalConstant(ir_data, true);
 	LLVMSetLinkage(ir_data, LLVMPrivateLinkage);
 	LLVMSetUnnamedAddress(ir_data, LLVMGlobalUnnamedAddr);
-	LLVMValueRef v_fields[] = { ir_data, LLVMConstInt(ty_length, value.value.size(), false) };
+	LLVMValueRef v_fields[] = { ir_data, LLVMConstInt(ty_length, text.size(), false) };
 	return LLVMConstStructInContext(ctx_context, v_fields, FieldCount, false);
 }
 

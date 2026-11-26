@@ -1,17 +1,17 @@
 // A slot preserves the complete value, including an array's independent shape.
-typedef<struct> SnapshotSlot<T> { pub T value }
+typedef<struct> SnapshotSlot<T> { pub T value; }
 
 pub typedef<struct> Snapshot<T> {
     // Keep aggregate construction inside Snapshot, which owns the private slots field.
     pub typedef<struct> Factory {
-        pub mt<Snapshot<E>> empty<E>() = { [] }
+        pub mt<Snapshot<E>> empty<E>() = { [] };
     }
     SnapshotSlot<T>[] slots;
 
-    pub mt append(T value) { slots.append({ value }) }
+    pub mt append(T value) { slots.append({ value }); }
 }
 
 pub fn<Snapshot<T>> emptySnapshot<T>() {
-    Snapshot.Factory factory = {}
-    return factory.empty<T>()
+    Snapshot.Factory factory = {};
+    return factory.empty<T>();
 }

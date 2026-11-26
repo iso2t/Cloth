@@ -2,24 +2,24 @@
 
 # Two private Item declarations give Cell<Wrap<Item>> the same spelling in both modules.
 # RUN: mkdir -p "%t"
-# RUN: echo 'pub typedef<struct> Cell<T> { T value }' > "%t/layouts.co"
-# RUN: echo 'pub typedef<struct> Wrap<T> { T value }' >> "%t/layouts.co"
-# RUN: echo 'using layouts: Cell, Wrap' > "%t/first.co"
-# RUN: echo 'typedef<struct> Item { Cell<Wrap<Item>> firstBack }' >> "%t/first.co"
-# RUN: echo 'using layouts: Cell, Wrap' > "%t/second.co"
-# RUN: echo 'typedef<struct> Item { Cell<Wrap<Item>> secondBack }' >> "%t/second.co"
+# RUN: echo 'pub typedef<struct> Cell<T> { T value; }' > "%t/layouts.co"
+# RUN: echo 'pub typedef<struct> Wrap<T> { T value; }' >> "%t/layouts.co"
+# RUN: echo 'using layouts: Cell, Wrap;' > "%t/first.co"
+# RUN: echo 'typedef<struct> Item { Cell<Wrap<Item>> firstBack; }' >> "%t/first.co"
+# RUN: echo 'using layouts: Cell, Wrap;' > "%t/second.co"
+# RUN: echo 'typedef<struct> Item { Cell<Wrap<Item>> secondBack; }' >> "%t/second.co"
 
-# RUN: echo 'using layouts: *' > "%t/entry.co"
-# RUN: echo 'using first: *' >> "%t/entry.co"
-# RUN: echo 'using second: *' >> "%t/entry.co"
+# RUN: echo 'using layouts: *;' > "%t/entry.co"
+# RUN: echo 'using first: *;' >> "%t/entry.co"
+# RUN: echo 'using second: *;' >> "%t/entry.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --target-bits 32 --src "%t/entry.co" 2> "%t.err"
 # RUN: %filecheck "%s" -DMODULE=first --input-file "%t.err"
 # RUN: %expect_exit --empty-stdout 1 %cloth --target-bits 64 --src "%t/entry.co" 2> "%t.err"
 # RUN: %filecheck "%s" -DMODULE=first --input-file "%t.err"
 
-# RUN: echo 'using layouts: *' > "%t/entry.co"
-# RUN: echo 'using second: *' >> "%t/entry.co"
-# RUN: echo 'using first: *' >> "%t/entry.co"
+# RUN: echo 'using layouts: *;' > "%t/entry.co"
+# RUN: echo 'using second: *;' >> "%t/entry.co"
+# RUN: echo 'using first: *;' >> "%t/entry.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --target-bits 32 --src "%t/entry.co" 2> "%t.err"
 # RUN: %filecheck "%s" -DMODULE=second --input-file "%t.err"
 # RUN: %expect_exit --empty-stdout 1 %cloth --target-bits 64 --src "%t/entry.co" 2> "%t.err"
@@ -27,6 +27,6 @@
 
 # CHECK: [C3080] Error: Recursive storage in struct 'Cell'
 # CHECK: [[MODULE]].co:2:41
-# CHECK: typedef<struct> Item { Cell<Wrap<Item>> [[MODULE]]Back }
+# CHECK: typedef<struct> Item { Cell<Wrap<Item>> [[MODULE]]Back; }
 # CHECK: layouts.co:1:21
 # CHECK: declared here

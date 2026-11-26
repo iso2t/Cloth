@@ -12,11 +12,13 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
 #include <ast/decl/class_declaration.hpp>
 #include <ast/decl/declarations.hpp>
+#include <ast/decl/function_declaration.hpp>
 #include <ast/decl/struct_declaration.hpp>
 #include <diagnostics.hpp>
 #include <llvm-c/Core.h>
@@ -28,6 +30,49 @@
 
 namespace backend::detail {
 namespace {
+const cloth::FunctionDeclaration *exportedFunction (const cloth::Symbol &symbol) {
+	if (symbol.kind != cloth::SymbolKind::Function || symbol.visibility != cloth::Visibility::Public) return nullptr;
+	const auto *fn = dynamic_cast<const cloth::FunctionDeclaration *>(std::get<const cloth::CallableSignature *>(symbol.declaration));
+	return fn && !fn->typeParameters ? fn : nullptr;
+}
+
+bool exportType (const cloth::ResolvedType &type) {
+	const cloth::ResolvedType leaf = type.nullable() ? type.element() : type;
+	return !leaf.declaration && leaf.suffixes.empty() &&
+	       (leaf.integer() || leaf.floating() || leaf == cloth::ResolvedType(cloth::KBoolean) || leaf == cloth::ResolvedType(cloth::KCharacter) ||
+	        leaf == cloth::ResolvedType(cloth::KString));
+}
+
+// Hex-encoded UTF-8 components cannot contain the separator. Paths and declaration order never enter the link name.
+void appendComponent (std::string &name, std::string_view part) {
+	static constexpr char digits[] = "0123456789abcdef";
+	name += '_';
+	for (const unsigned char byte : part) {
+		name += digits[byte >> 4u];
+		name += digits[byte & 15u];
+	}
+}
+
+void appendExportType (std::string &name, const cloth::ResolvedType &type) {
+	appendComponent(name, type.name);
+	name += "_w" + std::to_string(type.width);
+	if (type.nullable()) name += "_q";
+}
+
+std::string exportName (const std::string &module, const cloth::Symbol &symbol, const cloth::DeclarationInfo &signature) {
+	if (!std::ranges::all_of(signature.parameters, exportType) || !std::ranges::all_of(signature.returns, exportType))
+		throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedFunctionAbi,
+		                           "A native library export requires scalar or string parameters and results",
+		                           { { .span = symbol.name.getSpan(), .text = "unsupported native export signature" } });
+	std::string s_name = "cloth_v1";
+	appendComponent(s_name, module);
+	appendComponent(s_name, symbol.name.getNameKey());
+	for (const cloth::ResolvedType &type : signature.parameters) appendExportType(s_name, type);
+	s_name += "_r";
+	for (const auto &type : signature.returns) appendExportType(s_name, type);
+	return s_name;
+}
+
 bool nativeSignature (const cloth::DeclarationInfo &signature) {
 	return signature.parameters.empty() && signature.returns.size() == 1 && signature.returns.front() == cloth::ResolvedType(cloth::KInteger);
 }
@@ -175,15 +220,32 @@ LLVMValueRef ModuleFunctions::declare (const cloth::Symbol &symbol, const cloth:
                                        const cloth::ResolvedType *host) {
 	const FunctionKey key{ &symbol, instance ? m_instanceKeys.at(instance) : nullptr, index, host };
 	if (const auto found = m_functions.find(key); found != m_functions.end()) return found->second;
-	const bool  b_native = !index && &symbol == program.entryPoint && nativeSignature(signature(symbol, instance));
-	std::string s_name   = b_native ? "main" : "cloth." + symbol.name.getNameKey();
+	const bool  b_native  = !index && &symbol == program.entryPoint && nativeSignature(signature(symbol, instance));
+	std::string s_name    = b_native ? "main" : "cloth." + symbol.name.getNameKey();
+	const auto &info      = program.declarations.at(&symbol);
+	const auto  it_module = program.nativeModules.find(info.file);
+	const auto *fn_export = !instance && !info.owner && it_module != program.nativeModules.end() ? exportedFunction(symbol) : nullptr;
+	if (fn_export) s_name = exportName(it_module->second, symbol, info);
 	if (index) s_name += ".default." + std::to_string(*index);
 	const LLVMTypeRef  ty_function = functionType(symbol, instance, index);
 	const LLVMValueRef fn_function = LLVMAddFunction(module, s_name.c_str(), ty_function);
-	LLVMSetLinkage(fn_function, b_native ? LLVMExternalLinkage : LLVMInternalLinkage);
+	LLVMSetLinkage(fn_function, b_native || fn_export ? LLVMExternalLinkage : LLVMInternalLinkage);
 	m_functions.emplace(key, fn_function);
+	if (fn_export && info.file != 0) return fn_function;
 	pending.push_back({ .symbol = &symbol, .instance = instance, .function = fn_function, .defaultParameter = index, .host = host });
 	return fn_function;
+}
+
+void ModuleFunctions::declareExports () {
+	for (const auto &[name, symbols] : program.units.front()->getGlobals()) {
+		for (const auto &symbol : symbols) {
+			const auto *fn = exportedFunction(symbol);
+			if (!fn) continue;
+			declareFunction(symbol);
+			for (std::size_t i = 0; i < fn->parameters.size(); ++i)
+				if (fn->parameters[i].defaultValue) declareDefault(symbol, i, nullptr);
+		}
+	}
 }
 
 void ModuleFunctions::emitNativeEntry (LLVMBuilderRef builder, LLVMValueRef function) {

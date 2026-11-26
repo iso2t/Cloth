@@ -1,46 +1,46 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 fn<bool> mixed(final bool present) {
-    def plain := usize::max..=usize::max
-    range<usize>? maybe := if (present) plain else null
-    if ((maybe == plain) != present || (plain == maybe) != present) return false
-    return (maybe != plain) == !present && (plain != maybe) == !present
+    def plain := usize::max..=usize::max;
+    range<usize>? maybe := if (present) plain else null;
+    if ((maybe == plain) != present || (plain == maybe) != present) return false;
+    return (maybe != plain) == !present && (plain != maybe) == !present;
 }
 
 fn<bool> conditionals(final bool present) {
-    range<int<12>>? missing := null
-    range<int<12>>? bounds := if (present) 13..16 else null
-    if ((missing == (if (present) bounds else null)) == present) return false
-    if ((if (present) 13..16 else null) != bounds) return false
-    return (if (present) bounds else missing) == (if (present) 13..16 else null)
+    range<int<12>>? missing := null;
+    range<int<12>>? bounds := if (present) 13..16 else null;
+    if ((missing == (if (present) bounds else null)) == present) return false;
+    if ((if (present) 13..16 else null) != bounds) return false;
+    return (if (present) bounds else missing) == (if (present) 13..16 else null);
 }
 
 fn<int> trace(final int label) {
-    println(label)
-    return label
+    println(label);
+    return label;
 }
 
 fn<int> stopOnLeft(final bool stop) {
-    range<int>? missing := null
-    def same := ((trace(5)..(if (stop) { return 42 } else 0)) -> range<int>?) == (missing ?: ((trace(9)..0) -> range<int>?))
-    return if (same) 1 else 2
+    range<int>? missing := null;
+    def same := ((trace(5)..(if (stop) { return 42; } else 0)) -> range<int>?) == (missing ?: ((trace(9)..0) -> range<int>?));
+    return if (same) 1 else 2;
 }
 
 pub fn<int> main() {
-    if (!mixed(false) || !mixed(true)) return 1
-    if (!conditionals(false) || !conditionals(true)) return 7
-    def high := unsigned int<65>::max
-    def low := high -> unsigned int<64> -> unsigned int<65>
-    range<unsigned int<65>>? both := high..=high
-    range<unsigned int<65>>? start := low..=high
-    range<unsigned int<65>>? end := high..=low
-    if (both == start || !(start != both) || both == end || !(end != both)) return 2
+    if (!mixed(false) || !mixed(true)) return 1;
+    if (!conditionals(false) || !conditionals(true)) return 7;
+    def high := unsigned int<65>::max;
+    def low := high -> unsigned int<64> -> unsigned int<65>;
+    range<unsigned int<65>>? both := high..=high;
+    range<unsigned int<65>>? start := low..=high;
+    range<unsigned int<65>>? end := high..=low;
+    if (both == start || !(start != both) || both == end || !(end != both)) return 2;
 
-    range<int>? missing := null
-    range<int>? value = 0..0
-    if (missing == ((trace(1)..0) -> range<int>?)) return 3
-    if (((trace(2)..0) -> range<int>?) == ((trace(3)..0) -> range<int>?)) return 4
-    if (value != ((if (trace(4) == 4) { value = null; 0..0 } else 1..1) -> range<int>?)) return 5
-    if (value != null) return 6
-    return stopOnLeft(true)
+    range<int>? missing := null;
+    range<int>? value = 0..0;
+    if (missing == ((trace(1)..0) -> range<int>?)) return 3;
+    if (((trace(2)..0) -> range<int>?) == ((trace(3)..0) -> range<int>?)) return 4;
+    if (value != ((if (trace(4) == 4) { value = null; 0..0; } else 1..1) -> range<int>?)) return 5;
+    if (value != null) return 6;
+    return stopOnLeft(true);
 }

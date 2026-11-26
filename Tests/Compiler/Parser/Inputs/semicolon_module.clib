@@ -1,0 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using semicolon_leaf: Tag;
+pub typedef<class> Ticket : Tag;

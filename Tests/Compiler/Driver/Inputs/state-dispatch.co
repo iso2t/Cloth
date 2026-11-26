@@ -1,64 +1,64 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-pub typedef<interface> Identified { pub mt<int> id() }
+pub typedef<interface> Identified { pub mt<int> id(); }
 typedef<state<int>> pub Loaded for Identified {
-    init { println(state) }
-    pub mt<int> reading() = state + self.id()
-    pub mt<int> adjusted(int delta) = state + delta
-    pub mt<int> leave() { self -> Idle; return state }
+    init { println(state); }
+    pub mt<int> reading() = state + self.id();
+    pub mt<int> adjusted(int delta) = state + delta;
+    pub mt<int> leave() { self -> Idle; return state; }
 }
 typedef<class> Meter(pub def<int> offset, bool checked) : Identified {
     pub Meter(int offset) : (offset, true) {}
-    pub mt<int> id() = offset
-    pub state<int> ::reading()
-    pub state<int> ::adjusted(opt<int> amount ?: self.offset)
+    pub mt<int> id() = offset;
+    pub state<int> ::reading();
+    pub state<int> ::adjusted(opt<int> amount ?: self.offset);
     pub default state<void> Idle {
-        mt<int> reading() = 7
-        mt<int> adjusted(int n) = 6 + n
+        mt<int> reading() = 7;
+        mt<int> adjusted(int n) = 6 + n;
     }
-    pub state Loaded
+    pub state Loaded;
 }
 typedef<class> Alternate : Identified {
     pub Alternate(int tag) : () {}
-    pub mt<int> id() = 2
+    pub mt<int> id() = 2;
     pub state<void> Idle {}
-    pub default(40) state Loaded
+    pub default(40) state Loaded;
 }
 typedef<class> Machine {
     pub Machine(int tag) : () {}
-    pub state<T> ::echo<T>(T input)
-    pub default state<void> Ready { mt<U> echo<U>(U value) = value }
+    pub state<T> ::echo<T>(T input);
+    pub default state<void> Ready { mt<U> echo<U>(U value) = value; }
 }
 typedef<class> Recorder<T> : Machine(0) {
     pub Recorder(int tag) : () {}
     pub default([40, 2]) state<int[]> Recording {
-        mt<U> echo<U>(U value) = value
-        pub mt<int> finish() { self -> Ready; return state[0] + state[1] }
+        mt<U> echo<U>(U value) = value;
+        pub mt<int> finish() { self -> Ready; return state[0] + state[1]; }
     }
 }
-fn<int<12>> echo(Machine machine, int<12> value) = machine::echo(value)
-fn<int> read(Meter meter) = meter::reading()
-fn<int> missing(Alternate meter) = meter::reading()
-fn<int> idle(Meter meter) { meter -> Idle; return 36 }
+fn<int<12>> echo(Machine machine, int<12> value) = machine::echo(value);
+fn<int> read(Meter meter) = meter::reading();
+fn<int> missing(Alternate meter) = meter::reading();
+fn<int> idle(Meter meter) { meter -> Idle; return 36; }
 pub fn<int> main(string[] args) {
-    Meter meter := Meter::new(1)
-    if (read(meter) != 7 || !(meter is Idle)) return 1
-    Meter alias := meter
-    alias -> Loaded(41)
-    if (read(meter) != 42 || !(meter is Loaded)) return 2
-    if (meter::adjusted() != 42) return 7
-    if (meter::leave() != 41 || read(alias) != 7) return 3
-    Alternate alternate := Alternate::new(0)
-    if (alternate::reading() != 42) return 4
-    alternate -> Idle
-    if (args::size != 0) return missing(alternate)
-    Recorder<int> recorder := Recorder<int>::new(0)
-    if (echo(recorder, 42) != 42 || recorder::finish() != 42 || !(recorder is Ready)) return 5
-    if (echo(recorder, 7) != 7) return 6
-    meter -> Loaded(41)
-    if (meter::adjusted(idle(alias)) != 42) return 8
-    recorder::delete
-    alternate::delete
-    meter::delete
-    return 42
+    Meter meter := Meter::new(1);
+    if (read(meter) != 7 || !(meter is Idle)) return 1;
+    Meter alias := meter;
+    alias -> Loaded(41);
+    if (read(meter) != 42 || !(meter is Loaded)) return 2;
+    if (meter::adjusted() != 42) return 7;
+    if (meter::leave() != 41 || read(alias) != 7) return 3;
+    Alternate alternate := Alternate::new(0);
+    if (alternate::reading() != 42) return 4;
+    alternate -> Idle;
+    if (args::size != 0) return missing(alternate);
+    Recorder<int> recorder := Recorder<int>::new(0);
+    if (echo(recorder, 42) != 42 || recorder::finish() != 42 || !(recorder is Ready)) return 5;
+    if (echo(recorder, 7) != 7) return 6;
+    meter -> Loaded(41);
+    if (meter::adjusted(idle(alias)) != 42) return 8;
+    recorder::delete;
+    alternate::delete;
+    meter::delete;
+    return 42;
 }

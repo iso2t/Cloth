@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <typeinfo>
 #include <unordered_set>
 #include <utility>
@@ -77,6 +78,16 @@ bool isBlockEnd (const Token &token) {
 	return token.getType() == TokenType::EndOfFile || token.getLexeme() == toString(OBraceClose);
 }
 
+WrittenForm statementForm (const Token &first, const Statement &statement) {
+	if (dynamic_cast<const ForStatement *>(&statement) || dynamic_cast<const WhileStatement *>(&statement)) return WrittenForm::SelfTerminated;
+	if (const auto *expression = dynamic_cast<const ExpressionStatement *>(&statement)) {
+		if (first.getLexeme() == toString(KIf) && dynamic_cast<const IfExpression *>(expression->expression.get())) return WrittenForm::BareConditional;
+		if (dynamic_cast<const ResultListExpression *>(expression->expression.get())) return WrittenForm::Results;
+		return WrittenForm::Value;
+	}
+	return WrittenForm::Simple;
+}
+
 std::string_view declarationDescription (const Declaration &declaration) {
 	if (dynamic_cast<const StructDeclaration *>(&declaration)) {
 		return "a struct declaration";
@@ -96,6 +107,34 @@ std::string_view declarationDescription (const Declaration &declaration) {
 	return {};
 }
 
+}
+
+Parser::Parser (std::vector<Token> tokens, SourceGrammar grammar) : v_tokens(std::move(tokens)), grammar(grammar) {
+	if (explicitSemicolons()) {
+		std::erase_if(v_tokens, [] (const Token &token) { return token.getType() == TokenType::NewLine; });
+	}
+}
+
+bool Parser::explicitSemicolons () const {
+	return grammar == SourceGrammar::ExplicitSemicolons;
+}
+
+Token Parser::requireSemicolon (const std::string_view after) {
+	if (!at(OSemicolon)) {
+		throw cde::SyntaxErrors::missingSemicolon(previous().getSpan(), after);
+	}
+	return advance();
+}
+
+bool Parser::consumeEmptyTypeHeader (const std::string_view after) {
+	if (!explicitSemicolons() || at(OBraceOpen)) {
+		return false;
+	}
+	if (!at(OSemicolon)) {
+		throw cde::SyntaxErrors::missingSemicolon(previous().getSpan(), after, /*allowBody=*/true);
+	}
+	advance();
+	return true;
 }
 
 Token Parser::peek (const int offset) {
@@ -124,17 +163,43 @@ SourceUnit Parser::parse () {
 	return parseDeclarations();
 }
 
+ParsedSource Parser::parseWithRanges () {
+	std::vector<SourceRange> ranges;
+	const ScopedValue        capture(sourceRanges, &ranges);
+	SourceUnit               unit = parse();
+	// A grouped deferred initializer is parsed once per AST binding but was written only once.
+	const auto position = [] (const SourceRange &range) {
+		return std::tuple{ range.span.startLine, range.span.startCol, range.span.endLine, range.span.endCol, range.construct };
+	};
+	std::ranges::sort(ranges, {}, position);
+	const auto duplicates = std::ranges::unique(ranges, {}, position);
+	ranges.erase(duplicates.begin(), duplicates.end());
+	return { .unit = std::move(unit), .ranges = std::move(ranges) };
+}
+
+void Parser::recordRange (const SourceConstruct construct, const Token &first, const WrittenForm form) {
+	if (sourceRanges) {
+		sourceRanges->push_back({ .construct = construct, .span = TokenSpan::spanThrough(first.getSpan(), previousStatementEnd()), .form = form });
+	}
+}
+
+void Parser::recordDeclaration (const SourceConstruct construct, const Token &first, const bool terminated) {
+	recordRange(construct, first, terminated ? WrittenForm::Simple : WrittenForm::SelfTerminated);
+}
+
 SourceUnit Parser::parseDeclarations () {
 	std::vector<DeclarationPtr>    v_declarations;
 	std::vector<ImportDeclaration> v_imports;
 	skipNewLines();
 
 	while (peek().getType() != TokenType::EndOfFile) {
+		const Token first = peek();
 		if (atKeyword(KUsing)) {
 			if (!v_declarations.empty()) {
 				throw cde::ImportErrors::outsideHeader(peek());
 			}
 			v_imports.push_back(p_importParser.parse());
+			recordRange(SourceConstruct::Import, first, WrittenForm::Simple);
 			skipNewLines();
 			continue;
 		}
@@ -144,6 +209,11 @@ SourceUnit Parser::parseDeclarations () {
 		const auto         *fd_function    = dynamic_cast<const FunctionDeclaration *>(dp_declaration.get());
 		const FunctionBody *fb_body        = fd_function ? &fd_function->body : nullptr;
 		const bool          b_hasEquals    = fb_body && fb_body->getEquals();
+		recordDeclaration(SourceConstruct::Declaration, first, b_hasEquals);
+		if (explicitSemicolons()) {
+			v_declarations.push_back(std::move(dp_declaration));
+			continue;
+		}
 		if (const Token t_next = peek(); b_hasEquals && isSemiColon(t_next)) {
 			advance();
 		} else if (t_next.getType() != TokenType::NewLine && t_next.getType() != TokenType::EndOfFile) {
@@ -158,7 +228,7 @@ SourceUnit Parser::parseDeclarations () {
 		v_declarations.push_back(std::move(dp_declaration));
 		skipNewLines();
 	}
-	return { .declarations = std::move(v_declarations), .end = peek().getSpan(), .imports = std::move(v_imports) };
+	return { .declarations = std::move(v_declarations), .end = peek().getSpan(), .imports = std::move(v_imports), .grammar = grammar };
 }
 
 bool Parser::startsTypeDeclaration () {
@@ -170,6 +240,7 @@ bool Parser::startsTypeDeclaration () {
 }
 
 TypeDeclarationPtr Parser::parseNestedTypeDeclaration () {
+	const Token        first = peek();
 	TypeDeclarationPtr tdp_type;
 	{
 		const ScopedValue sv_stateBody(b_inStateBody, false);
@@ -178,7 +249,8 @@ TypeDeclarationPtr Parser::parseNestedTypeDeclaration () {
 	if (!tdp_type) {
 		throw std::bad_cast();
 	}
-	if (const Token t_next = peek(); t_next.getType() != TokenType::NewLine && t_next.getLexeme() != toString(OBraceClose)) {
+	recordRange(SourceConstruct::Declaration, first);
+	if (const Token t_next = peek(); !explicitSemicolons() && t_next.getType() != TokenType::NewLine && t_next.getLexeme() != toString(OBraceClose)) {
 		throw cde::SyntaxErrors::expected(std::format("a newline or '{}' after a nested type declaration", toString(OBraceClose)), t_next);
 	}
 	skipNewLines();
@@ -271,6 +343,35 @@ std::unique_ptr<Expression> Parser::parseBindingBrace (const bool allowLiteral, 
                                                        const std::function<std::unique_ptr<FunctionBlockExpression>(BlockBody)> &deferred) {
 	const Token               t_opening = peek();
 	BindingBraceSyntax        bbs_syntax;
+	if (explicitSemicolons()) {
+		if (allowLiteral) {
+			const int         start       = i_currentIndex;
+			const std::size_t savedRanges = sourceRanges ? sourceRanges->size() : 0;
+			try {
+				const ScopedValue trackReturns(bbs_bindingBrace, &bbs_syntax);
+				auto fields = p_functionParser.inBody([this] {
+					return p_delimitedParser.braces([this] {
+						return p_delimitedParser.commaSeparated(OBraceClose, [this] { return p_expressionParser.parseExpression(); });
+					});
+				});
+				if (fields.size() > 1 || (allowSingleField && !bbs_syntax.hasReturn)) {
+					recordRange(SourceConstruct::StructLiteral, t_opening);
+					return std::make_unique<StructLiteral>(std::move(fields),
+					                                       TokenSpan::spanThrough(t_opening.getSpan(), previous().getSpan()));
+				}
+			} catch (const cde::SyntaxException &) {
+				// A statement or an interior semicolon selects the deferred-block grammar.
+			}
+			i_currentIndex = start;
+			if (sourceRanges) {
+				sourceRanges->resize(savedRanges);
+			}
+		}
+		const ScopedValue trackReturns(bbs_bindingBrace, static_cast<BindingBraceSyntax *>(nullptr));
+		BlockBody         body = p_functionParser.inBody([this] { return parseBlock(); });
+		recordRange(SourceConstruct::DeferredInitializer, t_opening);
+		return deferred(std::move(body));
+	}
 	BindingBraceSyntax       *bbs_boundary = allowLiteral ? &bbs_syntax : nullptr;
 	std::vector<StatementPtr> v_statements;
 	{
@@ -284,6 +385,7 @@ std::unique_ptr<Expression> Parser::parseBindingBrace (const bool allowLiteral, 
 		const ExpressionStatement *es_only = v_statements.size() == 1 ? dynamic_cast<const ExpressionStatement *>(v_statements.front().get()) : nullptr;
 		const ExpressionPtr        ep_expression = es_only ? es_only->expression : nullptr;
 		if (const auto *rle_fields = dynamic_cast<const ResultListExpression *>(ep_expression.get())) {
+			recordRange(SourceConstruct::StructLiteral, t_opening);
 			return std::make_unique<StructLiteral>(rle_fields->values, ts_span);
 		}
 		if (allowSingleField && !bbs_syntax.hasReturn && std::ranges::all_of(v_statements, [] (const StatementPtr &statement) -> bool {
@@ -297,9 +399,14 @@ std::unique_ptr<Expression> Parser::parseBindingBrace (const bool allowLiteral, 
 			if (ep_expression) {
 				v_fields.push_back(ep_expression);
 			}
+			recordRange(SourceConstruct::StructLiteral, t_opening);
 			return std::make_unique<StructLiteral>(std::move(v_fields), ts_span);
 		}
 	}
+	if (sourceRanges) {
+		sourceRanges->insert(sourceRanges->end(), bbs_syntax.candidateStatements.begin(), bbs_syntax.candidateStatements.end());
+	}
+	recordRange(SourceConstruct::DeferredInitializer, t_opening);
 	return deferred(BlockBody{ .span = ts_span, .statements = std::move(v_statements) });
 }
 
@@ -311,6 +418,9 @@ std::vector<StatementPtr> Parser::parseStatements (BindingBraceSyntax *braceSynt
 			break;
 		}
 		if (isStatementSeparator(t_next)) {
+			if (explicitSemicolons()) {
+				throw cde::SyntaxErrors::expected("a statement", t_next);
+			}
 			if (braceSyntax && isSemiColon(t_next)) {
 				braceSyntax->hasSemicolon = true;
 			}
@@ -326,11 +436,35 @@ std::vector<StatementPtr> Parser::parseStatements (BindingBraceSyntax *braceSynt
 		} else {
 			v_statements.push_back(parseStatement(/*allowWhileTrailer=*/false, /*multilineResults=*/braceSyntax != nullptr));
 		}
-		if (const Token t_separator = peek(); !isStatementSeparator(t_separator) && !isBlockEnd(t_separator)) {
+		if (sourceRanges) {
+			// Keep a speculative field list out of the statement ranges if the binding resolves to a literal.
+			auto &ranges = braceSyntax ? braceSyntax->candidateStatements : *sourceRanges;
+			ranges.push_back({ .construct = SourceConstruct::Statement,
+			                   .span      = TokenSpan::spanThrough(t_next.getSpan(), previousStatementEnd()),
+			                   .form      = statementForm(t_next, *v_statements.back()) });
+		}
+		if (explicitSemicolons()) {
+			finishStatement(t_next, *v_statements.back());
+		} else if (const Token t_separator = peek(); !isStatementSeparator(t_separator) && !isBlockEnd(t_separator)) {
 			throw cde::SyntaxErrors::newline(t_separator);
 		}
 	}
 	return v_statements;
+}
+
+void Parser::finishStatement (const Token &first, const Statement &last) {
+	if (dynamic_cast<const ForStatement *>(&last) || dynamic_cast<const WhileStatement *>(&last) || dynamic_cast<const DoWhileStatement *>(&last)) {
+		return;
+	}
+	if (const auto *expression = dynamic_cast<const ExpressionStatement *>(&last);
+	    first.getLexeme() == toString(KIf) && expression && dynamic_cast<const IfExpression *>(expression->expression.get())) {
+		return;
+	}
+	if (dynamic_cast<const ReturnStatement *>(&last)) {
+		requireSemicolon("return statement");
+	} else {
+		requireSemicolon("statement");
+	}
 }
 
 void Parser::skipNewLines () {
@@ -354,11 +488,20 @@ bool Parser::isStatementSeparator (const Token &token) {
 	return token.getType() == TokenType::NewLine || isSemiColon(token);
 }
 
-StatementPtr Parser::parseStatement (bool allowWhileTrailer, bool multilineResults) {
+StatementPtr Parser::parseStatement (bool allowWhileTrailer, bool multilineResults, bool singleValue) {
 	if (atKeyword(KUsing)) {
 		throw cde::ImportErrors::outsideHeader(peek());
 	}
 	rejectMethodOutsideType();
+	if (explicitSemicolons() && !singleValue && atKeyword(KIf)) {
+		ExpressionPtr expression = std::make_shared<IfExpression>(p_ifParser.parseIf(allowWhileTrailer, /*statement=*/true));
+		if (!isSemiColon(previous())) {
+			const TokenSpan start = expression->getSpan();
+			expression            = p_expressionParser.continueFromPrimary(std::move(expression), allowWhileTrailer);
+			expression            = parseResults(std::move(expression), start, allowWhileTrailer, multilineResults);
+		}
+		return std::make_shared<ExpressionStatement>(std::move(expression));
+	}
 	if (atKeyword(KFor)) {
 		return std::make_shared<ForStatement>(p_forLoopParser.parseFor(allowWhileTrailer));
 	}
@@ -433,19 +576,34 @@ StatementPtr Parser::parseStatement (bool allowWhileTrailer, bool multilineResul
 		}
 		return std::make_shared<ElementAssignmentStatement>(std::move(iep_index), t_operator, std::move(ep_value));
 	}
-	return std::make_shared<ExpressionStatement>(parseResults(std::move(ep_expression), t_start.getSpan(), allowWhileTrailer, multilineResults));
+	// In a value arm, the surrounding call, literal, or result list owns the next comma.
+	if (!singleValue) {
+		ep_expression = parseResults(std::move(ep_expression), t_start.getSpan(), allowWhileTrailer, multilineResults);
+	}
+	return std::make_shared<ExpressionStatement>(std::move(ep_expression));
 }
 
-BlockBody Parser::parseUnbracedBody (const bool allowWhileTrailer) {
+BlockBody Parser::parseUnbracedBody (const bool allowWhileTrailer, const UnbracedContext context, const Token *conditional) {
 	const Token               t_start = peek();
 	std::vector<StatementPtr> v_statements;
+	const bool                valueArm = explicitSemicolons() && context == UnbracedContext::ConditionalValue;
 	if (p_bindingParser.startsBinding()) {
 		v_statements = p_bindingParser.parseBindings(allowWhileTrailer);
 	} else {
-		v_statements.push_back(parseStatement(allowWhileTrailer));
+		v_statements.push_back(parseStatement(allowWhileTrailer, /*multilineResults=*/false, valueArm));
 	}
 	const TokenSpan ts_span = TokenSpan::spanThrough(t_start.getSpan(), previousStatementEnd());
-	if (allowWhileTrailer) {
+	if (sourceRanges) {
+		sourceRanges->push_back({ .construct   = conditional ? SourceConstruct::ConditionalArm : SourceConstruct::Statement,
+		                          .span        = ts_span,
+		                          .form        = statementForm(t_start, *v_statements.back()),
+		                          .conditional = conditional ? std::make_optional(conditional->getSpan()) : std::nullopt });
+	}
+	if (explicitSemicolons()) {
+		if (!valueArm || !dynamic_cast<const ExpressionStatement *>(v_statements.back().get())) {
+			finishStatement(t_start, *v_statements.back());
+		}
+	} else if (allowWhileTrailer) {
 		const Statement *stmt_only    = v_statements.size() == 1 ? v_statements.front().get() : nullptr;
 		const bool       b_nestedLoop = dynamic_cast<const ForStatement *>(stmt_only) || dynamic_cast<const WhileStatement *>(stmt_only);
 		const auto      *es_only      = dynamic_cast<const ExpressionStatement *>(stmt_only);

@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using Arithmetic : pick, seed;
+
+pub fn<int> main() = pick(seed()) + pick(false);

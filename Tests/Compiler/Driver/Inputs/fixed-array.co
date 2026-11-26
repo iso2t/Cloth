@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    int<12>[2] values := [7, 42]
-    return values[1] -> int
+    int<12>[2] values := [7, 42];
+    return values[1] -> int;
 }

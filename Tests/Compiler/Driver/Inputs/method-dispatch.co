@@ -1,38 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 typedef<interface> Readable {
-    pub mt<int> read(opt<int> offset ?: 2)
-    pub mt<int> twice() = default (self.read() + self.read())
-    pub mt<T> echo<T>(T value)
+    pub mt<int> read(opt<int> offset ?: 2);
+    pub mt<int> twice() = default (self.read() + self.read());
+    pub mt<T> echo<T>(T value);
 }
 typedef<class> Base(pub def<int> seed, bool checked) : Readable {
     pub Base(int n) : (n, true) {}
-    pub virtual mt<int> read(opt<int> delta ?: 1) = seed + delta
-    pub mt<X> echo<X>(X item) = item
+    pub virtual mt<int> read(opt<int> delta ?: 1) = seed + delta;
+    pub mt<X> echo<X>(X item) = item;
 }
 typedef<class> Derived : Base(40) {
     pub Derived(int tag) : () {}
-    pub override mt<int> read(int own) = self.seed - own
+    pub override mt<int> read(int own) = self.seed - own;
 }
-typedef<interface> Parent { pub mt<int> pick(opt<int> n ?: 2) = default (n) }
-typedef<interface> Child : Parent { pub mt<int> pick(opt<int> m ?: 7) = default (m + 35) }
+typedef<interface> Parent { pub mt<int> pick(opt<int> n ?: 2) = default (n); }
+typedef<interface> Child : Parent { pub mt<int> pick(opt<int> m ?: 7) = default (m + 35); }
 typedef<class> Inherits : Child { pub Inherits(int tag) : () {} }
-fn<int> through(Readable value) = value.read()
-fn<int> virtualCall(Base value) = value.read()
-fn<int> inherited(Parent value) = value.pick()
-fn<int<12>> echo(Readable value, int<12> n) = value.echo(n)
+fn<int> through(Readable value) = value.read();
+fn<int> virtualCall(Base value) = value.read();
+fn<int> inherited(Parent value) = value.pick();
+fn<int<12>> echo(Readable value, int<12> n) = value.echo(n);
 
 pub fn<int> main() {
-    Base first := Base::new(40)
-    Base second := Derived::new(0)
-    if (through(first) != 42 || through(second) != 38) return 1
-    if (virtualCall(first) != 41 || virtualCall(second) != 39) return 2
-    Readable view := second
-    if (view.twice() != 76 || echo(view, 42) != 42) return 3
-    Inherits choice := Inherits::new(0)
-    if (choice.pick() != 42 || inherited(choice) != 37) return 4
-    first::delete
-    second::delete
-    choice::delete
-    return 42
+    Base first := Base::new(40);
+    Base second := Derived::new(0);
+    if (through(first) != 42 || through(second) != 38) return 1;
+    if (virtualCall(first) != 41 || virtualCall(second) != 39) return 2;
+    Readable view := second;
+    if (view.twice() != 76 || echo(view, 42) != 42) return 3;
+    Inherits choice := Inherits::new(0);
+    if (choice.pick() != 42 || inherited(choice) != 37) return 4;
+    first::delete;
+    second::delete;
+    choice::delete;
+    return 42;
 }

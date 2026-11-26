@@ -32,10 +32,10 @@ const ExpressionInfo &callIn (const CheckedProgram &program, std::string_view na
 }
 
 TEST (SemanticGenerics, InternsCallsAndKeepsEachBodyAndItsBindings) {
-	const CheckedProgram     cp_program   = checkSource(R"(fn<T> identity<T>(T item) = item
-fn<int> first() = identity<int>(1)
-fn<int> again() = identity<int<32>>(2)
-fn<bool> another() = identity(true)
+	const CheckedProgram     cp_program   = checkSource(R"(fn<T> identity<T>(T item) = item;
+fn<int> first() = identity<int>(1);
+fn<int> again() = identity<int<32>>(2);
+fn<bool> another() = identity(true);
 )");
 	const Symbol            &sym_identity = cp_program.units.front()->getGlobals().at("identity").front();
 	const CallableSignature &cs_identity  = *std::get<const CallableSignature *>(sym_identity.declaration);
@@ -59,12 +59,12 @@ fn<bool> another() = identity(true)
 }
 
 TEST (SemanticGenerics, KeepsOrderedArgumentsAndOnlyInstantiatesWinningOverloads) {
-	const CheckedProgram cp_program = checkSource(R"(fn<A> choose<A, B>(A first, B second) = first
-fn<int> pick(int item) = item
-fn<T> pick<T>(T item) = item
-fn<int> forward() = choose(1, true)
-fn<bool> swapped() = choose(true, 1)
-fn<int> ordinary() = pick(1)
+	const CheckedProgram cp_program = checkSource(R"(fn<A> choose<A, B>(A first, B second) = first;
+fn<int> pick(int item) = item;
+fn<T> pick<T>(T item) = item;
+fn<int> forward() = choose(1, true);
+fn<bool> swapped() = choose(true, 1);
+fn<int> ordinary() = pick(1);
 )");
 	const Symbol        &sym_choose = cp_program.units.front()->getGlobals().at("choose").front();
 	EXPECT_EQ(callIn(cp_program, "forward").instance,
@@ -77,78 +77,78 @@ fn<int> ordinary() = pick(1)
 
 TEST (SemanticGenerics, ResolvesClosedMethodTemplatesAtTheCall) {
 	const std::string s_box = R"(typedef<class> Box<T> {
-    pub mt<U> read<U>(T value, U other) = other
-    pub mt<U> read<U>(int value, U other) = other
+    pub mt<U> read<U>(T value, U other) = other;
+    pub mt<U> read<U>(int value, U other) = other;
 }
 )";
 	EXPECT_NO_THROW(checkSource(s_box + "fn use(Box<int> b) {}"));
-	expectError(s_box + "fn use(Box<int> b) { b.read<bool>(1, true) }", cde::DiagnosticCode::AmbiguousCall);
-	expectError(s_box + "fn use(Box<int> b) { b.read(1, true) }", cde::DiagnosticCode::AmbiguousCall);
-	const CheckedProgram cp_program = checkSource(s_box + "fn<bool> use(Box<bool> b) = b.read(1, true)");
+	expectError(s_box + "fn use(Box<int> b) { b.read<bool>(1, true); }", cde::DiagnosticCode::AmbiguousCall);
+	expectError(s_box + "fn use(Box<int> b) { b.read(1, true); }", cde::DiagnosticCode::AmbiguousCall);
+	const CheckedProgram cp_program = checkSource(s_box + "fn<bool> use(Box<bool> b) = b.read(1, true);");
 	const Symbol        &sym_method = cp_program.units.front()->getGlobals().at("Box").front().members.at("read").back();
 	EXPECT_EQ(callIn(cp_program, "use").argumentContract, &sym_method);
 	expectError("typedef<class> Box<T> { mt read<U>(T v, U u) {}\n mt read<V>(T v, V u) {} }", cde::DiagnosticCode::DuplicateMethod);
 	expectError("typedef<class> Box<T> { mt read(T v) {}\n mt read(int v) {} }\nfn use(Box<int> b) {}", cde::DiagnosticCode::DuplicateMethod);
 	const std::string s_virtual = R"(typedef<class> Entity<A>(bool tag) {
     pub Entity() : (false) {}
-    pub virtual mt<T> echo<T>(A key, T value) = value
-    pub virtual mt<T> echo<T>(int key, T value) = value
+    pub virtual mt<T> echo<T>(A key, T value) = value;
+    pub virtual mt<T> echo<T>(int key, T value) = value;
 }
 )";
 	EXPECT_NO_THROW(checkSource(s_virtual + "fn use(Entity<int> e) {}"));
-	expectError(s_virtual + "typedef<class> Player : Entity<int> { pub override mt<U> echo<U>(int key, U value) = value }",
+	expectError(s_virtual + "typedef<class> Player : Entity<int> { pub override mt<U> echo<U>(int key, U value) = value; }",
 	            cde::DiagnosticCode::InvalidVirtualMethod);
 }
 
 TEST (SemanticGenerics, ChecksInterfaceAndStateContractsWhenTheirOwnerCloses) {
 	const std::string s_interface = R"(typedef<interface> View<T> {
-    pub mt<U> read<U>(T value, U other)
-    pub mt<U> read<U>(int value, U other)
+    pub mt<U> read<U>(T value, U other);
+    pub mt<U> read<U>(int value, U other);
 }
 )";
-	EXPECT_NO_THROW(checkSource(s_interface + "fn<bool> read(View<bool> v) = v.read(1, true)"));
+	EXPECT_NO_THROW(checkSource(s_interface + "fn<bool> read(View<bool> v) = v.read(1, true);"));
 	expectError(s_interface + "fn use(View<int> v) {}", cde::DiagnosticCode::DuplicateMethod);
-	expectError(s_interface + "fn use(View<int> v) { v.read(1, true) }", cde::DiagnosticCode::DuplicateMethod);
+	expectError(s_interface + "fn use(View<int> v) { v.read(1, true); }", cde::DiagnosticCode::DuplicateMethod);
 	const std::string s_state = R"(typedef<class> Host<T> {
-    pub state<int> ::echo<U>(T left, U right)
-    pub state<int> ::echo<U>(int head, U other)
-    pub default state<void> Ready { mt<int> echo<V>(T x, V y) = 1 }
+    pub state<int> ::echo<U>(T left, U right);
+    pub state<int> ::echo<U>(int head, U other);
+    pub default state<void> Ready { mt<int> echo<V>(T x, V y) = 1; }
 }
 )";
-	EXPECT_NO_THROW(checkSource(s_state + "fn<int> use(Host<bool> h) = h::echo(true, true)"));
+	EXPECT_NO_THROW(checkSource(s_state + "fn<int> use(Host<bool> h) = h::echo(true, true);"));
 	expectError(s_state + "fn use(Host<int> h) {}", cde::DiagnosticCode::InvalidStateContract);
-	expectError(s_state + "fn use(Host<int> h) { h::echo(1, true) }", cde::DiagnosticCode::InvalidStateContract);
+	expectError(s_state + "fn use(Host<int> h) { h::echo(1, true); }", cde::DiagnosticCode::InvalidStateContract);
 }
 
 TEST (SemanticGenerics, ValidatesTheOpenReceiverBoundAfterReselectingAnOverload) {
 	const std::string s_types = R"(typedef<class> Base(pub def<bool> tag) {
     pub Base() : (false) {}
-    pub mt<int> read() = 1
+    pub mt<int> read() = 1;
 }
 typedef<class> Player : Base {}
 typedef<class> Other {
-    pub mt<int> read() = 2
-    pub operator ==(Object other) = false
+    pub mt<int> read() = 2;
+    pub operator ==(Object other) = false;
 }
 typedef<class> Holder<T: Base>(def<T> value, def<Other> other) {
-    mt<T> get(Object arg) = value
-    mt<Other> get(Player arg) = other
+    mt<T> get(Object arg) = value;
+    mt<Other> get(Player arg) = other;
 )";
-	const std::string s_use   = "\n}\nfn use(Holder<Player> holder) {}";
+	const std::string s_use   = ";\n}\nfn use(Holder<Player> holder) {}";
 	for (const char *s_member : { "mt<int> test() = get(value).read()", "mt<bool> test() = get(value).tag", "mt<bool> test() = get(value) == value" })
 		expectError(s_types + s_member + s_use, cde::DiagnosticCode::InvalidClassMember);
 	EXPECT_NO_THROW(checkSource(s_types + "mt<Object> test() = get(value)" + s_use));
 }
 
 TEST (SemanticGenerics, InfersExactTypesBeforeContextualizingLiterals) {
-	const CheckedProgram   cp_program = checkSource(R"(fn<T> pick<T>(T a, T b) = a
-fn<T> first<T>(T[] data, T sample) = sample
-fn<int<8>> left(int<8> n) = pick(1, n)
-fn<int<8>> right(int<8> n) = pick(n, 1)
-fn<int<8>> named(int<8> n) = pick(b=n, a=1+2)
-fn<int<8>> array(int<8> n) = first([1, 2], n)
-fn<int[]> growable(int[] xs, int n) = pick([n], xs)
-fn<float<64>> floating(float<64> n) = pick(1.5, n)
+	const CheckedProgram   cp_program = checkSource(R"(fn<T> pick<T>(T a, T b) = a;
+fn<T> first<T>(T[] data, T sample) = sample;
+fn<int<8>> left(int<8> n) = pick(1, n);
+fn<int<8>> right(int<8> n) = pick(n, 1);
+fn<int<8>> named(int<8> n) = pick(b=n, a=1+2);
+fn<int<8>> array(int<8> n) = first([1, 2], n);
+fn<int[]> growable(int[] xs, int n) = pick([n], xs);
+fn<float<64>> floating(float<64> n) = pick(1.5, n);
 )");
 	const GenericInstance *gi_pick    = callIn(cp_program, "left").instance;
 	ASSERT_NE(gi_pick, nullptr);
@@ -164,27 +164,27 @@ TEST (SemanticGenerics, SettlesOrdinaryOverloadsBeforeInferringGenericCandidates
 	using Code                      = cde::DiagnosticCode;
 	const CheckedProgram cp_program = checkSource(R"(typedef<class> Base(int seed) { pub Base() : (0) {} }
 typedef<class> Child : Base {}
-fn<string> pick(Base value) = "base"
-fn<T> pick<T>(T value) = value
-fn<string> ordinary(Child item) = pick(item)
-fn<int> generic() = pick(1)
+fn<string> pick(Base value) = "base";
+fn<T> pick<T>(T value) = value;
+fn<string> ordinary(Child item) = pick(item);
+fn<int> generic() = pick(1);
 typedef<class> Methods {
-    pub mt<bool> test(int<8> value) = true
-    pub mt<T> test<T>(T value) = value
+    pub mt<bool> test(int<8> value) = true;
+    pub mt<T> test<T>(T value) = value;
 }
-fn<bool> method(Methods methods) = methods.test(1)
+fn<bool> method(Methods methods) = methods.test(1);
 )");
 	EXPECT_EQ(callIn(cp_program, "ordinary").instance, nullptr);
 	EXPECT_NE(callIn(cp_program, "generic").instance, nullptr);
 	EXPECT_EQ(callIn(cp_program, "method").instance, nullptr);
-	expectError("fn pick(int<8> v) {}\nfn pick(int<64> v) {}\nfn pick<T>(T v) {}\nfn use() { pick(1) }", Code::AmbiguousCall);
-	expectError("fn pick<T>(T a, int b) {}\nfn pick<T,U>(T a, U b) {}\nfn use() { pick(true,1) }", Code::AmbiguousCall);
+	expectError("fn pick(int<8> v) {}\nfn pick(int<64> v) {}\nfn pick<T>(T v) {}\nfn use() { pick(1); }", Code::AmbiguousCall);
+	expectError("fn pick<T>(T a, int b) {}\nfn pick<T,U>(T a, U b) {}\nfn use() { pick(true,1); }", Code::AmbiguousCall);
 }
 
 TEST (SemanticGenerics, ReportsConflictingEvidenceAtBothArgumentsAndTheDeclaration) {
 	using Code = cde::DiagnosticCode;
 	try {
-		checkSource("fn pick<T>(T a, T b) {}\nfn use(int a,bool b) { pick(\n a,\n b) }");
+		checkSource("fn pick<T>(T a, T b) {}\nfn use(int a,bool b) { pick(\n a,\n b); }");
 		FAIL() << "Expected incompatible type evidence";
 	} catch (const cde::ClothDiagnostic &error) {
 		EXPECT_EQ(error.getCode(), Code::GenericInferenceFailed);
@@ -194,29 +194,29 @@ TEST (SemanticGenerics, ReportsConflictingEvidenceAtBothArgumentsAndTheDeclarati
 		EXPECT_EQ(v_labels[1].span.startLine, 4u);
 		EXPECT_EQ(v_labels[2].span.startLine, 1u);
 	}
-	expectError("fn f<T>(T v) {}\nfn use() { f(null) }", Code::GenericInferenceFailed);
-	expectError("fn f<T>(T[] v) {}\nfn use() { f([]) }", Code::GenericInferenceFailed);
-	expectError("fn f<T>(T v) {}\nfn use() { f(2147483648) }", Code::NoMatchingCall);
-	expectError("fn f<T>(T v) {}\nfn use() { f([2147483648]) }", Code::NoMatchingCall);
-	expectError("fn f<T>(T a,T b) {}\nfn use(int<8> n) { f(128,n) }", Code::NoMatchingCall);
+	expectError("fn f<T>(T v) {}\nfn use() { f(null); }", Code::GenericInferenceFailed);
+	expectError("fn f<T>(T[] v) {}\nfn use() { f([]); }", Code::GenericInferenceFailed);
+	expectError("fn f<T>(T v) {}\nfn use() { f(2147483648); }", Code::NoMatchingCall);
+	expectError("fn f<T>(T v) {}\nfn use() { f([2147483648]); }", Code::NoMatchingCall);
+	expectError("fn f<T>(T a,T b) {}\nfn use(int<8> n) { f(128,n); }", Code::NoMatchingCall);
 }
 
 TEST (SemanticGenerics, UsesNominalViewsAndOnlyInfersWrittenPlaceholders) {
 	const CheckedProgram cp_program = checkSource(R"(typedef<interface> View<T> {}
-typedef<struct> Slot<T> { T value }
+typedef<struct> Slot<T> { T value; }
 typedef<class> Entry : View<Slot<string>> {}
 fn read<T>(View<Slot<T>> item) {}
-fn forward<U: View<Slot<string>>>(U item) { read(item) }
-fn byInterface(Entry item) = read(item)
-fn use(Entry item) { forward(item) }
-fn<U> select<T,U = T>(T a,U b) = b
-fn<int<8>> placeholder(int<8> n) = select<bool,_>(true,n)
-fn<bool> defaulted() = select<bool>(true,true)
+fn forward<U: View<Slot<string>>>(U item) { read(item); }
+fn byInterface(Entry item) = read(item);
+fn use(Entry item) { forward(item); }
+fn<U> select<T,U = T>(T a,U b) = b;
+fn<int<8>> placeholder(int<8> n) = select<bool,_>(true,n);
+fn<bool> defaulted() = select<bool>(true,true);
 typedef<class> Pair<A,B=int>(def<A> left, def<B> right) {
-    pub mt<Pair<bool,int<8>>> narrow(int<8> n) = Pair<bool,_>::new(true,n)
-    pub mt<Pair<bool,int>> ordinary() = Pair<bool>::new(true,1)
+    pub mt<Pair<bool,int<8>>> narrow(int<8> n) = Pair<bool,_>::new(true,n);
+    pub mt<Pair<bool,int>> ordinary() = Pair<bool>::new(true,1);
 }
-fn<Pair<bool,int<8>>> construct(Pair<bool,int> pair, int<8> n) = pair.narrow(n)
+fn<Pair<bool,int<8>>> construct(Pair<bool,int> pair, int<8> n) = pair.narrow(n);
 )");
 	ASSERT_NE(callIn(cp_program, "byInterface").instance, nullptr);
 	const DeclarationInfo &di_read = callIn(cp_program, "byInterface").instance->signature;
@@ -224,9 +224,9 @@ fn<Pair<bool,int<8>>> construct(Pair<bool,int> pair, int<8> n) = pair.narrow(n)
 	EXPECT_EQ(callIn(cp_program, "placeholder").types.front().width, 8u);
 	EXPECT_EQ(callIn(cp_program, "defaulted").types.front(), ResolvedType(KBoolean));
 	EXPECT_EQ(callIn(cp_program, "construct").types.front().arguments().back().width, 8u);
-	expectError("fn pick<T,U=int>(T a,U b) {}\nfn use(int<8> n) { pick<bool>(true,n) }", cde::DiagnosticCode::NoMatchingCall);
-	expectError("fn pick<T,U>(T a,U b) {}\nfn use() { pick<bool>(true,1) }", cde::DiagnosticCode::GenericArity);
-	expectError("typedef<class> Box<T> {}\nfn<Box<int>> use() = Box::new()", cde::DiagnosticCode::GenericInferenceFailed);
+	expectError("fn pick<T,U=int>(T a,U b) {}\nfn use(int<8> n) { pick<bool>(true,n); }", cde::DiagnosticCode::NoMatchingCall);
+	expectError("fn pick<T,U>(T a,U b) {}\nfn use() { pick<bool>(true,1); }", cde::DiagnosticCode::GenericArity);
+	expectError("typedef<class> Box<T> {}\nfn<Box<int>> use() = Box::new();", cde::DiagnosticCode::GenericInferenceFailed);
 }
 
 TEST (SemanticGenerics, ChecksDeclaredAndSubstitutedBoundsBeforeUse) {
@@ -235,14 +235,14 @@ TEST (SemanticGenerics, ChecksDeclaredAndSubstitutedBoundsBeforeUse) {
 	expectError("fn f<T:new(int a) & new(int<32> b)>() {}", Code::InvalidGenericBound);
 	expectError("typedef<class> Box<T> { mt f<T>(T x) {} }", Code::InvalidGenericParameter);
 	expectError("fn f<T=T>() {}", Code::InvalidGenericArgument);
-	expectError("typedef<struct> Box<T> { T value }\nfn f<T=Box<U>,U=int>() {}", Code::InvalidGenericArgument);
+	expectError("typedef<struct> Box<T> { T value; }\nfn f<T=Box<U>,U=int>() {}", Code::InvalidGenericArgument);
 	expectError("typedef<class> Box<T=Box<>> {}", Code::InvalidGenericArgument);
 	expectError("typedef<class> Box<T> {}\nfn f<T:Box<T>[]>() {}", Code::InvalidGenericBound);
 	expectError("typedef<interface> I<T> {}\ntypedef<interface> J : I<int> {}\nfn f<T:J & I<bool>>() {}", Code::ConflictingInterfaceApplication);
 	const std::string s_source = "typedef<interface> I<N> {}\ntypedef<class> P : I<int> {}\nfn f<A,B,T: I<A> & I<B>>(T item) {}\n";
-	EXPECT_NO_THROW(checkSource(s_source + "fn use(P item) { f<int,int,_>(item) }"));
-	expectError(s_source + "fn use(P item) { f<int,bool,_>(item) }", Code::ConflictingInterfaceApplication);
-	expectError("typedef<interface> I {}\nfn f<T:I>(T a) {}\nfn f<U:I>(U a,opt<int> b ?: 0) {}\nfn use() { f(1) }", Code::UnsatisfiedGenericBound);
+	EXPECT_NO_THROW(checkSource(s_source + "fn use(P item) { f<int,int,_>(item); }"));
+	expectError(s_source + "fn use(P item) { f<int,bool,_>(item); }", Code::ConflictingInterfaceApplication);
+	expectError("typedef<interface> I {}\nfn f<T:I>(T a) {}\nfn f<U:I>(U a,opt<int> b ?: 0) {}\nfn use() { f(1); }", Code::UnsatisfiedGenericBound);
 }
 
 TEST (SemanticGenerics, OnlyTheStandardLibraryNumberGrantsPrimitiveConformance) {
@@ -250,7 +250,7 @@ TEST (SemanticGenerics, OnlyTheStandardLibraryNumberGrantsPrimitiveConformance) 
 	const std::filesystem::path p_library = std::filesystem::path(__FILE__).parent_path() / "../../../../Stdlib";
 	const std::function         check     = [&] (const std::string &source, Code code) {
 		SCOPED_TRACE(source);
-		Lexer l_lexer{ SourceFile("numeric-client.co", "using cloth.lang.num.Number: Number\n" + source) };
+		Lexer l_lexer{ SourceFile("numeric-client.co", "using cloth.lang.num.Number: Number;\n" + source) };
 		try {
 			CheckedProgram const cp_program(SymbolTable(Parser(l_lexer).parse()), {}, p_library);
 			FAIL() << "Expected a semantic diagnostic";
@@ -260,28 +260,28 @@ TEST (SemanticGenerics, OnlyTheStandardLibraryNumberGrantsPrimitiveConformance) 
 		}
 	};
 	for (const char *s_argument : { "bool", "char", "string", "float?", "int[]" })
-		check(std::format("fn f<T: Number>() {{}}\nfn use() {{ f<{}>() }}", s_argument), Code::UnsatisfiedGenericBound);
-	check("fn f<T: Number>() {}\nfn unused<U>() { f<U>() }", Code::UnsatisfiedGenericBound);
-	check("fn f<T: Number?>() {}\nfn use() { f<int>() }", Code::UnsatisfiedGenericBound);
-	check("typedef<class> Local { pub typedef<interface> Number {} }\nfn f<T: Local.Number>() {}\nfn use() { f<int>() }", Code::UnsatisfiedGenericBound);
-	check("fn f<T: Number[]>() {}\nfn use() { f<int[2]>() }", Code::UnsatisfiedGenericBound);
-	check("fn<bool> same<T: Number>(T a,T b) = a === b", Code::IncomparableTypes);
-	check("typedef<class> Empty : Number {}\nfn<T> sum<T:Number>(T v) = v+v\nfn<Empty> use(Empty v) = sum(v)", Code::BinaryOperands);
+		check(std::format("fn f<T: Number>() {{}}\nfn use() {{ f<{}>(); }}", s_argument), Code::UnsatisfiedGenericBound);
+	check("fn f<T: Number>() {}\nfn unused<U>() { f<U>(); }", Code::UnsatisfiedGenericBound);
+	check("fn f<T: Number?>() {}\nfn use() { f<int>(); }", Code::UnsatisfiedGenericBound);
+	check("typedef<class> Local { pub typedef<interface> Number {} }\nfn f<T: Local.Number>() {}\nfn use() { f<int>(); }", Code::UnsatisfiedGenericBound);
+	check("fn f<T: Number[]>() {}\nfn use() { f<int[2]>(); }", Code::UnsatisfiedGenericBound);
+	check("fn<bool> same<T: Number>(T a,T b) = a === b;", Code::IncomparableTypes);
+	check("typedef<class> Empty : Number {}\nfn<T> sum<T:Number>(T v) = v+v;\nfn<Empty> use(Empty v) = sum(v);", Code::BinaryOperands);
 	expectError("fn f<T:Number>() {}", Code::UnsupportedType);
-	expectError("typedef<interface> Number {}\nfn f<T:Number>() {}\nfn use() { f<int>() }", Code::UnsatisfiedGenericBound);
-	expectError("typedef<interface> Number {}\nfn<T> f<T:Number>(T v) = v+v", Code::BinaryOperands);
+	expectError("typedef<interface> Number {}\nfn f<T:Number>() {}\nfn use() { f<int>(); }", Code::UnsatisfiedGenericBound);
+	expectError("typedef<interface> Number {}\nfn<T> f<T:Number>(T v) = v+v;", Code::BinaryOperands);
 }
 
 TEST (SemanticGenerics, SpecializesFieldsMetadataAndCapturedLocalsOnEachReceiver) {
 	const CheckedProgram cp_program = checkSource(R"(typedef<struct> Box<T> {
     T? saved;
-    pub mt<typeinfo> metadata() = T::type
-    pub mt<T?> copy(T item) { T held = { return item }; return held }
+    pub mt<typeinfo> metadata() = T::type;
+    pub mt<T?> copy(T item) { T held = { return item; }; return held; }
 }
-fn<typeinfo> first(Box<int> box) = box.metadata()
-fn<typeinfo> second(Box<int?> box) = box.metadata()
-fn<int?> value(Box<int> box) = box.copy(1)
-fn<int?> optional(Box<int?> box) = box.copy(null)
+fn<typeinfo> first(Box<int> box) = box.metadata();
+fn<typeinfo> second(Box<int?> box) = box.metadata();
+fn<int?> value(Box<int> box) = box.copy(1);
+fn<int?> optional(Box<int?> box) = box.copy(null);
 )");
 	const Symbol        &sym_box    = cp_program.units.front()->getGlobals().at("Box").front();
 	const Symbol        &sym_saved  = sym_box.members.at("saved").front();
@@ -310,12 +310,12 @@ fn<int?> optional(Box<int?> box) = box.copy(null)
 TEST (SemanticGenerics, RetainsBothTheVirtualContractAndTheOverridingInstance) {
 	const CheckedProgram  cp_program = checkSource(R"(typedef<class> Base<T>(int seed) {
     pub Base() : (0) {}
-    pub virtual mt<U> read<U>(U value) = value
+    pub virtual mt<U> read<U>(U value) = value;
 }
 typedef<class> Child<T> : Base<T> {
-    pub override mt<V> read<V>(V renamed) = renamed
+    pub override mt<V> read<V>(V renamed) = renamed;
 }
-fn<bool> use(Child<int> child) = child.read<bool>(value=true)
+fn<bool> use(Child<int> child) = child.read<bool>(value=true);
 )");
 	const ExpressionInfo &ei_call    = callIn(cp_program, "use");
 	ASSERT_NE(ei_call.contractInstance, nullptr);
@@ -331,9 +331,9 @@ fn<bool> use(Child<int> child) = child.read<bool>(value=true)
 
 TEST (SemanticGenerics, InfersConstructionIndependentlyOfTheEnclosingReceiver) {
 	const CheckedProgram   cp_program = checkSource(R"(typedef<class> Box<T>(T value) {
-    pub mt<Box<bool>> make() = Box::new(true)
+    pub mt<Box<bool>> make() = Box::new(true);
 }
-fn<Box<bool>> use(Box<int> box) = box.make()
+fn<Box<bool>> use(Box<int> box) = box.make();
 )");
 	const Symbol          &sym_box    = cp_program.units.front()->getGlobals().at("Box").front();
 	const Expression      &e_make     = bodyExpression(sym_box.members.at("make").front());
@@ -349,11 +349,11 @@ fn<Box<bool>> use(Box<int> box) = box.make()
 TEST (SemanticGenerics, PreservesTheOverloadProvenByANominalBound) {
 	const CheckedProgram   cp_program = checkSource(R"(typedef<class> Base(int seed) {
     pub Base() : (0) {}
-    pub mt<int> pick(Base x) = 1
+    pub mt<int> pick(Base x) = 1;
 }
-typedef<class> Child : Base { pub mt<bool> pick(Child x) = true }
-fn<int> read<T: Base>(T value) = value.pick(value)
-fn<int> use(Child item) = read(item)
+typedef<class> Child : Base { pub mt<bool> pick(Child x) = true; }
+fn<int> read<T: Base>(T value) = value.pick(value);
+fn<int> use(Child item) = read(item);
 )");
 	const SymbolScope     &ss_globals = cp_program.units.front()->getGlobals();
 	const Expression      &e_pick     = bodyExpression(ss_globals.at("read").front());
@@ -361,23 +361,23 @@ fn<int> use(Child item) = read(item)
 	ASSERT_NE(gi_read, nullptr);
 	EXPECT_EQ(gi_read->body.expressions.at(&e_pick).symbol, &ss_globals.at("Base").front().members.at("pick").front());
 	EXPECT_EQ(gi_read->body.expressions.at(&e_pick).argumentContract, cp_program.expressions.at(&e_pick).argumentContract);
-	expectError(R"(fn<string> pick(int x) = "integer"
-fn<bool> pick<T>(T x) = true
-fn<bool> read<T>(T value) = pick(value)
-fn<bool> use() = read(1))",
+	expectError(R"(fn<string> pick(int x) = "integer";
+fn<bool> pick<T>(T x) = true;
+fn<bool> read<T>(T value) = pick(value);
+fn<bool> use() = read(1);)",
 	            cde::DiagnosticCode::ReturnType);
 }
 
 TEST (SemanticGenerics, ConstructorsAndTypeTestsResolveShadowedTypeNames) {
 	using Code                        = cde::DiagnosticCode;
 	const CheckedProgram  cp_program  = checkSource(R"(typedef<class> Item(int ignored) { pub Item() : (0) {} }
-fn<Item> concrete(int Item) = Item::new()
-fn<T> create<T: new()>(int T) = T::new()
-fn<Item> closed() = create<Item>(4)
-fn<bool> matches<T>(T value, int T) = value is T
-fn<bool> check(Item value) = matches<Item>(value, 3)
-fn<bool> stopped() = exit(0) is Item
-typedef<class> Holder(def<int> Item) { pub mt<Item> copy(Item item) = item }
+fn<Item> concrete(int Item) = Item::new();
+fn<T> create<T: new()>(int T) = T::new();
+fn<Item> closed() = create<Item>(4);
+fn<bool> matches<T>(T value, int T) = value is T;
+fn<bool> check(Item value) = matches<Item>(value, 3);
+fn<bool> stopped() = exit(0) is Item;
+typedef<class> Holder(def<int> Item) { pub mt<Item> copy(Item item) = item; }
 )");
 	const SymbolScope    &ss_globals  = cp_program.units.front()->getGlobals();
 	const Symbol         &sym_item    = ss_globals.at("Item").front();
@@ -402,22 +402,22 @@ typedef<class> Holder(def<int> Item) { pub mt<Item> copy(Item item) = item }
 	const GenericInstance *gi_check = callIn(cp_program, "check").instance;
 	ASSERT_NE(gi_check, nullptr);
 	EXPECT_EQ(gi_check->body.expressions.at(&e_test).testedType, ei_concrete.types.front());
-	expectError("fn f(int n) { n::new() }", Code::InvalidClassLifecycle);
-	expectError("typedef<class> Item(int seed) {}\nfn<Item> f(int Item) = Item::new(1)", Code::PrivateClassMember);
+	expectError("fn f(int n) { n::new(); }", Code::InvalidClassLifecycle);
+	expectError("typedef<class> Item(int seed) {}\nfn<Item> f(int Item) = Item::new(1);", Code::PrivateClassMember);
 }
 
 TEST (SemanticGenerics, ConstructorOnlyBoundsSupplyTheObjectView) {
 	using Code = cde::DiagnosticCode;
-	EXPECT_NO_THROW(checkSource(R"(fn<Object> forward<U: Object>(U obj) = obj
-fn<Object> erase<T: new()>(T item) = item
-fn<Object> next<T: new(int n)>(T item) = forward(item)
-fn<Object?> nullable<T: new()>(T? item) = item
-fn<Object> constructed<T: new()>() = T::new()
+	EXPECT_NO_THROW(checkSource(R"(fn<Object> forward<U: Object>(U obj) = obj;
+fn<Object> erase<T: new()>(T item) = item;
+fn<Object> next<T: new(int n)>(T item) = forward(item);
+fn<Object?> nullable<T: new()>(T? item) = item;
+fn<Object> constructed<T: new()>() = T::new();
 )"));
-	expectError("fn<Object> erase<T>(T item) = item", Code::ReturnType);
-	expectError("fn<Object> erase<T: new()>(T? item) = item", Code::ReturnType);
-	expectError("fn make<T: new()>() {}\nfn run() { make<int>() }", Code::UnsatisfiedGenericBound);
-	expectError("typedef<struct> S { int x }\nfn make<T: new()>() {}\nfn run() { make<S>() }", Code::UnsatisfiedGenericBound);
+	expectError("fn<Object> erase<T>(T item) = item;", Code::ReturnType);
+	expectError("fn<Object> erase<T: new()>(T? item) = item;", Code::ReturnType);
+	expectError("fn make<T: new()>() {}\nfn run() { make<int>(); }", Code::UnsatisfiedGenericBound);
+	expectError("typedef<struct> S { int x; }\nfn make<T: new()>() {}\nfn run() { make<S>(); }", Code::UnsatisfiedGenericBound);
 }
 
 TEST (SemanticGenerics, BindsGuaranteedConstructionToItsDeclaredLabelsAndDefaults) {
@@ -425,10 +425,10 @@ TEST (SemanticGenerics, BindsGuaranteedConstructionToItsDeclaredLabelsAndDefault
     pub Item(int renamed) : () {}
     pub Item(bool flag) : () {}
 }
-fn<T> build<T: new(opt<int> count ?: 4)>() = T::new()
-fn<T> named<T: new(int count)>() = T::new(count=3)
-fn<Item> byDefault() = build<Item>()
-fn<Item> byName() = named<Item>()
+fn<T> build<T: new(opt<int> count ?: 4)>() = T::new();
+fn<T> named<T: new(int count)>() = T::new(count=3);
+fn<Item> byDefault() = build<Item>();
+fn<Item> byName() = named<Item>();
 )");
 	const SymbolScope     &ss_globals = cp_program.units.front()->getGlobals();
 	const Expression      &e_build    = bodyExpression(ss_globals.at("build").front());
@@ -451,18 +451,18 @@ fn<Item> byName() = named<Item>()
 	EXPECT_EQ(ei_named.parameterForArgument, (std::vector<std::size_t>{ 0 }));
 	EXPECT_NO_THROW(checkSource(R"(typedef<class> Hidden {
     Hidden(int n) : () {}
-    pub mt<Hidden> build() = outer<Hidden>()
+    pub mt<Hidden> build() = outer<Hidden>();
 }
-fn<T> outer<T: new(int value)>() = inner<T>()
-fn<T> inner<T: new(int count)>() = T::new(count=1))"));
-	expectError("typedef<class> Hidden(int n)\nfn<T> make<T: new(int count)>() = T::new(1)\nfn<Hidden> use() = make<Hidden>()",
+fn<T> outer<T: new(int value)>() = inner<T>();
+fn<T> inner<T: new(int count)>() = T::new(count=1);)"));
+	expectError("typedef<class> Hidden(int n);\nfn<T> make<T: new(int count)>() = T::new(1);\nfn<Hidden> use() = make<Hidden>();",
 	            cde::DiagnosticCode::UnsatisfiedGenericBound);
 }
 
 TEST (SemanticGenerics, ChecksUnusedDeclarationsAndReusesRecursiveInstances) {
-	const CheckedProgram   cp_program = checkSource(R"(fn<T> left<T>(T x) = right(x)
-fn<T> right<T>(T x) = left(x)
-fn<int> start() = left(1)
+	const CheckedProgram   cp_program = checkSource(R"(fn<T> left<T>(T x) = right(x);
+fn<T> right<T>(T x) = left(x);
+fn<int> start() = left(1);
 )");
 	const SymbolScope     &ss_globals = cp_program.units.front()->getGlobals();
 	const GenericInstance *gi_left    = callIn(cp_program, "start").instance;
@@ -472,27 +472,27 @@ fn<int> start() = left(1)
 	EXPECT_EQ(gi_right->body.expressions.at(&bodyExpression(ss_globals.at("right").front())).instance, gi_left);
 	EXPECT_EQ(cp_program.instances.size(), 2u);
 	using Code = cde::DiagnosticCode;
-	expectError("fn<T> unused<T>(T x) = missing", Code::UnknownName);
-	expectError("fn<bool> unused<T>(T? x, T? y) = x == y", Code::IncomparableTypes);
-	expectError("fn<T> unused<T>(T x) = x + 1", Code::BinaryOperands);
-	expectError("fn<T> unused<T>() = T::new()", Code::InvalidClassLifecycle);
-	expectError("fn<bool> eq<T>(T[] a, T[] b) = a == b", Code::IncomparableTypes);
-	expectError("fn<usize> bytes<T>(T? item) = item::size", Code::UnknownProvider);
+	expectError("fn<T> unused<T>(T x) = missing;", Code::UnknownName);
+	expectError("fn<bool> unused<T>(T? x, T? y) = x == y;", Code::IncomparableTypes);
+	expectError("fn<T> unused<T>(T x) = x + 1;", Code::BinaryOperands);
+	expectError("fn<T> unused<T>() = T::new();", Code::InvalidClassLifecycle);
+	expectError("fn<bool> eq<T>(T[] a, T[] b) = a == b;", Code::IncomparableTypes);
+	expectError("fn<usize> bytes<T>(T? item) = item::size;", Code::UnknownProvider);
 	expectError("typedef<class> Base {}\nfn unused<T: Base = int>() {}", Code::UnsatisfiedGenericBound);
 	expectError("fn unused<T: int>() {}", Code::InvalidGenericBound);
-	EXPECT_NO_THROW(checkSource("fn<bool> eq<T: new()>(T a, T b) = a == b\nfn drop<T: new()>(T item) = item::delete"));
-	EXPECT_NO_THROW(checkSource("typedef<class> Base { pub mt<int> count() = 1 }\nfn<int> read<T: Base>(T item) = item.count()"));
+	EXPECT_NO_THROW(checkSource("fn<bool> eq<T: new()>(T a, T b) = a == b;\nfn drop<T: new()>(T item) = item::delete;"));
+	EXPECT_NO_THROW(checkSource("typedef<class> Base { pub mt<int> count() = 1; }\nfn<int> read<T: Base>(T item) = item.count();"));
 }
 
 TEST (SemanticGenerics, DistinguishesInlineStorageFromReferenceCycles) {
 	using Code = cde::DiagnosticCode;
-	expectError("typedef<struct> Loop { Loop next }", Code::RecursiveStruct);
-	expectError("typedef<struct> Loop<T> { Loop<T>?[]? next }", Code::RecursiveStruct);
-	expectError("typedef<struct> A<T> { B<T> next }\ntypedef<struct> B<T> { A<T>? preceding }", Code::RecursiveStruct);
-	expectError("typedef<struct> Cell<T> { T value }\ntypedef<struct> Loop { Cell<Loop> link }", Code::RecursiveStruct);
-	EXPECT_NO_THROW(checkSource("typedef<struct> Cell<T> { T value }\nfn finite(Cell<Cell<int>> item) {}"));
-	EXPECT_NO_THROW(checkSource(R"(typedef<struct> Slot<T> { Holder<T> owner }
-typedef<class> Holder<T>(def<Slot<T>?> slot ?: null)
+	expectError("typedef<struct> Loop { Loop next; }", Code::RecursiveStruct);
+	expectError("typedef<struct> Loop<T> { Loop<T>?[]? next; }", Code::RecursiveStruct);
+	expectError("typedef<struct> A<T> { B<T> next; }\ntypedef<struct> B<T> { A<T>? preceding; }", Code::RecursiveStruct);
+	expectError("typedef<struct> Cell<T> { T value; }\ntypedef<struct> Loop { Cell<Loop> link; }", Code::RecursiveStruct);
+	EXPECT_NO_THROW(checkSource("typedef<struct> Cell<T> { T value; }\nfn finite(Cell<Cell<int>> item) {}"));
+	EXPECT_NO_THROW(checkSource(R"(typedef<struct> Slot<T> { Holder<T> owner; }
+typedef<class> Holder<T>(def<Slot<T>?> slot ?: null);
 fn use(Holder<int> item) {})"));
 }
 
@@ -504,7 +504,7 @@ TEST (SemanticGenerics, ClassifiesTheApplicationAtTheDependencyLimit) {
 			s_parameters += std::format(",T{}", u_index);
 			s_arguments += std::format("T{},", u_index);
 		}
-		return std::format("fn shift<{}>(){{shift<{}int>()}}", s_parameters, s_arguments);
+		return std::format("fn shift<{}>(){{shift<{}int>();}}", s_parameters, s_arguments);
 	};
 	EXPECT_NO_THROW(checkSource(shift(63)));
 	expectError(shift(64), cde::DiagnosticCode::GenericDependencyLimit);
@@ -513,9 +513,9 @@ TEST (SemanticGenerics, ClassifiesTheApplicationAtTheDependencyLimit) {
 
 TEST (SemanticGenerics, StopsGrowingDependenciesEvenWithoutAClosedCall) {
 	using Code = cde::DiagnosticCode;
-	expectError("fn grow<T>() = grow<T[]>()", Code::GenericTemplateDependencyLimit);
-	expectError("typedef<class> Pair<A,B> {}\nfn grow<T>() = grow<Pair<T,T>>()", Code::GenericTemplateDependencyLimit);
-	expectError("typedef<class> Expands<T>(def<Expands<T[]>?> next ?: null)", Code::GenericTemplateDependencyLimit);
+	expectError("fn grow<T>() = grow<T[]>();", Code::GenericTemplateDependencyLimit);
+	expectError("typedef<class> Pair<A,B> {}\nfn grow<T>() = grow<Pair<T,T>>();", Code::GenericTemplateDependencyLimit);
+	expectError("typedef<class> Expands<T>(def<Expands<T[]>?> next ?: null);", Code::GenericTemplateDependencyLimit);
 	expectError("typedef<class> Expands<T: Expands<Expands<T>>> {}", Code::GenericTemplateDependencyLimit);
 }
 
@@ -538,20 +538,20 @@ fn use(Box<int> box) {})",
 
 TEST (SemanticGenerics, EnforcesTheClosedInstanceLimitAfterDuplicateLookup) {
 	std::string s_source = "typedef<class> Box<T> {}\nfn main() {\n";
-	for (unsigned u_width = 1; u_width <= 4096; ++u_width) s_source += std::format("Box<int<{}>>::type\n", u_width);
-	const CheckedProgram cp_program = checkSource(s_source + "Box<int<1>>::type\n}");
+	for (unsigned u_width = 1; u_width <= 4096; ++u_width) s_source += std::format("Box<int<{}>>::type;\n", u_width);
+	const CheckedProgram cp_program = checkSource(s_source + "Box<int<1>>::type;\n}");
 	const Symbol        &sym_box    = cp_program.units.front()->getGlobals().at("Box").front();
 	EXPECT_EQ(std::ranges::count_if(cp_program.instances,
 	                                [&] (const std::pair<const InstanceKey, GenericInstance> &entry) { return entry.first.declaration == &sym_box; }),
 	          4096);
-	expectError(s_source + "Box<int<4097>>::type\n}", cde::DiagnosticCode::GenericInstanceLimit);
+	expectError(s_source + "Box<int<4097>>::type;\n}", cde::DiagnosticCode::GenericInstanceLimit);
 }
 
 TEST (SemanticGenerics, CountsNestingAfterSubstitution) {
 	std::string s_argument = "int";
 	for (unsigned u_layer = 0; u_layer < 255; ++u_layer) s_argument = "Box<" + s_argument + ">";
 	const std::string s_types = "typedef<class> Box<T> {}\ntypedef<class> Uses<T>(def<";
-	const std::string s_use   = "?> item ?: null)\nfn take(Uses<" + s_argument + "> value) {}";
+	const std::string s_use   = "?> item ?: null);\nfn take(Uses<" + s_argument + "> value) {}";
 	EXPECT_NO_THROW(checkSource(s_types + "Box<T>" + s_use));
 	expectError(s_types + "Box<Box<T>>" + s_use, cde::DiagnosticCode::GenericSubstitutionNesting);
 }
@@ -559,9 +559,9 @@ TEST (SemanticGenerics, CountsNestingAfterSubstitution) {
 TEST (SemanticGenerics, SharesNestedArgumentsAndBoundsTheirDiagnosticSpelling) {
 	std::string s_source = "typedef<class> Pair<A, B> {}\n";
 	for (unsigned u_level = 0; u_level < 20; ++u_level) {
-		s_source += std::format("fn<typeinfo> step{}<T>() = step{}<Pair<T, T>>()\n", u_level, u_level + 1);
+		s_source += std::format("fn<typeinfo> step{}<T>() = step{}<Pair<T, T>>();\n", u_level, u_level + 1);
 	}
-	const CheckedProgram   cp_program = checkSource(s_source + "fn<typeinfo> step20<T>() = T::type\nfn<typeinfo> use() = step0<int>()");
+	const CheckedProgram   cp_program = checkSource(s_source + "fn<typeinfo> step20<T>() = T::type;\nfn<typeinfo> use() = step0<int>();");
 	const SymbolScope     &ss_globals = cp_program.units.front()->getGlobals();
 	const GenericInstance *gi_step    = callIn(cp_program, "use").instance;
 	for (unsigned u_level = 0; u_level < 20; ++u_level) {

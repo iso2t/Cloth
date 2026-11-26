@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib" --src "%S/Inputs/stdlib-collections.co" --emit-object "%t.collections.o"
+# RUN: %cc "%t.collections.o" %runtime -o "%t.collections.exe"
+# RUN: %expect_exit --stdout-line 40 --stdout-line 2 --empty-stderr 42 "%t.collections.exe"
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib" --src "%S/Inputs/stdlib-text.co" --emit-object "%t.text.o"
+# RUN: %cc "%t.text.o" %stdlib_runtime %runtime -o "%t.text.exe"
+# RUN: %expect_exit --stdout-line "label 42 -42 true null" --stdout-line "[40, 2]" --empty-stderr 42 "%t.text.exe"
+# RUN: %cloth --kind executable --stdlib "%S/../../../Stdlib" --src "%S/Inputs/stdlib-io.co" --emit-object "%t.io.o"
+# RUN: %cc "%t.io.o" %stdlib_runtime %runtime -o "%t.io.exe"
+# RUN: %python -c "from pathlib import Path; Path(r'%t.é.data').write_bytes(bytes.fromhex('c3a90041c080'))"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.io.exe" "%t.é.data" "%t.missing"
+# RUN: %cloth --kind executable --src "%S/Inputs/stdlib-input.co" --emit-object "%t.input.o"
+# RUN: %cc "%t.input.o" %stdlib_runtime %runtime -o "%t.input.exe"
+# RUN: %python -c "from pathlib import Path; Path(r'%t.input').write_bytes(bytes.fromhex('c3a9f09f98800d0a0a'))"
+# RUN: %expect_exit --stdout-line "input> " --empty-stderr 42 "%t.input.exe" < "%t.input"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.input.exe" invalid < "%t.é.data"
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: absolute value exceeds the signed integer width" 1 "%t.input.exe" abs
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: invalid clamp bounds" 1 "%t.input.exe" clamp
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: signum of NaN" 1 "%t.input.exe" nan
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: integer radix must be between 2 and 36" 1 "%t.input.exe" radix
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: string index out of bounds" 1 "%t.input.exe" index
+# RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: type metadata requires a numeric type" 1 "%t.input.exe" metadata

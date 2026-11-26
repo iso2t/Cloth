@@ -1,50 +1,50 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<struct> Sample { pub bool ready, pub float<64>? value }
-typedef<enum> Reading(pub def<float<16>?> value = null) { pub Missing, pub Zero(-0.0), pub Measured(1.125) }
+typedef<struct> Sample { pub bool ready, pub float<64>? value; }
+typedef<enum> Reading(pub def<float<16>?> value = null) { pub Missing, pub Zero(-0.0), pub Measured(1.125); }
 
 pub fn<int> main() {
-    float? zero = choose(true, 0.0)
-    float? missing = choose(false, 7.0)
-    if (zero == missing || missing != choose(false, 0.0) || null == zero) return 1
-    if (0.0 != zero || missing == 0.0 || traced(1, zero) != traced(2, -0.0)) return 2
-    if (valueOrFallback(zero, 99) != 0.0 || valueOrFallback(missing, 3) != 7.0) return 3
-    if (prefer(zero, missing) != 0.0 || prefer(missing, zero) != 0.0 || prefer(missing, missing) != null) return 4
+    float? zero = choose(true, 0.0);
+    float? missing = choose(false, 7.0);
+    if (zero == missing || missing != choose(false, 0.0) || null == zero) return 1;
+    if (0.0 != zero || missing == 0.0 || traced(1, zero) != traced(2, -0.0)) return 2;
+    if (valueOrFallback(zero, 99) != 0.0 || valueOrFallback(missing, 3) != 7.0) return 3;
+    if (prefer(zero, missing) != 0.0 || prefer(missing, zero) != 0.0 || prefer(missing, missing) != null) return 4;
 
-    float? nan = divide(0.0, 0.0)
-    if (nan == nan || !(nan != nan) || nan == missing || nan == null) return 5
-    float held := valueOrFallback(nan, 98)
-    if (held == held) return 6
-    if (sameHalf(Reading.Zero.value, null) || !sameHalf(Reading.Zero.value, 0.0)) return 7
-    if (sameHalf(narrow(nan), narrow(nan)) || !sameHalf(narrow(1.125), Reading.Measured.value)) return 8
+    float? nan = divide(0.0, 0.0);
+    if (nan == nan || !(nan != nan) || nan == missing || nan == null) return 5;
+    float held := valueOrFallback(nan, 98);
+    if (held == held) return 6;
+    if (sameHalf(Reading.Zero.value, null) || !sameHalf(Reading.Zero.value, 0.0)) return 7;
+    if (sameHalf(narrow(nan), narrow(nan)) || !sameHalf(narrow(1.125), Reading.Measured.value)) return 8;
 
-    Sample sample = {true, widen(Reading.Zero.value)}
-    def saved := sample
-    sample.value = widen(Reading.Missing.value)
-    if (sample.value != null || saved.value == null || !saved.ready) return 9
-    if (1.0 / saved.value >= 0.0) return 10
-    sample.value = 16777217.0
-    if (sameDouble(sample.value, 16777216.0) || !sameDouble(sample.value, 16777217.0)) return 11
-    if (asInteger(missing) != null || asInteger(zero) != 0 || asInteger(-7.5) != -7) return 12
-    return 42
+    Sample sample = {true, widen(Reading.Zero.value)};
+    def saved := sample;
+    sample.value = widen(Reading.Missing.value);
+    if (sample.value != null || saved.value == null || !saved.ready) return 9;
+    if (1.0 / saved.value >= 0.0) return 10;
+    sample.value = 16777217.0;
+    if (sameDouble(sample.value, 16777216.0) || !sameDouble(sample.value, 16777217.0)) return 11;
+    if (asInteger(missing) != null || asInteger(zero) != 0 || asInteger(-7.5) != -7) return 12;
+    return 42;
 }
 
-fn<float?> choose(final bool present, final float value) = if (present) value else null
-fn<float?> prefer(final float? value, final float? other) = value ?: other
-fn<float> valueOrFallback(final float? value, final int label) = value ?: fallback(label)
-fn<float> divide(final float a, final float b) = a / b
-fn<float<16>?> narrow(final float? value) = value -> float<16>?
-fn<float<64>?> widen(final float<16>? value) = value -> float<64>?
-fn<int?> asInteger(final float? value) = value -> int?
-fn<bool> sameHalf(final float<16>? left, final float<16>? right) = left == right
-fn<bool> sameDouble(final float<64>? left, final float<64>? right) = left == right
+fn<float?> choose(final bool present, final float value) = if (present) value else null;
+fn<float?> prefer(final float? value, final float? other) = value ?: other;
+fn<float> valueOrFallback(final float? value, final int label) = value ?: fallback(label);
+fn<float> divide(final float a, final float b) = a / b;
+fn<float<16>?> narrow(final float? value) = value -> float<16>?;
+fn<float<64>?> widen(final float<16>? value) = value -> float<64>?;
+fn<int?> asInteger(final float? value) = value -> int?;
+fn<bool> sameHalf(final float<16>? left, final float<16>? right) = left == right;
+fn<bool> sameDouble(final float<64>? left, final float<64>? right) = left == right;
 
 fn<float?> traced(final int label, final float? value) {
-    println(label)
-    return value
+    println(label);
+    return value;
 }
 
 fn<float> fallback(final int label) {
-    println(label)
-    return 7.0
+    println(label);
+    return 7.0;
 }

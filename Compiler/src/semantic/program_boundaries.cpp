@@ -60,14 +60,13 @@ constexpr IntrinsicSpec INTRINSICS[] = {
 }
 
 const Symbol &fileError (const SymbolTable &unit, const IntrinsicBody &body) {
-	constexpr std::string_view CASES[]    = { "InvalidPath", "NotFound", "PermissionDenied", "OpenFailed", "AlreadyOpen", "NotOpen", "ReadFailed" };
 	const SymbolScope         &ss_globals = unit.getGlobals();
 	const auto                 it_enum    = ss_globals.find("FileError");
 	if (it_enum != ss_globals.end()) {
 		for (const Symbol &sym : it_enum->second) {
 			const TypeDeclaration *const *td_type   = std::get_if<const TypeDeclaration *>(&sym.declaration);
 			const EnumDeclaration        *ed_errors = td_type ? dynamic_cast<const EnumDeclaration *>(*td_type) : nullptr;
-			if (ed_errors && std::ranges::all_of(CASES, [&] (std::string_view name) {
+			if (ed_errors && std::ranges::all_of(FILE_ERROR_CASES, [&] (std::string_view name) {
 				    return std::ranges::any_of(ed_errors->cases,
 				                               [&] (const EnumCaseDeclaration &entry) { return entry.name.getNameKey() == name; });
 			    }))

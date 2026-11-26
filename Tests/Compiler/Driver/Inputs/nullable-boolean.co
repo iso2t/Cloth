@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    bool? flag = false
-    if (flag == null || flag) return 1
-    flag = null
-    return if (null == flag) 42 else 2
+    bool? flag = false;
+    if (flag == null || flag) return 1;
+    flag = null;
+    return if (null == flag) 42 else 2;
 }

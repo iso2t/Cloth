@@ -14,13 +14,12 @@ class IfParser {
 	explicit IfParser (Parser &parser) : p_parser(parser) {
 	}
 
-	/** An else can follow newlines. A semicolon ends the chain. */
-	IfExpression parseIf (bool allowWhileTrailer = false) const;
+	IfExpression parseIf (bool allowWhileTrailer = false, bool statement = false) const;
 
     private:
 	Parser &p_parser;
 
-	BlockBody parseBranchBody (bool allowWhileTrailer) const;
+	BlockBody parseBranchBody (bool allowWhileTrailer, bool statement, const Token &keyword) const;
 };
 
 }

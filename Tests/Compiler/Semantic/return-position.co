@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 fn<int, bool> numbers(bool flag) {
-    if (flag) { return 1, true }
-    return 2, 3.0
+    if (flag) { return 1, true; }
+    return 2, 3.0;
 }
 
 // RUN: %expect_exit --empty-stdout 1 %cloth --src "%/s" 2> "%t.err"

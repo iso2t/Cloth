@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using cloth.Library : *;
+using cloth.collections.List : List;
+using cloth.collections.OwningList : OwningList;
+using cloth.collections.Snapshot : Snapshot, emptySnapshot;
+using cloth.collections.Stack : Stack;
+using cloth.collections.Deque : Deque;
+using cloth.collections.Queue : Queue;
+
+typedef<struct> Frozen {
+    pub Snapshot<int> entries;
+    pub operator foreach() -> Snapshot<int> = entries;
+}
+
+typedef<class> Child(def<int> id) {
+    pub Child(int value, bool keep) : (value) {}
+    pub ~Child { println(id); }
+}
+
+pub fn<int> main() {
+    def list = List<int>::new;
+    list.append(40);
+    list[0] += 2;
+    if (list[0] != 42) return 1;
+    list.append(7);
+    int sum = 0;
+    for (int item <- list) {
+        sum += item;
+        list.clear();
+        list.append(99);
+    }
+    if (sum != 49 || list.size() != 1 || list[0] != 99) return 2;
+    def snapshot = emptySnapshot<int>();
+    snapshot.append(42);
+    def copy = snapshot;
+    snapshot.append(7);
+    Frozen frozen = { copy };
+    for (int item <- frozen) sum -= item;
+    if (sum != 7) return 3;
+    def stack = Stack<int>::new;
+    stack.push(40);
+    stack.push(2);
+    if (stack.pop() + stack.peek() != 42) return 4;
+    def deque = Deque<int>::new;
+    deque.pushBack(40);
+    deque.pushBack(7);
+    deque.pushBack(2);
+    if (deque.popFront() + deque.popBack() != 42 || deque.peekFront() != 7) return 5;
+    def queue = Queue<int>::new;
+    queue.enqueue(40);
+    queue.enqueue(2);
+    if (queue.dequeue() != 40 || queue.peek() != 2) return 6;
+    def owner = OwningList<Child>::new;
+    owner.append(Child::new(40, true));
+    owner.append(Child::new(2, true));
+    owner::delete;
+    queue::delete;
+    deque::delete;
+    stack::delete;
+    list::delete;
+    return 42;
+}

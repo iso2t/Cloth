@@ -2,8 +2,8 @@
 
 # RUN: mkdir -p "%t/regular/cloth/text" "%t/library/cloth/text" "%t/library/cloth/collections" "%t/library/cloth/io/fs"
 # RUN: cat "%/S/../../../Stdlib/cloth/text/Utf8.co" > "%t/library/cloth/text/Utf8.co"
-# RUN: echo "using cloth.text.Utf8: decodeUtf8" > "%t/regular/user.co"
-# RUN: echo "fn<string?> decode(unsigned int<8>[] bytes) = decodeUtf8(bytes)" >> "%t/regular/user.co"
+# RUN: echo "using cloth.text.Utf8: decodeUtf8;" > "%t/regular/user.co"
+# RUN: echo "fn<string?> decode(unsigned int<8>[] bytes) = decodeUtf8(bytes);" >> "%t/regular/user.co"
 # RUN: cat "%t/regular/user.co" > "%t/library/user.co"
 
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 32 --stdlib "%t/library" --src "%t/regular/user.co"
@@ -24,15 +24,15 @@
 # ORIGIN: Utf8.co:{{[0-9]+}}:
 # ORIGIN: binding declared here
 
-# RUN: echo "using cloth.text.Other: decode" > "%t/library/user.co"
+# RUN: echo "using cloth.text.Other: decode;" > "%t/library/user.co"
 # RUN: cat "%/S/Inputs/boundaries/library/cloth/text/Utf8.co" > "%t/library/cloth/text/Other.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/library/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=SITE --input-file "%t.err"
 # SITE: [C3136] Error: Invalid compiler binding 'text.utf8.decode': requires the registered declaration in cloth/text/Utf8.co
 # SITE: Other.co:3:
 
-# RUN: echo "using cloth.text.Utf8: decode" > "%t/user.co"
-# RUN: echo 'pub fn decode() = intrinsic "unknown.operation"' > "%t/library/cloth/text/Utf8.co"
+# RUN: echo "using cloth.text.Utf8: decode;" > "%t/user.co"
+# RUN: echo 'pub fn decode() = intrinsic "unknown.operation";' > "%t/library/cloth/text/Utf8.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=UNKNOWN --input-file "%t.err"
 # UNKNOWN: [C3136] Error: Invalid compiler binding 'unknown.operation': unknown operation
@@ -40,7 +40,7 @@
 # UNKNOWN: binding declared here
 
 # RUN: cat "%/S/Inputs/boundaries/library/cloth/text/Utf8.co" > "%t/library/cloth/text/Utf8.co"
-# RUN: echo 'fn<string?> another(unsigned int<8>[] bytes) = intrinsic "text.utf8.decode"' >> "%t/library/cloth/text/Utf8.co"
+# RUN: echo 'fn<string?> another(unsigned int<8>[] bytes) = intrinsic "text.utf8.decode";' >> "%t/library/cloth/text/Utf8.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=DUPLICATE --input-file "%t.err"
 # DUPLICATE: [C3136] Error: Compiler binding 'text.utf8.decode' is already declared
@@ -48,72 +48,72 @@
 # DUPLICATE-DAG: first declared here
 # DUPLICATE-DAG: duplicate binding
 
-# RUN: echo 'pub fn<string?> decode(unsigned int<16>[] bytes) = intrinsic "text.utf8.decode"' > "%t/library/cloth/text/Utf8.co"
+# RUN: echo 'pub fn<string?> decode(unsigned int<16>[] bytes) = intrinsic "text.utf8.decode";' > "%t/library/cloth/text/Utf8.co"
 # RUN: cat "%t/user.co" > "%t/library/user.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/library/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=UTF8 --input-file "%t.err"
 # UTF8: [C3136] Error: Invalid compiler binding 'text.utf8.decode': expected parameters (unsigned int<8>[]) and results (string?)
 
-# RUN: echo 'pub fn<string?> decode<T>(unsigned int<8>[] bytes) = intrinsic "text.utf8.decode"' > "%t/library/cloth/text/Utf8.co"
+# RUN: echo 'pub fn<string?> decode<T>(unsigned int<8>[] bytes) = intrinsic "text.utf8.decode";' > "%t/library/cloth/text/Utf8.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=CONCRETE --input-file "%t.err"
-# RUN: echo 'pub fn<string?> decode(opt<unsigned int<8>[]> bytes ?: []) = intrinsic "text.utf8.decode"' > "%t/library/cloth/text/Utf8.co"
+# RUN: echo 'pub fn<string?> decode(opt<unsigned int<8>[]> bytes ?: []) = intrinsic "text.utf8.decode";' > "%t/library/cloth/text/Utf8.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=CONCRETE --input-file "%t.err"
 # CONCRETE: [C3136] Error:
 # CONCRETE-SAME: required parameters
 
-# RUN: echo "using cloth.collections.OwningList: OwningList" > "%t/user.co"
-# RUN: echo "fn use(OwningList<Object> list, Object item) = list.acquire(item)" >> "%t/user.co"
+# RUN: echo "using cloth.collections.OwningList: OwningList;" > "%t/user.co"
+# RUN: echo "fn use(OwningList<Object> list, Object item) = list.acquire(item);" >> "%t/user.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%/S/Inputs/boundaries/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=CALL-ACCESS --input-file "%t.err"
 # CALL-ACCESS: [C3089] Error: 'acquire' is private
 
-# RUN: echo "using cloth.collections.OwningList: OwningList" > "%t/user.co"
-# RUN: echo 'pub final typedef<class> OwningList<T: Object> { pub mt acquire(Object v) = intrinsic "collections.ownership.acquire" }' > "%t/library/cloth/collections/OwningList.co"
+# RUN: echo "using cloth.collections.OwningList: OwningList;" > "%t/user.co"
+# RUN: echo 'pub final typedef<class> OwningList<T: Object> { pub mt acquire(Object v) = intrinsic "collections.ownership.acquire"; }' > "%t/library/cloth/collections/OwningList.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=PRIVATE --input-file "%t.err"
-# RUN: echo 'pub final typedef<class> OwningList<T: Object> { mt acquire<U>(Object v) = intrinsic "collections.ownership.acquire" }' > "%t/library/cloth/collections/OwningList.co"
+# RUN: echo 'pub final typedef<class> OwningList<T: Object> { mt acquire<U>(Object v) = intrinsic "collections.ownership.acquire"; }' > "%t/library/cloth/collections/OwningList.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=PRIVATE --input-file "%t.err"
 # PRIVATE: [C3136] Error:
 # PRIVATE-SAME: requires a private method with no method type parameters
 
-# RUN: echo 'pub final typedef<class> OwningList<T: Object> { mt acquire(T v) = intrinsic "collections.ownership.acquire" }' > "%t/library/cloth/collections/OwningList.co"
+# RUN: echo 'pub final typedef<class> OwningList<T: Object> { mt acquire(T v) = intrinsic "collections.ownership.acquire"; }' > "%t/library/cloth/collections/OwningList.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=ROOT --input-file "%t.err"
 # ROOT: [C3136] Error:
 # ROOT-SAME: expected parameters (Object) and results ()
 
-# RUN: echo 'pub typedef<class> OwningList { mt check() = intrinsic "collections.ownership.check_mutation" }' > "%t/library/cloth/collections/OwningList.co"
+# RUN: echo 'pub typedef<class> OwningList { mt check() = intrinsic "collections.ownership.check_mutation"; }' > "%t/library/cloth/collections/OwningList.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=CONCRETE --input-file "%t.err"
-# RUN: echo 'pub final typedef<class> OwningList { virtual mt check() = intrinsic "collections.ownership.check_mutation" }' > "%t/library/cloth/collections/OwningList.co"
+# RUN: echo 'pub final typedef<class> OwningList { virtual mt check() = intrinsic "collections.ownership.check_mutation"; }' > "%t/library/cloth/collections/OwningList.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=CONCRETE --input-file "%t.err"
 
-# RUN: echo "using cloth.io.fs.File: File" > "%t/user.co"
-# RUN: echo 'pub typedef<enum> FileError { NotFound }' > "%t/library/cloth/io/fs/File.co"
-# RUN: echo 'pub final typedef<class> File { mt<FileError?> open(string path) = intrinsic "io.file.open" }' >> "%t/library/cloth/io/fs/File.co"
+# RUN: echo "using cloth.io.fs.File: File;" > "%t/user.co"
+# RUN: echo 'pub typedef<enum> FileError { NotFound; }' > "%t/library/cloth/io/fs/File.co"
+# RUN: echo 'pub final typedef<class> File { mt<FileError?> open(string path) = intrinsic "io.file.open"; }' >> "%t/library/cloth/io/fs/File.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=CASES --input-file "%t.err"
-# RUN: echo 'pub typedef<enum> FileError { InvalidPath, NotFound, PermissionDenied, OpenFailed, AlreadyOpen, NotOpen, ReadFailed }' > "%t/library/Errors.co"
-# RUN: echo 'using Errors: FileError' > "%t/library/cloth/io/fs/File.co"
-# RUN: echo 'pub final typedef<class> File { mt<FileError?> open(string path) = intrinsic "io.file.open" }' >> "%t/library/cloth/io/fs/File.co"
+# RUN: echo 'pub typedef<enum> FileError { InvalidPath, NotFound, PermissionDenied, OpenFailed, AlreadyOpen, NotOpen, ReadFailed; }' > "%t/library/Errors.co"
+# RUN: echo 'using Errors: FileError;' > "%t/library/cloth/io/fs/File.co"
+# RUN: echo 'pub final typedef<class> File { mt<FileError?> open(string path) = intrinsic "io.file.open"; }' >> "%t/library/cloth/io/fs/File.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=CASES --input-file "%t.err"
 # CASES: [C3136] Error:
 # CASES-SAME: requires the library FileError enum with its registered cases
 
 # RUN: cat "%t/library/Errors.co" > "%t/library/cloth/io/fs/File.co"
-# RUN: echo 'pub final typedef<class> File { mt<FileError?, unsigned int<8>[]?> read(usize limit) = intrinsic "io.file.read" }' >> "%t/library/cloth/io/fs/File.co"
+# RUN: echo 'pub final typedef<class> File { mt<FileError?, unsigned int<8>[]?> read(usize limit) = intrinsic "io.file.read"; }' >> "%t/library/cloth/io/fs/File.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=READ --input-file "%t.err"
 # READ: [C3136] Error:
 # READ-SAME: expected parameters (usize) and results (unsigned int<8>[]?, FileError?)
 
-# RUN: echo "using cloth.io.fs.File: Container" > "%t/user.co"
-# RUN: echo 'pub typedef<class> Container { final typedef<class> File { mt<FileError?> open(string path) = intrinsic "io.file.open" } }' > "%t/library/cloth/io/fs/File.co"
+# RUN: echo "using cloth.io.fs.File: Container;" > "%t/user.co"
+# RUN: echo 'pub typedef<class> Container { final typedef<class> File { mt<FileError?> open(string path) = intrinsic "io.file.open"; } }' > "%t/library/cloth/io/fs/File.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --stdlib "%t/library" --src "%t/user.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=NESTED --input-file "%t.err"
 # NESTED: [C3136] Error:

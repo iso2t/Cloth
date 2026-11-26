@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<interface> Left { pub mt<int> choose() = default (1) }
-typedef<interface> Right { pub mt<int> choose() = default (2) }
+typedef<interface> Left { pub mt<int> choose() = default (1); }
+typedef<interface> Right { pub mt<int> choose() = default (2); }
 typedef<class> Both : Left, Right {}
 
 // RUN: %expect_exit --empty-stdout 1 %cloth --src "%/s" 2> "%t.err"

@@ -1,84 +1,84 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-using call_defaults: imported
+using call_defaults: imported;
 
-fn<int> mark(int n) { println(n); return n }
+fn<int> mark(int n) { println(n); return n; }
 fn<int> ordered(int first, opt<int> second ?: mark(first + 1), opt<int> third ?: mark(second + 1), opt<int> last ?: 99) {
-    return first + second + third + last
+    return first + second + third + last;
 }
-fn<int> recurse(int n, opt<int> answer ?: if (n == 0) 42 else recurse(n - 1)) = answer
-fn<int, int> pair(int base) = mark(base), mark(base + 1)
-fn<int, int> choose(bool flag) = if (flag) pair(8) else pair(10)
-fn<int, int> forward(bool flag) { return choose(flag) }
-fn<void> consume(int[] values) { values.append(99) }
+fn<int> recurse(int n, opt<int> answer ?: if (n == 0) 42 else recurse(n - 1)) = answer;
+fn<int, int> pair(int base) = mark(base), mark(base + 1);
+fn<int, int> choose(bool flag) = if (flag) pair(8) else pair(10);
+fn<int, int> forward(bool flag) { return choose(flag); }
+fn<void> consume(int[] values) { values.append(99); }
 fn<int[], int[]> buffers(int[] values) {
-    int[] original := values
-    values.append(7)
-    return original, values
+    int[] original := values;
+    values.append(7);
+    return original, values;
 }
-fn<int[]> echoed(int[] values, opt<int[]> other ?: values) = other
-fn<int> firstCell(int[] values, int ignored) = values[0]
+fn<int[]> echoed(int[] values, opt<int[]> other ?: values) = other;
+fn<int> firstCell(int[] values, int ignored) = values[0];
 typedef<class> Ticket {
     pub Ticket(int n, opt<int> checked ?: if (n == 42) 0 else exit(17)) : () {}
 }
 fn<int> defaultArray(int[1]? item, opt<int[]?> copy ?: item) {
-    if (copy == null) return 7
-    return copy[0]
+    if (copy == null) return 7;
+    return copy[0];
 }
-fn<int[1]?> fixed(int[]? item) = item
+fn<int[1]?> fixed(int[]? item) = item;
 fn<int[]?, int[]> split(bool present) {
-    int[] data = [42]
-    return if (present) { data, data } else { null, data }
+    int[] data = [42];
+    return if (present) { data, data; } else { null, data; };
 }
 
 pub fn<int> main() {
-    int first := 99
-    if (ordered(last = mark(4), first = mark(1)) != 10 || first != 99) return 1
-    if (recurse(3) != 42) return 2
-    int a, int b = forward(true)
-    _, b = forward(false)
-    if (a != 8 || b != 11) return 3
-    a, b = b, a
-    if (a != 11 || b != 8) return 4
-    int low, high = mark(5)
-    low, high = mark(6)
-    if (low != 6 || high != 6) return 5
-    int reads = 0
+    int first := 99;
+    if (ordered(last = mark(4), first = mark(1)) != 10 || first != 99) return 1;
+    if (recurse(3) != 42) return 2;
+    int a, int b = forward(true);
+    _, b = forward(false);
+    if (a != 8 || b != 11) return 3;
+    a, b = b, a;
+    if (a != 11 || b != 8) return 4;
+    int low, high = mark(5);
+    low, high = mark(6);
+    if (low != 6 || high != 6) return 5;
+    int reads = 0;
     int left, int right = {
-        reads += 1
-        int current := reads
-        if (current == 1) { return mark(20), mark(21) }
-        return mark(30 + current), mark(40 + current)
-    }
-    if (reads != 0 || left != 20 || right != 42 || left != 33 || reads != 3) return 6
-    int single := { return left }
-    if (single != 34 || reads != 4) return 7
-    int[] source = [42]
-    consume(source)
-    int[] before, int[] after = buffers(source)
-    before, after = after, before
-    if (source::size != 1 || before::size != 2 || before[1] != 7 || after[0] != 42) return 8
-    int[] copy := echoed(source)
-    source.clear()
-    if (copy[0] != 42 || after[0] != 42) return 9
-    if (imported(2) != 42 || imported(0, result = 42) != 42) return 10
-    int[]? optional, int[] required = split(false)
-    if (optional != null || required[0] != 42) return 11
-    optional, required = split(true)
-    if (optional == null) return 12
-    optional.clear()
-    if (required[0] != 42) return 13
-    if (defaultArray(null) != 7 || defaultArray([42]) != 42) return 14
-    int[1]? none := fixed(null)
-    int[1]? one := fixed([42])
-    if (none != null || one == null) return 15
-    if (one[0] != 42) return 16
-    int[] live = [42]
-    if (firstCell(live, if (true) { live.clear(); 0 } else 1) != 42 || live::size != 0) return 17
-    live.append(42)
-    int[] saved, int tag = live, if (true) { live.clear(); 7 } else 0
-    if (saved[0] != 42 || tag != 7 || live::size != 0) return 18
-    Ticket ticket := Ticket::new(42)
-    if (ticket === Ticket::new(0, checked = 1)) return 19
-    return 42
+        reads += 1;
+        int current := reads;
+        if (current == 1) { return mark(20), mark(21); }
+        return mark(30 + current), mark(40 + current);
+    };
+    if (reads != 0 || left != 20 || right != 42 || left != 33 || reads != 3) return 6;
+    int single := { return left; };
+    if (single != 34 || reads != 4) return 7;
+    int[] source = [42];
+    consume(source);
+    int[] before, int[] after = buffers(source);
+    before, after = after, before;
+    if (source::size != 1 || before::size != 2 || before[1] != 7 || after[0] != 42) return 8;
+    int[] copy := echoed(source);
+    source.clear();
+    if (copy[0] != 42 || after[0] != 42) return 9;
+    if (imported(2) != 42 || imported(0, result = 42) != 42) return 10;
+    int[]? optional, int[] required = split(false);
+    if (optional != null || required[0] != 42) return 11;
+    optional, required = split(true);
+    if (optional == null) return 12;
+    optional.clear();
+    if (required[0] != 42) return 13;
+    if (defaultArray(null) != 7 || defaultArray([42]) != 42) return 14;
+    int[1]? none := fixed(null);
+    int[1]? one := fixed([42]);
+    if (none != null || one == null) return 15;
+    if (one[0] != 42) return 16;
+    int[] live = [42];
+    if (firstCell(live, if (true) { live.clear(); 0; } else 1) != 42 || live::size != 0) return 17;
+    live.append(42);
+    int[] saved, int tag = live, if (true) { live.clear(); 7; } else 0;
+    if (saved[0] != 42 || tag != 7 || live::size != 0) return 18;
+    Ticket ticket := Ticket::new(42);
+    if (ticket === Ticket::new(0, checked = 1)) return 19;
+    return 42;
 }

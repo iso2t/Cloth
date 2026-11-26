@@ -37,10 +37,12 @@ if platform.machine().lower() in {"amd64", "x86_64", "x86", "i386", "i486", "i58
 config.substitutions.extend([
     ("%python", tool_path(sys.executable)),
     ("%cloth", tool_path(params["cloth"])),
+    ("%migrate_semicolons", tool_path(Path(params["cloth"]).with_name("cloth-migrate-semicolons" + Path(params["cloth"]).suffix))),
     ("%filecheck", tool_path(params["filecheck"])),
     ("%llvm_readobj", tool_path(params.get("readobj", "llvm-readobj"))),
     ("%llvm_mc", tool_path(params.get("llvm_mc", "llvm-mc"))),
     ("%cc", params.get("cc", "gcc" if sys.platform == "win32" else "cc")),
+    ("%stdlib_runtime", "-DUTF8PROC_STATIC -I " + tool_path(suite.parent / "ThirdParty/utf8proc") + " " + " ".join(tool_path(p) for p in (runtime / "text.c", runtime / "files.c", suite.parent / "ThirdParty/utf8proc/utf8proc.c"))),
     ("%runtime", "-I " + tool_path(runtime.parent / "include") + " " + " ".join(tool_path(runtime / name) for name in ("arguments.c", "array.c", "errors.c", "integer.c", "object.c", "println.c", "process.c"))
      + (" -lshell32" if sys.platform == "win32" else "")),
     ("%host_os", sys.platform),

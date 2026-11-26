@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    int[2]?[2] rows = [null, [0, 42]]
-    int[2]?[2] saved := rows
-    rows[1] = null
-    if (rows[1] != null || saved[0] != null) return 1
-    int[2]? row := saved[1]
-    if (row == null) return 2
-    return row[1]
+    int[2]?[2] rows = [null, [0, 42]];
+    int[2]?[2] saved := rows;
+    rows[1] = null;
+    if (rows[1] != null || saved[0] != null) return 1;
+    int[2]? row := saved[1];
+    if (row == null) return 2;
+    return row[1];
 }

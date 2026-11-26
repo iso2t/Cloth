@@ -39,30 +39,30 @@ const ExpressionInfo &returned (const CheckedProgram &program, const std::string
 TEST (SemanticValues, NormalizesIntegerBooleanValuesOnBothTargets) {
 	for (unsigned const u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const CheckedProgram cp_program = checkSource(R"(fn<bool> zero() = 0 == false
-fn<bool> falseOne() = false == 1
-fn<bool> nonzero() = true == 2
-fn<bool> negative() = -2 == true
-fn<bool> different() = false != isize::min
-fn<bool> same() = usize::max != true
-fn<bool> highWord() = int<96>::min -> bool
-fn<bool> castZero() = (2 - 2) -> bool
-fn<bool> castAndCompare() = (-5 -> bool) == true
-fn<bool> wrapped() = ((255 -> unsigned int<8>) + 1) == false
-fn<bool> dynamic(bool flag, int n) = n == flag
-fn<bool> lifted(bool? flag, int? n) = flag != n
-fn<bool?> nullable(int? n) = n
-fn<bool> defaulted(opt<bool> value ?: -3) = value
+		const CheckedProgram cp_program = checkSource(R"(fn<bool> zero() = 0 == false;
+fn<bool> falseOne() = false == 1;
+fn<bool> nonzero() = true == 2;
+fn<bool> negative() = -2 == true;
+fn<bool> different() = false != isize::min;
+fn<bool> same() = usize::max != true;
+fn<bool> highWord() = int<96>::min -> bool;
+fn<bool> castZero() = (2 - 2) -> bool;
+fn<bool> castAndCompare() = (-5 -> bool) == true;
+fn<bool> wrapped() = ((255 -> unsigned int<8>) + 1) == false;
+fn<bool> dynamic(bool flag, int n) = n == flag;
+fn<bool> lifted(bool? flag, int? n) = flag != n;
+fn<bool?> nullable(int? n) = n;
+fn<bool> defaulted(opt<bool> value ?: -3) = value;
 fn<bool> inputs(int n, unsigned int<12> u, isize s, usize z) {
-    bool x = 0
-    x = n
-    bool[3] a = [u, s, z]
-    a[1] = n
-    return x
+    bool x = 0;
+    x = n;
+    bool[3] a = [u, s, z];
+    a[1] = n;
+    return x;
 }
-fn<int> branch() { if (true == -9) return 7 }
-fn<int> skipped() { if (false == 1) {} else return 7 }
-fn<int> loop() { do { return 7 } while (false == 1) }
+fn<int> branch() { if (true == -9) return 7; }
+fn<int> skipped() { if (false == 1) {} else return 7; }
+fn<int> loop() { do { return 7; } while (false == 1); }
 )",
 		                                              { .sizeBits=u_bits });
 		for (const char *s_name : { "zero", "nonzero", "negative", "different", "highWord", "castAndCompare", "wrapped" }) {
@@ -88,38 +88,38 @@ fn<int> loop() { do { return 7 } while (false == 1) }
 		EXPECT_EQ(ei_initializer.types.front(), ResolvedType(KInteger));
 		EXPECT_EQ(ei_initializer.integerTruth(), false);
 	}
-	expectError("fn<bool> f(float x) = x", Code::ReturnType);
-	expectError("fn<bool> f(int? x) = x", Code::ReturnType);
-	expectError("fn<bool> f(float x) = false == x", Code::IncomparableTypes);
-	expectError("fn<bool> f(int x) = false === x", Code::IncomparableTypes);
-	expectError("fn<bool> f(int[] x, bool[] flags) = x == flags", Code::IncomparableTypes);
-	expectError("fn<bool> f(int n) = !n", Code::UnaryOperand);
-	expectError("fn<int> f() { if (false == 1) return 1 }", Code::MissingReturn);
+	expectError("fn<bool> f(float x) = x;", Code::ReturnType);
+	expectError("fn<bool> f(int? x) = x;", Code::ReturnType);
+	expectError("fn<bool> f(float x) = false == x;", Code::IncomparableTypes);
+	expectError("fn<bool> f(int x) = false === x;", Code::IncomparableTypes);
+	expectError("fn<bool> f(int[] x, bool[] flags) = x == flags;", Code::IncomparableTypes);
+	expectError("fn<bool> f(int n) = !n;", Code::UnaryOperand);
+	expectError("fn<int> f() { if (false == 1) return 1; }", Code::MissingReturn);
 }
 
 TEST (SemanticValues, PrefersIntegerOverloadsBeforeBooleanConversion) {
-	const CheckedProgram cp_program = checkSource(R"(fn<int> pick(int n) = n
-fn<bool> pick(bool b) = b
-fn<int<8>> narrow(int<8> n) = n
-fn<bool> narrow(bool b) = b
-fn<bool> accept(bool b) = b
-fn<bool> choose(bool b) = b
-fn<T> choose<T>(T n) = n
-fn<int> integer() = pick(0)
-fn<bool> boolean() = pick(false)
-fn<int<8>> contextual() = narrow(1)
-fn<int> inferred() = choose(1)
-fn<bool> converted(int n) = accept(n)
-fn<int> arrayPick(int<8>[] values) = 1
-fn<bool> arrayPick(bool[] flags) = true
-fn<int> arrayLiteral() = arrayPick([1, 2])
+	const CheckedProgram cp_program = checkSource(R"(fn<int> pick(int n) = n;
+fn<bool> pick(bool b) = b;
+fn<int<8>> narrow(int<8> n) = n;
+fn<bool> narrow(bool b) = b;
+fn<bool> accept(bool b) = b;
+fn<bool> choose(bool b) = b;
+fn<T> choose<T>(T n) = n;
+fn<int> integer() = pick(0);
+fn<bool> boolean() = pick(false);
+fn<int<8>> contextual() = narrow(1);
+fn<int> inferred() = choose(1);
+fn<bool> converted(int n) = accept(n);
+fn<int> arrayPick(int<8>[] values) = 1;
+fn<bool> arrayPick(bool[] flags) = true;
+fn<int> arrayLiteral() = arrayPick([1, 2]);
 typedef<struct> Flag {
-    pub operator ==(bool b) = b
-    pub operator ==(int<8> n) = false
+    pub operator ==(bool b) = b;
+    pub operator ==(int<8> n) = false;
 }
-fn<bool> operatorLiteral(Flag f) = f == 2
-fn<bool> operatorFlag(Flag f) = f == true
-fn<bool> operatorConverted(Flag f, usize n) = f == n
+fn<bool> operatorLiteral(Flag f) = f == 2;
+fn<bool> operatorFlag(Flag f) = f == true;
+fn<bool> operatorConverted(Flag f, usize n) = f == n;
 )");
 	const SymbolScope   &ss_globals = cp_program.units.front()->getGlobals();
 	EXPECT_EQ(returned(cp_program, "integer").argumentContract, &ss_globals.at("pick")[0]);
@@ -133,16 +133,16 @@ fn<bool> operatorConverted(Flag f, usize n) = f == n
 	EXPECT_NE(returned(cp_program, "operatorLiteral").argumentContract, ei_flag.argumentContract);
 	EXPECT_EQ(returned(cp_program, "operatorConverted").argumentContract, ei_flag.argumentContract);
 	EXPECT_FALSE(returned(cp_program, "operatorConverted").booleanEquality);
-	expectError("typedef<struct> F { pub operator ==(bool b) = b\n operator ==(int n) = true }\nfn<bool> check(F f) = f == 1", Code::PrivateClassMember);
+	expectError("typedef<struct> F { pub operator ==(bool b) = b;\n operator ==(int n) = true; }\nfn<bool> check(F f) = f == 1;", Code::PrivateClassMember);
 }
 
 TEST (SemanticValues, TargetWidthsApplyToLiteralsCastsAndExtents) {
 	for (unsigned const bits : { 32u, 64u }) {
-		const CheckedProgram program = checkSource("fn<usize> value() = usize::max\nfn<isize> low() = isize::min", { .sizeBits=bits });
+		const CheckedProgram program = checkSource("fn<usize> value() = usize::max;\nfn<isize> low() = isize::min;", { .sizeBits=bits });
 		EXPECT_EQ(std::get<IntegerConstant>(returned(program).numericConstant).magnitude, IntegerValue(bits / 32, UINT32_MAX));
 		EXPECT_TRUE(std::get<IntegerConstant>(returned(program, "low").numericConstant).negative);
 	}
-	for (const std::string source : { "fn<usize> value() = 4294967296", "fn<isize> value() = -2147483649", "fn read(int[4294967296] data) {}" }) {
+	for (const std::string source : { "fn<usize> value() = 4294967296;", "fn<isize> value() = -2147483649;", "fn read(int[4294967296] data) {}" }) {
 		SCOPED_TRACE(source);
 		EXPECT_NO_THROW(checkSource(source, { 64 }));
 		try {
@@ -157,14 +157,14 @@ TEST (SemanticValues, TargetWidthsApplyToLiteralsCastsAndExtents) {
 TEST (SemanticValues, ComplementsIntegerConstantsAtTheOperandWidth) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const CheckedProgram cp_program = checkSource(R"(fn<int> value() = ~-43
-fn<int> product() = ~2 * 3
-fn<int<8>> minimum() = ~127
-fn<int<8>> maximum() = ~-128
-fn<unsigned int<12>> narrow() = ~0
-fn<unsigned int<65>> wide() = ~1
-fn<usize> sized() = ~0
-fn<int> computedDivisor() = 1 / ~-1
+		const CheckedProgram cp_program = checkSource(R"(fn<int> value() = ~-43;
+fn<int> product() = ~2 * 3;
+fn<int<8>> minimum() = ~127;
+fn<int<8>> maximum() = ~-128;
+fn<unsigned int<12>> narrow() = ~0;
+fn<unsigned int<65>> wide() = ~1;
+fn<usize> sized() = ~0;
+fn<int> computedDivisor() = 1 / ~-1;
 )",
 		                                              { .sizeBits=u_bits });
 		EXPECT_EQ(returned(cp_program).numericConstant, NumericConstant(IntegerConstant{ { 42 } }));
@@ -176,26 +176,26 @@ fn<int> computedDivisor() = 1 / ~-1
 		EXPECT_EQ(returned(cp_program, "sized").numericConstant, NumericConstant(IntegerConstant{ IntegerValue(u_bits / 32, UINT32_MAX) }));
 		EXPECT_TRUE(std::holds_alternative<std::monostate>(returned(cp_program, "computedDivisor").numericConstant));
 	}
-	expectError("fn<float> f(float x) = ~x", Code::UnaryOperand);
-	expectError("fn<bool> f(bool x) = ~x", Code::UnaryOperand);
-	expectError("fn<int> f() = ~2147483648", Code::IntegerRange);
-	expectError("typedef<class> C { operator ~(int x) = x }", Code::InvalidOperatorDeclaration);
+	expectError("fn<float> f(float x) = ~x;", Code::UnaryOperand);
+	expectError("fn<bool> f(bool x) = ~x;", Code::UnaryOperand);
+	expectError("fn<int> f() = ~2147483648;", Code::IntegerRange);
+	expectError("typedef<class> C { operator ~(int x) = x; }", Code::InvalidOperatorDeclaration);
 }
 
 TEST (SemanticValues, NumericConstantsPreserveWidthRoundingAndInvalidCasts) {
-	const CheckedProgram program = checkSource(R"(fn<int<16>> value() = -1 -> unsigned int<8> -> int<16>
-fn<unsigned int<65>> wide() = -1 -> unsigned int<64> -> float<64> -> unsigned int<65>
-fn<float<16>> midpoint() = 1.00048828125
-fn<float<16>> above() = 1.000488281250000001
-fn<float<64>> negativeZero() = -0.0 -> float<64>
-fn<int<8>> invalid() = 127.99 -> float<16> -> int<8>
-fn<int> dynamic(float input) = input -> int
-fn<int<8>?> nullable() = 127.5 -> float? -> int<8>?
-fn<int<129>> divide() = ((18446744073709551616 + (0 -> int<129>)) * 9) / 3
-fn<unsigned int<128>> quotient() = unsigned int<128>::max / 18446744073709551617
-fn<unsigned int<128>> remainder() = unsigned int<128>::max % 18446744073709551617
-fn<int> infinity() = (1.0 / 0.0) -> int
-fn<int> nan() = (0.0 / 0.0) -> int
+	const CheckedProgram program = checkSource(R"(fn<int<16>> value() = -1 -> unsigned int<8> -> int<16>;
+fn<unsigned int<65>> wide() = -1 -> unsigned int<64> -> float<64> -> unsigned int<65>;
+fn<float<16>> midpoint() = 1.00048828125;
+fn<float<16>> above() = 1.000488281250000001;
+fn<float<64>> negativeZero() = -0.0 -> float<64>;
+fn<int<8>> invalid() = 127.99 -> float<16> -> int<8>;
+fn<int> dynamic(float input) = input -> int;
+fn<int<8>?> nullable() = 127.5 -> float? -> int<8>?;
+fn<int<129>> divide() = ((18446744073709551616 + (0 -> int<129>)) * 9) / 3;
+fn<unsigned int<128>> quotient() = unsigned int<128>::max / 18446744073709551617;
+fn<unsigned int<128>> remainder() = unsigned int<128>::max % 18446744073709551617;
+fn<int> infinity() = (1.0 / 0.0) -> int;
+fn<int> nan() = (0.0 / 0.0) -> int;
 )");
 	EXPECT_EQ(std::get<IntegerConstant>(returned(program).numericConstant), (IntegerConstant{ { 255 } }));
 	EXPECT_EQ(std::get<IntegerConstant>(returned(program, "wide").numericConstant).magnitude, (IntegerValue{ 0, 0, 1 }));
@@ -210,13 +210,13 @@ fn<int> nan() = (0.0 / 0.0) -> int
 	EXPECT_TRUE(returned(program, "invalid").invalidNumericCast);
 	EXPECT_FALSE(returned(program, "dynamic").invalidNumericCast);
 	EXPECT_EQ(std::get<IntegerConstant>(returned(program, "nullable").numericConstant), (IntegerConstant{ { 127 } }));
-	expectError("fn<int> value(int x) = x / 0", Code::IntegerZeroDivisor);
-	expectError("fn<int<8>> value() = int<8>::min % -1", Code::IntegerDivisionOverflow);
+	expectError("fn<int> value(int x) = x / 0;", Code::IntegerZeroDivisor);
+	expectError("fn<int<8>> value() = int<8>::min % -1;", Code::IntegerDivisionOverflow);
 }
 
 TEST (SemanticValues, EnumConstantsAreCheckedInSourceOrderAndDefaultsAreRetained) {
 	const CheckedProgram                   program = checkSource(R"(typedef<enum> E (pub def<int<8>> code = 7, pub def<int?[2]> row = [null, 1]) {
-    ZED(3), ALPHA
+    ZED(3), ALPHA;
 })");
 	const Symbol                          &owner   = program.units.front()->getGlobals().at("E").front();
 	const auto                 *decl    = static_cast<const EnumDeclaration *>(std::get<const TypeDeclaration *>(owner.declaration));
@@ -224,27 +224,27 @@ TEST (SemanticValues, EnumConstantsAreCheckedInSourceOrderAndDefaultsAreRetained
 	ASSERT_EQ(zed.size(), 2u);
 	EXPECT_EQ(zed[0], decl->cases.front().values.front().get());
 	EXPECT_EQ(zed[1], decl->fields[1].defaultValue.get());
-	expectError("fn<int> other() = 1\ntypedef<enum> E (def<int> n) { A(other()) }", Code::InvalidEnumMember);
-	expectError("typedef<enum> E (def<int> n) { A(1 + 2) }", Code::InvalidEnumMember);
-	expectError("typedef<enum> E (def<int<8>> n) { A(127.99 -> float<16> -> int<8>) }", Code::InvalidCast);
-	expectError("typedef<enum> E (def<int<8>> n) { A(128) }", Code::IntegerRange);
-	expectError("typedef<enum> E (def<int[2]> n) { A([1]) }", Code::InvalidArray);
+	expectError("fn<int> other() = 1;\ntypedef<enum> E (def<int> n) { A(other()); }", Code::InvalidEnumMember);
+	expectError("typedef<enum> E (def<int> n) { A(1 + 2); }", Code::InvalidEnumMember);
+	expectError("typedef<enum> E (def<int<8>> n) { A(127.99 -> float<16> -> int<8>); }", Code::InvalidCast);
+	expectError("typedef<enum> E (def<int<8>> n) { A(128); }", Code::IntegerRange);
+	expectError("typedef<enum> E (def<int[2]> n) { A([1]); }", Code::InvalidArray);
 }
 
 TEST (SemanticValues, OverloadTrialsCheckConstantArithmeticAtEachParameterWidth) {
 	for (unsigned const u_bits : { 32u, 64u }) {
-		const CheckedProgram cp_program = checkSource(R"(fn<bool> pick(int<8> n) = false
-fn<string> pick(opt<bool> flag ?: false, int<16> n) = "wide"
-fn<string> quotient() = pick(n = -128 / -1)
-fn<string> remainder() = pick(n = -128 % -1)
+		const CheckedProgram cp_program = checkSource(R"(fn<bool> pick(int<8> n) = false;
+fn<string> pick(opt<bool> flag ?: false, int<16> n) = "wide";
+fn<string> quotient() = pick(n = -128 / -1);
+fn<string> remainder() = pick(n = -128 % -1);
 typedef<class> Offset {
-    pub operator +(int<8> n) -> bool = false
-    pub operator +(int<16> n) -> string = "wide"
+    pub operator +(int<8> n) -> bool = false;
+    pub operator +(int<16> n) -> string = "wide";
 }
-fn<string> offset(Offset value) = value + (-128 / -1)
-fn<bool> limits(range<float<16>> r) = false
-fn<string> limits(range<float<64>> r) = "wide"
-fn<string> finite() = limits(0.0 .. (50000.0 * 2.0)))",
+fn<string> offset(Offset value) = value + (-128 / -1);
+fn<bool> limits(range<float<16>> r) = false;
+fn<string> limits(range<float<64>> r) = "wide";
+fn<string> finite() = limits(0.0 .. (50000.0 * 2.0));)",
 		                                              { .sizeBits=u_bits });
 		const SymbolScope   &ss_globals = cp_program.units.front()->getGlobals();
 		for (const std::string s_name : { "quotient", "remainder" }) {
@@ -260,33 +260,33 @@ fn<string> finite() = limits(0.0 .. (50000.0 * 2.0)))",
 		EXPECT_EQ(returned(cp_program, "offset").argumentContract, &ss_globals.at("Offset").front().members.at(std::string(toString(OPlus)))[1]);
 		EXPECT_EQ(returned(cp_program, "finite").argumentContract, &ss_globals.at("limits")[1]);
 	}
-	expectError("fn take(int<8> n) {}\nfn f() { take(-128 % -1) }", Code::NoMatchingCall);
-	expectError("fn take(int<8> n) {}\nfn take(int<16> n) {}\nfn f() { take(2 / 0) }", Code::IntegerZeroDivisor);
-	expectError("fn take(int<8> n) {}\nfn take(int<16> n) {}\nfn f() { take(12) }", Code::AmbiguousCall);
+	expectError("fn take(int<8> n) {}\nfn f() { take(-128 % -1); }", Code::NoMatchingCall);
+	expectError("fn take(int<8> n) {}\nfn take(int<16> n) {}\nfn f() { take(2 / 0); }", Code::IntegerZeroDivisor);
+	expectError("fn take(int<8> n) {}\nfn take(int<16> n) {}\nfn f() { take(12); }", Code::AmbiguousCall);
 }
 
 TEST (SemanticValues, OrdinaryMatchesPrecedeContextualTrialsAndTrialsRetypeEveryArgument) {
-	const CheckedProgram cp_program = checkSource(R"(fn<bool> probe(float x, int<8> n) = false
-fn<string> probe(float<16> x, int<16> n) = "half"
-fn<string> replay(float<16> h) = probe(h + 0.5, 2)
-fn<string> accept(float x, int? n) = "natural"
-fn<bool> accept(float<16> x, int<16> n) = false
-fn<string> ordinary(float<16> h) = accept(h + 0.5, 2))");
+	const CheckedProgram cp_program = checkSource(R"(fn<bool> probe(float x, int<8> n) = false;
+fn<string> probe(float<16> x, int<16> n) = "half";
+fn<string> replay(float<16> h) = probe(h + 0.5, 2);
+fn<string> accept(float x, int? n) = "natural";
+fn<bool> accept(float<16> x, int<16> n) = false;
+fn<string> ordinary(float<16> h) = accept(h + 0.5, 2);)");
 	const SymbolScope   &ss_globals = cp_program.units.front()->getGlobals();
 	EXPECT_EQ(returned(cp_program, "replay").argumentContract, &ss_globals.at("probe")[1]);
 	EXPECT_EQ(returned(cp_program, "ordinary").argumentContract, &ss_globals.at("accept").front());
 	const std::string s_group = "fn take(int<8> n) {}\nfn take(int<16> n) {}\n";
-	expectError(s_group + "fn f() { take(if(1) { 2 } else { 3 }) }", Code::NoMatchingCall);
-	expectError(s_group + "fn f() { take((if(1) { 2 } else { 3 }).abs()) }", Code::NonBooleanCondition);
+	expectError(s_group + "fn f() { take(if(1) { 2; } else { 3; }); }", Code::NoMatchingCall);
+	expectError(s_group + "fn f() { take((if(1) { 2; } else { 3; }).abs()); }", Code::NonBooleanCondition);
 }
 
 TEST (SemanticValues, FloatingLiteralContextIsIndependentOfIntegerPeers) {
-	const CheckedProgram    cp_program = checkSource(R"(fn<bool> take(float<64> x) = true
-fn<bool> value(int<8> i) = take((1 + i) + 16777217.0)
-fn<float<64>> reversed(int<8> i) = 16777217.0 + (1 + i)
-fn<float> natural(float<16> h) { def v = h + 1.0; return v }
-fn<float<16>> narrow(float<16> h) = h + 1.0
-fn<bool> compare(int<64> n) = (2147483648 + 1) < n)");
+	const CheckedProgram    cp_program = checkSource(R"(fn<bool> take(float<64> x) = true;
+fn<bool> value(int<8> i) = take((1 + i) + 16777217.0);
+fn<float<64>> reversed(int<8> i) = 16777217.0 + (1 + i);
+fn<float> natural(float<16> h) { def v = h + 1.0; return v; }
+fn<float<16>> narrow(float<16> h) = h + 1.0;
+fn<bool> compare(int<64> n) = (2147483648 + 1) < n;)");
 	const SymbolScope      &ss_globals = cp_program.units.front()->getGlobals();
 	const CallExpression   &ce_call    = dynamic_cast<const CallExpression &>(bodyExpression(ss_globals.at("value").front()));
 	const auto &be_sum     = dynamic_cast<const BinaryExpression &>(*ce_call.suppliedArguments.front().expression);
@@ -294,25 +294,25 @@ fn<bool> compare(int<64> n) = (2147483648 + 1) < n)");
 	EXPECT_EQ(cp_program.expressions.at(&be_sum).types.front().width, 64u);
 	EXPECT_EQ(std::get<double>(cp_program.expressions.at(be_sum.right.get()).numericConstant), 16777217.);
 	EXPECT_EQ(returned(cp_program, "narrow").types.front().width, 16u);
-	expectError("fn<float<64>> f(float x) = x + 1.0", Code::ReturnType);
-	expectError("fn<float<64>> f(int<8> x) = (128 + x) + 1.0", Code::IntegerRange);
+	expectError("fn<float<64>> f(float x) = x + 1.0;", Code::ReturnType);
+	expectError("fn<float<64>> f(int<8> x) = (128 + x) + 1.0;", Code::IntegerRange);
 }
 
 TEST (SemanticValues, NestedArithmeticUsesTheSelectedOperatorResultAsItsPeer) {
-	std::string s_source = "typedef<class> Offset { pub operator +(int<64> n) -> int<64> = n }\nfn<int<64>> value(Offset base) = base";
+	std::string s_source = "typedef<class> Offset { pub operator +(int<64> n) -> int<64> = n; }\nfn<int<64>> value(Offset base) = base";
 	for (unsigned u_term = 0; u_term < 100; ++u_term) s_source += " + 1";
-	s_source += " + 2147483648";
+	s_source += " + 2147483648;";
 	const CheckedProgram cp_program = checkSource(s_source);
 	EXPECT_EQ(returned(cp_program).types.front().width, 64u);
 }
 
 TEST (SemanticValues, ArrayInferenceUsesTypedBranchTailsBeforeDefaultingLiterals) {
-	const CheckedProgram cp_program = checkSource(R"(fn<bool> use(int[] row) = false
-fn<string> use(int<64>[] row) = "wide"
-fn<string> wide(bool flag) = use([2147483648, if(flag) { int<64> n = 2; n } else { 1 }])
-fn<bool> ordinary() = use([1, 2])
-fn matrix(int<64> n) { def rows = [[1, 2], [3, n]] }
-fn ranges(range<int<64>> r) { def intervals = [1 .. 2, r] }
+	const CheckedProgram cp_program = checkSource(R"(fn<bool> use(int[] row) = false;
+fn<string> use(int<64>[] row) = "wide";
+fn<string> wide(bool flag) = use([2147483648, if(flag) { int<64> n = 2; n; } else { 1; }]);
+fn<bool> ordinary() = use([1, 2]);
+fn matrix(int<64> n) { def rows = [[1, 2], [3, n]]; }
+fn ranges(range<int<64>> r) { def intervals = [1 .. 2, r]; }
 )");
 	const SymbolScope   &ss_globals = cp_program.units.front()->getGlobals();
 	EXPECT_EQ(returned(cp_program, "wide").argumentContract, &ss_globals.at("use")[1]);
@@ -321,17 +321,17 @@ fn ranges(range<int<64>> r) { def intervals = [1 .. 2, r] }
 	        cp_program.localTypes, [] (const decltype(cp_program.localTypes)::value_type &entry) { return entry.first->getLexeme() == "rows"; });
 	ASSERT_NE(it_rows, cp_program.localTypes.end());
 	EXPECT_EQ(it_rows->second.spelling(), "int<64>[2][2]");
-	expectError("fn f(int<64> n) { def rows = [[1], [2,n]] }", Code::InvalidArray);
-	expectError("fn f(float<64> wide) { def vals = [1.0,wide] }", Code::InvalidArray);
+	expectError("fn f(int<64> n) { def rows = [[1], [2,n]]; }", Code::InvalidArray);
+	expectError("fn f(float<64> wide) { def vals = [1.0,wide]; }", Code::InvalidArray);
 }
 
 TEST (SemanticValues, ArrayEqualityChecksFloatingLiteralsAtThePeerElementWidth) {
-	const CheckedProgram cp_program = checkSource(R"(fn<bool> left(float<16>[]? row) = [1.000488281250000001, -0.0] == row
-fn<bool> right(float<16>[]? row) = row != [1.000488281250000001, -0.0]
-fn<bool> nested(float<64> wide) = [[16777217.0]] == [[wide]]
-fn<float<16>[]> choose(int<8> n) = [0.0]
-fn<float<64>[]> choose(int<16> n) = [0.0]
-fn<bool> selected() = [16777217.0] == choose(300))");
+	const CheckedProgram cp_program = checkSource(R"(fn<bool> left(float<16>[]? row) = [1.000488281250000001, -0.0] == row;
+fn<bool> right(float<16>[]? row) = row != [1.000488281250000001, -0.0];
+fn<bool> nested(float<64> wide) = [[16777217.0]] == [[wide]];
+fn<float<16>[]> choose(int<8> n) = [0.0];
+fn<float<64>[]> choose(int<16> n) = [0.0];
+fn<bool> selected() = [16777217.0] == choose(300);)");
 	const SymbolScope   &ss_globals = cp_program.units.front()->getGlobals();
 	for (const std::string s_name : { "left", "right" }) {
 		const auto &be_compare = dynamic_cast<const BinaryExpression &>(bodyExpression(ss_globals.at(s_name).front()));
@@ -353,17 +353,17 @@ fn<bool> selected() = [16777217.0] == choose(300))");
 	const auto     &al_selected = dynamic_cast<const ArrayLiteral &>(*be_selected.left);
 	EXPECT_EQ(cp_program.expressions.at(be_selected.right.get()).argumentContract, &ss_globals.at("choose")[1]);
 	EXPECT_EQ(std::get<double>(cp_program.expressions.at(al_selected.elements.front().get()).numericConstant), 16777217.);
-	expectError("fn<bool> f(float<16>[] row) = row == [70000.0]", Code::FloatRange);
-	expectError("fn<bool> f(float<16>[] row, float<64> wide) = [wide] == row", Code::InvalidArray);
+	expectError("fn<bool> f(float<16>[] row) = row == [70000.0];", Code::FloatRange);
+	expectError("fn<bool> f(float<16>[] row, float<64> wide) = [wide] == row;", Code::InvalidArray);
 }
 
 TEST (SemanticValues, RangeComparisonsRecordTheSelectedEndpointType) {
-	const CheckedProgram cp_program = checkSource(R"(fn<bool> stored(range<float<64>> r) = 16777217.0 == r
-fn<bool> inlineRange(float<16> high) = (1.000488281250000001 ..= high) != -0.0
-fn<bool> conditional(bool flag, range<int<8>> r) = (if(flag) 0..3 else 1..4) == r
-fn<bool> exiting() = (if(true) { return true } else { false }) == 1..2
-typedef<struct> Cursor { pub operator ..(int last) -> range<int<8>> = 0..1 }
-fn<bool> overloaded(Cursor cur) = (cur .. 2) == 1)");
+	const CheckedProgram cp_program = checkSource(R"(fn<bool> stored(range<float<64>> r) = 16777217.0 == r;
+fn<bool> inlineRange(float<16> high) = (1.000488281250000001 ..= high) != -0.0;
+fn<bool> conditional(bool flag, range<int<8>> r) = (if(flag) 0..3 else 1..4) == r;
+fn<bool> exiting() = (if(true) { return true; } else { false; }) == 1..2;
+typedef<struct> Cursor { pub operator ..(int last) -> range<int<8>> = 0..1; }
+fn<bool> overloaded(Cursor cur) = (cur .. 2) == 1;)");
 	const SymbolScope   &ss_globals = cp_program.units.front()->getGlobals();
 	const std::function  comparison = [&] (const std::string &name) -> const BinaryExpression  &{
 		return dynamic_cast<const BinaryExpression &>(bodyExpression(ss_globals.at(name).front()));
@@ -391,35 +391,35 @@ fn<bool> overloaded(Cursor cur) = (cur .. 2) == 1)");
 }
 
 TEST (SemanticValues, NullableRangeEqualityRequiresMatchingEndpointTypes) {
-	const CheckedProgram cp_program = checkSource(R"(fn<bool> both(range<int<65>>? left, range<int<65>>? right) = left == right
-fn<bool> mixed(range<int<65>> left, range<int<65>>? right) = left != right)");
+	const CheckedProgram cp_program = checkSource(R"(fn<bool> both(range<int<65>>? left, range<int<65>>? right) = left == right;
+fn<bool> mixed(range<int<65>> left, range<int<65>>? right) = left != right;)");
 	EXPECT_EQ(returned(cp_program, "both").range, RangeOperation::Equal);
 	EXPECT_EQ(returned(cp_program, "mixed").range, RangeOperation::Equal);
-	expectError("fn<bool> f(range<int<65>>? a, range<int<64>>? b) = a == b", Code::IncomparableTypes);
-	expectError("fn<bool> f(range<int>? a, range<unsigned int>? b) = a != b", Code::IncomparableTypes);
+	expectError("fn<bool> f(range<int<65>>? a, range<int<64>>? b) = a == b;", Code::IncomparableTypes);
+	expectError("fn<bool> f(range<int>? a, range<unsigned int>? b) = a != b;", Code::IncomparableTypes);
 }
 
 TEST (SemanticValues, ColonSelectsValueMembershipOrAnExplicitOperator) {
-	const CheckedProgram cp_program = checkSource(R"(typedef<struct> Bag { pub operator :(int n, self) = true }
-fn<bool> stored(int<8> n, range<int<8>> bounds) = n : bounds
-fn<bool> inlineRange(float<16> n) = n : 0.0..1.0
-fn<bool> custom(int n, Bag bag) = n : bag
-fn<bool> typeTest(int n) = n is int)");
+	const CheckedProgram cp_program = checkSource(R"(typedef<struct> Bag { pub operator :(int n, self) = true; }
+fn<bool> stored(int<8> n, range<int<8>> bounds) = n : bounds;
+fn<bool> inlineRange(float<16> n) = n : 0.0..1.0;
+fn<bool> custom(int n, Bag bag) = n : bag;
+fn<bool> typeTest(int n) = n is int;)");
 	EXPECT_EQ(returned(cp_program, "stored").range, RangeOperation::Membership);
 	EXPECT_EQ(returned(cp_program, "inlineRange").range, RangeOperation::Membership);
 	EXPECT_EQ(returned(cp_program, "typeTest").testedType, ResolvedType(KInteger));
 	const Symbol &sym_bag = cp_program.units.front()->getGlobals().at("Bag").front();
 	EXPECT_EQ(returned(cp_program, "custom").argumentContract, &sym_bag.members.at(std::string(toString(OColon))).front());
 	EXPECT_FALSE(returned(cp_program, "custom").range);
-	expectError("fn<bool> f(range<int> r) = r : 16", Code::InvalidRangeMembership);
-	expectError("fn<bool> f(range<int> a, range<int> b) = a : b", Code::InvalidRangeMembership);
-	expectError("fn<bool> f(int n) = n : 16", Code::InvalidRangeMembership);
-	expectError("fn<bool> f(int<8> n, range<int<16>> r) = n : r", Code::InvalidRangeMembership);
-	expectError("fn<bool> f(range<int>? r) = 16 : r", Code::NullablePayloadAccess);
+	expectError("fn<bool> f(range<int> r) = r : 16;", Code::InvalidRangeMembership);
+	expectError("fn<bool> f(range<int> a, range<int> b) = a : b;", Code::InvalidRangeMembership);
+	expectError("fn<bool> f(int n) = n : 16;", Code::InvalidRangeMembership);
+	expectError("fn<bool> f(int<8> n, range<int<16>> r) = n : r;", Code::InvalidRangeMembership);
+	expectError("fn<bool> f(range<int>? r) = 16 : r;", Code::NullablePayloadAccess);
 }
 
 TEST (SemanticValues, RangeMembershipValidatesExactTypesAndTargetLimits) {
-	const std::string s_endpoint = "fn<bool> f(float<16> x, float<64> high) = x == 0.0..high";
+	const std::string s_endpoint = "fn<bool> f(float<16> x, float<64> high) = x == 0.0..high;";
 	try {
 		checkSource(s_endpoint);
 		FAIL() << "Expected an endpoint type mismatch";
@@ -428,15 +428,15 @@ TEST (SemanticValues, RangeMembershipValidatesExactTypesAndTargetLimits) {
 		ASSERT_FALSE(error.getSourceLabels().empty());
 		const TokenSpan &ts_bound = error.getSourceLabels().front().span;
 		EXPECT_EQ(ts_bound.startCol, s_endpoint.rfind("high") + 1);
-		EXPECT_EQ(ts_bound.endCol, s_endpoint.size() + 1);
+		EXPECT_EQ(ts_bound.endCol, s_endpoint.find(';') + 1);
 	}
-	expectError("fn<bool> f(float<16> x, float<64> high) = (x..1.0) == (0.0..high)", Code::InvalidRangeValue);
-	expectError("fn<bool> f(float<16> x) = x == (0.0 .. (50000.0 * 2.0))", Code::InvalidRangeMembership);
-	expectError("fn<bool> f(int<8> low) = (low..true) == 128", Code::IntegerRange);
-	expectError("fn<bool> f(float<16> x) = (if(true) 1.0 else x) == 0.0..1.5", Code::BranchTypeMismatch);
-	expectError("fn accept(bool ok) {}\nfn f(range<int<8>> r) { accept(r != 128) }", Code::IntegerRange);
-	expectError("fn<bool> f(range<int<8>>? r) = 1 == r", Code::NullablePayloadAccess);
-	const std::string s_source = "fn<bool> f(range<usize> r) = 4294967296 == r";
+	expectError("fn<bool> f(float<16> x, float<64> high) = (x..1.0) == (0.0..high);", Code::InvalidRangeValue);
+	expectError("fn<bool> f(float<16> x) = x == (0.0 .. (50000.0 * 2.0));", Code::InvalidRangeMembership);
+	expectError("fn<bool> f(int<8> low) = (low..true) == 128;", Code::IntegerRange);
+	expectError("fn<bool> f(float<16> x) = (if(true) 1.0 else x) == 0.0..1.5;", Code::BranchTypeMismatch);
+	expectError("fn accept(bool ok) {}\nfn f(range<int<8>> r) { accept(r != 128); }", Code::IntegerRange);
+	expectError("fn<bool> f(range<int<8>>? r) = 1 == r;", Code::NullablePayloadAccess);
+	const std::string s_source = "fn<bool> f(range<usize> r) = 4294967296 == r;";
 	EXPECT_NO_THROW(checkSource(s_source, { 64 }));
 	try {
 		checkSource(s_source, { .sizeBits=32 });
@@ -447,17 +447,17 @@ TEST (SemanticValues, RangeMembershipValidatesExactTypesAndTargetLimits) {
 }
 
 TEST (SemanticValues, NullableFallbacksCarryTheDestinationIntoEachBranch) {
-	const CheckedProgram cp_program = checkSource(R"(fn<int?> value(bool flag, int? x) = x ?: if(flag) { null } else { 2 }
-fn<int?[]> row(bool flag) = [if(flag) { null } else { 2 }]
-fn<int?> left(bool flag, int? x) = (if(flag) { x } else { null }) ?: 5
-fn broadcast(bool flag, int? x) { int? a, b = 1; a, b = x ?: if(flag) { null } else { 2 } }
+	const CheckedProgram cp_program = checkSource(R"(fn<int?> value(bool flag, int? x) = x ?: if(flag) { null; } else { 2; };
+fn<int?[]> row(bool flag) = [if(flag) { null; } else { 2; }];
+fn<int?> left(bool flag, int? x) = (if(flag) { x; } else { null; }) ?: 5;
+fn broadcast(bool flag, int? x) { int? a, b = 1; a, b = x ?: if(flag) { null; } else { 2; }; }
 )");
 	EXPECT_TRUE(returned(cp_program).types.front().nullable());
 	EXPECT_TRUE(returned(cp_program, "row").types.front().element().nullable());
 	EXPECT_EQ(returned(cp_program, "left").types.front(), ResolvedType(KInteger));
-	expectError("fn f(bool flag) { def x = [if(flag) { null } else { 3 }] }", Code::ExplicitNullableType);
-	expectError("fn f(int? x) { println(x ?: true) }", Code::InvalidElvis);
-	expectError("fn f() { print(null ?: null) }", Code::ExplicitNullableType);
+	expectError("fn f(bool flag) { def x = [if(flag) { null; } else { 3; }]; }", Code::ExplicitNullableType);
+	expectError("fn f(int? x) { println(x ?: true); }", Code::InvalidElvis);
+	expectError("fn f() { print(null ?: null); }", Code::ExplicitNullableType);
 }
 
 TEST (SemanticValues, RangeCompoundStepsRetainTheirTypedUpdate) {
@@ -475,11 +475,11 @@ TEST (SemanticValues, RangeCompoundStepsRetainTheirTypedUpdate) {
 
 TEST (SemanticValues, ArrayBindingsKeepInnerExtentsAndSeparateCountsFromDeclaredTypes) {
 	const CheckedProgram program = checkSource(R"(fn run() {
-    int[][] rows = [[1, 2]]
-    rows = [[3, 4], [5, 6]]
-    def copy = rows
+    int[][] rows = [[1, 2]];
+    rows = [[3, 4], [5, 6]];
+    def copy = rows;
 }
-fn<int[2][3]> matrix() = [[1, 2, 3], [4, 5, 6]])");
+fn<int[2][3]> matrix() = [[1, 2, 3], [4, 5, 6]];)");
 	bool                 b_found = false;
 	for (const decltype(program.arrayConstraints)::value_type &entry : program.arrayConstraints)
 		if (entry.first->getLexeme() == "rows") {
@@ -489,34 +489,34 @@ fn<int[2][3]> matrix() = [[1, 2, 3], [4, 5, 6]])");
 		}
 	ASSERT_TRUE(b_found);
 	EXPECT_EQ(returned(program, "matrix").types.front().element().spelling(), "int[3]");
-	expectError("fn run() { int[][] a = [[1,2]]; a = [[3]] }", Code::InvalidArray);
-	expectError("fn run() { int[][] a = [[1,2]]; a[0] = [3] }", Code::InvalidArray);
-	expectError("fn run() { int[][] a = [[1,2],[3]] }", Code::InvalidArray);
-	expectError("fn run() { int[][] a = [[1,2]]; int[][] b = a; b = [[3]] }", Code::InvalidArray);
-	EXPECT_NO_THROW(checkSource("fn<int[][]> make() = [[1,2]]\nfn run() { def a = make(); a = [[3]] }"));
+	expectError("fn run() { int[][] a = [[1,2]]; a = [[3]]; }", Code::InvalidArray);
+	expectError("fn run() { int[][] a = [[1,2]]; a[0] = [3]; }", Code::InvalidArray);
+	expectError("fn run() { int[][] a = [[1,2],[3]]; }", Code::InvalidArray);
+	expectError("fn run() { int[][] a = [[1,2]]; int[][] b = a; b = [[3]]; }", Code::InvalidArray);
+	EXPECT_NO_THROW(checkSource("fn<int[][]> make() = [[1,2]];\nfn run() { def a = make(); a = [[3]]; }"));
 }
 
 TEST (SemanticValues, ArrayMutationsUseTheRetainedElementShape) {
 	const CheckedProgram cp_program   = checkSource(R"(fn<int[]> pop(int[][] rows) {
-    rows.append([1,2]); rows.insert(0,[3,4]); rows.reserve(8)
-    def row = rows.removeAt(1); rows.clear()
-    return row
+    rows.append([1,2]); rows.insert(0,[3,4]); rows.reserve(8);
+    def row = rows.removeAt(1); rows.clear();
+    return row;
 })");
 	std::size_t          st_mutations = 0;
 	for (const decltype(cp_program.expressions)::value_type &entry : cp_program.expressions)
 		if (entry.second.arrayMutation) ++st_mutations;
 	EXPECT_EQ(st_mutations, 5u);
-	expectError("fn f() { int[][] rows = [[1,2]]; rows.clear(); rows.append([3]) }", Code::InvalidArray);
-	expectError("fn f() { def fixed = [1]; fixed.append(2) }", Code::InvalidArrayMutation);
-	expectError("fn f(int[][] rows) { rows[0].clear() }", Code::InvalidArrayMutation);
+	expectError("fn f() { int[][] rows = [[1,2]]; rows.clear(); rows.append([3]); }", Code::InvalidArray);
+	expectError("fn f() { def fixed = [1]; fixed.append(2); }", Code::InvalidArrayMutation);
+	expectError("fn f(int[][] rows) { rows[0].clear(); }", Code::InvalidArrayMutation);
 }
 
 TEST (SemanticValues, ProviderAndRangeSelectionsSurviveChecking) {
-	const CheckedProgram program = checkSource(R"(fn<usize> value() = int[2][3]?::size
-fn<float<16>> high() = float<16>?::max
-fn<range<float<16>>> limits(float<16> high) = 1.0 ..= high
-fn<bool> member(int<8> n) = (1 .. 3) == n
-fn<typeinfo> element() = int[2]::type::element
+	const CheckedProgram program = checkSource(R"(fn<usize> value() = int[2][3]?::size;
+fn<float<16>> high() = float<16>?::max;
+fn<range<float<16>>> limits(float<16> high) = 1.0 ..= high;
+fn<bool> member(int<8> n) = (1 .. 3) == n;
+fn<typeinfo> element() = int[2]::type::element;
 fn run() { for (float n <- 0.0 .. 1.0) {} }
 )");
 	EXPECT_EQ(returned(program).provider->kind, ProviderKind::ArraySize);
@@ -527,21 +527,21 @@ fn run() { for (float n <- 0.0 .. 1.0) {} }
 	EXPECT_EQ(returned(program, "element").representedType, ResolvedType(KInteger));
 	ASSERT_EQ(program.iterations.size(), 1u);
 	EXPECT_EQ(program.iterations.begin()->second.kind, IterationKind::Range);
-	expectError("fn<usize> bad() = string::size", Code::InvalidProviderReceiver);
-	expectError("fn<usize> bad() = int[]::size", Code::InvalidProviderReceiver);
-	expectError("fn<int> bad(int? n) = n::max", Code::NullablePayloadAccess);
-	expectError("fn<typeinfo> bad() = int::type::element", Code::InvalidMetadataAccess);
-	expectError("fn<range<float>> bad() = 1.0 .. (1.0 / 0.0)", Code::InvalidRangeValue);
+	expectError("fn<usize> bad() = string::size;", Code::InvalidProviderReceiver);
+	expectError("fn<usize> bad() = int[]::size;", Code::InvalidProviderReceiver);
+	expectError("fn<int> bad(int? n) = n::max;", Code::NullablePayloadAccess);
+	expectError("fn<typeinfo> bad() = int::type::element;", Code::InvalidMetadataAccess);
+	expectError("fn<range<float>> bad() = 1.0 .. (1.0 / 0.0);", Code::InvalidRangeValue);
 	expectError("fn bad() { for (def n <- (0.0/0.0) .. 1.0) {} }", Code::InvalidForLoop);
 	expectError("fn bad(int[] values) { for (float n <- values) {} }", Code::InvalidForLoop);
 	expectError("fn bad(int[] values) { for (void n <- values) {} }", Code::InvalidForLoop);
 }
 
 TEST (SemanticValues, ProviderDefaultsUseOnlyValuesAlreadyInScope) {
-	const CheckedProgram cp_program = checkSource(R"(typedef<struct> Point { int x }
-fn<typeinfo> current(opt<typeinfo> Point ?: Point::type) = Point
-fn<typeinfo> later(opt<typeinfo> d ?: Point::type, int Point) = d
-fn<typeinfo> earlier(int Point, opt<typeinfo> d ?: Point::type) = d
+	const CheckedProgram cp_program = checkSource(R"(typedef<struct> Point { int x; }
+fn<typeinfo> current(opt<typeinfo> Point ?: Point::type) = Point;
+fn<typeinfo> later(opt<typeinfo> d ?: Point::type, int Point) = d;
+fn<typeinfo> earlier(int Point, opt<typeinfo> d ?: Point::type) = d;
 )");
 	const SymbolScope   &ss_globals = cp_program.units.front()->getGlobals();
 	for (const std::string s_name : { "current", "later", "earlier" }) {
@@ -562,9 +562,9 @@ fn<typeinfo> earlier(int Point, opt<typeinfo> d ?: Point::type) = d
 
 TEST (SemanticValues, QualifiedMetadataUsesAnAvailableValueBeforeANestedType) {
 	const CheckedProgram  cp_program = checkSource(R"(typedef<class> Outer { pub typedef<class> Leaf {} }
-typedef<struct> Fields { pub int Leaf }
-fn<typeinfo> nested() = Outer.Leaf::type
-fn<typeinfo> shadow(Fields Outer) = Outer.Leaf::type
+typedef<struct> Fields { pub int Leaf; }
+fn<typeinfo> nested() = Outer.Leaf::type;
+fn<typeinfo> shadow(Fields Outer) = Outer.Leaf::type;
 )");
 	const ExpressionInfo &ei_nested  = returned(cp_program, "nested");
 	const ExpressionInfo &ei_shadow  = returned(cp_program, "shadow");
@@ -576,21 +576,21 @@ fn<typeinfo> shadow(Fields Outer) = Outer.Leaf::type
 	EXPECT_EQ(ei_shadow.representedType, ResolvedType(KInteger));
 	EXPECT_TRUE(ei_nested.provider->typeReceiver);
 	EXPECT_FALSE(ei_shadow.provider->typeReceiver);
-	expectError("typedef<class> Outer { pub typedef<class> Leaf {} }\nfn f(int Outer) { Outer.Leaf::type }", Code::InvalidStructField);
-	expectError("typedef<class> Outer {}\nfn f(Outer value) { value.missing::type }", Code::InvalidClassMember);
-	expectError("typedef<enum> E { A }\nfn f() { E.missing::type }", Code::InvalidEnumMember);
+	expectError("typedef<class> Outer { pub typedef<class> Leaf {} }\nfn f(int Outer) { Outer.Leaf::type; }", Code::InvalidStructField);
+	expectError("typedef<class> Outer {}\nfn f(Outer value) { value.missing::type; }", Code::InvalidClassMember);
+	expectError("typedef<enum> E { A; }\nfn f() { E.missing::type; }", Code::InvalidEnumMember);
 }
 
 TEST (SemanticValues, TopLevelStateQualifiesTheSameTypeInSignaturesMetadataAndTests) {
-	const CheckedProgram   cp_program = checkSource(R"(fn<Ready.Data> echo(Ready.Data data) = data
-fn<typeinfo> metadata() = Ready.Data::type
-fn<bool> matches(Object value) = value is Ready.Data
-fn<typeinfo> shadow(Fields Ready) = Ready.Data::type
-fn<bool> compare(Choice choice, Fields Ready) = choice is Ready.Data
-pub typedef<class> Host { default state Ready }
+	const CheckedProgram   cp_program = checkSource(R"(fn<Ready.Data> echo(Ready.Data data) = data;
+fn<typeinfo> metadata() = Ready.Data::type;
+fn<bool> matches(Object value) = value is Ready.Data;
+fn<typeinfo> shadow(Fields Ready) = Ready.Data::type;
+fn<bool> compare(Choice choice, Fields Ready) = choice is Ready.Data;
+pub typedef<class> Host { default state Ready; }
 typedef<state<void>> pub Ready for Host { pub typedef<struct> Data {} }
-typedef<class> Choice { pub operator is(Choice other) = true }
-typedef<struct> Fields { pub Choice Data })");
+typedef<class> Choice { pub operator is(Choice other) = true; }
+typedef<struct> Fields { pub Choice Data; })");
 	const SymbolScope     &ss_globals = cp_program.units.front()->getGlobals();
 	const Symbol          &sym_data   = ss_globals.at("Ready").front().members.at("Data").front();
 	const DeclarationInfo &di_echo    = cp_program.declarations.at(&ss_globals.at("echo").front());
@@ -610,17 +610,17 @@ typedef<struct> Fields { pub Choice Data })");
 }
 
 TEST (SemanticValues, StateTypePathsRespectLexicalVisibilityAndNominalTypePrecedence) {
-	const std::string s_state = R"(pub typedef<class> Host { default state Ready }
+	const std::string s_state = R"(pub typedef<class> Host { default state Ready; }
 typedef<state<void>> pub Ready for Host {
     typedef<class> Hidden { pub typedef<struct> Leaf {} }
     pub typedef<struct> Data {}
-    mt<Hidden.Leaf> keep(Hidden.Leaf value) = value
+    mt<Hidden.Leaf> keep(Hidden.Leaf value) = value;
 }
 )";
-	expectError(s_state + "fn<typeinfo> f() = Ready.Hidden.Leaf::type", Code::PrivateNestedType);
+	expectError(s_state + "fn<typeinfo> f() = Ready.Hidden.Leaf::type;", Code::PrivateNestedType);
 	expectError(s_state + "fn f(Ready stateValue) {}", Code::UnsupportedType);
 	expectError(s_state + "fn f(Host.Ready.Data value) {}", Code::UnsupportedType);
-	const CheckedProgram cp_program = checkSource(s_state + "typedef<class> Ready { pub typedef<class> Data {} }\nfn<typeinfo> f() = Ready.Data::type");
+	const CheckedProgram cp_program = checkSource(s_state + "typedef<class> Ready { pub typedef<class> Data {} }\nfn<typeinfo> f() = Ready.Data::type;");
 	const std::vector<Symbol>                &v_names = cp_program.units.front()->getGlobals().at("Ready");
 	const auto it_type = std::ranges::find(v_names, SymbolKind::Type, &Symbol::kind);
 	ASSERT_NE(it_type, v_names.end());
@@ -631,11 +631,11 @@ typedef<state<void>> pub Ready for Host {
 
 TEST (SemanticValues, MetadataValidatesKnownTypesAndPreservesSymbolicArrayElements) {
 	for (unsigned const u_bits : { 32u, 64u }) {
-		const CheckedProgram cp_program = checkSource(R"(fn<typeinfo> value() = void::type
-fn<usize> rank() = void::type::rank
-fn<string> name() = void::type::str
-fn<typeinfo> element<T>(T sample) = T[]::type::element
-fn<usize> inspect(typeinfo descriptor) = descriptor::width
+		const CheckedProgram cp_program = checkSource(R"(fn<typeinfo> value() = void::type;
+fn<usize> rank() = void::type::rank;
+fn<string> name() = void::type::str;
+fn<typeinfo> element<T>(T sample) = T[]::type::element;
+fn<usize> inspect(typeinfo descriptor) = descriptor::width;
 )",
 		                                              { .sizeBits=u_bits });
 		EXPECT_EQ(returned(cp_program).representedType, ResolvedType(KVoid));
@@ -645,32 +645,32 @@ fn<usize> inspect(typeinfo descriptor) = descriptor::width
 		ASSERT_TRUE(opt_represented);
 		EXPECT_EQ(*opt_represented, cp_program.declarations.at(&sym_element).parameters.front());
 	}
-	expectError("fn f() { void?::type }", Code::InvalidNullableType);
-	expectError("fn f() { null::type }", Code::ExplicitNullableType);
-	expectError("fn f<T>() { T::type::width }", Code::InvalidMetadataAccess);
+	expectError("fn f() { void?::type; }", Code::InvalidNullableType);
+	expectError("fn f() { null::type; }", Code::ExplicitNullableType);
+	expectError("fn f<T>() { T::type::width; }", Code::InvalidMetadataAccess);
 	const std::string s_overloads = "fn pick(string s) {}\nfn pick(char ch) {}\n";
-	expectError(s_overloads + "fn f() { pick((bool::type -> typeinfo)::width) }", Code::InvalidMetadataAccess);
-	expectError(s_overloads + "fn f() { def d = bool::type; pick(d::width) }", Code::NoMatchingCall);
-	expectError("fn pick(bool b) {}\nfn f() { def d = bool::type; pick(d::width) }", Code::InvalidMetadataAccess);
+	expectError(s_overloads + "fn f() { pick((bool::type -> typeinfo)::width); }", Code::InvalidMetadataAccess);
+	expectError(s_overloads + "fn f() { def d = bool::type; pick(d::width); }", Code::NoMatchingCall);
+	expectError("fn pick(bool b) {}\nfn f() { def d = bool::type; pick(d::width); }", Code::InvalidMetadataAccess);
 }
 
 TEST (SemanticValues, MetadataTracksContinuingPathsAndDeferredReads) {
-	expectError("fn f() { (null ?: bool::type)::width }", Code::InvalidMetadataAccess);
-	expectError("fn f() { def d := bool::type; usize read = { return d::width } }", Code::InvalidMetadataAccess);
-	expectError("fn f() { def d = bool::type; do { d::width } while (false) }", Code::InvalidMetadataAccess);
-	EXPECT_NO_THROW(checkSource(R"(typedef<class> Holder { pub def<typeinfo> d = bool::type }
-fn guarded(Holder? h) { (h?.d::type ?: typeinfo::type)::width }
-fn deferred() { def d = bool::type; usize read = { return d::width }; read; d::width }
-fn repeat(bool flag) { def d = bool::type; do { d::width } while (flag) }
-fn iterate() { def d = bool::type; for (def i <- [1, 2]) { d::width }; d::width }
+	expectError("fn f() { (null ?: bool::type)::width; }", Code::InvalidMetadataAccess);
+	expectError("fn f() { def d := bool::type; usize read = { return d::width; }; }", Code::InvalidMetadataAccess);
+	expectError("fn f() { def d = bool::type; do { d::width; } while (false); }", Code::InvalidMetadataAccess);
+	EXPECT_NO_THROW(checkSource(R"(typedef<class> Holder { pub def<typeinfo> d = bool::type; }
+fn guarded(Holder? h) { (h?.d::type ?: typeinfo::type)::width; }
+fn deferred() { def d = bool::type; usize read = { return d::width; }; read; d::width; }
+fn repeat(bool flag) { def d = bool::type; do { d::width; } while (flag); }
+fn iterate() { def d = bool::type; for (def i <- [1, 2]) { d::width; } d::width; }
 )"));
 }
 
 TEST (SemanticValues, MetadataFlowsThroughBindingsAndContinuingBranches) {
-	expectError("fn<typeinfo> bad() { def d = int::type; return d::element }", Code::InvalidMetadataAccess);
-	expectError("fn<typeinfo> bad(bool flag) { def d = int[1]::type; d = if (flag) { int::type } else { int::type }; return d::element }",
+	expectError("fn<typeinfo> bad() { def d = int::type; return d::element; }", Code::InvalidMetadataAccess);
+	expectError("fn<typeinfo> bad(bool flag) { def d = int[1]::type; d = if (flag) { int::type; } else { int::type; }; return d::element; }",
 	            Code::InvalidMetadataAccess);
-	const CheckedProgram program   = checkSource("fn<typeinfo> value(bool flag) { def d = int::type; if (flag) { d = int[1]::type }; return d::element }");
+	const CheckedProgram program   = checkSource("fn<typeinfo> value(bool flag) { def d = int::type; if (flag) { d = int[1]::type; } return d::element; }");
 	bool                 b_runtime = false;
 	for (const decltype(program.expressions)::value_type &entry : program.expressions) {
 		const ExpressionInfo &ei_value = entry.second;
@@ -680,24 +680,24 @@ TEST (SemanticValues, MetadataFlowsThroughBindingsAndContinuingBranches) {
 		}
 	}
 	EXPECT_TRUE(b_runtime);
-	expectError("fn<string> bad(int? n) = n::str", Code::NullablePayloadAccess);
+	expectError("fn<string> bad(int? n) = n::str;", Code::NullablePayloadAccess);
 }
 
 TEST (SemanticValues, InterpolationRetainsTheSelectedFormatter) {
-	const CheckedProgram program = checkSource(R"(typedef<class> Text<T> { operator ::str() -> string = "text" }
-fn<string> value(Text<int>? item) = #"{item}")");
+	const CheckedProgram program = checkSource(R"(typedef<class> Text<T> { operator ::str() -> string = "text"; }
+fn<string> value(Text<int>? item) = #"{item}";)");
 	ASSERT_EQ(program.textConversions.size(), 1u);
 	const ProviderSelection &ps_format = program.textConversions.begin()->second;
 	ASSERT_TRUE(ps_format.formatter);
 	EXPECT_TRUE(ps_format.receiver.nullable());
 	EXPECT_NE(ps_format.formatterInstance, nullptr);
 	expectError(R"(typedef<struct> S {}
-fn<string> value(S s) = #"{s}")",
+fn<string> value(S s) = #"{s}";)",
 	            Code::UnsupportedInterpolationType);
 }
 
 TEST (SemanticValues, ReadOnlyDefaultsRejectUserFormattersAtTheReceiver) {
-	const std::string s_types = R"(typedef<class> Item { pub operator ::str() = "item" }
+	const std::string s_types = R"(typedef<class> Item { pub operator ::str() = "item"; }
 typedef<class> Holder(pub def<Item> item) {}
 )";
 	try {
@@ -713,17 +713,17 @@ typedef<class> Holder(pub def<Item> item) {}
 	expectError(s_types + "fn format(Item?[] items, opt<string> s ?: items::str) {}", Code::InvalidParameterDefault);
 	expectError(s_types + "fn format(Holder? h, opt<string?> s ?: h?.item::str) {}", Code::InvalidParameterDefault);
 	expectError(s_types + "fn format(Item? item, opt<string> s ?: item::str) {}", Code::NullablePayloadAccess);
-	expectError(R"(typedef<struct> Item { pub operator ::str() = "item" }
+	expectError(R"(typedef<struct> Item { pub operator ::str() = "item"; }
 fn format(Item item, opt<string> s ?: item::str) {})",
 	            Code::InvalidParameterDefault);
 	EXPECT_NO_THROW(checkSource(s_types + R"(fn format(Item item, opt<string> s ?: item::type::str) {}
-fn<Item> copy(Item item) = item
+fn<Item> copy(Item item) = item;
 fn temporary(Item item, opt<string> s ?: copy(item)::str) {})"));
 }
 
 TEST (SemanticValues, ReadOnlyFormattingUsesKnownClassApplications) {
 	const std::string        s_program  = R"(typedef<interface> View<T> {}
-typedef<class> Text<T> : View<T> { pub operator ::str() = "text" }
+typedef<class> Text<T> : View<T> { pub operator ::str() = "text"; }
 fn format(View<int> item, opt<string> direct ?: item::str, opt<string> interpolated ?: #"{item}") {}
 )";
 	const CheckedProgram     cp_program = checkSource(s_program + "fn other(Text<bool> text) {}");
@@ -736,13 +736,13 @@ fn format(View<int> item, opt<string> direct ?: item::str, opt<string> interpola
 	EXPECT_FALSE(cp_program.textConversions.begin()->second.callsFormatter);
 	EXPECT_FALSE(cp_program.defaultEffects.at(&cs_format.parameters[1]).mayCallOrMutate);
 	EXPECT_FALSE(cp_program.defaultEffects.at(&cs_format.parameters[2]).mayCallOrMutate);
-	expectError(s_program + "fn materialize<T>(T value) { Text<T>? text = null }\nfn start() { materialize(1) }", Code::InvalidParameterDefault);
+	expectError(s_program + "fn materialize<T>(T value) { Text<T>? text = null; }\nfn start() { materialize(1); }", Code::InvalidParameterDefault);
 }
 
 TEST (SemanticValues, ReadOnlyFormattersRequireAClassSatisfyingEveryBound) {
 	const std::string s_program = R"(typedef<interface> Tagged {}
 typedef<class> Base(int id) { pub Base() : (0) {}
-    pub operator ::str() = "base" }
+    pub operator ::str() = "base"; }
 fn format<T: Base & Tagged>(T item, opt<string> s ?: item::str) {}
 )";
 	EXPECT_NO_THROW(checkSource(s_program + "typedef<class> Other : Tagged {}"));
@@ -751,11 +751,11 @@ fn format<T: Base & Tagged>(T item, opt<string> s ?: item::str) {}
 
 TEST (SemanticValues, ReportsAnEarlierFormatterBeforeAnotherErrorInTheSameDefault) {
 	const std::string s_program = R"(typedef<interface> View<T> {}
-typedef<class> Text<T> : View<T> { pub operator ::str() = "text" }
-fn format(View<int> item, opt<int> n ?: if (true) { item::str; false + 1 } else { 0 }) {}
+typedef<class> Text<T> : View<T> { pub operator ::str() = "text"; }
+fn format(View<int> item, opt<int> n ?: if (true) { item::str; false + 1; } else { 0; }) {}
 )";
 	expectError(s_program, Code::BinaryOperands);
-	expectError(s_program + "fn later<T>() { Text<int>? text = null }", Code::InvalidParameterDefault);
+	expectError(s_program + "fn later<T>() { Text<int>? text = null; }", Code::InvalidParameterDefault);
 }
 
 TEST (SemanticValues, IterationRetainsTheLibrarySnapshotAndSlotDeclarations) {
@@ -779,12 +779,12 @@ TEST (SemanticValues, IterationRetainsTheLibrarySnapshotAndSlotDeclarations) {
 TEST (SemanticValues, PrivateValidatorsFollowTheSelectedDeclaringSetter) {
 	const std::string    base      = R"(typedef<class> Base<T>(int seed) {
     pub Base() : (0) {}
-    operator []?(usize i) = true
+    operator []?(usize i) = true;
     pub operator []=(usize i, T value) {}
 }
-typedef<class> Child : Base<int> { operator []?(usize i) = false }
+typedef<class> Child : Base<int> { operator []?(usize i) = false; }
 )";
-	const CheckedProgram program   = checkSource(base + "fn write(Child child) { child[0] = 17 }");
+	const CheckedProgram program   = checkSource(base + "fn write(Child child) { child[0] = 17; }");
 	const Symbol        &validator = program.units.front()->getGlobals().at("Base").front().members.at(std::string(toString(OIndexValidate))).front();
 	ASSERT_EQ(program.writes.size(), 1u);
 	const ExpressionInfo &write = program.writes.begin()->second;
@@ -792,21 +792,21 @@ typedef<class> Child : Base<int> { operator []?(usize i) = false }
 	EXPECT_EQ(write.indexed->operation, write.symbol);
 	EXPECT_EQ(write.indexed->validator, &validator);
 	EXPECT_NE(write.indexed->validatorInstance, nullptr);
-	expectError(base + "fn bad(Child child) { child[0]++ }", Code::InvalidIndex);
-	expectError("typedef<class> C { operator []?(int i) = true\npub operator []=(usize i, int v) {} }", Code::InvalidOperatorDeclaration);
+	expectError(base + "fn bad(Child child) { child[0]++; }", Code::InvalidIndex);
+	expectError("typedef<class> C { operator []?(int i) = true;\npub operator []=(usize i, int v) {} }", Code::InvalidOperatorDeclaration);
 	expectError(R"(typedef<class> Parent(int seed) {
     pub Parent() : (0) {}
-    operator []?(usize i) = true
+    operator []?(usize i) = true;
     pub operator []=(usize i, int value) {}
 }
 typedef<class> C : Parent {
-    operator []?(usize i) = false
-    pub operator [](usize i) = 3
+    operator []?(usize i) = false;
+    pub operator [](usize i) = 3;
 }
-fn bad(C c) { c[0] += 1 })",
+fn bad(C c) { c[0] += 1; })",
 	            Code::InvalidIndex);
-	expectError("typedef<class> C { def<int> n = 0\noperator []?(int i) -> bool { n++; return true } }", Code::InvalidOperatorDeclaration);
-	expectError("typedef<struct> Snapshot<T> { T[] slots }\ntypedef<class> Fake { pub operator foreach() -> Snapshot<int> = { [] } }",
+	expectError("typedef<class> C { def<int> n = 0;\noperator []?(int i) -> bool { n++; return true; } }", Code::InvalidOperatorDeclaration);
+	expectError("typedef<struct> Snapshot<T> { T[] slots; }\ntypedef<class> Fake { pub operator foreach() -> Snapshot<int> = { [] }; }",
 	            Code::InvalidOperatorDeclaration);
 }
 }

@@ -24,11 +24,11 @@ ArrayLifetimes::Mark ArrayLifetimes::mark () const {
 	return { .locals = st_locals, .temporaries = v_owners.size() - st_locals };
 }
 
-LLVMValueRef ArrayLifetimes::own (LLVMTypeRef descriptor, Kind kind, bool nullable) {
+LLVMValueRef ArrayLifetimes::own (LLVMTypeRef descriptor, Kind kind, bool nullable, LLVMValueRef disposer) {
 	// Cleanup after a branch can reach a slot whose source expression was skipped.
 	const LLVMTypeRef  ty_value = nullable ? detail::nullable::type(descriptor) : descriptor;
 	const LLVMValueRef ir_slot  = allocateEntrySlot(ir_builder, ty_value, LLVMConstNull(ty_value));
-	v_owners.push_back({ .slot = ir_slot, .kind = kind, .nullablePayload = nullable ? descriptor : nullptr });
+	v_owners.push_back({ .slot = ir_slot, .kind = kind, .nullablePayload = nullable ? descriptor : nullptr, .disposer = disposer });
 	if (kind == Kind::Local) ++st_locals;
 	return ir_slot;
 }
@@ -38,6 +38,11 @@ void ArrayLifetimes::release (Mark scope, bool temporariesOnly) const {
 	const std::span<const Owner> owners = std::span(v_owners).subspan(scope.locals + scope.temporaries);
 	for (const Owner &owner : std::views::reverse(owners)) {
 		if (temporariesOnly && owner.kind != Kind::Temporary) continue;
+		if (owner.disposer) {
+			LLVMValueRef slot = owner.slot;
+			LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(owner.disposer), owner.disposer, &slot, 1, "");
+			continue;
+		}
 		const LLVMValueRef ir_descriptor = owner.nullablePayload ? nullable::payloadAddress(ir_builder, owner.nullablePayload, owner.slot) : owner.slot;
 		growable_array::release(ir_builder, mod_module, ir_descriptor);
 	}

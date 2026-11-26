@@ -40,6 +40,7 @@
 #include <parser/parser.hpp>
 #include <semantic/checked_program.hpp>
 #include <semantic/checker.hpp>
+#include <semantic/native_module.hpp>
 #include <semantic/program_kind.hpp>
 #include <semantic/symbol_table.hpp>
 #include <semantic/target_layout.hpp>
@@ -258,14 +259,15 @@ const GenericInstance *CheckedProgram::typeInstance (const ResolvedType &type) c
 	return &instances.at({ .declaration = type.declaration, .receiver = std::nullopt, .arguments = type.arguments() });
 }
 
-CheckedProgram::CheckedProgram (SymbolTable entry, const TargetLayout layout, std::filesystem::path standardLibraryRoot, const ProgramKind kind) :
+CheckedProgram::CheckedProgram (SymbolTable entry, const TargetLayout layout, std::filesystem::path standardLibraryRoot, const ProgramKind kind,
+                                const NativeModules &modules) :
         layout(layout),
         standardLibraryRoot(std::move(standardLibraryRoot)),
         kind(kind) {
 	if (layout.sizeBits != 32 && layout.sizeBits != 64) throw std::invalid_argument("A Cloth target requires a 32- or 64-bit size type");
 	if (layout.scalar64Alignment32 != 4 && layout.scalar64Alignment32 != 8) throw std::invalid_argument("Invalid 32-bit target scalar alignment");
 	units.emplace_back(std::make_unique<SymbolTable>(std::move(entry)));
-	semantic::Analyzer analyzer(*this);
+	semantic::Analyzer analyzer(*this, modules);
 	analyzer.checkBodies();
 	entryPoint = analyzer.entryPoint();
 }
@@ -337,9 +339,9 @@ const TypeParameterList *typeParameters (const Symbol &symbol) {
 	return opt_parameters && *opt_parameters ? &**opt_parameters : nullptr;
 }
 
-Analyzer::Analyzer (CheckedProgram &program) : program(program), declarations(program.declarations) {
+Analyzer::Analyzer (CheckedProgram &program, const NativeModules &modules) : program(program), declarations(program.declarations) {
 	declarations.emplace(&objectRoot(), DeclarationInfo{ .file = 0, .owner = nullptr });
-	loadImports();
+	loadImports(modules);
 	b_hasReferenceDeclarations = std::ranges::any_of(v_order, [] (const Symbol *symbol) { return asClass(symbol) || asInterface(symbol); });
 	registerIntrinsics();
 	for (const Symbol *sym : v_order) checkParameterNames(*sym);
@@ -450,7 +452,7 @@ fs::path moduleEntry (ModuleDirectories &directories, const fs::path &parent, co
 
 }
 
-void Analyzer::loadImports () {
+void Analyzer::loadImports (const NativeModules &modules) {
 	namespace fs = std::filesystem;
 	using Edge   = std::pair<const ImportDeclaration *, std::size_t>;
 
@@ -465,32 +467,46 @@ void Analyzer::loadImports () {
 	const SourceFile               *sf_entry      = program.units.front()->getSourceUnit().getSource();
 	const fs::path                 &p_libraryRoot = program.standardLibraryRoot;
 	fs::path                        p_entryRoot;
-	std::vector<ImportRoot>         v_roots;
+	std::vector<fs::path>           v_sourceRoots;
+	std::map<fs::path, std::string> m_moduleNames;
+	for (const auto &[name, path] : modules.imports) {
+		if (!m_moduleNames.emplace(fs::canonical(path), name).second)
+			throw cde::ClothDiagnostic(Code::InvalidCompilationRequest, "A library source has multiple module names");
+	}
+	if (!modules.name.empty()) program.nativeModules.emplace(0, modules.name);
 	if (sf_entry && !sf_entry->getPath().empty() && sf_entry->getPath() != "<input>") {
 		const fs::path p_entry = fs::weakly_canonical(fs::absolute(sf_entry->getPath()));
 		p_entryRoot            = p_entry.parent_path();
 		m_files.emplace(p_entry, 0);
 
-		// Search a shared directory as the Stdlib root so its imports retain their registered module paths.
-		if (std::error_code ec_root; p_libraryRoot.empty() || !fs::equivalent(p_entryRoot, p_libraryRoot, ec_root)) {
-			v_roots.push_back({ .path = p_entryRoot, .standardLibrary = false });
-		}
+		if (m_moduleNames.contains(p_entry))
+			throw cde::ClothDiagnostic(Code::InvalidCompilationRequest, "An external library refers to the entry source");
 	}
-	if (!p_libraryRoot.empty()) v_roots.push_back({ .path = p_libraryRoot, .standardLibrary = true });
+	v_sourceRoots.push_back(p_entryRoot);
 	for (std::size_t st_file = 0; st_file < program.units.size(); ++st_file) {
 		v_names.emplace_back();
 		v_edges.emplace_back();
 		const SymbolTable &st_unit = *program.units[st_file];
 		registerScope(st_unit.getGlobals(), st_file, nullptr);
+		const fs::path          p_sourceRoot = v_sourceRoots[st_file];
+		std::vector<ImportRoot> v_roots;
+		if (std::error_code ec_root; p_libraryRoot.empty() || !fs::equivalent(p_sourceRoot, p_libraryRoot, ec_root))
+			v_roots.push_back({ .path = p_sourceRoot, .standardLibrary = false });
+		if (!p_libraryRoot.empty()) v_roots.push_back({ .path = p_libraryRoot, .standardLibrary = true });
 		for (const ImportDeclaration &id_import : st_unit.getSourceUnit().imports) {
 			if (p_entryRoot.empty()) {
 				fail(Code::MissingImportContext, id_import.path.getSpan(), "A source path is required to resolve imports");
 			}
 			fs::path    p_target;
 			std::string s_libraryPath;
+			const auto &v_parts = id_import.path.components;
+			if (v_parts.size() == 1) {
+				const auto it_module = modules.imports.find(v_parts.front().getNameKey());
+				if (it_module != modules.imports.end()) p_target = fs::canonical(it_module->second);
+			}
 			for (const ImportRoot &ir_root : v_roots) {
-				fs::path                  p_directory = ir_root.path;
-				const std::vector<Token> &v_parts     = id_import.path.components;
+				if (!p_target.empty()) break;
+				fs::path p_directory = ir_root.path;
 				for (std::size_t st_index = 0; st_index + 1 < v_parts.size() && !p_directory.empty(); ++st_index) {
 					const Token &t_part = v_parts[st_index];
 					p_directory         = moduleEntry(m_directories, p_directory, t_part.getNameKey(), true, t_part.getSpan());
@@ -511,7 +527,6 @@ void Analyzer::loadImports () {
 						s_libraryPath += extension;
 					}
 				}
-				if (!p_target.empty()) break;
 			}
 			if (p_target.empty()) {
 				fail(Code::ImportedSourceNotFound, id_import.path.getSpan(), "Cannot find source for '" + id_import.path.getSpelling() + "'");
@@ -519,8 +534,11 @@ void Analyzer::loadImports () {
 			const std::pair<decltype(m_files)::iterator, bool> inserted = m_files.emplace(p_target, program.units.size());
 			if (!s_libraryPath.empty()) m_libraryPaths[inserted.first->second].insert(std::move(s_libraryPath));
 			if (inserted.second) {
+				const auto it_module = m_moduleNames.find(p_target);
+				if (it_module != m_moduleNames.end()) program.nativeModules.emplace(inserted.first->second, it_module->second);
+				v_sourceRoots.push_back(it_module != m_moduleNames.end() ? p_target.parent_path() : p_sourceRoot);
 				Lexer l_lexer{ SourceFile(p_target) };
-				program.units.emplace_back(std::make_unique<SymbolTable>(Parser(l_lexer).parse()));
+				program.units.emplace_back(std::make_unique<SymbolTable>(Parser(l_lexer, st_unit.getSourceUnit().grammar).parse()));
 			}
 			v_edges[st_file].emplace_back(&id_import, inserted.first->second);
 		}

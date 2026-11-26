@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<struct> Loop<T> { Other<T> value }
-typedef<struct> Other<T> { Loop<T>? value }
+typedef<struct> Loop<T> { Other<T> value; }
+typedef<struct> Other<T> { Loop<T>? value; }
 
 // RUN: %expect_exit --empty-stdout 1 %cloth --target-bits 32 --src "%/s" 2> "%t.expected"
 // RUN: %filecheck "%/s" --input-file "%t.expected"
@@ -13,7 +13,7 @@ typedef<struct> Other<T> { Loop<T>? value }
 // RUN: diff -u "%t.expected" "%t.err"
 // CHECK: [C3080] Error: Recursive storage in struct 'Loop'
 // CHECK: recursive-storage.co:4:37
-// CHECK: 3 | typedef<struct> Loop<T> { Other<T> value }
+// CHECK: 3 | typedef<struct> Loop<T> { Other<T> value; }
 // CHECK: declared here
-// CHECK: 4 | typedef<struct> Other<T> { Loop<T>? value }
+// CHECK: 4 | typedef<struct> Other<T> { Loop<T>? value; }
 // CHECK: Recursive storage in struct 'Loop'

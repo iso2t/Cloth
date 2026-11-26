@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# RUN: echo "fn<usize> wide() = 4294967296" > "%t.co"
+# RUN: echo "fn<usize> wide() = 4294967296;" > "%t.co"
 
 # RUN: %expect_exit --empty-stdout 1 %cloth --src "%t.co" --knd executable 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=UNKNOWN-KIND --input-file "%t.err"
@@ -34,7 +34,7 @@
 # EMIT-KIND: --emit requires object or assembly
 # RUN: %expect_exit --empty-stdout 1 %cloth --emit assembly --src "%t.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=EMIT-LIBRARY --input-file "%t.err"
-# EMIT-LIBRARY: [C0017] Error: --emit requires --kind executable
+# EMIT-LIBRARY: [C0017] Error: --emit requires --module-name for library output
 # RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit assembly -l 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=EMIT-LEXER --input-file "%t.err"
 # EMIT-LEXER: [C0017] Error: --emit is incompatible with lexer-only mode

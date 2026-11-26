@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # REQUIRES: x86 && (linux || win32)
 
-# RUN: echo "pub fn<int> main () = subtract(44, 2)" > "%t.co"
-# RUN: echo "fn<int> subtract(int left, int right) = left - right" >> "%t.co"
+# RUN: echo "pub fn<int> main () = subtract(44, 2);" > "%t.co"
+# RUN: echo "fn<int> subtract(int left, int right) = left - right;" >> "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --target-bits 32 --emit-object "%t.32.o"
 # RUN: %cloth --kind executable --src "%t.co" --target-bits 64 --emit-object "%t.64.o"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
@@ -10,10 +10,10 @@
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
 
 # RUN: echo "pub fn<int> main () {" > "%t.co"
-# RUN: echo "    int minimum := subtract(0, 2147483647) - 1" >> "%t.co"
-# RUN: echo "    return subtract(minimum, 1) - (2147483647 - 42)" >> "%t.co"
+# RUN: echo "    int minimum := subtract(0, 2147483647) - 1;" >> "%t.co"
+# RUN: echo "    return subtract(minimum, 1) - (2147483647 - 42);" >> "%t.co"
 # RUN: echo "}" >> "%t.co"
-# RUN: echo "fn<int> subtract(int left, int right) = left - right" >> "%t.co"
+# RUN: echo "fn<int> subtract(int left, int right) = left - right;" >> "%t.co"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-pub typedef<class> Item (pub def<int> value)
+pub typedef<class> Item (pub def<int> value);
 fn<int> read(Item item) {
-    def alias = item
-    item::delete
-    return alias.value
+    def alias = item;
+    item::delete;
+    return alias.value;
 }
 
 // RUN: %expect_exit --empty-stdout 1 %cloth --src "%/s" 2> "%t.err"

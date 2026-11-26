@@ -2,37 +2,37 @@
 
 typedef<class> Marker { pub Marker(int tag) : () {} }
 
-fn<Marker> make() = Marker::new(7)
+fn<Marker> make() = Marker::new(7);
 
 fn<bool> nullableIdentity(final Marker? marker) {
-    if (marker == null) return marker === null
-    return !(marker === null) && !(null === marker)
+    if (marker == null) return marker === null;
+    return !(marker === null) && !(null === marker);
 }
 
 pub fn<int> main() {
-    Marker first := make()
-    Marker second := make()
-    if (first === second) return 1
+    Marker first := make();
+    Marker second := make();
+    if (first === second) return 1;
 
-    Marker[] items = [first, second]
-    Marker[] copy := items
-    Marker[2] fixed := copy
-    items[0] = second
-    if (!(copy[0] === first) || !(items[0] === second) || items[0] === copy[0]) return 2
-    if (fixed != copy || fixed == items) return 3
+    Marker[] items = [first, second];
+    Marker[] copy := items;
+    Marker[2] fixed := copy;
+    items[0] = second;
+    if (!(copy[0] === first) || !(items[0] === second) || items[0] === copy[0]) return 2;
+    if (fixed != copy || fixed == items) return 3;
 
-    int visits = 0
+    int visits = 0;
     for (def item <- items) {
-        items.clear()
-        if (!(item === second)) return 4
-        visits++
+        items.clear();
+        if (!(item === second)) return 4;
+        visits++;
     }
-    Marker?[] optional = [null, first]
-    optional.insert(0, second)
-    Marker? removed := optional.removeAt(1)
-    if (!(removed === null) || !(optional[0] === second) || !(optional[1] === first)) return 5
-    int calls = 0
-    Marker next := Marker::new(if (true) { calls++; 7 } else 0)
-    if (calls != 1 || next === first || !nullableIdentity(next) || !nullableIdentity(null)) return 6
-    return if (visits == 2 && copy[1] === second) 42 else 7
+    Marker?[] optional = [null, first];
+    optional.insert(0, second);
+    Marker? removed := optional.removeAt(1);
+    if (!(removed === null) || !(optional[0] === second) || !(optional[1] === first)) return 5;
+    int calls = 0;
+    Marker next := Marker::new(if (true) { calls++; 7; } else 0);
+    if (calls != 1 || next === first || !nullableIdentity(next) || !nullableIdentity(null)) return 6;
+    return if (visits == 2 && copy[1] === second) 42 else 7;
 }

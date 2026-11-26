@@ -11,6 +11,14 @@ imported declaration. The numeric part of a code identifies its entry
 in the `diagnostic code registry <../../../Diagnostics/include/cde/diagnostic_code.hpp>`_.
 Errors opening an input file can also appear as plain text.
 
+A missing semicolon
+-------------------
+
+Given ``fn<int> answer() = 42 // result``, the compiler reports ``C2013``
+and points immediately after ``42``. Write ``42; // result`` to terminate
+the function before the comment. The same diagnostic applies when the
+file is reached through an import.
+
 An argument supplied twice
 --------------------------
 
@@ -19,7 +27,7 @@ The following call supplies ``start`` both by position and by name.
 .. code-block:: text
 
    fn take(opt<int> start ?: 0, int count) {}
-   fn run() = take(1, 2, start = 3)
+   fn run() = take(1, 2, start = 3);
 
 To see the report from the repository root, run this command with your
 built ``cloth`` executable.
@@ -37,9 +45,9 @@ For example, this version passes 3 for ``start`` and 2 for ``count``.
 .. code-block:: text
 
    fn take(opt<int> start ?: 0, int count) {}
-   fn run() = take(count = 2, start = 3)
+   fn run() = take(count = 2, start = 3);
 
-With a repeated import such as ``using shapes: Point, Point``, ``C2010``
+With a repeated import such as ``using shapes: Point, Point;``, ``C2010``
 marks the second ``Point`` and labels the first selection. See the
 `import diagnostic <../../../Tests/Diagnostics/repeated-import.test>`_.
 Use `lexer mode <../Flags.rst#lexer-modes>`_ to inspect the tokens when a
@@ -50,10 +58,10 @@ Object emission and runtime errors
 ----------------------------------
 
 A program can pass source checking and report an error when compiled
-with ``--emit-object``. For example, ``println(true)`` checks as a printable
-value. Object emission reports ``C4040`` at the call because the native
-print routine takes a signed 32-bit ``int``. Use ``println(true.toInt())``
-to print ``1``. See `Emitting and linking object files <Objects.rst>`_.
+with ``--emit-object``. For example, the frontend accepts the floating-point
+range membership expression ``1.0 : 0.0..2.0``. Object emission reports
+``C4040`` at that expression because native range membership requires
+integer endpoints. See `Emitting and linking object files <Objects.rst>`_.
 
 A runtime error comes from the linked program. In the `division example
 <../../../Tests/Compiler/Driver/zero-divisor.test>`_, the program prints

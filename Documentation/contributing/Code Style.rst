@@ -3,7 +3,8 @@
 Code Style
 ==========
 
-Follow this guide when adding or editing C++ code for the Cloth compiler.
+Follow this guide when adding or editing the compiler's C++ code or
+the runtime's C code.
 The repository's `.clang-tidy <../../.clang-tidy>`_ defines the checks.
 
 Cloth keywords and operators
@@ -63,6 +64,13 @@ Names
   ``TokenType::EndOfFile``, ``KReturn``, and ``OPlus``.
 * Use ``UPPER_SNAKE_CASE`` for macros and constants at global or
   namespace scope, as in ``LEXED_ONLY`` and ``V_KEYWORDS``.
+
+Runtime entry points use lowerCamelCase in C. Declare each entry point
+with ``CLOTH_RT_API`` so its C name and its existing linker symbol refer
+to the same implementation. For example, C code calls ``clothRtArrayClear``
+and a compiled Cloth object calls ``cloth_rt_array_clear``. Preserve the
+linker spelling when renaming a C function. See the `ABI declarations
+<../../Runtime/include/cloth/array.h>`_.
 
 Type prefixes
 -------------
@@ -150,12 +158,12 @@ callers, including tests.
 Formatting
 ----------
 
-Use the repository's ``.clang-format`` for C++ layout. It uses tabs with
+Use the repository's ``.clang-format`` for C and C++ layout. It uses tabs with
 an eight-column width, attached opening braces, and a 160-column wrapping
 target. Place pointer and reference markers next to the name, as in
 ``const char *source`` and ``const Token &token``.
 
-Run ClangFormat on the C++ files you change and review the resulting diff.
+Run ClangFormat on the C and C++ files you change and review the resulting diff.
 
 .. code-block:: console
 

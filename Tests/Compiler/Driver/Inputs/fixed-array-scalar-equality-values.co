@@ -2,76 +2,76 @@
 
 typedef<enum> Reading(pub def<int> code = 7) {
     pub Idle, pub First(42), pub Second(42);
-    pub operator !=(Reading other) -> bool = true
+    pub operator !=(Reading other) -> bool = true;
 }
 
 pub fn<int> main() {
-    bool[3] flags = [false, true, false]
-    flags[0] = 0
-    flags[1] = wide()
-    flags[2] = -3
-    if (flags != [false, true, true] || flags == [true, true, true]) return 1
-    bool[0] empty := []
-    if (empty != [] || flags == empty) return 2
+    bool[3] flags = [false, true, false];
+    flags[0] = 0;
+    flags[1] = wide();
+    flags[2] = -3;
+    if (flags != [false, true, true] || flags == [true, true, true]) return 1;
+    bool[0] empty := [];
+    if (empty != [] || flags == empty) return 2;
 
-    char[2] letters = ['\0', '🙂']
-    def saved := letters
-    if (saved != letters) return 3
-    letters[0] = '𐀀'
-    if (letters == saved || letters != ['𐀀', '🙂']) return 4
+    char[2] letters = ['\0', '🙂'];
+    def saved := letters;
+    if (saved != letters) return 3;
+    letters[0] = '𐀀';
+    if (letters == saved || letters != ['𐀀', '🙂']) return 4;
 
-    Reading[2] readings := [Reading.Idle, Reading.First]
-    if (readings != [Reading.Idle, Reading.First] || readings == [Reading.Idle, Reading.Second]) return 5
-    if ([traced(1, Reading.First)] == [traced(2, Reading.First), traced(3, Reading.Second)]) return 6
-    if (!floatPairs(0.0)) return 7
-    return 42
+    Reading[2] readings := [Reading.Idle, Reading.First];
+    if (readings != [Reading.Idle, Reading.First] || readings == [Reading.Idle, Reading.Second]) return 5;
+    if ([traced(1, Reading.First)] == [traced(2, Reading.First), traced(3, Reading.Second)]) return 6;
+    if (!floatPairs(0.0)) return 7;
+    return 42;
 }
 
-fn<unsigned int<65>> wide() = 18446744073709551616
+fn<unsigned int<65>> wide() = 18446744073709551616;
 
 fn<Reading> traced(final int label, final Reading value) {
-    println(label)
-    return value
+    println(label);
+    return value;
 }
 
 fn<bool> floatPairs(final float<64> zero) {
-    float<64> infinity := 1.0 / zero
-    float<64> nan := zero / zero
-    float<64>[8] values := [zero, -zero, 1.125, -2.0, infinity, -infinity, nan, -nan]
-    usize row = 0
+    float<64> infinity := 1.0 / zero;
+    float<64> nan := zero / zero;
+    float<64>[8] values := [zero, -zero, 1.125, -2.0, infinity, -infinity, nan, -nan];
+    usize row = 0;
     while (row < values::size) {
-        usize column = 0
+        usize column = 0;
         while (column < values::size) {
-            float<64> left := values[row]
-            float<64> right := values[column]
-            bool equal := row < 6 && column < 6 && (row == column || (row < 2 && column < 2))
-            if (!halfPair(left -> float<16>, right -> float<16>, equal)) return false
-            if (!singlePair(left -> float<32>, right -> float<32>, equal)) return false
-            if (!doublePair(left, right, equal)) return false
-            column++
+            float<64> left := values[row];
+            float<64> right := values[column];
+            bool equal := row < 6 && column < 6 && (row == column || (row < 2 && column < 2));
+            if (!halfPair(left -> float<16>, right -> float<16>, equal)) return false;
+            if (!singlePair(left -> float<32>, right -> float<32>, equal)) return false;
+            if (!doublePair(left, right, equal)) return false;
+            column++;
         }
-        row++
+        row++;
     }
-    if (!halfPair(0.000000059604644775390625, zero -> float<16>, false)) return false
-    if (!halfPair(0.0000000298023223876953125, zero -> float<16>, true)) return false
-    if (!halfPair(2048.0, 2049.0, true) || !singlePair(2048.0, 2049.0, false)) return false
-    return singlePair(16777216.0, 16777217.0, true) && doublePair(16777216.0, 16777217.0, false)
+    if (!halfPair(0.000000059604644775390625, zero -> float<16>, false)) return false;
+    if (!halfPair(0.0000000298023223876953125, zero -> float<16>, true)) return false;
+    if (!halfPair(2048.0, 2049.0, true) || !singlePair(2048.0, 2049.0, false)) return false;
+    return singlePair(16777216.0, 16777217.0, true) && doublePair(16777216.0, 16777217.0, false);
 }
 
 fn<bool> halfPair(final float<16> left, final float<16> right, final bool equal) {
-    float<16>[2] a := [7.0, left]
-    float<16>[2] b := [7.0, right]
-    return (a == b) == equal && (a != b) != equal
+    float<16>[2] a := [7.0, left];
+    float<16>[2] b := [7.0, right];
+    return (a == b) == equal && (a != b) != equal;
 }
 
 fn<bool> singlePair(final float<32> left, final float<32> right, final bool equal) {
-    float<32>[2] a := [7.0, left]
-    float<32>[2] b := [7.0, right]
-    return (a == b) == equal && (a != b) != equal
+    float<32>[2] a := [7.0, left];
+    float<32>[2] b := [7.0, right];
+    return (a == b) == equal && (a != b) != equal;
 }
 
 fn<bool> doublePair(final float<64> left, final float<64> right, final bool equal) {
-    float<64>[2] a := [7.0, left]
-    float<64>[2] b := [7.0, right]
-    return (a == b) == equal && (a != b) != equal
+    float<64>[2] a := [7.0, left];
+    float<64>[2] b := [7.0, right];
+    return (a == b) == equal && (a != b) != equal;
 }

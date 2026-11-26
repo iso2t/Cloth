@@ -39,8 +39,8 @@ literal peer. Floating-point endpoints must be finite.
 .. code-block:: text
 
    fn<bool> within(int<8> n) {
-       range<int<8>> small := 1..4
-       return n : small
+       range<int<8>> small := 1..4;
+       return n : small;
    }
 
 Write ``value : range`` to test membership. The example includes 1, 2,
@@ -146,8 +146,8 @@ type should be able to use one.
 
    typedef<struct> Position {
        int offset;
-       pub operator ==(Position other) = offset == other.offset
-       pub operator +(int step) -> Position = { offset + step }
+       pub operator ==(Position other) = offset == other.offset;
+       pub operator +(int step) -> Position = { offset + step };
    }
 
 The receiver normally appears on the left. A final ``self`` in the parameter

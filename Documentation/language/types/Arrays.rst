@@ -9,11 +9,11 @@ Assigning a fixed-size array copies its elements. In this example,
 .. code-block:: text
 
    pub fn<int> main() {
-       int<12>[2] values = [7, 9]
-       def saved := values
-       values[1] = 42
-       if (saved[1] != 9 || values[0] != 7) return 1
-       return values[1] -> int
+       int<12>[2] values = [7, 9];
+       def saved := values;
+       values[1] = 42;
+       if (saved[1] != 9 || values[0] != 7) return 1;
+       return values[1] -> int;
    }
 
 The program returns 42. The ``:=`` makes ``saved`` immutable. The ``=``
@@ -140,12 +140,12 @@ runtime, a mismatch reports
 .. code-block:: text
 
    fn<int[]> takeRow(int[][] rows) {
-       rows.append([1, 2])
-       rows.insert(0, [3, 4])
-       rows.reserve(8)
-       def row = rows.removeAt(1)
-       rows.clear()
-       return row
+       rows.append([1, 2]);
+       rows.insert(0, [3, 4]);
+       rows.reserve(8);
+       def row = rows.removeAt(1);
+       rows.clear();
+       return row;
    }
 
 ``append(value)`` adds one element at the end. ``insert(index, value)``

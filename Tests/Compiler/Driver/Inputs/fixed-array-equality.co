@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    unsigned int<65>[2] values = [7, 0]
-    def saved := values
-    if (!(values == saved)) return 1
-    values[1] = 18446744073709551616
-    return if (saved != values) 42 else 2
+    unsigned int<65>[2] values = [7, 0];
+    def saved := values;
+    if (!(values == saved)) return 1;
+    values[1] = 18446744073709551616;
+    return if (saved != values) 42 else 2;
 }

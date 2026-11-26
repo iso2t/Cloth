@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using cloth.lang.num.Number : Number;
+using cloth.lang.num.NumberUtilities : magic;
+using cloth.math.Math : PI, E, TAU;
+
+typedef<struct> Label {
+    pub int count;
+    pub operator ::str() -> string = #"label {count}";
+}
+typedef<class> Formatted {
+    pub Formatted(int token) : () {}
+    pub operator ::str() -> string = "object text";
+}
+fn<string> asText(Object value) = #"{value}";
+
+typedef<enum> Mode { pub Off, pub On; }
+fn<T> bounded<T: Number>(T value) = magic<T>(value);
+fn<usize> wideZeros(unsigned int<65536> value) = value.leadingZeros();
+fn<usize> width(typeinfo type) = type::width;
+
+pub fn<int> main() {
+    if (bounded<int>(42) != 42 || PI() * 2 != TAU() || E() < 2.7) return 1;
+    int<12> negative = -42;
+    unsigned int<65> high = 18446744073709551616;
+    if (negative.abs() != 42 || negative.signum() != -1 || negative.clamp(-10, 10) != -10) return 2;
+    if (high.leadingZeros() != 0 || high.trailingZeros() != 64 || high.toStringRadix(16) != "10000000000000000") return 3;
+    if (width(high::type) != 65 || int[2][3]::type::element::extent != 3 || int<12>::size != 2) return 4;
+    if (Mode::values[1]::name != "On" || Mode.On::str != "On") return 5;
+    string text = " é😀\0é ";
+    if (text.trim().charAt(1) != '😀' || text.trimStart().startsWith(" ") || text.trimEnd().endsWith(" ")) return 6;
+    if (text.indexOf("é") != 1 || text.lastIndexOf("é") != 4 || text.indexOf("Z") != null) return 7;
+    if (!text.contains("\0") || text.substring(2, 4) != "😀\0") return 8;
+    if ('É'.toLowerCase() != 'é' || "é".toUpperCase() != "É" || !'λ'.isLetter() || !'٣'.isDigit()) return 9;
+    if (!'É'.isUpperCase() || !'é'.isLowerCase() || !'7'.isLetterOrDigit() || !' '.isWhitespace() || !"  ".isBlank()) return 10;
+    char[] chars = text.toChars();
+    string[] pieces = "a😀b😀".split('😀');
+    if (wideZeros(42) != 65530 || pieces != ["a", "b", ""]) return 15;
+    if (chars[2] != '😀' || pieces::size != 3 || pieces[1] != "b" || !pieces[2].isEmpty()) return 11;
+    if ("ababa".replaceFirst("ba", "X") != "aXba" || "ababa".replace("ba", "X") != "aXX") return 12;
+    if ("left.mid.end".removePrefix("left.").removeSuffix(".end") != "mid") return 13;
+    Label label = {42};
+    int? absent = null;
+    println(#"{label} {negative} {true} {absent}");
+    int[2] numbers = [40, 2];
+    println(numbers);
+    def dynamic = Formatted::new(42);
+    if (asText(dynamic) != "object text") return 14;
+    dynamic::delete;
+    return 42;
+}

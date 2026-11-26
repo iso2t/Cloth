@@ -5,6 +5,6 @@
 
 # CHECK: [C2010] Error: Import selection 'Point' is repeated
 # CHECK: repeated-import.co:3:22
-# CHECK: using shapes: Point, Point
+# CHECK: using shapes: Point, Point;
 # CHECK: here
 # CHECK: First selection here

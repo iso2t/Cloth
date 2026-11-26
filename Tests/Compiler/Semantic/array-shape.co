@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 fn replace() {
-    int[][] rows = [[1, 2]]
-    rows = [[3]]
+    int[][] rows = [[1, 2]];
+    rows = [[3]];
 }
 
 // RUN: %expect_exit --empty-stdout 1 %cloth --src "%/s" 2> "%t.err"

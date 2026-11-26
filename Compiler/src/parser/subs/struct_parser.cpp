@@ -28,27 +28,35 @@ StructDeclaration StructParser::parse (const Token &keyword, std::optional<Token
 	std::vector<StructFieldDeclaration> v_fields;
 	std::vector<MethodDeclaration>      v_methods;
 	p_parser.skipNewLines();
-	p_parser.p_delimitedParser.braces([this, &v_nestedTypes, &v_fields, &v_methods] () -> void {
-		p_parser.skipNewLines();
-		while (p_parser.startsTypeDeclaration()) {
-			v_nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
-		}
-		if (!atMember()) {
-			v_fields = parseFields();
-		}
-		if (!v_fields.empty() && !atEnd()) {
-			rejectFunction();
-			p_parser.expect(OSemicolon);
+	if (!p_parser.consumeEmptyTypeHeader("struct header")) {
+		p_parser.p_delimitedParser.braces([this, &v_nestedTypes, &v_fields, &v_methods] () -> void {
 			p_parser.skipNewLines();
-			rejectFunction();
-			if (!atMember() && !p_parser.startsTypeDeclaration()) {
-				throw cde::SyntaxErrors::expected(std::format("a '{}', '{}', or '{}' declaration after the fields", toString(KMt),
-				                                              toString(KOperator), toString(KTypeDef)),
-				                                  p_parser.peek());
+			while (p_parser.startsTypeDeclaration()) {
+				v_nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			}
-		}
-		v_methods = parseMembers(v_nestedTypes);
-	});
+			if (!atMember()) {
+				const Token first = p_parser.peek();
+				v_fields          = parseFields();
+				if (!v_fields.empty()) {
+					p_parser.recordRange(SourceConstruct::StructFields, first, WrittenForm::Simple);
+				}
+			}
+			if (!v_fields.empty() && p_parser.explicitSemicolons()) {
+				p_parser.requireSemicolon("struct field list");
+			} else if (!v_fields.empty() && !atEnd()) {
+				rejectFunction();
+				p_parser.expect(OSemicolon);
+				p_parser.skipNewLines();
+				rejectFunction();
+				if (!atMember() && !p_parser.startsTypeDeclaration()) {
+					throw cde::SyntaxErrors::expected(std::format("a '{}', '{}', or '{}' declaration after the fields", toString(KMt),
+					                                              toString(KOperator), toString(KTypeDef)),
+					                                  p_parser.peek());
+				}
+			}
+			v_methods = parseMembers(v_nestedTypes);
+		});
+	}
 	const TokenSpan ts_span = TokenSpan::spanThrough((visibility ? *visibility : keyword).getSpan(), p_parser.previous().getSpan());
 	return { keyword,
 		 t_name,
@@ -65,7 +73,7 @@ std::vector<StructFieldDeclaration> StructParser::parseFields () const {
 	        OBraceClose,
 	        [this] () -> bool {
 		        return p_parser.isSemiColon(p_parser.peek()) || atMember() || p_parser.startsTypeDeclaration() ||
-		               p_parser.atKeyword(KFn, memberOffset());
+		               (p_parser.explicitSemicolons() && p_parser.peek().getType() == TokenType::EndOfFile) || p_parser.atKeyword(KFn, memberOffset());
 	        },
 	        [this] () -> StructFieldDeclaration {
 		        rejectFunction();
@@ -84,6 +92,7 @@ std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDecla
 			continue;
 		}
 		rejectFunction();
+		const Token          first          = p_parser.peek();
 		std::optional<Token> opt_visibility = p_parser.parseVisibility();
 		if (p_parser.atKeyword(KMt)) {
 			v_methods.push_back(p_parser.p_functionParser.parseMethod(std::move(opt_visibility), std::nullopt, std::nullopt,
@@ -95,7 +104,11 @@ std::vector<MethodDeclaration> StructParser::parseMembers (std::vector<TypeDecla
 			throw cde::SyntaxErrors::expected(std::format("a '{}' or '{}' declaration", toString(KMt), toString(KOperator)), p_parser.peek());
 		}
 		const bool b_hasEquals = v_methods.back().body.getEquals() != nullptr;
+		p_parser.recordDeclaration(SourceConstruct::Member, first, b_hasEquals);
 		rejectFunction();
+		if (p_parser.explicitSemicolons()) {
+			continue;
+		}
 		if (const Token t_next = p_parser.peek(); b_hasEquals && p_parser.isSemiColon(t_next)) {
 			p_parser.advance();
 		} else if (t_next.getLexeme() != toString(OBraceClose) && t_next.getType() != TokenType::NewLine) {

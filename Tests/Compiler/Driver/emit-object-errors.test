@@ -2,17 +2,17 @@
 
 # RUN: mkdir -p "%t"
 # RUN: echo "pub fn<int> main () {" > "%t/entry.co"
-# RUN: echo "    println(true)" >> "%t/entry.co"
-# RUN: echo "    return 42" >> "%t/entry.co"
+# RUN: echo "    1.0 : 0.0..2.0;" >> "%t/entry.co"
+# RUN: echo "    return 42;" >> "%t/entry.co"
 # RUN: echo "}" >> "%t/entry.co"
 # RUN: cd "%t" && %expect_exit --empty-stdout --empty-stderr 0 %cloth --src entry.co
 # RUN: cd "%t" && %expect_exit --empty-stdout --empty-stderr 0 %cloth --src entry.co --kind executable
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --target-bits 32 --src entry.co --emit-object answer.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=STATEMENT --input-file "%t.err"
-# STATEMENT: [C4040] Error: LLVM lowering supports 'println' with one signed 32-bit int argument
+# STATEMENT: [C4040] Error: LLVM range membership requires integer endpoints
 # STATEMENT: entry.co:2:5
-# STATEMENT: println(true)
-# STATEMENT: unsupported output call
+# STATEMENT: 1.0 : 0.0..2.0
+# STATEMENT: unsupported range membership
 # RUN: cd "%t" && %python -c "from pathlib import Path; assert list(Path('.').iterdir()) == [Path('entry.co')]"
 
 # RUN: echo "previous object" > "%t.saved"
@@ -21,35 +21,35 @@
 # RUN: %filecheck "%/s" --check-prefix=STATEMENT --input-file "%t.err"
 # RUN: diff "%t.saved" "%t/answer.o"
 # RUN: echo "pub fn<int> main () {" > "%t/entry.co"
-# RUN: echo "    int unused := int[2]::type::rank -> int" >> "%t/entry.co"
-# RUN: echo "    return 42" >> "%t/entry.co"
+# RUN: echo "    int unused := (1.0 : 0.0..2.0).toInt();" >> "%t/entry.co"
+# RUN: echo "    return 42;" >> "%t/entry.co"
 # RUN: echo "}" >> "%t/entry.co"
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object answer.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=INITIALIZER --input-file "%t.err"
-# INITIALIZER: [C4040] Error: LLVM lowering does not support this expression
-# INITIALIZER: entry.co:2:19
-# INITIALIZER: int unused := int[2]::type::rank -> int
-# INITIALIZER: unsupported expression
+# INITIALIZER: [C4040] Error: LLVM range membership requires integer endpoints
+# INITIALIZER: entry.co:2:20
+# INITIALIZER: int unused := (1.0 : 0.0..2.0).toInt()
+# INITIALIZER: unsupported range membership
 # RUN: diff "%t.saved" "%t/answer.o"
 # RUN: echo "pub fn<int> main () {" > "%t/entry.co"
-# RUN: echo "    int answer = 42" >> "%t/entry.co"
-# RUN: echo "    answer += int[2]::type::rank -> int" >> "%t/entry.co"
-# RUN: echo "    return answer" >> "%t/entry.co"
+# RUN: echo "    int answer = 42;" >> "%t/entry.co"
+# RUN: echo "    answer += (1.0 : 0.0..2.0).toInt();" >> "%t/entry.co"
+# RUN: echo "    return answer;" >> "%t/entry.co"
 # RUN: echo "}" >> "%t/entry.co"
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object answer.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=COMPOUND --input-file "%t.err"
-# COMPOUND: [C4040] Error: LLVM lowering does not support this expression
-# COMPOUND: entry.co:3:15
-# COMPOUND: unsupported expression
+# COMPOUND: [C4040] Error: LLVM range membership requires integer endpoints
+# COMPOUND: entry.co:3:16
+# COMPOUND: unsupported range membership
 # RUN: diff "%t.saved" "%t/answer.o"
-# RUN: echo "pub fn<int> helper () = 7" > "%t/helper.co"
+# RUN: echo "pub fn<int> helper () = 7;" > "%t/helper.co"
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src helper.co --emit-object answer.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=FRONTEND --input-file "%t.err"
 # FRONTEND: [C3034] Error: Executable program requires a main function
 # RUN: diff "%t.saved" "%t/answer.o"
 
-# RUN: echo "using helper: helper" > "%t/entry.co"
-# RUN: echo "pub fn<int> main () = 42" >> "%t/entry.co"
+# RUN: echo "using helper: helper;" > "%t/entry.co"
+# RUN: echo "pub fn<int> main () = 42;" >> "%t/entry.co"
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object ./entry.co 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=SOURCE --input-file "%t.err"
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src entry.co --emit-object helper.co 2> "%t.err"
@@ -66,7 +66,7 @@
 
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --src entry.co --emit-object answer.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=KIND --input-file "%t.err"
-# KIND: [C0017] Error: --emit-object requires --kind executable
+# KIND: [C0017] Error: --emit-object requires --module-name for library output
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth -L --kind executable --src entry.co --emit-object answer.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=LEX --input-file "%t.err"
 # LEX: [C0017] Error: --emit-object is incompatible with lexer-only mode

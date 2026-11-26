@@ -13,12 +13,14 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <variant>
 #include <vector>
 
 #include <ast/expr/expression.hpp>
 #include <ast/type/type_parameters.hpp>
+#include <semantic/native_module.hpp>
 #include <semantic/program_kind.hpp>
 #include <semantic/symbol_table.hpp>
 #include <semantic/target_layout.hpp>
@@ -88,6 +90,8 @@ bool hasArrayShape (const ResolvedType &type);
 // A range or nullable range carries its checked endpoint as its single type argument.
 const ResolvedType *rangeEndpoint (const ResolvedType &type);
 }
+
+inline constexpr std::string_view FILE_ERROR_CASES[] = { "InvalidPath", "NotFound", "PermissionDenied", "OpenFailed", "AlreadyOpen", "NotOpen", "ReadFailed" };
 
 enum class LibraryIntrinsic {
 	DecodeUtf8,
@@ -173,6 +177,7 @@ struct TypeDispatch {
 	const Symbol                *initialState = nullptr;
 	std::vector<StateMethod>     stateMethods;
 	std::map<Operator, std::vector<ReferenceEquality>> referenceEquality;
+	std::optional<MethodRef>                           formatter = {};
 	[[nodiscard]] const MethodRef                     *methodTarget (const CallDispatch &call) const;
 	[[nodiscard]] const StateMethod                   *stateTarget (const MethodRef &contract) const;
 };
@@ -413,11 +418,13 @@ struct StructLayout {
 
 struct CheckedProgram : BodyFacts {
 	explicit CheckedProgram (SymbolTable entry, TargetLayout layout = {}, std::filesystem::path standardLibraryRoot = {},
-	                         ProgramKind kind = ProgramKind::Library);
+	                         ProgramKind kind = ProgramKind::Library, const NativeModules &modules = {});
 	const TargetLayout          layout;
 	const std::filesystem::path standardLibraryRoot;
 	const ProgramKind           kind;
 	const Symbol               *entryPoint = nullptr;
+	// Named library entry units share an ABI identity with their separately compiled consumers.
+	std::map<std::size_t, std::string> nativeModules;
 
 	// Own the declarations and stable instances referenced by the body facts.
 	std::vector<std::unique_ptr<const SymbolTable>>     units;

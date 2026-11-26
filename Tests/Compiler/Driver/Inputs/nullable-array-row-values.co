@@ -1,111 +1,111 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<struct> Box { pub int[3]?[2]? rows }
-typedef<struct> Cell { pub int[1] parts }
-typedef<enum> Pattern(pub def<Cell[2]?[1]> rows = [null, [{[42]}]]) { pub Default }
+typedef<struct> Box { pub int[3]?[2]? rows; }
+typedef<struct> Cell { pub int[1] parts; }
+typedef<enum> Pattern(pub def<Cell[2]?[1]> rows = [null, [{[42]}]]) { pub Default; }
 
 fn<int> trace(final int label, final int value) {
-    println(label)
-    return value
+    println(label);
+    return value;
 }
 
 fn<bool> replaceRows() {
-    int[2]?[2] rows = [null, [0, 42]]
-    int[2]?[2] saved := rows
-    int[2]? first := rows[0]
-    rows[0] = rows[1]
-    rows[1] = first
-    if (rows[0] != [0, 42] || rows[1] != null) return false
+    int[2]?[2] rows = [null, [0, 42]];
+    int[2]?[2] saved := rows;
+    int[2]? first := rows[0];
+    rows[0] = rows[1];
+    rows[1] = first;
+    if (rows[0] != [0, 42] || rows[1] != null) return false;
 
-    rows[trace(1, 1)] = (if (trace(2, 1) == 1) { rows = [[8, 9], null]; saved[1] } else null)
-    int[2]? captured := rows[if (trace(3, 1) == 1) { rows[1] = null; 1 } else 0]
-    if (captured == null || captured[1] != 42 || rows[1] != null || rows[0] != [8, 9]) return false
+    rows[trace(1, 1)] = (if (trace(2, 1) == 1) { rows = [[8, 9], null]; saved[1]; } else null);
+    int[2]? captured := rows[if (trace(3, 1) == 1) { rows[1] = null; 1; } else 0];
+    if (captured == null || captured[1] != 42 || rows[1] != null || rows[0] != [8, 9]) return false;
 
-    int[2]?[2] before := rows
-    bool equal := rows == (if (trace(4, 0) == 0) { rows[0] = null; before } else before)
-    return equal && rows != before && saved[1] == [0, 42]
+    int[2]?[2] before := rows;
+    bool equal := rows == (if (trace(4, 0) == 0) { rows[0] = null; before; } else before);
+    return equal && rows != before && saved[1] == [0, 42];
 }
 
 fn<bool> iterateRows() {
-    Box box = {[null, [0, 42], [0, 0]]}
-    def saved := box
-    if (box.rows == null) return false
-    int absent = 0
-    int total = 0
+    Box box = {[null, [0, 42], [0, 0]]};
+    def saved := box;
+    if (box.rows == null) return false;
+    int absent = 0;
+    int total = 0;
     for (int[2]? row <- box.rows) {
-        box.rows = null
-        if (row == null) { absent++; continue }
-        total += row[1]
-        row[1] = 7
+        box.rows = null;
+        if (row == null) { absent++; continue; }
+        total += row[1];
+        row[1] = 7;
     }
-    if (box.rows != null || saved.rows == null) return false
-    return absent == 1 && total == 42 && saved.rows[1] == [0, 42] && saved.rows[2] == [0, 0]
+    if (box.rows != null || saved.rows == null) return false;
+    return absent == 1 && total == 42 && saved.rows[1] == [0, 42] && saved.rows[2] == [0, 0];
 }
 
 fn<bool> compareRows() {
-    int[2]?[2] rows = [null, [0, 0]]
-    int[2]?[2] saved := rows
-    rows[1] = null
-    if (rows == saved || !(rows != saved)) return false
-    rows[1] = [0, 1]
-    if (rows == saved) return false
-    rows[1] = [0, 0]
-    if (rows != saved) return false
+    int[2]?[2] rows = [null, [0, 0]];
+    int[2]?[2] saved := rows;
+    rows[1] = null;
+    if (rows == saved || !(rows != saved)) return false;
+    rows[1] = [0, 1];
+    if (rows == saved) return false;
+    rows[1] = [0, 0];
+    if (rows != saved) return false;
 
-    int[2]?[0] empty = [[], null]
-    int[2]?[0] copy := empty
-    empty[0] = null
-    if (empty == copy || copy[0] == null || copy[1] != null) return false
-    int[2]?[2] absent := [null, null]
-    if (empty == absent || !(absent != empty)) return false
-    int[0]?[2] noRows := []
-    for (int[2]? row <- noRows) return false
-    return noRows == noRows
+    int[2]?[0] empty = [[], null];
+    int[2]?[0] copy := empty;
+    empty[0] = null;
+    if (empty == copy || copy[0] == null || copy[1] != null) return false;
+    int[2]?[2] absent := [null, null];
+    if (empty == absent || !(absent != empty)) return false;
+    int[0]?[2] noRows := [];
+    for (int[2]? row <- noRows) return false;
+    return noRows == noRows;
 }
 
 fn<bool> nestedRows() {
-    int[3]?[2]?[1] tree = [null, [[42], null], null]
-    int[3]?[2]?[1] saved := tree
-    tree[1] = [null, null]
-    if (tree == saved) return false
-    int[2]?[1]? branch := saved[1]
-    if (branch == null) return false
-    int[1]? row := branch[0]
-    if (row == null || row[0] != 42 || branch[1] != null) return false
-    int?[2]?[2] missing := [null, [null, 0]]
-    int?[2]?[2] zero := [null, [0, null]]
-    range<int>[2]?[1] inclusive := [null, [0..=42]]
-    range<int>[2]?[1] exclusive := [null, [0..42]]
-    return missing != zero && inclusive != exclusive
+    int[3]?[2]?[1] tree = [null, [[42], null], null];
+    int[3]?[2]?[1] saved := tree;
+    tree[1] = [null, null];
+    if (tree == saved) return false;
+    int[2]?[1]? branch := saved[1];
+    if (branch == null) return false;
+    int[1]? row := branch[0];
+    if (row == null || row[0] != 42 || branch[1] != null) return false;
+    int?[2]?[2] missing := [null, [null, 0]];
+    int?[2]?[2] zero := [null, [0, null]];
+    range<int>[2]?[1] inclusive := [null, [0..=42]];
+    range<int>[2]?[1] exclusive := [null, [0..42]];
+    return missing != zero && inclusive != exclusive;
 }
 
 fn<bool> floatRows(final float zero) {
-    float[1]?[1] rows = [[zero / zero]]
-    if (rows == rows || !(rows != rows)) return false
-    rows[0] = null
-    float[1]?[1] absent := [null]
-    return rows == absent && !(absent != rows)
+    float[1]?[1] rows = [[zero / zero]];
+    if (rows == rows || !(rows != rows)) return false;
+    rows[0] = null;
+    float[1]?[1] absent := [null];
+    return rows == absent && !(absent != rows);
 }
 
 fn<bool> structRows() {
-    Cell[2]?[1] rows = Pattern.Default.rows
-    Cell[2]?[1] saved := rows
-    Cell[1]? selected = rows[1]
-    if (selected == null) return false
-    selected[0].parts[0] = 7
-    rows[1] = selected
-    selected[0].parts[0] = 9
-    Cell[1]? changed := rows[1]
-    Cell[1]? original := saved[1]
-    return changed != null && original != null && changed[0].parts[0] == 7 && original[0].parts[0] == 42
+    Cell[2]?[1] rows = Pattern.Default.rows;
+    Cell[2]?[1] saved := rows;
+    Cell[1]? selected = rows[1];
+    if (selected == null) return false;
+    selected[0].parts[0] = 7;
+    rows[1] = selected;
+    selected[0].parts[0] = 9;
+    Cell[1]? changed := rows[1];
+    Cell[1]? original := saved[1];
+    return changed != null && original != null && changed[0].parts[0] == 7 && original[0].parts[0] == 42;
 }
 
 pub fn<int> main() {
-    if (!replaceRows()) return 1
-    if (!iterateRows()) return 2
-    if (!compareRows()) return 3
-    if (!nestedRows()) return 4
-    if (!structRows()) return 5
-    if (!floatRows(0.0)) return 6
-    return 42
+    if (!replaceRows()) return 1;
+    if (!iterateRows()) return 2;
+    if (!compareRows()) return 3;
+    if (!nestedRows()) return 4;
+    if (!structRows()) return 5;
+    if (!floatRows(0.0)) return 6;
+    return 42;
 }

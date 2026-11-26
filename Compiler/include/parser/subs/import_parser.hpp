@@ -20,8 +20,8 @@ class ImportParser {
 	Parser &p_parser;
 
 	ImportSelection::Names names () const;
-	Token                  identifierOnLine (const Token &keyword) const;
-	bool                   onLine (const Token &token) const;
+	Token                  pathIdentifier (const Token &keyword) const;
+	bool                   canContinueAfter (const Token &token) const;
 	bool                   at (Operator op) const;
 };
 

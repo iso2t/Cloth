@@ -215,7 +215,8 @@ class Token {
 	        s_lexeme(std::move(lexeme)) {
 	}
 
-	Token (const Token &other) = default;
+	Token (const Token &other)           = default;
+	Token &operator=(const Token &other) = default;
 
 	[[nodiscard]] const std::string &getLexeme () const {
 		return s_lexeme;

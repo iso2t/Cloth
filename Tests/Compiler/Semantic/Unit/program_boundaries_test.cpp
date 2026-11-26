@@ -53,9 +53,9 @@ TEST (SemanticProgram, EntryBelongsToTheExecutableAndBodiesAreAlwaysChecked) {
 	EXPECT_EQ(cp_program.kind, ProgramKind::Executable);
 	EXPECT_EQ(cp_program.entryPoint, &cp_program.units.front()->getGlobals().at("main").front());
 	entryError("typedef<class> App { mt main() {} }", Code::MissingMain);
-	entryError("fn main() {}\nfn<int> main() = 0", Code::DuplicateFunction);
-	entryError("fn<int> broken() = true", Code::ReturnType);
-	expectError("fn<int> broken() = true", Code::ReturnType);
+	entryError("fn main() {}\nfn<int> main() = 0;", Code::DuplicateFunction);
+	entryError("fn<int> broken() = true;", Code::ReturnType);
+	expectError("fn<int> broken() = true;", Code::ReturnType);
 }
 
 TEST (SemanticProgram, EntryDiagnosticsRetainTheEofAndDeclarationSpans) {
@@ -78,7 +78,7 @@ TEST (SemanticProgram, EntryDiagnosticsRetainTheEofAndDeclarationSpans) {
 	const std::vector<cde::SourceLabel> v_params = entryError("fn main(int n) {}", Code::InvalidMainParameters);
 	ASSERT_EQ(v_params.size(), 1u);
 	EXPECT_EQ(v_params.front().span.toString(), "1:4-1:8");
-	const std::vector<cde::SourceLabel> v_returns = entryError("fn<int, bool> main(int arg) = 1, true", Code::InvalidMainReturn);
+	const std::vector<cde::SourceLabel> v_returns = entryError("fn<int, bool> main(int arg) = 1, true;", Code::InvalidMainReturn);
 	ASSERT_EQ(v_returns.size(), 1u);
 	EXPECT_EQ(v_returns.front().span.toString(), "1:4-1:13");
 }
@@ -93,14 +93,14 @@ TEST (SemanticProgram, StartupArgumentsAndSignedExitTypes) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		for (const char *s_type : { "int", "int<8>", "int<16>", "int<32>", "int<64>", "isize" }) {
 			const CheckedProgram cp_program =
-			        checkEntry(std::string("fn<") + s_type + "> main() = 0", ProgramKind::Executable, TargetLayout{ .sizeBits=u_bits });
+			        checkEntry(std::string("fn<") + s_type + "> main() = 0;", ProgramKind::Executable, TargetLayout{ .sizeBits=u_bits });
 			ASSERT_NE(cp_program.entryPoint, nullptr);
 		}
 	}
 	EXPECT_NE(checkEntry("fn<void> main() {}").entryPoint, nullptr);
 	for (const char *s_type : { "usize", "unsigned int<8>", "int?", "bool", "float", "int[]" }) {
 		const std::string s_typeName(s_type);
-		entryError("fn<" + s_typeName + "> main() = main()", Code::InvalidMainReturn);
+		entryError("fn<" + s_typeName + "> main() = main();", Code::InvalidMainReturn);
 	}
 }
 
@@ -143,18 +143,18 @@ TEST (SemanticProgram, IntrinsicsFollowSelectedOverloadsAndSpecializedMethods) {
 }
 
 TEST (SemanticProgram, OwnershipObjectIsTheBuiltInReferenceRoot) {
-	const CheckedProgram cp_program = checkSource("typedef<class> Item\ntypedef<interface> View {}\ntypedef<class> Rooted : Object()\n"
-	                                              "fn<Object> item(Item v) = v\nfn<Object> view(View v) = v");
+	const CheckedProgram cp_program = checkSource("typedef<class> Item;\ntypedef<interface> View {}\ntypedef<class> Rooted : Object();\n"
+	                                              "fn<Object> item(Item v) = v;\nfn<Object> view(View v) = v;");
 	const SymbolScope   &ss_globals = cp_program.units.front()->getGlobals();
 	const ResolvedType  &rt_root    = cp_program.declarations.at(&ss_globals.at("item").front()).returns.front();
 	EXPECT_EQ(cp_program.declarations.at(&ss_globals.at("Item").front()).parents, ResultTypes{ rt_root });
 	EXPECT_EQ(cp_program.declarations.at(&ss_globals.at("Rooted").front()).parents, ResultTypes{ rt_root });
 	EXPECT_TRUE(cp_program.parentConstructors.empty());
-	expectError("typedef<class> Object", Code::InvalidClassMember);
-	expectError("fn<Object> make() = Object::new", Code::InvalidClassLifecycle);
-	expectError("typedef<class> Child : Object(1)", Code::InvalidClassMember);
-	expectError("fn<Object> box(int n) = n", Code::ReturnType);
-	expectError("typedef<struct> Item {}\nfn<Object> box(Item v) = v", Code::ReturnType);
+	expectError("typedef<class> Object;", Code::InvalidClassMember);
+	expectError("fn<Object> make() = Object::new;", Code::InvalidClassLifecycle);
+	expectError("typedef<class> Child : Object(1);", Code::InvalidClassMember);
+	expectError("fn<Object> box(int n) = n;", Code::ReturnType);
+	expectError("typedef<struct> Item {}\nfn<Object> box(Item v) = v;", Code::ReturnType);
 }
 
 }

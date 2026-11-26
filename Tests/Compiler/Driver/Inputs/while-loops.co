@@ -7,38 +7,38 @@ pub fn<int> main() {
         else if (conditionChecks(0) != 1 || conditionChecks(3) != 4) 4
         else if (early(false) != 7 || early(true) != 42) 5
         else if (triangle(3) != 6) 6
-        else 42
+        else 42;
 }
 
 fn<int> accumulate(int remaining, final int divisor) {
-    int total = 0
+    int total = 0;
     while (remaining > 0) {
-        int step = 6 / divisor
-        step++
-        total += step
-        remaining--
+        int step = 6 / divisor;
+        step++;
+        total += step;
+        remaining--;
     }
-    return total
+    return total;
 }
 
 fn<int> conditionChecks(final int limit) {
-    int count = 0
-    int checks = 0
-    while (if (true) { checks++; count < limit } else false) count++
-    return checks
+    int count = 0;
+    int checks = 0;
+    while (if (true) { checks++; count < limit; } else false) count++;
+    return checks;
 }
 
 fn<int> early(final bool flag) {
-    while (flag) return 42
-    return 7
+    while (flag) return 42;
+    return 7;
 }
 
 fn<int> triangle(int rows) {
-    int total = 0
+    int total = 0;
     while (rows > 0) {
-        int column = rows
-        while (column > 0) { total++; column-- }
-        rows--
+        int column = rows;
+        while (column > 0) { total++; column--; }
+        rows--;
     }
-    return total
+    return total;
 }

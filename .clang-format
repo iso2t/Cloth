@@ -45,10 +45,12 @@ IncludeCategories:
     Priority: 2
   - Regex: '^<Backend/'
     Priority: 3
-  - Regex: '^<([a-z0-9_]+|[a-z0-9_/]+\.h)>'
+  - Regex: '^<Runtime/'
     Priority: 4
-  - Regex: '^<'
+  - Regex: '^<([a-z0-9_]+|[a-z0-9_/]+\.h)>'
     Priority: 5
+  - Regex: '^<'
+    Priority: 6
 
 IncludeIsMainRegex: '(Test)?$'
 IndentCaseLabels: false

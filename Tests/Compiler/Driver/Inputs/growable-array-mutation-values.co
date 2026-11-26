@@ -1,53 +1,53 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 fn<bool> endsAndCopies() {
-    int[] values = []
-    values.clear()
-    values.insert(0, 7)
-    values.insert(values::size, 9)
-    int[] saved := values
+    int[] values = [];
+    values.clear();
+    values.insert(0, 7);
+    values.insert(values::size, 9);
+    int[] saved := values;
 
-    values.reserve(8)
-    values.insert(0, values[1])
-    values.insert(2, values[1])
-    if (values::size != 4 || values[0] != 9 || values[1] != 7 || values[2] != 7 || values[3] != 9) return false
-    if (values.removeAt(0) != 9 || values.removeAt(values::size - 1) != 9) return false
-    values.clear()
-    values.clear()
-    values.insert(0, 42)
-    return values.removeAt(0) == 42 && values::size == 0 && saved::size == 2 && saved[0] == 7 && saved[1] == 9
+    values.reserve(8);
+    values.insert(0, values[1]);
+    values.insert(2, values[1]);
+    if (values::size != 4 || values[0] != 9 || values[1] != 7 || values[2] != 7 || values[3] != 9) return false;
+    if (values.removeAt(0) != 9 || values.removeAt(values::size - 1) != 9) return false;
+    values.clear();
+    values.clear();
+    values.insert(0, 42);
+    return values.removeAt(0) == 42 && values::size == 0 && saved::size == 2 && saved[0] == 7 && saved[1] == 9;
 }
 
 fn<usize> index(final int label, final usize position) {
-    println(label)
-    return position
+    println(label);
+    return position;
 }
 
 fn<bool> argumentEffects() {
-    int[] values = [7]
-    values.insert(index(1, 2), if (index(2, 0) == 0) { values.append(9); 42 } else 0)
-    if (values::size != 3 || values[0] != 7 || values[1] != 9 || values[2] != 42) return false
-    int removed := values.removeAt(if (index(3, 1) == 1) { values = [8, 42, 6]; 1 } else 0)
-    values.insert(0, values.removeAt(1))
-    return removed == 42 && values::size == 2 && values[0] == 6 && values[1] == 8
+    int[] values = [7];
+    values.insert(index(1, 2), if (index(2, 0) == 0) { values.append(9); 42; } else 0);
+    if (values::size != 3 || values[0] != 7 || values[1] != 9 || values[2] != 42) return false;
+    int removed := values.removeAt(if (index(3, 1) == 1) { values = [8, 42, 6]; 1; } else 0);
+    values.insert(0, values.removeAt(1));
+    return removed == 42 && values::size == 2 && values[0] == 6 && values[1] == 8;
 }
 
 fn<bool> wideCells() {
-    int<12>[] small = [-2048, 2047]
-    small.insert(1, -42)
-    if (small.removeAt(0) != -2048 || small.removeAt(0) != -42 || small[0] != 2047) return false
-    unsigned int<65>[] wide = [0, 1]
-    wide.reserve(8)
-    wide.insert(1, 18446744073709551616)
-    if (wide.removeAt(1) != 18446744073709551616 || wide[1] != 1) return false
-    int<65536>[] largest = [7, 9]
-    largest.insert(1, int<65536>::min)
-    return largest.removeAt(1) == int<65536>::min && largest[0] == 7 && largest[1] == 9
+    int<12>[] small = [-2048, 2047];
+    small.insert(1, -42);
+    if (small.removeAt(0) != -2048 || small.removeAt(0) != -42 || small[0] != 2047) return false;
+    unsigned int<65>[] wide = [0, 1];
+    wide.reserve(8);
+    wide.insert(1, 18446744073709551616);
+    if (wide.removeAt(1) != 18446744073709551616 || wide[1] != 1) return false;
+    int<65536>[] largest = [7, 9];
+    largest.insert(1, int<65536>::min);
+    return largest.removeAt(1) == int<65536>::min && largest[0] == 7 && largest[1] == 9;
 }
 
 pub fn<int> main() {
-    if (!endsAndCopies()) return 1
-    if (!argumentEffects()) return 2
-    if (!wideCells()) return 3
-    return 42
+    if (!endsAndCopies()) return 1;
+    if (!argumentEffects()) return 2;
+    if (!wideCells()) return 3;
+    return 42;
 }

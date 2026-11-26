@@ -1,29 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<struct> Slot<T> { pub T bounds, pub T? selection }
-typedef<struct> Panel<T> { pub usize tag, pub Slot<T> inner }
+typedef<struct> Slot<T> { pub T bounds, pub T? selection; }
+typedef<struct> Panel<T> { pub usize tag, pub Slot<T> inner; }
 
 fn<bool> copyWide(final bool inclusive) {
-    def high := unsigned int<65>::max
-    def low := high -> unsigned int<64> -> unsigned int<65>
-    def expected := if (inclusive) low..=high else low..high
-    Panel<range<unsigned int<65>>> panel = {usize::max, {expected, expected}}
-    def saved := panel
-    panel.inner.selection = null
-    panel.inner.bounds = high..low
-    if (panel.inner.selection != null || saved.inner.selection == null || panel.tag != usize::max) return false
-    if (saved.inner.selection != expected || (high : saved.inner.selection) != inclusive) return false
-    if (saved.inner.bounds != expected || panel.inner.bounds != (high..low)) return false
-    panel.inner.selection = 0..0
-    return panel.inner.selection != null && !(0 : panel.inner.selection)
+    def high := unsigned int<65>::max;
+    def low := high -> unsigned int<64> -> unsigned int<65>;
+    def expected := if (inclusive) low..=high else low..high;
+    Panel<range<unsigned int<65>>> panel = {usize::max, {expected, expected}};
+    def saved := panel;
+    panel.inner.selection = null;
+    panel.inner.bounds = high..low;
+    if (panel.inner.selection != null || saved.inner.selection == null || panel.tag != usize::max) return false;
+    if (saved.inner.selection != expected || (high : saved.inner.selection) != inclusive) return false;
+    if (saved.inner.bounds != expected || panel.inner.bounds != (high..low)) return false;
+    panel.inner.selection = 0..0;
+    return panel.inner.selection != null && !(0 : panel.inner.selection);
 }
 
 pub fn<int> main() {
-    if (!copyWide(false) || !copyWide(true)) return 1
-    Slot<range<isize>> word = {13..16, null}
-    word.selection = 13..=15
-    if (word.selection == null) return 2
-    int total = 0
-    for (isize n <- word.selection) total += n -> int
-    return total
+    if (!copyWide(false) || !copyWide(true)) return 1;
+    Slot<range<isize>> word = {13..16, null};
+    word.selection = 13..=15;
+    if (word.selection == null) return 2;
+    int total = 0;
+    for (isize n <- word.selection) total += n -> int;
+    return total;
 }

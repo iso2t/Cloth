@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-fn grow<T>() = grow<T[]>()
+fn grow<T>() = grow<T[]>();
 
 // RUN: %expect_exit --empty-stdout 1 %cloth --src "%/s" 2> "%t.err"
 // RUN: %filecheck "%/s" --input-file "%t.err"

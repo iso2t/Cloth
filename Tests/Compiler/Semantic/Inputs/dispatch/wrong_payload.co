@@ -1,4 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 typedef<class> Machine { pub default(0) state<int> Loaded {} }
-fn set(Machine item) { item -> Loaded(false) }
+fn set(Machine item) { item -> Loaded(false); }

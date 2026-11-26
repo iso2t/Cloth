@@ -1,46 +1,46 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 fn<int> trace(final int label, final int value) {
-    println(label)
-    return value
+    println(label);
+    return value;
 }
 
 fn<int> early(final int stage) {
-    int[1][1] rows = [[1]]
-    rows[if (stage == 1) { return 11 } else 0][if (stage == 2) { return 22 } else 0] = (if (stage == 3) { return 33 } else 42)
-    return rows[0][0]
+    int[1][1] rows = [[1]];
+    rows[if (stage == 1) { return 11; } else 0][if (stage == 2) { return 22; } else 0] = (if (stage == 3) { return 33; } else 42);
+    return rows[0][0];
 }
 
 fn<int> leaveAtRow(final bool stop) {
-    int[2][1][1] cube = [[[1]], [[2]]]
-    cube[trace(7, 1)][if (stop) { return 42 } else { return 7 }][trace(99, 0)] = trace(99, 0)
+    int[2][1][1] cube = [[[1]], [[2]]];
+    cube[trace(7, 1)][if (stop) { return 42; } else { return 7; }][trace(99, 0)] = trace(99, 0);
 }
 
 pub fn<int> main() {
-    int<12>[2][3] rows = [[1, 2, 3], [4, 5, 42]]
-    def saved := rows
-    int row = 1
-    int col = 2
-    rows[trace(1, row)][if (trace(2, col) == 2) { row = 0; 2 } else 0] = (if (trace(3, 1) == 1) {
-        rows = [[10, 11, 12], [13, 14, 15]]
-        col = 0
-        7
-    } else 0)
-    if (row != 0 || col != 0 || rows[1][2] != 7 || rows[1][1] != 14 || rows[0][2] != 12 || saved[1][2] != 42) return 1
+    int<12>[2][3] rows = [[1, 2, 3], [4, 5, 42]];
+    def saved := rows;
+    int row = 1;
+    int col = 2;
+    rows[trace(1, row)][if (trace(2, col) == 2) { row = 0; 2; } else 0] = (if (trace(3, 1) == 1) {
+        rows = [[10, 11, 12], [13, 14, 15]];
+        col = 0;
+        7;
+    } else 0);
+    if (row != 0 || col != 0 || rows[1][2] != 7 || rows[1][1] != 14 || rows[0][2] != 12 || saved[1][2] != 42) return 1;
 
-    rows[trace(4, 1)][trace(5, 2)] += (if (trace(6, 1) == 1) { rows[1][2] = 90; 2 } else 0)
-    rows[1][2]++
-    if (rows[1][2] != 10) return 2
+    rows[trace(4, 1)][trace(5, 2)] += (if (trace(6, 1) == 1) { rows[1][2] = 90; 2; } else 0);
+    rows[1][2]++;
+    if (rows[1][2] != 10) return 2;
 
-    unsigned int<65>[2][1][2] cube = [[[1, 2]], [[3, 4]]]
-    def before := cube
-    cube[1][0][1] = unsigned int<65>::max
-    if (cube[1][0][1] != unsigned int<65>::max || before[1][0][1] != 4) return 3
-    int?[1][2] optional = [[0, null]]
-    if (optional[0][0] == null) return 4
-    optional[0][0] = null
-    optional[0][1] = 0
-    if (optional[0][0] != null || optional[0][1] == null || optional[0][1] != 0) return 5
-    if (early(1) != 11 || early(2) != 22 || early(3) != 33 || leaveAtRow(true) != 42) return 6
-    return early(0)
+    unsigned int<65>[2][1][2] cube = [[[1, 2]], [[3, 4]]];
+    def before := cube;
+    cube[1][0][1] = unsigned int<65>::max;
+    if (cube[1][0][1] != unsigned int<65>::max || before[1][0][1] != 4) return 3;
+    int?[1][2] optional = [[0, null]];
+    if (optional[0][0] == null) return 4;
+    optional[0][0] = null;
+    optional[0][1] = 0;
+    if (optional[0][0] != null || optional[0][1] == null || optional[0][1] != 0) return 5;
+    if (early(1) != 11 || early(2) != 22 || early(3) != 33 || leaveAtRow(true) != 42) return 6;
+    return early(0);
 }

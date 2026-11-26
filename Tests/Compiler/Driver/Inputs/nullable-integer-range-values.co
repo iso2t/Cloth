@@ -1,31 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 fn<int> trace(final int value) {
-    println(value)
-    return value
+    println(value);
+    return value;
 }
 
 fn<bool> selectsRange(final bool present) {
-    range<int>? maybe := if (present) 0..0 else null
-    range<int> selected := maybe ?: (trace(1)..=trace(2))
-    return if (present) selected == (0..0) else selected == (1..=2)
+    range<int>? maybe := if (present) 0..0 else null;
+    range<int> selected := maybe ?: (trace(1)..=trace(2));
+    return if (present) selected == (0..0) else selected == (1..=2);
 }
 
 pub fn<int> main() {
-    if (!selectsRange(true) || !selectsRange(false)) return 1
+    if (!selectsRange(true) || !selectsRange(false)) return 1;
 
-    range<unsigned int<65>>? bounds = 0..0
-    range<unsigned int<65>>? copy := bounds
-    bounds = null
-    if (null != bounds || null == copy || 0 : copy) return 2
-    bounds = unsigned int<65>::max..=unsigned int<65>::max
-    if (bounds == null || !(unsigned int<65>::max : bounds)) return 3
+    range<unsigned int<65>>? bounds = 0..0;
+    range<unsigned int<65>>? copy := bounds;
+    bounds = null;
+    if (null != bounds || null == copy || 0 : copy) return 2;
+    bounds = unsigned int<65>::max..=unsigned int<65>::max;
+    if (bounds == null || !(unsigned int<65>::max : bounds)) return 3;
 
-    range<isize>? word = null -> range<isize>?
-    word = -1..=1
-    int count = 0
+    range<isize>? word = null -> range<isize>?;
+    word = -1..=1;
+    int count = 0;
     if (word != null) {
-        for (isize n <- word) count++
+        for (isize n <- word) count++;
     }
-    return if (count == 3) 42 else 4
+    return if (count == 3) 42 else 4;
 }

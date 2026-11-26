@@ -1,48 +1,48 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<struct> Slot { pub int<12>? value, pub bool ready }
-typedef<enum> Reading(pub def<int<12>?> code = null) { pub Missing, pub Zero(0), pub Minimum(-2048) }
+typedef<struct> Slot { pub int<12>? value, pub bool ready; }
+typedef<enum> Reading(pub def<int<12>?> code = null) { pub Missing, pub Zero(0), pub Minimum(-2048); }
 
 pub fn<int> main() {
-    int? missing = choose(false, 0)
-    int? zero = choose(true, 0)
-    if (missing == zero || missing != choose(false, 7)) return 1
-    if (0 != zero || missing == 0 || zero != false || false == missing) return 2
-    if (traced(1, missing) == traced(2, zero)) return 3
-    if (null != traced(3, missing) || null == zero) return 4
-    if ((zero ?: fallback(98)) != 0 || (missing ?: fallback(4)) != 7) return 5
+    int? missing = choose(false, 0);
+    int? zero = choose(true, 0);
+    if (missing == zero || missing != choose(false, 7)) return 1;
+    if (0 != zero || missing == 0 || zero != false || false == missing) return 2;
+    if (traced(1, missing) == traced(2, zero)) return 3;
+    if (null != traced(3, missing) || null == zero) return 4;
+    if ((zero ?: fallback(98)) != 0 || (missing ?: fallback(4)) != 7) return 5;
 
-    Slot slot = {Reading.Zero.code, true}
-    def saved := slot
-    slot.value = Reading.Missing.code
-    if (slot.value != null || saved.value == null || saved.value != 0 || !slot.ready) return 6
-    slot.value = Reading.Minimum.code
-    if (slot.value == null) return 7
-    slot.value += 1
-    if (slot.value != -2047) return 8
-    if (widen(Reading.Missing.code) != null || widen(Reading.Minimum.code) != -2048) return 9
-    if (word(true) != usize::max || word(false) != null) return 12
-    if (wide(true) == 0 || wide(false) == wide(true)) return 13
+    Slot slot = {Reading.Zero.code, true};
+    def saved := slot;
+    slot.value = Reading.Missing.code;
+    if (slot.value != null || saved.value == null || saved.value != 0 || !slot.ready) return 6;
+    slot.value = Reading.Minimum.code;
+    if (slot.value == null) return 7;
+    slot.value += 1;
+    if (slot.value != -2047) return 8;
+    if (widen(Reading.Missing.code) != null || widen(Reading.Minimum.code) != -2048) return 9;
+    if (word(true) != usize::max || word(false) != null) return 12;
+    if (wide(true) == 0 || wide(false) == wide(true)) return 13;
 
-    int? copy = zero
-    zero = null
-    if (copy == null || copy != 0 || zero != null) return 10
-    copy++
-    if (copy == null) return 11
-    return 41 + copy
+    int? copy = zero;
+    zero = null;
+    if (copy == null || copy != 0 || zero != null) return 10;
+    copy++;
+    if (copy == null) return 11;
+    return 41 + copy;
 }
 
-fn<int?> choose(final bool present, final int value) = if (present) value else null
-fn<int?> widen(final int<12>? value) = value -> int?
-fn<usize?> word(final bool present) = if (present) usize::max else null
-fn<unsigned int<97>?> wide(final bool present) = if (present) 0x1000000000000000000000000 else null
+fn<int?> choose(final bool present, final int value) = if (present) value else null;
+fn<int?> widen(final int<12>? value) = value -> int?;
+fn<usize?> word(final bool present) = if (present) usize::max else null;
+fn<unsigned int<97>?> wide(final bool present) = if (present) 0x1000000000000000000000000 else null;
 
 fn<int?> traced(final int label, final int? value) {
-    println(label)
-    return value
+    println(label);
+    return value;
 }
 
 fn<int> fallback(final int label) {
-    println(label)
-    return 7
+    println(label);
+    return 7;
 }

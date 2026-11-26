@@ -2,134 +2,134 @@
 
 // The test runtime checks the live allocation count at each println call.
 fn<int> scopes(final int mode) {
-    int[] outer = [42]
+    int[] outer = [42];
     if (mode == 0) {
-        int[] nested = outer
-        nested.append(7)
+        int[] nested = outer;
+        nested.append(7);
     }
-    println(1)
+    println(1);
     for (int n <- 0..8) {
-        println(1)
-        int[] local = [n]
-        if (n == 1) continue
-        if (mode == 1 && n == 2) break
-        if (mode == 2 && n == 3) return 13
-        int cell := local[if (mode == 3 && n == 4) { return 17 } else { local.reserve(4); 0 }]
-        local.append(if (mode == 4 && n == 5) { return 19 } else cell)
+        println(1);
+        int[] local = [n];
+        if (n == 1) continue;
+        if (mode == 1 && n == 2) break;
+        if (mode == 2 && n == 3) return 13;
+        int cell := local[if (mode == 3 && n == 4) { return 17; } else { local.reserve(4); 0; }];
+        local.append(if (mode == 4 && n == 5) { return 19; } else cell);
     }
-    println(1)
-    return outer[0]
+    println(1);
+    return outer[0];
 }
 
 fn<int> conditionCopies() {
-    int[] values = [1]
-    int turns = 0
+    int[] values = [1];
+    int turns = 0;
     do {
-        println(1)
-        turns++
-        if (turns == 3) return turns
-    } while (values[if (turns < 4) { values.reserve(8); 0 } else 0] == 1)
-    return 0
+        println(1);
+        turns++;
+        if (turns == 3) return turns;
+    } while (values[if (turns < 4) { values.reserve(8); 0; } else 0] == 1);
+    return 0;
 }
 
 fn<int> stepCopies() {
-    int[] values = [1]
-    for (int n <- 0..4; n += values[if (n < 4) { values.reserve(8); 0 } else 0]) {
-        println(1)
-        if (n == 2) return n
+    int[] values = [1];
+    for (int n <- 0..4; n += values[if (n < 4) { values.reserve(8); 0; } else 0]) {
+        println(1);
+        if (n == 2) return n;
     }
-    return 0
+    return 0;
 }
 
 fn<int> branchCopies(final bool enter) {
-    int[] source = [42]
-    bool taken := enter && source[if (enter) { source.reserve(4); 0 } else 0] == 42
-    if (taken != enter) return 1
-    println(1)
-    int[] chosen := if (enter) { int[] local = [42]; local } else source
-    println(2)
-    return chosen[0]
+    int[] source = [42];
+    bool taken := enter && source[if (enter) { source.reserve(4); 0; } else 0] == 42;
+    if (taken != enter) return 1;
+    println(1);
+    int[] chosen := if (enter) { int[] local = [42]; local; } else source;
+    println(2);
+    return chosen[0];
 }
 
 fn<int> mutationExits(final int mode) {
-    int[] values = []
-    values.clear()
-    println(0)
-    values.reserve(4)
-    values.insert(0, 7)
-    values.insert((if (mode == 1) { return 11 } else 1), if (mode == 2) { return 13 } else 42)
-    int removed := values.removeAt(if (mode == 3) { return 17 } else 1)
-    values.clear()
-    values.clear()
-    println(1)
-    values.insert(0, removed)
-    return values.removeAt(0)
+    int[] values = [];
+    values.clear();
+    println(0);
+    values.reserve(4);
+    values.insert(0, 7);
+    values.insert((if (mode == 1) { return 11; } else 1), if (mode == 2) { return 13; } else 42);
+    int removed := values.removeAt(if (mode == 3) { return 17; } else 1);
+    values.clear();
+    values.clear();
+    println(1);
+    values.insert(0, removed);
+    return values.removeAt(0);
 }
 
 fn<int> traversalExits(final int mode) {
-    int[] values = [1, 2, 3]
-    int total = 0
+    int[] values = [1, 2, 3];
+    int total = 0;
     for (def n <- values) {
-        println(2)
-        for (def inner <- values) { println(3); break }
-        println(2)
-        int[] local = [n]
-        if (mode == 1 && n == 1) continue
-        if (mode == 2 && n == 2) break
-        if (mode == 3 && n == 2) return total
-        total += local[0]
+        println(2);
+        for (def inner <- values) { println(3); break; }
+        println(2);
+        int[] local = [n];
+        if (mode == 1 && n == 1) continue;
+        if (mode == 2 && n == 2) break;
+        if (mode == 3 && n == 2) return total;
+        total += local[0];
     }
-    println(1)
-    return total
+    println(1);
+    return total;
 }
 
 fn<bool> comparisonExits(final bool leave) {
-    int[] saved := [42]
-    for (def n <- saved) println(1)
-    int[] values = [42]
-    if (values == (if (leave) { return true } else [42])) {
-        println(2)
-        return true
+    int[] saved := [42];
+    for (def n <- saved) println(1);
+    int[] values = [42];
+    if (values == (if (leave) { return true; } else [42])) {
+        println(2);
+        return true;
     }
-    return false
+    return false;
 }
 
 fn<int> nullableCellExits(final bool early) {
-    int?[] cells = [null, 42]
+    int?[] cells = [null, 42];
     for (int? cell <- cells) {
-        cells.clear()
-        if (cell == null) continue
-        int?[] copy := [cell]
-        println(3)
-        if (early) return copy[0] ?: 0
-        break
+        cells.clear();
+        if (cell == null) continue;
+        int?[] copy := [cell];
+        println(3);
+        if (early) return copy[0] ?: 0;
+        break;
     }
-    println(1)
-    return 42
+    println(1);
+    return 42;
 }
 
 pub fn<int> main() {
-    if (scopes(0) != 42) return 1
-    println(0)
-    if (scopes(1) != 42) return 2
-    println(0)
-    if (scopes(2) != 13) return 3
-    println(0)
-    if (scopes(3) != 17) return 4
-    println(0)
-    if (scopes(4) != 19) return 5
-    println(0)
-    if (conditionCopies() != 3 || stepCopies() != 2) return 6
-    println(0)
-    if (branchCopies(false) != 42 || branchCopies(true) != 42) return 7
-    println(0)
-    if (mutationExits(1) != 11 || mutationExits(2) != 13 || mutationExits(3) != 17 || mutationExits(0) != 42) return 8
-    println(0)
-    if (traversalExits(0) != 6 || traversalExits(1) != 5 || traversalExits(2) != 1 || traversalExits(3) != 1) return 9
-    println(0)
-    if (!comparisonExits(true) || !comparisonExits(false)) return 10
-    println(0)
-    if (nullableCellExits(true) != 42 || nullableCellExits(false) != 42) return 11
-    println(0)
-    return 42
+    if (scopes(0) != 42) return 1;
+    println(0);
+    if (scopes(1) != 42) return 2;
+    println(0);
+    if (scopes(2) != 13) return 3;
+    println(0);
+    if (scopes(3) != 17) return 4;
+    println(0);
+    if (scopes(4) != 19) return 5;
+    println(0);
+    if (conditionCopies() != 3 || stepCopies() != 2) return 6;
+    println(0);
+    if (branchCopies(false) != 42 || branchCopies(true) != 42) return 7;
+    println(0);
+    if (mutationExits(1) != 11 || mutationExits(2) != 13 || mutationExits(3) != 17 || mutationExits(0) != 42) return 8;
+    println(0);
+    if (traversalExits(0) != 6 || traversalExits(1) != 5 || traversalExits(2) != 1 || traversalExits(3) != 1) return 9;
+    println(0);
+    if (!comparisonExits(true) || !comparisonExits(false)) return 10;
+    println(0);
+    if (nullableCellExits(true) != 42 || nullableCellExits(false) != 42) return 11;
+    println(0);
+    return 42;
 }

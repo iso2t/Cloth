@@ -26,8 +26,16 @@ GoogleTest checks compiler data structures through their C++ interfaces.
      - ``make test-diagnostics``
    * - All C++ tests
      - ``make test-unit``
+   * - Shuttle project builds and linking
+     - ``make test-shuttle``
    * - Whole suite
      - ``make test``
+
+The full suite also requires Rust with Cargo and a C linker for the host.
+Shuttle's tests link separately built libraries and run a Stdlib consumer
+with the packaged native runtime. Use ``SHUTTLE_TEST_TARGET_BITS=32``
+with a matching C linker and a built 32-bit archive to exercise that
+width. See `target and tool selection <../../Shuttle/README.rst#target-and-tool-selection>`_.
 
 The lexer and diagnostics targets run both kinds of tests. The driver
 target runs CLI fixtures. The parser target runs C++ assertions on the

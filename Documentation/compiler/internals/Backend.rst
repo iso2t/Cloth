@@ -10,6 +10,30 @@ entry point. Declaring each LLVM function before lowering its body lets
 recursive calls use the same declaration. See the `object-file example
 <../driver/Objects.rst#functions-in-another-file>`_.
 
+Separate compilation
+--------------------
+
+The frontend records the logical names of library entry units in
+``CheckedProgram::nativeModules``. An exported function is identified
+by its declaring unit, its checked signature and its public visibility.
+A named library seeds the lowering queue with its concrete public
+top-level functions and their default argument thunks. Private helpers
+and ordinary source imports enter the queue when reached. A call to
+another native library creates an external LLVM declaration. Generic
+instances continue to use the requesting object's specialization cache.
+
+The ``cloth_v1`` link name encodes the normalized module and function
+names as UTF-8 hex components. Parameter and result types
+record the checked base name, integer or floating width and nullability.
+A default thunk adds its parameter index. This makes the same overload
+addressable after source relocation, declaration reordering or a
+parameter rename. Changes
+to that signature or to the calling convention require rebuilding
+consumers. ABI changes to encoding or value representation require a new
+version of the link name. The `separate-compilation regression
+<../../../Tests/Compiler/Driver/native-library.test>`_ checks symbol
+bindings and relinks an existing consumer object with a changed provider.
+
 Types and the target
 --------------------
 
@@ -407,10 +431,43 @@ The `array iteration driver test
 <../../../Tests/Compiler/Driver/fixed-array-iteration.test>`_ checks row
 mutation, empty dimensions, and nested traversal.
 
+Standard library calls and stored values
+----------------------------------------
+
+A collection loop consumes the frontend's ``Iteration`` record. Lowering
+calls its selected ``foreach`` operator once and projects the checked slots
+and element fields. A returned snapshot owns its growable buffers through
+the loop exit. Assigning a struct or fixed array containing those buffers
+copies the buffers before releasing the destination. Class disposal,
+temporary cleanup and return-value transfers use the same per-type
+operations. See `buffer ownership <../../../Backend/src/backend/buffer_ownership.cpp>`_.
+
+``BuiltinCall`` supplies the primitive operation and its adapted arguments.
+``ProviderSelection`` and ``BodyFacts::textConversions`` supply formatters
+for explicit conversions, printing, and interpolation. A type information
+value points to a module constant with its spelling, element descriptor,
+rank, extent, width and predicates. See `built-in lowering
+<../../../Backend/src/backend/builtin_lowering.cpp>`_ and `type metadata
+<../../../Backend/src/backend/type_metadata.cpp>`_.
+
+A string carries a byte pointer and a target-sized length. The text
+runtime interns dynamically produced UTF-8 and releases the stored bytes
+at process exit. Copies and substrings can share immutable bytes. Programs
+that generate many distinct strings retain that storage for the life of
+the process. Runtime calls receive pointers to aggregates so both x86
+targets use the host C calling convention.
+
+The ``DeclarationInfo::intrinsic`` selection identifies a registered file
+or decoder operation. A file handle belongs to its object registry slot.
+The lowering maps runtime status codes to the checked enum cases by name,
+so the library can reorder its cases. See the `file runtime
+<../../../Runtime/src/files.c>`_ and the `linked consumers
+<../../../Tests/Compiler/Driver/stdlib-native.test>`_.
+
 Runtime calls and object output
 -------------------------------
 
-Printing an integer calls ``cloth_rt_println_i32``. An integer division
+Printing a signed 32-bit integer with ``println`` calls ``cloth_rt_println_i32``. An integer division
 with a variable divisor needs a failure path for zero. The runtime writes
 the diagnostic and terminates the process. The `runtime dependencies
 <../driver/Objects.rst#runtime-dependencies>`_ identify the C source a

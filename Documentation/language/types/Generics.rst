@@ -9,10 +9,10 @@ the same type. Passing an ``int<8>`` keeps the result eight bits wide.
 
 .. code-block:: text
 
-   using cloth.lang.num.Number: Number
+   using cloth.lang.num.Number: Number;
 
-   fn<T> twice<T: Number>(T value) = value + value
-   fn<int<8>> narrow(int<8> value) = twice(value)
+   fn<T> twice<T: Number>(T value) = value + value;
+   fn<int<8>> narrow(int<8> value) = twice(value);
 
 Check this example with ``--stdlib Stdlib`` from the repository root.
 The `numeric bound example <../../../Tests/Compiler/Semantic/generic-number.co>`_
@@ -51,8 +51,8 @@ A default can refer to an earlier type parameter. In this example
 
 .. code-block:: text
 
-   fn<U> choose<T, U = T>(T a, U b) = b
-   fn<int<8>> chooseByte(int<8> n) = choose<bool, _>(true, n)
+   fn<U> choose<T, U = T>(T a, U b) = b;
+   fn<int<8>> chooseByte(int<8> n) = choose<bool, _>(true, n);
 
 An explicit list can omit trailing parameters that have defaults. Use
 a written ``_`` for a position that needs inference. The same distinction
@@ -66,7 +66,7 @@ A bound declares the operations a generic body can use. A class or
 interface bound gives access to its visible members. Join requirements
 with ``&``. A constructor bound such as ``T: new()`` allows ``T::new()`` and
 requires a matching accessible constructor on the supplied type.
-For example, ``fn<T> make<T: new()>() = T::new()`` can construct any class
+For example, ``fn<T> make<T: new()>() = T::new();`` can construct any class
 that meets that requirement.
 
 When a generic body calls a constructor through its bound, argument names

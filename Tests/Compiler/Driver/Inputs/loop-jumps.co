@@ -9,95 +9,95 @@ pub fn<int> main() {
         else if (skipTrailer(0) != 7) 6
         else if (logicalJumps(true, false) != 100 || logicalJumps(false, true) != 101 || logicalJumps(false, false) != 11) 7
         else if (guaranteedJump(true) != 1 || guaranteedJump(false) != 3) 8
-        else 42
+        else 42;
 }
 
 fn<int> guardedWhile() {
-    int n = 0
-    int total = 0
-    int tests = 0
-    while (if (true) { tests++; n < 10 } else false) {
-        n++
-        if (n == 2) continue
-        if (n == 5) break
-        total += n
+    int n = 0;
+    int total = 0;
+    int tests = 0;
+    while (if (true) { tests++; n < 10; } else false) {
+        n++;
+        if (n == 2) continue;
+        if (n == 5) break;
+        total += n;
     }
-    return total * 10 + tests
+    return total * 10 + tests;
 }
 
 fn<int> postTest() {
-    int n = 0
-    int tests = 0
+    int n = 0;
+    int tests = 0;
     do {
-        n++
-        if (n == 3) break
-        continue
-    } while (if (true) { tests++; n < 6 } else false)
-    return n * 10 + tests
+        n++;
+        if (n == 3) break;
+        continue;
+    } while (if (true) { tests++; n < 6; } else false);
+    return n * 10 + tests;
 }
 
 fn<int> nestedBodies() {
-    int rows = 0
-    int total = 0
+    int rows = 0;
+    int total = 0;
     while (rows < 5) {
-        rows++
-        int column = 0
+        rows++;
+        int column = 0;
         do {
-            column++
-            if (column == 1) continue
-            if (column == 3) break
-            total += rows
-        } while (column < 6)
-        if (rows == 2) continue
-        if (rows == 3) break
-        total += 10
+            column++;
+            if (column == 1) continue;
+            if (column == 3) break;
+            total += rows;
+        } while (column < 6);
+        if (rows == 2) continue;
+        if (rows == 3) break;
+        total += 10;
     }
-    return total
+    return total;
 }
 
 fn<int> breakFromTrailer() {
-    int rows = 0
-    int total = 0
+    int rows = 0;
+    int total = 0;
     while (rows < 5) {
-        rows++
-        do continue while (if (rows == 2) { break } else false)
-        total += 10
+        rows++;
+        do continue; while (if (rows == 2) { break; } else false);
+        total += 10;
     }
-    return total + rows
+    return total + rows;
 }
 
 fn<int> continueFromHeader() {
-    int rows = 0
-    int tests = 0
+    int rows = 0;
+    int tests = 0;
     do {
-        rows++
-        while (if (true) { continue } else false) { return 99 }
-    } while (if (true) { tests++; rows < 3 } else false)
-    return rows * 10 + tests
+        rows++;
+        while (if (true) { continue; } else false) { return 99; }
+    } while (if (true) { tests++; rows < 3; } else false);
+    return rows * 10 + tests;
 }
 
 fn<int> skipTrailer(final int divisor) {
-    do break while (1 / divisor > 0)
-    return 7
+    do break; while (1 / divisor > 0);
+    return 7;
 }
 
 fn<int> logicalJumps(final bool stop, final bool skip) {
-    int total = 0
-    int effects = 0
+    int total = 0;
+    int effects = 0;
     do {
-        bool first := stop && (if (true) { effects++; break } else true)
-        total++
-        bool second := !skip || (if (true) { effects++; continue } else false)
-        total += 10
-    } while (false)
-    return total + 100 * effects
+        bool first := stop && (if (true) { effects++; break; } else true);
+        total++;
+        bool second := !skip || (if (true) { effects++; continue; } else false);
+        total += 10;
+    } while (false);
+    return total + 100 * effects;
 }
 
 fn<int> guaranteedJump(final bool leave) {
-    int visits = 0
+    int visits = 0;
     do {
-        visits++
-        bool result := true && ((if (leave) { break } else { continue }) || false)
-    } while (visits < 3)
-    return visits
+        visits++;
+        bool result := true && ((if (leave) { break; } else { continue; }) || false);
+    } while (visits < 3);
+    return visits;
 }

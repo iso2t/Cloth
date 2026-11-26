@@ -1,37 +1,37 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<struct> Cell { pub bool ready, pub char? value }
-typedef<enum> Glyph(pub def<char?> value = null) { pub Missing, pub Nul('\0' -> char?), pub Face('😀') }
+typedef<struct> Cell { pub bool ready, pub char? value; }
+typedef<enum> Glyph(pub def<char?> value = null) { pub Missing, pub Nul('\0' -> char?), pub Face('😀'); }
 
 pub fn<int> main() {
-    char? missing = choose(false, '*')
-    char? nul = choose(true, '\0')
-    char? face = choose(true, '😀')
-    if (missing == nul || missing != Glyph.Missing.value || nul != Glyph.Nul.value) return 1
-    if (missing == '\0' || '\0' == missing || '\0' != nul || face != '😀') return 2
-    if (traced(1, nul) == traced(2, face)) return 3
-    if (orFallback(nul, 99) != '\0' || orFallback(missing, 3) != '*') return 4
-    if (prefer(nul, face) != '\0' || prefer(missing, face) != face || prefer(missing, missing) != null) return 5
+    char? missing = choose(false, '*');
+    char? nul = choose(true, '\0');
+    char? face = choose(true, '😀');
+    if (missing == nul || missing != Glyph.Missing.value || nul != Glyph.Nul.value) return 1;
+    if (missing == '\0' || '\0' == missing || '\0' != nul || face != '😀') return 2;
+    if (traced(1, nul) == traced(2, face)) return 3;
+    if (orFallback(nul, 99) != '\0' || orFallback(missing, 3) != '*') return 4;
+    if (prefer(nul, face) != '\0' || prefer(missing, face) != face || prefer(missing, missing) != null) return 5;
 
-    Cell cell = {true, Glyph.Face.value}
-    def saved := cell
-    cell.value = null
-    if (cell.value != null || saved.value == null || saved.value.toInt() != 0x1F600 || !saved.ready) return 6
-    cell.value = nul
-    if (cell.value == null || cell.value.toInt() != 0) return 7
-    return 42
+    Cell cell = {true, Glyph.Face.value};
+    def saved := cell;
+    cell.value = null;
+    if (cell.value != null || saved.value == null || saved.value.toInt() != 0x1F600 || !saved.ready) return 6;
+    cell.value = nul;
+    if (cell.value == null || cell.value.toInt() != 0) return 7;
+    return 42;
 }
 
-fn<char?> choose(final bool present, final char value) = if (present) value else null
-fn<char?> prefer(final char? value, final char? other) = value ?: other
-fn<char> orFallback(final char? value, final int label) = value ?: fallback(label)
+fn<char?> choose(final bool present, final char value) = if (present) value else null;
+fn<char?> prefer(final char? value, final char? other) = value ?: other;
+fn<char> orFallback(final char? value, final int label) = value ?: fallback(label);
 
 fn<char?> traced(final int label, final char? value) {
-    println(label)
-    return value
+    println(label);
+    return value;
 }
 
 fn<char> fallback(final int label) {
-    println(label)
-    return '*'
+    println(label);
+    return '*';
 }

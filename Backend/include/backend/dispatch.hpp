@@ -13,10 +13,13 @@
 namespace backend::detail {
 struct ModuleFunctions;
 
+enum class ObjectText { None, TypeName, Formatter };
+
 struct DispatchSlot {
 	cloth::CallDispatch            call;
 	cloth::ResultTypes             arguments;
 	std::optional<cloth::Operator> comparison = {};
+	ObjectText                     text       = ObjectText::None;
 };
 
 struct ClassDispatchTable {
@@ -34,6 +37,7 @@ class NativeDispatch {
 	LLVMValueRef method (LLVMBuilderRef builder, const cloth::CallDispatch &call, const cloth::ResultTypes &arguments, LLVMValueRef self, bool directSelf);
 	LLVMValueRef compare (LLVMBuilderRef builder, const cloth::ResolvedType &view, cloth::Operator op, LLVMValueRef self, LLVMValueRef peer,
 	                      bool directSelf);
+	LLVMValueRef format (LLVMBuilderRef builder, const cloth::ResolvedType &view, LLVMValueRef self, bool directSelf, bool callsFormatter);
 	LLVMValueRef stateTag (const cloth::Symbol &selection);
 	LLVMValueRef payloadDisposer (ModuleFunctions &functions, const cloth::ResolvedType &type);
 	void         resolve (ModuleFunctions &functions);
@@ -46,6 +50,5 @@ class NativeDispatch {
 	std::vector<DispatchSlot>                         v_slots;
 	std::map<cloth::ResolvedType, ClassDispatchTable> m_tables;
 	std::map<const cloth::Symbol *, LLVMValueRef>     m_stateTags;
-	std::map<cloth::ResolvedType, LLVMValueRef>       m_disposers;
 };
 }

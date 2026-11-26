@@ -21,7 +21,7 @@
 
 namespace cloth {
 
-IfExpression IfParser::parseIf (bool allowWhileTrailer) const {
+IfExpression IfParser::parseIf (bool allowWhileTrailer, bool statement) const {
 	const Token                              t_keyword = p_parser.advance();
 	std::vector<ConditionalBranch>           v_branches;
 	std::optional<std::vector<StatementPtr>> opt_otherwise;
@@ -34,7 +34,7 @@ IfExpression IfParser::parseIf (bool allowWhileTrailer) const {
 			return ep_expression;
 		});
 		p_parser.skipNewLines();
-		BlockBody       bb_branch = parseBranchBody(allowWhileTrailer);
+		BlockBody       bb_branch = parseBranchBody(allowWhileTrailer, statement, t_keyword);
 		const TokenSpan ts_branch = TokenSpan::spanThrough(ep_condition->getSpan(), bb_branch.span);
 		v_branches.push_back({ .condition = std::move(ep_condition), .statements = std::move(bb_branch.statements), .span = ts_branch });
 
@@ -50,7 +50,7 @@ IfExpression IfParser::parseIf (bool allowWhileTrailer) const {
 		}
 		p_parser.skipNewLines();
 		if (!p_parser.atKeyword(KIf)) {
-			BlockBody bb_otherwise = parseBranchBody(allowWhileTrailer);
+			BlockBody bb_otherwise = parseBranchBody(allowWhileTrailer, statement, t_keyword);
 			opt_otherwise          = std::move(bb_otherwise.statements);
 			opt_otherwiseSpan      = bb_otherwise.span;
 			break;
@@ -60,10 +60,11 @@ IfExpression IfParser::parseIf (bool allowWhileTrailer) const {
 	}
 
 	const TokenSpan ts_span = TokenSpan::spanThrough(t_keyword.getSpan(), p_parser.previousStatementEnd());
+	p_parser.recordRange(SourceConstruct::Conditional, t_keyword);
 	return { t_keyword, std::move(v_branches), std::move(opt_otherwise), ts_span, opt_otherwiseSpan };
 }
 
-BlockBody IfParser::parseBranchBody (const bool allowWhileTrailer) const {
+BlockBody IfParser::parseBranchBody (const bool allowWhileTrailer, const bool statement, const Token &keyword) const {
 	const Token        t_start  = p_parser.peek();
 	const std::string &s_lexeme = t_start.getLexeme();
 	if (s_lexeme == toString(OBraceOpen)) {
@@ -72,7 +73,7 @@ BlockBody IfParser::parseBranchBody (const bool allowWhileTrailer) const {
 	if (t_start.getType() == TokenType::EndOfFile || p_parser.atKeyword(KElse) || s_lexeme == toString(OBraceClose) || s_lexeme == toString(OSemicolon)) {
 		throw cde::SyntaxErrors::expected(std::format("a conditional body ('{}' or a statement)", toString(OBraceOpen)), t_start);
 	}
-	return p_parser.parseUnbracedBody(allowWhileTrailer);
+	return p_parser.parseUnbracedBody(allowWhileTrailer,
+	                                  statement ? Parser::UnbracedContext::ConditionalStatement : Parser::UnbracedContext::ConditionalValue, &keyword);
 }
-
 }

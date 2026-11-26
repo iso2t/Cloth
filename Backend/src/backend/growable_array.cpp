@@ -14,6 +14,7 @@
 #include <llvm-c/Target.h>
 #include <llvm-c/Types.h>
 #include <semantic/checked_program.hpp>
+#include <semantic/checker.hpp>
 #include <semantic/target_layout.hpp>
 #include <token/token.hpp>
 
@@ -37,7 +38,8 @@ bool supported (const cloth::ResolvedType &type) {
 	const cloth::ResolvedType *rt_endpoint = cloth::semantic::rangeEndpoint(rt_value);
 	return rt_value.integer() || rt_value.floating() || rt_value.enumeration() || rt_value.objectReference() ||
 	       rt_value == cloth::ResolvedType(cloth::KBoolean) || rt_value == cloth::ResolvedType(cloth::KCharacter) ||
-	       rt_value == cloth::ResolvedType(cloth::KString) || (rt_endpoint && rt_endpoint->integer());
+	       rt_value == cloth::ResolvedType(cloth::KString) || (rt_value.suffixes.empty() && cloth::semantic::asStruct(rt_value.declaration)) ||
+	       (rt_endpoint && rt_endpoint->integer());
 }
 
 bool ownsBuffer (const cloth::ResolvedType &type) {

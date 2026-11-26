@@ -29,8 +29,10 @@ InterfaceDeclaration InterfaceParser::parse (const Token &keyword, const Token &
 	        p_parser.p_typeParser.parseParents("an interface parent name", [] (TypeReference type, const Token &) -> TypeReference { return type; });
 	std::vector<TypeDeclarationPtr> v_nestedTypes;
 	p_parser.skipNewLines();
-	std::vector<InterfaceMethodDeclaration> v_methods =
-	        p_parser.p_delimitedParser.braces([this, &v_nestedTypes] () -> std::vector<InterfaceMethodDeclaration> { return parseMembers(v_nestedTypes); });
+	std::vector<InterfaceMethodDeclaration> v_methods;
+	if (!p_parser.consumeEmptyTypeHeader("interface header")) {
+		v_methods = p_parser.p_delimitedParser.braces([this, &v_nestedTypes] () { return parseMembers(v_nestedTypes); });
+	}
 	const TokenSpan ts_span = TokenSpan::spanThrough((visibility ? *visibility : keyword).getSpan(), p_parser.previous().getSpan());
 	return { keyword,
 		 kind,
@@ -51,6 +53,7 @@ std::vector<InterfaceMethodDeclaration> InterfaceParser::parseMembers (std::vect
 			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}
+		const Token          first          = p_parser.peek();
 		std::optional<Token> opt_visibility = p_parser.parseVisibility();
 		if (p_parser.atKeyword(KFn)) {
 			throw cde::SyntaxErrors::functionInType(p_parser.peek());
@@ -61,6 +64,13 @@ std::vector<InterfaceMethodDeclaration> InterfaceParser::parseMembers (std::vect
 		v_methods.push_back(p_parser.p_functionParser.parseInterfaceMethod(std::move(opt_visibility)));
 		const FunctionBody *fb_body = v_methods.back().executableBody();
 		const bool          b_block = fb_body && std::holds_alternative<BlockBody>(fb_body->value);
+		p_parser.recordDeclaration(SourceConstruct::Member, first, !b_block);
+		if (p_parser.explicitSemicolons()) {
+			if (!b_block) {
+				p_parser.requireSemicolon("interface method");
+			}
+			continue;
+		}
 		if (const Token t_next = p_parser.peek(); !b_block && p_parser.isSemiColon(t_next)) {
 			p_parser.advance();
 		} else if (t_next.getType() != TokenType::NewLine && t_next.getLexeme() != toString(OBraceClose)) {

@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-using cloth.text.Utf8: decode
-using cloth.io.fs.File: File, FileError
-using cloth.collections.OwningList: OwningList
-typedef<class> Item
-fn<string?> decoded(unsigned int<8>[] data) = decode(data)
-fn<string> echo(string text) = decode(text)
-fn<int> intrinsic(int value) = value
-fn<int> ordinary() = intrinsic(1)
-fn<FileError?> open(File file, string path) = file.open(path)
-fn<unsigned int<8>[]?, FileError?> read(File file, usize limit) = file.read(limit)
-fn claim(OwningList<Item> list, Item item) = list.claim(item)
-fn<int> main(string[]? args) = 0
+using cloth.text.Utf8: decode;
+using cloth.io.fs.File: File, FileError;
+using cloth.collections.OwningList: OwningList;
+typedef<class> Item;
+fn<string?> decoded(unsigned int<8>[] data) = decode(data);
+fn<string> echo(string text) = decode(text);
+fn<int> intrinsic(int value) = value;
+fn<int> ordinary() = intrinsic(1);
+fn<FileError?> open(File file, string path) = file.open(path);
+fn<unsigned int<8>[]?, FileError?> read(File file, usize limit) = file.read(limit);
+fn claim(OwningList<Item> list, Item item) = list.claim(item);
+fn<int> main(string[]? args) = 0;

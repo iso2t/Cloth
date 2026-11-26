@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    char? value = '\0'
-    if (value == null || value != '\0') return 1
-    value = null
-    return if (null == value) 42 else 2
+    char? value = '\0';
+    if (value == null || value != '\0') return 1;
+    value = null;
+    return if (null == value) 42 else 2;
 }

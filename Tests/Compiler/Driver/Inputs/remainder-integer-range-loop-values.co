@@ -1,44 +1,44 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    if (!signedStep(-35, 14, -7) || !signedStep(-35, -14, -7) || !signedStep(35, -14, 7)) return 1
-    if (!wideSteps(-4294967297, 4294967297)) return 2
+    if (!signedStep(-35, 14, -7) || !signedStep(-35, -14, -7) || !signedStep(35, -14, 7)) return 1;
+    if (!wideSteps(-4294967297, 4294967297)) return 2;
 
-    int calls = 0
-    int total = 0
-    for (int n <- 35..0; n %= if (n == 36) { calls++; n = 1; 14 } else { calls++; 8 }) {
-        total += n
-        if (n == 35) { n = 36; continue }
-        if (n != 8) return 3
+    int calls = 0;
+    int total = 0;
+    for (int n <- 35..0; n %= if (n == 36) { calls++; n = 1; 14; } else { calls++; 8; }) {
+        total += n;
+        if (n == 35) { n = 36; continue; }
+        if (n != 8) return 3;
     }
-    if (total != 43 || calls != 2) return 4
-    for (int n <- 35..7; n %= 14) { n = 7; calls++; if (calls > 3) return 5 }
-    if (calls != 3) return 5
-    return 42
+    if (total != 43 || calls != 2) return 4;
+    for (int n <- 35..7; n %= 14) { n = 7; calls++; if (calls > 3) return 5; }
+    if (calls != 3) return 5;
+    return 42;
 }
 
 fn<bool> signedStep(final int start, final int divisor, final int expected) {
-    bool first = true
+    bool first = true;
     for (int n <- start..=0; n %= divisor) {
-        if (!first) return n == expected
-        first = false
+        if (!first) return n == expected;
+        first = false;
     }
-    return false
+    return false;
 }
 
 fn<bool> wideSteps(final int<97> signedDivisor, final unsigned int<65> unsignedDivisor) {
-    int visits = 0
+    int visits = 0;
     for (int<97> n <- int<97>::min..=0; n %= signedDivisor) {
-        visits++
+        visits++;
         if (visits == 2) {
-            if (n != -4294967296) return false
-            break
+            if (n != -4294967296) return false;
+            break;
         }
     }
-    if (visits != 2) return false
+    if (visits != 2) return false;
     for (unsigned int<65> n <- unsigned int<65>::max..=0; n %= unsignedDivisor) {
-        visits++
-        if (visits == 4) return n == 1
+        visits++;
+        if (visits == 4) return n == 1;
     }
-    return false
+    return false;
 }

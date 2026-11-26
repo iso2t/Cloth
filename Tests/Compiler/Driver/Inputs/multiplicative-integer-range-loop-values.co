@@ -1,70 +1,70 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    if (!factors() || !limits(5, -1)) return 1
-    if (!wideProducts(-4294967299, 4294967297)) return 5
-    int digits = 0
-    int calls = 0
-    for (int n <- 2..16; n *= if (n == 4) { calls++; n = 100; 2 } else { calls++; 2 }) {
-        digits = digits * 10 + n
-        if (n == 2) { n = 4; continue }
-        if (digits != 28) return 2
+    if (!factors() || !limits(5, -1)) return 1;
+    if (!wideProducts(-4294967299, 4294967297)) return 5;
+    int digits = 0;
+    int calls = 0;
+    for (int n <- 2..16; n *= if (n == 4) { calls++; n = 100; 2; } else { calls++; 2; }) {
+        digits = digits * 10 + n;
+        if (n == 2) { n = 4; continue; }
+        if (digits != 28) return 2;
     }
-    if (digits != 28 || calls != 2) return 3
-    for (int n <- 3..3; n *= traced(n)) return 4
-    for (int n <- 3..=3; n *= traced(n)) break
-    for (int n <- 3..=3; n *= traced(n)) continue
-    return 42
+    if (digits != 28 || calls != 2) return 3;
+    for (int n <- 3..3; n *= traced(n)) return 4;
+    for (int n <- 3..=3; n *= traced(n)) break;
+    for (int n <- 3..=3; n *= traced(n)) continue;
+    return 42;
 }
 
-fn<int> traced(final int n) { println(n); return 2 }
+fn<int> traced(final int n) { println(n); return 2; }
 
 fn<bool> factors() {
-    int visits = 0
+    int visits = 0;
     for (int n <- -2..=8; n *= -2) {
-        if (visits == 0 && n != -2 || visits == 1 && n != 4 || visits >= 2) return false
-        visits++
+        if (visits == 0 && n != -2 || visits == 1 && n != 4 || visits >= 2) return false;
+        visits++;
     }
     for (int n <- 7..=0; n *= 0) {
-        visits++
-        if (n == 0) break
-        if (n != 7 || visits != 3) return false
+        visits++;
+        if (n == 0) break;
+        if (n != 7 || visits != 3) return false;
     }
-    if (visits != 4) return false
-    for (int n <- 7..0; n *= 0) { visits++; if (n != 7 || visits != 5) return false }
-    for (int n <- 1..2; n *= 1) { visits++; n = 2; if (visits != 6) return false }
-    return visits == 6
+    if (visits != 4) return false;
+    for (int n <- 7..0; n *= 0) { visits++; if (n != 7 || visits != 5) return false; }
+    for (int n <- 1..2; n *= 1) { visits++; n = 2; if (visits != 6) return false; }
+    return visits == 6;
 }
 
 fn<bool> limits(final unsigned int<4> factor, final int<97> negative) {
-    int visits = 0
+    int visits = 0;
     for (unsigned int<4> n <- 4..=15; n *= factor) {
-        if (visits != 0) return false
-        visits++
+        if (visits != 0) return false;
+        visits++;
     }
     for (int<1> n <- -1..=0; n *= -1) {
-        if (visits != 1) return false
-        visits++
+        if (visits != 1) return false;
+        visits++;
     }
     for (int<97> n <- int<97>::min..=int<97>::max; n *= negative) {
-        if (visits != 2) return false
-        visits++
+        if (visits != 2) return false;
+        visits++;
     }
-    return visits == 3
+    return visits == 3;
 }
 
 fn<bool> wideProducts(final int<97> negative, final unsigned int<65> positive) {
-    int visits = 0
-    int<97> signedEnd := 18446744090889420803
+    int visits = 0;
+    int<97> signedEnd := 18446744090889420803;
     for (int<97> n <- -4294967297..=signedEnd; n *= negative) {
-        if (visits == 1 && n != signedEnd || visits >= 2) return false
-        visits++
+        if (visits == 1 && n != signedEnd || visits >= 2) return false;
+        visits++;
     }
-    if (visits != 2) return false
-    unsigned int<65> unsignedEnd := 18446744082299486209
+    if (visits != 2) return false;
+    unsigned int<65> unsignedEnd := 18446744082299486209;
     for (unsigned int<65> n <- 4294967297..=unsignedEnd; n *= positive) {
-        if (visits == 3 && n != unsignedEnd || visits >= 4) return false
-        visits++
+        if (visits == 3 && n != unsignedEnd || visits >= 4) return false;
+        visits++;
     }
-    return visits == 4
+    return visits == 4;
 }

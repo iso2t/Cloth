@@ -1,37 +1,37 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 fn<bool> matches(final int<65> start, final int<65> end, final bool inclusive, final bool referenceInclusive, final bool expected) {
-    def bounds := if (inclusive) start..=end else start..end
-    range<int<65>> reference := if (referenceInclusive) 13..=16 else 13..16
-    return (bounds == reference) == expected && (reference != bounds) == !expected
+    def bounds := if (inclusive) start..=end else start..end;
+    range<int<65>> reference := if (referenceInclusive) 13..=16 else 13..16;
+    return (bounds == reference) == expected && (reference != bounds) == !expected;
 }
 
 fn<int> trace(final int n) {
-    println(n)
-    return n
+    println(n);
+    return n;
 }
 
 fn<int> stopAtLeftEnd(final bool stop) {
-    def same := (trace(5)..(if (stop) { return 42 } else 6)) == (trace(90)..trace(91))
-    return if (same) 1 else 2
+    def same := (trace(5)..(if (stop) { return 42; } else 6)) == (trace(90)..trace(91));
+    return if (same) 1 else 2;
 }
 
 pub fn<int> main() {
-    if (!matches(13, 16, false, false, true) || !matches(13, 16, true, true, true)) return 1
-    if (!matches(13, 16, true, false, false) || !matches(13, 16, false, true, false)) return 2
-    if (!matches(12, 16, false, false, false) || !matches(13, 17, true, true, false)) return 3
+    if (!matches(13, 16, false, false, true) || !matches(13, 16, true, true, true)) return 1;
+    if (!matches(13, 16, true, false, false) || !matches(13, 16, false, true, false)) return 2;
+    if (!matches(12, 16, false, false, false) || !matches(13, 17, true, true, false)) return 3;
 
-    def high := unsigned int<65>::max
-    def low := high -> unsigned int<64> -> unsigned int<65>
-    if ((low..high) == (high..high) || (0..=low) == (0..=high)) return 4
-    if ((13..16) == (13..=15) || (16..13) == (17..13) || (16..13) != (16..13)) return 5
-    if ((usize::max..=usize::max) != (usize::max..=usize::max)) return 6
+    def high := unsigned int<65>::max;
+    def low := high -> unsigned int<64> -> unsigned int<65>;
+    if ((low..high) == (high..high) || (0..=low) == (0..=high)) return 4;
+    if ((13..16) == (13..=15) || (16..13) == (17..13) || (16..13) != (16..13)) return 5;
+    if ((usize::max..=usize::max) != (usize::max..=usize::max)) return 6;
 
-    range<int> source = 1..2
-    def copy := source
-    if (source == (if (true) { source = 7..8; source } else copy)) return 7
-    if (copy != (1..2) || source != (7..8)) return 8
-    if ((trace(1)..trace(2)) == (trace(3)..trace(4))) return 9
-    if (stopAtLeftEnd(true) != 42) return 10
-    return 42
+    range<int> source = 1..2;
+    def copy := source;
+    if (source == (if (true) { source = 7..8; source; } else copy)) return 7;
+    if (copy != (1..2) || source != (7..8)) return 8;
+    if ((trace(1)..trace(2)) == (trace(3)..trace(4))) return 9;
+    if (stopAtLeftEnd(true) != 42) return 10;
+    return 42;
 }

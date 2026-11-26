@@ -1,89 +1,89 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 fn<bool> flags(final unsigned int<65> high) {
-    bool[] values = [0, 1]
-    values.reserve(8)
-    values.insert(1, high)
-    values.append(-7)
-    if (values != [false, true, true, true]) return false
-    values[1] = 0
-    values[2] = high
-    bool[4] saved := values
-    if (saved != [false, false, true, true] || saved != values) return false
-    if (values.removeAt(1) || !values.removeAt(2)) return false
-    int count = 0
+    bool[] values = [0, 1];
+    values.reserve(8);
+    values.insert(1, high);
+    values.append(-7);
+    if (values != [false, true, true, true]) return false;
+    values[1] = 0;
+    values[2] = high;
+    bool[4] saved := values;
+    if (saved != [false, false, true, true] || saved != values) return false;
+    if (values.removeAt(1) || !values.removeAt(2)) return false;
+    int count = 0;
     for (def flag <- values) {
-        values.clear()
-        if (flag) count++
+        values.clear();
+        if (flag) count++;
     }
-    values.append(0)
-    return count == 1 && values == [false] && saved != values
+    values.append(0);
+    return count == 1 && values == [false] && saved != values;
 }
 
 fn<bool> characters() {
-    char[3] original := ['\0', '𐀀', '🙂']
-    char[] letters = original
-    char[] saved := letters
-    letters[1] = '\0'
-    if (letters == original || saved != original) return false
-    letters.insert(0, '漢')
-    if (letters.removeAt(2) != '\0' || letters != ['漢', '\0', '🙂']) return false
-    usize index = 0
+    char[3] original := ['\0', '𐀀', '🙂'];
+    char[] letters = original;
+    char[] saved := letters;
+    letters[1] = '\0';
+    if (letters == original || saved != original) return false;
+    letters.insert(0, '漢');
+    if (letters.removeAt(2) != '\0' || letters != ['漢', '\0', '🙂']) return false;
+    usize index = 0;
     for (char letter <- saved) {
-        letters.clear()
-        letters.append(letter)
-        if (letters[0] != original[index]) return false
-        index++
+        letters.clear();
+        letters.append(letter);
+        if (letters[0] != original[index]) return false;
+        index++;
     }
-    return index == 3 && letters == ['🙂']
+    return index == 3 && letters == ['🙂'];
 }
 
 fn<bool> half(final float<16> zero) {
-    float<16>[] values = [2048.0, -zero]
-    values[0]++
-    if (values[0] != 2048.0 || values != [2049.0, zero]) return false
-    float<16> negativeZero := values.removeAt(1)
-    if (1.0 / negativeZero >= zero) return false
-    values.insert(0, zero / zero)
-    float<16>[] copy := values
-    return values != values && !(copy == values)
+    float<16>[] values = [2048.0, -zero];
+    values[0]++;
+    if (values[0] != 2048.0 || values != [2049.0, zero]) return false;
+    float<16> negativeZero := values.removeAt(1);
+    if (1.0 / negativeZero >= zero) return false;
+    values.insert(0, zero / zero);
+    float<16>[] copy := values;
+    return values != values && !(copy == values);
 }
 
 fn<bool> single(final float<32> zero) {
-    float<32>[] values = [-zero, 16777216.0]
-    float<32>[2] fixed := [zero, 16777217.0]
-    if (values != fixed || fixed != values) return false
-    values[1] += if (true) { values.reserve(32); values[1] = -7.0; 2.0 } else zero
-    if (values[1] != 16777218.0) return false
-    values.clear()
-    values.append(zero / zero)
-    float<32>[] copy := values
-    return !(values == values) && copy != values
+    float<32>[] values = [-zero, 16777216.0];
+    float<32>[2] fixed := [zero, 16777217.0];
+    if (values != fixed || fixed != values) return false;
+    values[1] += if (true) { values.reserve(32); values[1] = -7.0; 2.0; } else zero;
+    if (values[1] != 16777218.0) return false;
+    values.clear();
+    values.append(zero / zero);
+    float<32>[] copy := values;
+    return !(values == values) && copy != values;
 }
 
 fn<bool> double(final float<64> zero) {
-    float<64>[] values = [-zero, 16777217.0]
-    float<64>[2] fixed := [zero, 16777216.0]
-    if (values == fixed) return false
-    values[1]--
-    if (values != fixed) return false
-    values = [13.0, 14.0, 15.0]
-    float<64> total = zero
+    float<64>[] values = [-zero, 16777217.0];
+    float<64>[2] fixed := [zero, 16777216.0];
+    if (values == fixed) return false;
+    values[1]--;
+    if (values != fixed) return false;
+    values = [13.0, 14.0, 15.0];
+    float<64> total = zero;
     for (def value <- values) {
-        values.clear()
-        total += value
+        values.clear();
+        total += value;
     }
-    if (values::size != 0 || total != 42.0) return false
-    values.append(zero / zero)
-    float<64>[1] nan := values
-    return values != nan && !(nan == values) && values != values
+    if (values::size != 0 || total != 42.0) return false;
+    values.append(zero / zero);
+    float<64>[1] nan := values;
+    return values != nan && !(nan == values) && values != values;
 }
 
 pub fn<int> main() {
-    if (!flags(18446744073709551616)) return 1
-    if (!characters()) return 2
-    if (!half(0.0)) return 3
-    if (!single(0.0)) return 4
-    if (!double(0.0)) return 5
-    return 42
+    if (!flags(18446744073709551616)) return 1;
+    if (!characters()) return 2;
+    if (!half(0.0)) return 3;
+    if (!single(0.0)) return 4;
+    if (!double(0.0)) return 5;
+    return 42;
 }

@@ -8,16 +8,28 @@
 #include <format>
 #include <functional>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 #include <diagnostics.hpp>
+#include <lexer/lexer.hpp>
 #include <semantic/program_kind.hpp>
 #include <system/compiler_options.hpp>
+#include <token/token.hpp>
 
 namespace cloth::sys {
+namespace {
+std::string moduleName (std::string_view name) {
+	const std::vector<Token> v_tokens = Lexer(std::string(name)).scanTokens();
+	if (v_tokens.size() != 2 || v_tokens.front().getType() != TokenType::Identifier || v_tokens.front().getLexeme() != name)
+		throw std::invalid_argument("A library module name must be a Cloth identifier");
+	return v_tokens.front().getNameKey();
+}
+}
 
-CompilerOptions::CompilerOptions (const int argc, const char *const argv[]) : args(argc), argv(argv) {
+CompilerOptions::CompilerOptions (const int argc, const char *const argv[]) : args(argc) {
 	buildDefaults();
 
 	for (int index = 1; index < argc; ++index) {
@@ -39,9 +51,13 @@ CompilerOptions::CompilerOptions (const int argc, const char *const argv[]) : ar
 			std::get<std::function<void()>>(bi_flag->v_action)();
 		}
 	}
+	if (printTarget && (p_sourcePath || !s_emitFlag.empty() || i_lexer)) throw std::invalid_argument("--print-target takes no source or output");
+	if (!modules.name.empty() && (kind != ProgramKind::Library || modules.imports.contains(modules.name)))
+		throw std::invalid_argument("--module-name requires a library name distinct from its dependencies");
 	if (!s_emitFlag.empty()) {
-		if (kind != ProgramKind::Executable)
-			throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidCompilationRequest, std::format("{} requires --kind executable", s_emitFlag));
+		if (kind == ProgramKind::Library && modules.name.empty())
+			throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidCompilationRequest,
+			                           std::format("{} requires --module-name for library output", s_emitFlag));
 		if (i_lexer != 0)
 			throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidCompilationRequest,
 			                           std::format("{} is incompatible with lexer-only mode (-l or -L)", s_emitFlag));
@@ -58,6 +74,19 @@ void CompilerOptions::addFlag (const CompilerFlag &flag) {
 // TODO: Allow comma separated lists of source files to use all at the same time? ie "path1","path2"
 // TODO: "path1","path" "path3" fails as path3 is seen as another arg.
 void CompilerOptions::buildDefaults () {
+	addFlag({ .s_flag = "--print-target", .v_action = [this] { printTarget = true; } });
+	addFlag({ .s_flag = "--module-name", .v_action = CompilerFlag::Value{ .s_description = "a library name", .f_func = [this] (std::string_view name) {
+		                                                                     modules.name = moduleName(name);
+	                                                                     } } });
+	addFlag({ .s_flag   = "--extern",
+	          .v_action = CompilerFlag::Value{
+	                  .s_description = "NAME=SOURCE", .f_func = [this] (std::string_view binding) {
+		                  const auto st_equal = binding.find('=');
+		                  if (st_equal == binding.npos || st_equal + 1 == binding.size()) throw std::invalid_argument("--extern requires NAME=SOURCE");
+		                  const auto path = binding.substr(st_equal + 1);
+		                  if (!modules.imports.emplace(moduleName(binding.substr(0, st_equal)), std::u8string(path.begin(), path.end())).second)
+			                  throw std::invalid_argument("Duplicate --extern module name");
+	                  } } });
 	addFlag({ .s_flag   = "--kind",
 	          .v_action = CompilerFlag::Value{ .s_description = "library or executable", .f_func = [this] (const std::string_view kindName) {
 		                                          if (kindName == "library")

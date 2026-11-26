@@ -14,20 +14,20 @@ Use the [language reference](../../../Documentation/language/index.rst) for prog
 ## Source files and functions
 
 ~~~cloth
-using geometry.points: Point, Grid
+using geometry.points: Point, Grid;
 
-pub fn<int> offset(int x, final opt<int> step ?: 1) = x + step
-fn<int, int> neighbors(int x) = x - 1, x + 1
+pub fn<int> offset(int x, final opt<int> step ?: 1) = x + step;
+fn<int, int> neighbors(int x) = x - 1, x + 1;
 
 fn main() {
-    int low, int high = neighbors(8)
-    def next := offset(low, step = 2)
+    int low, int high = neighbors(8);
+    def next := offset(low, step = 2);
 }
 ~~~
 
-- Put `using` imports in the file header. Write a dotted module path followed by `:` and either `*` or a comma-separated list of distinct names. Keep the path and colon on the same line. The parser records the import in the source unit. [Import parser](../../../Compiler/src/parser/subs/import_parser.cpp)
-- Write a top-level function as `fn`, an optional angle-bracketed result type or type list, its name, parameters, and a body. Type parameters follow the name, as in `fn<T> first<T>(T value) = value`. Parameters use `Type name`. The optional-argument spelling is `opt<Type> name ?: expression`, and `final` can precede a parameter. Named call arguments use `name = expression`. [Function parser](../../../Compiler/src/parser/subs/function_parser.cpp) · [Call arguments](../../../Compiler/src/parser/subs/expression_parser.cpp)
-- Use a block or an equals body. A top-level block-bodied function or type declaration ends at a newline or end of file. An equals-bodied function also accepts a semicolon terminator. Source files may consist entirely of helper functions or type declarations. [File grammar](../../../Compiler/src/parser/parser.cpp)
+- Put `using` imports in the file header. Write a dotted module path followed by `:` and either `*` or a comma-separated list of distinct names. End the import with `;`. The module path and selection may span lines. The parser records the import in the source unit. [Import parser](../../../Compiler/src/parser/subs/import_parser.cpp)
+- Write a top-level function as `fn`, an optional angle-bracketed result type or type list, its name, parameters, and a body. Type parameters follow the name, as in `fn<T> first<T>(T value) = value;`. Parameters use `Type name`. The optional-argument spelling is `opt<Type> name ?: expression`, and `final` can precede a parameter. Named call arguments use `name = expression`. [Function parser](../../../Compiler/src/parser/subs/function_parser.cpp) · [Call arguments](../../../Compiler/src/parser/subs/expression_parser.cpp)
+- Use a block or an equals body. A braced declaration ends at `}`. An equals body takes a semicolon, including when the body ends in a brace. Source files may consist entirely of helper functions or type declarations. [File grammar](../../../Compiler/src/parser/parser.cpp)
 
 ## More syntax
 

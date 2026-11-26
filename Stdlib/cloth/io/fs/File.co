@@ -1,18 +1,18 @@
-using cloth.io.path.Path: Path, pathOf
+using cloth.io.path.Path: Path, pathOf;
 
 pub typedef<enum> FileError {
     pub InvalidPath, pub NotFound, pub PermissionDenied, pub OpenFailed,
-    pub AlreadyOpen, pub NotOpen, pub ReadFailed
+    pub AlreadyOpen, pub NotOpen, pub ReadFailed;
 }
 
 pub final typedef<class> File {
-    def<Path> path = pathOf("")
+    def<Path> path = pathOf("");
 
-    pub File(Path path) : () { self.path = path }
-    pub File(string path) : () { self.path = pathOf(path) }
+    pub File(Path path) : () { self.path = path; }
+    pub File(string path) : () { self.path = pathOf(path); }
 
-    pub mt<FileError?> open() = self.openNative(self.path.spelling)
-    pub mt<unsigned int<8>[]?, FileError?> read(usize maxBytes) = intrinsic "io.file.read"
+    pub mt<FileError?> open() = self.openNative(self.path.spelling);
+    pub mt<unsigned int<8>[]?, FileError?> read(usize maxBytes) = intrinsic "io.file.read";
 
-    mt<FileError?> openNative(string spelling) = intrinsic "io.file.open"
+    mt<FileError?> openNative(string spelling) = intrinsic "io.file.open";
 }

@@ -1,38 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<struct> Sample { pub int? value }
-typedef<struct> Box { pub Sample? sample }
+typedef<struct> Sample { pub int? value; }
+typedef<struct> Box { pub Sample? sample; }
 
 fn<int> trace(final int label) {
-    println(label)
-    return label
+    println(label);
+    return label;
 }
 
 fn<int> nested(final bool boxPresent, final bool samplePresent, final int? value) {
-    Sample full := {value}
-    Sample? sample := if (samplePresent) full else null
-    Box box := {sample}
-    Box? maybe := if (boxPresent) box else null
-    return maybe?.sample?.value ?: 7
+    Sample full := {value};
+    Sample? sample := if (samplePresent) full else null;
+    Box box := {sample};
+    Box? maybe := if (boxPresent) box else null;
+    return maybe?.sample?.value ?: 7;
 }
 
 fn<int> observed(final bool present, final bool leave) {
-    Box full := {{0}}
-    Box empty := {null}
-    return (if (trace(1) == 1 && present) full else if (leave) { return 42 } else empty).sample?.value ?: trace(7)
+    Box full := {{0}};
+    Box empty := {null};
+    return (if (trace(1) == 1 && present) full else if (leave) { return 42; } else empty).sample?.value ?: trace(7);
 }
 
 fn<int> proven(final bool present, final int? value) {
-    Sample full := {value}
-    Sample? sample := if (present) full else null
-    if (sample != null) return sample?.value ?: 7
-    return 9
+    Sample full := {value};
+    Sample? sample := if (present) full else null;
+    if (sample != null) return sample?.value ?: 7;
+    return 9;
 }
 
 pub fn<int> main() {
-    if (nested(false, true, 42) != 7 || nested(true, false, 42) != 7) return 1
-    if (nested(true, true, null) != 7 || nested(true, true, 0) != 0 || nested(true, true, 42) != 42) return 2
-    if (proven(true, 0) != 0 || proven(true, null) != 7 || proven(false, 42) != 9) return 3
-    if (observed(true, false) != 0 || observed(false, false) != 7) return 4
-    return observed(false, true)
+    if (nested(false, true, 42) != 7 || nested(true, false, 42) != 7) return 1;
+    if (nested(true, true, null) != 7 || nested(true, true, 0) != 0 || nested(true, true, 42) != 42) return 2;
+    if (proven(true, 0) != 0 || proven(true, null) != 7 || proven(false, 42) != 9) return 3;
+    if (observed(true, false) != 0 || observed(false, false) != 7) return 4;
+    return observed(false, true);
 }

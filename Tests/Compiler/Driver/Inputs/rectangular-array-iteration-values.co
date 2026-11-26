@@ -1,57 +1,57 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 fn<int> trace(final int value) {
-    println(value)
-    return value
+    println(value);
+    return value;
 }
 
 fn<bool> capturedRows() {
-    int[2][2] rows = [[1, 20], [2, 22]]
-    int total = 0
+    int[2][2] rows = [[1, 20], [2, 22]];
+    int total = 0;
     for (int[2] row <- rows) {
-        rows[1][1] = 99
-        total += row[1]
-        row[0] = 7
+        rows[1][1] = 99;
+        total += row[1];
+        row[0] = 7;
     }
-    return total == 42 && rows == [[1, 20], [2, 99]]
+    return total == 42 && rows == [[1, 20], [2, 99]];
 }
 
 fn<bool> nestedRows() {
-    def high := unsigned int<65>::max
-    unsigned int<65>[2][1][2] cube := [[[1, high]], [[2, 0]]]
-    int count = 0
+    def high := unsigned int<65>::max;
+    unsigned int<65>[2][1][2] cube := [[[1, high]], [[2, 0]]];
+    int count = 0;
     for (def plane <- cube) {
         for (def row <- plane) {
-            if (row[1] == high) count++
-            row[1] = 7
+            if (row[1] == high) count++;
+            row[1] = 7;
         }
-        if (plane[0][1] == 7) return false
+        if (plane[0][1] == 7) return false;
     }
-    return count == 1
+    return count == 1;
 }
 
 pub fn<int> main() {
-    int[0][3] empty := []
-    for (def row <- (if (trace(1) == 1) empty else empty)) return 1
+    int[0][3] empty := [];
+    for (def row <- (if (trace(1) == 1) empty else empty)) return 1;
 
-    int[2][0] emptyRows := [[], []]
-    int visits = 0
+    int[2][0] emptyRows := [[], []];
+    int visits = 0;
     for (int[0] row <- emptyRows) {
-        if (row != []) return 2
-        for (int cell <- row) return 3
-        visits++
+        if (row != []) return 2;
+        for (int cell <- row) return 3;
+        visits++;
     }
-    if (visits != 2) return 4
+    if (visits != 2) return 4;
 
     for (def row <- [[trace(2), 10], [trace(3), 20], [trace(4), 30]]) {
-        if (row[0] == 2) continue
-        println(row[1])
-        break
+        if (row[0] == 2) continue;
+        println(row[1]);
+        break;
     }
 
-    int?[2][1] optional := [[null], [0]]
-    int digits = 0
-    for (int?[1] row <- optional) digits = digits * 10 + (if (row[0] == null) 4 else 2)
-    if (!capturedRows() || !nestedRows()) return 5
-    return digits
+    int?[2][1] optional := [[null], [0]];
+    int digits = 0;
+    for (int?[1] row <- optional) digits = digits * 10 + (if (row[0] == null) 4 else 2);
+    if (!capturedRows() || !nestedRows()) return 5;
+    return digits;
 }

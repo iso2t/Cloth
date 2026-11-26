@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    range<int>[3] spans = [1..2, 13..15, 7..=7]
-    def saved := spans
-    if (!(spans == saved) || spans != saved) return 1
-    spans[1] = 13..=15
-    if (spans == saved || !(spans != saved)) return 2
+    range<int>[3] spans = [1..2, 13..15, 7..=7];
+    def saved := spans;
+    if (!(spans == saved) || spans != saved) return 1;
+    spans[1] = 13..=15;
+    if (spans == saved || !(spans != saved)) return 2;
 
-    range<int>?[3] selections = [1..2, null, 7..=7]
-    range<int>?[3] missing := selections
-    selections[1] = 0..0
-    if (missing == selections || !(selections != missing)) return 3
-    selections[1] = null
-    return if (selections == missing && !(missing != selections)) 42 else 4
+    range<int>?[3] selections = [1..2, null, 7..=7];
+    range<int>?[3] missing := selections;
+    selections[1] = 0..0;
+    if (missing == selections || !(selections != missing)) return 3;
+    selections[1] = null;
+    return if (selections == missing && !(missing != selections)) 42 else 4;
 }

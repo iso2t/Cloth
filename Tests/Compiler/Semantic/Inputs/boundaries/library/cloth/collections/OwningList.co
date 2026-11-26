@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub final typedef<class> OwningList<T: Object> {
-    mt acquire(Object value) = intrinsic "collections.ownership.acquire"
-    mt release(Object value) = intrinsic "collections.ownership.release"
-    mt destroy(Object value) = intrinsic "collections.ownership.delete"
-    mt checkMutation() = intrinsic "collections.ownership.check_mutation"
-    mt setCleanup(bool enabled) = intrinsic "collections.ownership.set_cleanup"
-    pub mt claim(T value) = acquire(value)
+    mt acquire(Object value) = intrinsic "collections.ownership.acquire";
+    mt release(Object value) = intrinsic "collections.ownership.release";
+    mt destroy(Object value) = intrinsic "collections.ownership.delete";
+    mt checkMutation() = intrinsic "collections.ownership.check_mutation";
+    mt setCleanup(bool enabled) = intrinsic "collections.ownership.set_cleanup";
+    pub mt claim(T value) = acquire(value);
 }

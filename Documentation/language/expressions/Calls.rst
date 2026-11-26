@@ -8,16 +8,18 @@ Declaring a callable
 
 Use ``fn`` at file scope and ``mt`` for a method. List result types in angle
 brackets and write each parameter as its type followed by its name. An
-expression body starts with ``=``. A block body can use ``return``.
+expression body starts with ``=`` and ends with a semicolon. A braced
+function ends at ``}``. Inside it, a single ``return`` can deliver several
+comma-separated results with one terminator, as in ``return low, high;``.
 
 .. code-block:: text
 
-   fn<int> shift(int value, opt<int> amount ?: 1) = value + amount
+   fn<int> shift(int value, opt<int> amount ?: 1) = value + amount;
 
    typedef<struct> Offset {
        pub int delta;
        pub mt<int> apply(final int value) {
-           return shift(amount = delta, value = value)
+           return shift(amount = delta, value = value);
        }
    }
 
@@ -53,7 +55,7 @@ explicitly skips its default expression.
 
 .. code-block:: text
 
-   fn<int> span(int first, opt<int> last ?: first + 2) = last - first
+   fn<int> span(int first, opt<int> last ?: first + 2) = last - first;
 
 A base class declares a virtual method with ``pub virtual mt``. A derived
 class can supply a different body with ``pub override mt``. Calls use the
@@ -75,10 +77,10 @@ end of its block or at a bare ``return``. Here ``touch()`` returns to
 .. code-block:: text
 
    pub fn<int> main () {
-       int answer = 42
-       answer = 7
-       touch()
-       return answer
+       int answer = 42;
+       answer = 7;
+       touch();
+       return answer;
    }
 
    fn<void> touch() {}

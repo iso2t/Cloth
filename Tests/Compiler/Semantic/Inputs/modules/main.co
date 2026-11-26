@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-using accounts: Account, Pair
-using math.ops: twice, adjusted
-pub fn<int> identity(int x) = x
-fn<int> run() = twice(4)
-fn<int> fromDefault(bool helper) = adjusted(end = 3, start = 2)
-fn<Account> update(Account a) = a.withBalance(100)
-fn<Pair> pair(int private, int priv) = {private, priv}
-fn<int> sum(Pair p) = p.private + p.priv
+using accounts: Account, Pair;
+using math.ops: twice, adjusted;
+pub fn<int> identity(int x) = x;
+fn<int> run() = twice(4);
+fn<int> fromDefault(bool helper) = adjusted(end = 3, start = 2);
+fn<Account> update(Account a) = a.withBalance(100);
+fn<Pair> pair(int private, int priv) = {private, priv};
+fn<int> sum(Pair p) = p.private + p.priv;

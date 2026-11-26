@@ -2,7 +2,7 @@
 # REQUIRES: x86 && (linux || win32)
 
 # RUN: mkdir -p "%t/src"
-# RUN: echo "pub fn<int> main () = 42" > "%t/src/answer.v1.co"
+# RUN: echo "pub fn<int> main () = 42;" > "%t/src/answer.v1.co"
 
 # An explicit destination keeps its spelling, even with the other format's suffix.
 # RUN: %cloth --output "%t/custom object.s" --src "%t/src/answer.v1.co" --kind executable --emit object

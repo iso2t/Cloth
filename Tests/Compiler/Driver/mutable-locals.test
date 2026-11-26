@@ -1,17 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # REQUIRES: x86 && (linux || win32)
 
-# RUN: echo "pub fn<int> main () { int answer = 42; answer = 7; return answer }" > "%t.co"
+# RUN: echo "pub fn<int> main () { int answer = 42; answer = 7; return answer; }" > "%t.co"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 7 "%t.exe"
 
-# RUN: echo "pub fn<int> main () { def source = 42; def saved := source; source = 7; int<32> answer = source; answer = saved; return answer }" > "%t.co"
+# RUN: echo "pub fn<int> main () { def source = 42; def saved := source; source = 7; int<32> answer = source; answer = saved; return answer; }" > "%t.co"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
 
-# RUN: echo "pub fn<int> main () { int source = 42; def answer = 1; source = 7; answer = source; source = 1; answer = answer; return answer }" > "%t.co"
+# RUN: echo "pub fn<int> main () { int source = 42; def answer = 1; source = 7; answer = source; source = 1; answer = answer; return answer; }" > "%t.co"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 7 "%t.exe"

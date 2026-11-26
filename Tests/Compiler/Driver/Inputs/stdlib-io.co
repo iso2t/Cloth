@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using cloth.io.path.Path : Path, pathOf;
+using cloth.io.fs.File : File, FileError;
+using cloth.text.Utf8 : decodeUtf8;
+
+pub fn<int> main(string[] args) {
+    def file = File::new(pathOf(args[0]));
+    unsigned int<8>[]? data, FileError? error = file.read(1);
+    if (data != null || error != FileError.NotOpen) return 1;
+    if (file.open() != null || file.open() != FileError.AlreadyOpen) return 2;
+    data, error = file.read(0);
+    if (error != null || data == null || data::size != 0) return 3;
+    data, error = file.read(4);
+    if (error != null || data == null) return 4;
+    string? decoded = decodeUtf8(data);
+    if (decoded == null || decoded != "é\0A") return 5;
+    data.clear();
+    if (decoded::size != 3) return 6;
+    data, error = file.read(10);
+    if (error != null || data == null || decodeUtf8(data) != null) return 7;
+    data, error = file.read(1);
+    if (error != null || data == null || data::size != 0 || decodeUtf8(data) != "") return 8;
+    file::delete;
+    def absent = File::new(args[1]);
+    if (absent.open() != FileError.NotFound) return 9;
+    absent::delete;
+    def invalid = File::new("a\0b");
+    if (invalid.open() != FileError.InvalidPath) return 10;
+    invalid::delete;
+    return 42;
+}

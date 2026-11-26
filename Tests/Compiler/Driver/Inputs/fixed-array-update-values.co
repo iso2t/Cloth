@@ -1,65 +1,65 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    int[3] values = [7, 40, 9]
-    def saved := values
-    int index = 1
+    int[3] values = [7, 40, 9];
+    def saved := values;
+    int index = 1;
     values[trace(1, index)] += (if (trace(2, 1) == 1) {
-        values[index] = 90
-        index = 2
-        2
-    } else 0)
-    if (values[1] != 42 || values[2] != 9 || saved[1] != 40) return 1
+        values[index] = 90;
+        index = 2;
+        2;
+    } else 0);
+    if (values[1] != 42 || values[2] != 9 || saved[1] != 40) return 1;
 
     values[trace(3, index)] *= (if (trace(4, 1) == 1) {
-        values = [5, 6, 7]
-        3
-    } else 0)
-    if (values[0] != 5 || values[1] != 6 || values[2] != 27) return 2
-    values[trace(5, 0)]++
-    values[trace(6, 1)]--
-    if (values[0] != 6 || values[1] != 5) return 3
+        values = [5, 6, 7];
+        3;
+    } else 0);
+    if (values[0] != 5 || values[1] != 6 || values[2] != 27) return 2;
+    values[trace(5, 0)]++;
+    values[trace(6, 1)]--;
+    if (values[0] != 6 || values[1] != 5) return 3;
 
-    int<17>[2] signed = [-95, 7]
-    signed[0] -= 2
-    signed[0] /= 4
-    signed[0] %= 5
-    if (signed[0] != -4 || signed[1] != 7) return 4
+    int<17>[2] signed = [-95, 7];
+    signed[0] -= 2;
+    signed[0] /= 4;
+    signed[0] %= 5;
+    if (signed[0] != -4 || signed[1] != 7) return 4;
 
-    unsigned int<65>[2] wide = [unsigned int<65>::max, 7]
-    wide[0]++
-    if (wide[0] != 0) return 5
-    wide[0]--
-    if (wide[0] != unsigned int<65>::max || wide[1] != 7) return 6
-    wide[1] += 18446744073709551616
-    if (wide[1] != 18446744073709551623) return 7
+    unsigned int<65>[2] wide = [unsigned int<65>::max, 7];
+    wide[0]++;
+    if (wide[0] != 0) return 5;
+    wide[0]--;
+    if (wide[0] != unsigned int<65>::max || wide[1] != 7) return 6;
+    wide[1] += 18446744073709551616;
+    if (wide[1] != 18446744073709551623) return 7;
 
-    float<16>[2] fractions = [1.5, 0.0]
-    fractions[0] *= 2.0
-    fractions[0]++
-    fractions[0]--
-    if (fractions[0] != 3.0 || fractions[1] != 0.0) return 8
-    if (early(true) != 42 || early(false) != 42 || transfers() != 42) return 9
-    return 42
+    float<16>[2] fractions = [1.5, 0.0];
+    fractions[0] *= 2.0;
+    fractions[0]++;
+    fractions[0]--;
+    if (fractions[0] != 3.0 || fractions[1] != 0.0) return 8;
+    if (early(true) != 42 || early(false) != 42 || transfers() != 42) return 9;
+    return 42;
 }
 
 fn<int> early(final bool stopAtIndex) {
-    int[2] values = [7, 40]
-    values[if (stopAtIndex) { return 42 } else 1] += (if (!stopAtIndex) { return 42 } else trace(99, 0))
-    return values[1]
+    int[2] values = [7, 40];
+    values[if (stopAtIndex) { return 42; } else 1] += (if (!stopAtIndex) { return 42; } else trace(99, 0));
+    return values[1];
 }
 
 fn<int> transfers() {
-    int[1] values = [40]
-    int count = 0
+    int[1] values = [40];
+    int count = 0;
     do {
-        count++
-        values[0] += (if (count < 2) { continue } else { break })
-    } while (true)
-    return values[0] + count
+        count++;
+        values[0] += (if (count < 2) { continue; } else { break; });
+    } while (true);
+    return values[0] + count;
 }
 
 fn<int> trace(final int label, final int value) {
-    println(label)
-    return value
+    println(label);
+    return value;
 }

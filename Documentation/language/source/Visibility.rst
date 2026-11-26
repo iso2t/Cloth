@@ -29,11 +29,11 @@ colon, or use ``*`` to bring in all the file's public declarations.
 
 .. code-block:: text
 
-   using cloth.io.path.Path: Path, pathOf
-   using cloth.math.Math: *
+   using cloth.io.path.Path: Path, pathOf;
+   using cloth.math.Math: *;
 
-   fn<Path> manifest() = pathOf("module.toml")
-   fn<float<64>> circleConstant() = TAU()
+   fn<Path> manifest() = pathOf("module.toml");
+   fn<float<64>> circleConstant() = TAU();
 
 From the repository root, pass ``--stdlib Stdlib`` to check this example.
 The module ``cloth.io.path.Path`` maps to ``cloth/io/path/Path.co`` under

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    int[2] digits := [4, 2]
-    int result = 0
-    for (def digit <- digits) result = result * 10 + digit
-    return result
+    int[2] digits := [4, 2];
+    int result = 0;
+    for (def digit <- digits) result = result * 10 + digit;
+    return result;
 }

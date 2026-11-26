@@ -40,18 +40,32 @@ EnumDeclaration EnumParser::parse (const Token &keyword, std::optional<Token> vi
 	std::vector<EnumCaseDeclaration> v_cases;
 	std::vector<MethodDeclaration>   v_operators;
 	p_parser.skipNewLines();
+	if (p_parser.explicitSemicolons() && !at(OBraceOpen)) {
+		throw cde::SyntaxException{ cde::DiagnosticCode::ExpectedToken, "An enum requires a body with at least one case", p_parser.peek().getSpan() };
+	}
 	p_parser.p_delimitedParser.braces([this, &v_nestedTypes, &v_cases, &v_operators] () -> void {
 		p_parser.skipNewLines();
 		while (p_parser.startsTypeDeclaration()) {
 			v_nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 		}
-		v_cases = p_parser.p_delimitedParser.commaSeparated(
-		        OBraceClose, [this] () -> bool { return at(OSemicolon) || p_parser.startsTypeDeclaration(); },
+		const Token first = p_parser.peek();
+		v_cases           = p_parser.p_delimitedParser.commaSeparated(
+		        OBraceClose,
+		        [this] () -> bool {
+			        const int offset = p_parser.atKeyword(KPublic) ? 1 : 0;
+			        return at(OSemicolon) || p_parser.startsTypeDeclaration() ||
+			               (p_parser.explicitSemicolons() &&
+			                (p_parser.atKeyword(KOperator, offset) || p_parser.peek().getType() == TokenType::EndOfFile));
+		        },
 		        [this] () -> EnumCaseDeclaration { return parseCase(); });
 		if (v_cases.empty()) {
 			throw cde::SyntaxErrors::expected("at least one enum case", p_parser.peek());
 		}
-		if (!at(OBraceClose)) {
+		p_parser.recordRange(SourceConstruct::EnumCases, first, WrittenForm::Simple);
+		if (p_parser.explicitSemicolons()) {
+			p_parser.requireSemicolon("enum case list");
+			v_operators = parseMembers(v_nestedTypes);
+		} else if (!at(OBraceClose)) {
 			p_parser.expect(OSemicolon);
 			p_parser.skipNewLines();
 			v_operators = parseMembers(v_nestedTypes);
@@ -101,11 +115,16 @@ std::vector<MethodDeclaration> EnumParser::parseMembers (std::vector<TypeDeclara
 			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}
+		const Token          first          = p_parser.peek();
 		std::optional<Token> opt_visibility = p_parser.parseVisibility();
 		if (!p_parser.atKeyword(KOperator)) {
 			throw cde::SyntaxErrors::expected(std::format("an '{}' declaration", toString(KOperator)), p_parser.peek());
 		}
 		v_operators.push_back(p_parser.p_functionParser.parseOperator(std::move(opt_visibility)));
+		p_parser.recordDeclaration(SourceConstruct::Member, first, v_operators.back().body.getEquals() != nullptr);
+		if (p_parser.explicitSemicolons()) {
+			continue;
+		}
 		if (std::holds_alternative<ExpressionBody>(v_operators.back().body.value) && at(OSemicolon)) {
 			p_parser.advance();
 		} else if (!at(OBraceClose) && p_parser.peek().getType() != TokenType::NewLine) {

@@ -32,6 +32,9 @@ DoWhileStatement DoWhileLoopParser::parseDoWhile () const {
 	ExpressionPtr ep_condition = p_parser.p_expressionParser.parseExpression();
 	p_parser.skipNewLines();
 	const Token t_closing = p_parser.expect(OParenClose);
+	if (p_parser.explicitSemicolons()) {
+		p_parser.requireSemicolon("do-while condition");
+	}
 
 	return { t_keyword, std::move(lb_body), t_whileKeyword, t_opening, std::move(ep_condition), t_closing };
 }

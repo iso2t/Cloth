@@ -1,31 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<struct> Box { pub string text }
-typedef<enum> Label(pub def<string?> text = null) { pub None, pub Mixed("é\0😀") }
+typedef<struct> Box { pub string text; }
+typedef<enum> Label(pub def<string?> text = null) { pub None, pub Mixed("é\0😀"); }
 
 fn<bool> trace(final bool flag) {
-    println(1)
-    return flag
+    println(1);
+    return flag;
 }
 
-fn<usize> measured(final bool flag) = (if (trace(flag)) "é\0😀" else "")::size
-fn<int> leaving(final bool early) = (if (early) { return 42 } else "ab")::size -> int
+fn<usize> measured(final bool flag) = (if (trace(flag)) "é\0😀" else "")::size;
+fn<int> leaving(final bool early) = (if (early) { return 42; } else "ab")::size -> int;
 
 fn<usize> labelSize(final Label label) {
-    string text := label.text ?: ""
-    return text::size
+    string text := label.text ?: "";
+    return text::size;
 }
 
 pub fn<int> main() {
-    Box source = {"é\0😀"}
-    Box saved := source
-    source.text = ""
-    if (source.text::size != 0 || saved.text::size != 3) return 1
-    string? maybe = null
-    if ((maybe ?: "é")::size != 2) return 2
-    maybe = """é\n"""
-    if (maybe == null || maybe::size != 3 || "\n"::size != 1) return 3
-    if (labelSize(Label.None) != 0 || labelSize(Label.Mixed) != 3) return 4
-    if (measured(true) != 3 || measured(false) != 0 || leaving(false) != 2) return 5
-    return leaving(true)
+    Box source = {"é\0😀"};
+    Box saved := source;
+    source.text = "";
+    if (source.text::size != 0 || saved.text::size != 3) return 1;
+    string? maybe = null;
+    if ((maybe ?: "é")::size != 2) return 2;
+    maybe = """é\n""";
+    if (maybe == null || maybe::size != 3 || "\n"::size != 1) return 3;
+    if (labelSize(Label.None) != 0 || labelSize(Label.Mixed) != 3) return 4;
+    if (measured(true) != 3 || measured(false) != 0 || leaving(false) != 2) return 5;
+    return leaving(true);
 }

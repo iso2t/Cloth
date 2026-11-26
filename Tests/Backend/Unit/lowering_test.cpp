@@ -76,16 +76,16 @@ void expectReturn (const cloth::CheckedProgram &program, unsigned expected) {
 TEST (BackendLowering, ReturnsTheLiteralFromTheSelectedEntryOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		expectReturn(checkProgram("pub fn<int> main () = 42", { .sizeBits=u_bits }), 42);
-		expectReturn(checkProgram("pub fn<int> main () {\n    return 42\n}", { .sizeBits=u_bits }), 42);
-		expectReturn(checkProgram("fn<int> helper() { return 99 }\nfn<int<32>> main() = 0x7", { .sizeBits=u_bits }), 7);
-		expectReturn(checkProgram("fn<int> main() = 0", { .sizeBits=u_bits }), 0);
-		expectReturn(checkProgram("fn<int> main() = 2147483647", { .sizeBits=u_bits }), 2147483647);
+		expectReturn(checkProgram("pub fn<int> main () = 42;", { .sizeBits=u_bits }), 42);
+		expectReturn(checkProgram("pub fn<int> main () {\n    return 42;\n}", { .sizeBits=u_bits }), 42);
+		expectReturn(checkProgram("fn<int> helper() { return 99; }\nfn<int<32>> main() = 0x7;", { .sizeBits=u_bits }), 7);
+		expectReturn(checkProgram("fn<int> main() = 0;", { .sizeBits=u_bits }), 0);
+		expectReturn(checkProgram("fn<int> main() = 2147483647;", { .sizeBits=u_bits }), 2147483647);
 	}
 }
 
 TEST (BackendLowering, ReadsTheLiteralValueFromCheckedFacts) {
-	for (const char *s_source : { "pub fn<int> main () = 42", "pub fn<int> main () { return 42 }" }) {
+	for (const char *s_source : { "pub fn<int> main () = 42;", "pub fn<int> main () { return 42; }" }) {
 		SCOPED_TRACE(s_source);
 		cloth::CheckedProgram cp_program = checkProgram(s_source);
 		ASSERT_EQ(cp_program.expressions.size(), 1u);
@@ -97,10 +97,10 @@ TEST (BackendLowering, ReadsTheLiteralValueFromCheckedFacts) {
 TEST (BackendLowering, ReturnsImmutableIntegerLocalsOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		expectReturn(checkProgram("pub fn<int> main() { int answer := 42; return answer }", { .sizeBits=u_bits }), 42);
-		expectReturn(checkProgram("pub fn<int> main() { def answer := 7; return answer }", { .sizeBits=u_bits }), 7);
-		expectReturn(checkProgram("fn<int> main() { int<32> source := 42; def copy := source; int other := 7; return copy }", { .sizeBits=u_bits }), 42);
-		expectReturn(checkProgram("fn<int> main() { int caf\u00e9 := 7; return cafe\u0301 }", { .sizeBits=u_bits }), 7);
+		expectReturn(checkProgram("pub fn<int> main() { int answer := 42; return answer; }", { .sizeBits=u_bits }), 42);
+		expectReturn(checkProgram("pub fn<int> main() { def answer := 7; return answer; }", { .sizeBits=u_bits }), 7);
+		expectReturn(checkProgram("fn<int> main() { int<32> source := 42; def copy := source; int other := 7; return copy; }", { .sizeBits=u_bits }), 42);
+		expectReturn(checkProgram("fn<int> main() { int caf\u00e9 := 7; return cafe\u0301; }", { .sizeBits=u_bits }), 7);
 	}
 }
 
@@ -108,7 +108,7 @@ TEST (BackendLowering, UsesTheEnumCaseSelectedByTheFrontend) {
 	std::ostringstream oss_source;
 	oss_source << "typedef<enum> Mode { pub Zulu";
 	for (unsigned u_index = 1; u_index < 256; ++u_index) oss_source << ", Hidden" << u_index;
-	oss_source << ", pub Alpha }\nfn<int> main() = Mode.Zulu -> int";
+	oss_source << ", pub Alpha; }\nfn<int> main() = Mode.Zulu -> int;";
 	cloth::CheckedProgram     cp_program = checkProgram(oss_source.str());
 	const cloth::SymbolScope &ss_cases   = cp_program.units.front()->getGlobals().at("Mode").front().members;
 	const cloth::Symbol      &sym_zulu = ss_cases.at("Zulu").front(), &sym_alpha = ss_cases.at("Alpha").front();
@@ -124,10 +124,10 @@ TEST (BackendLowering, UsesTheEnumCaseSelectedByTheFrontend) {
 TEST (BackendLowering, StoresAndComparesFullWidthEnumTagsOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(typedef<enum> Mode { pub Off, pub On }
-typedef<struct> Setting { pub bool enabled, pub Mode mode }
-fn<int> main() { Setting s = {true, Mode.On}; return if (different(s.mode, Mode.Off)) 42 else 7 }
-fn<bool> different(final Mode a, final Mode b) = a != b)",
+		const backend::LoweredModule lm_module(checkProgram(R"(typedef<enum> Mode { pub Off, pub On; }
+typedef<struct> Setting { pub bool enabled, pub Mode mode; }
+fn<int> main() { Setting s = {true, Mode.On}; return if (different(s.mode, Mode.Off)) 42 else 7; }
+fn<bool> different(final Mode a, final Mode b) = a != b;)",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		const LLVMModuleRef     mod_module = lm_module.get();
@@ -160,10 +160,10 @@ TEST (BackendLowering, IndexesOneReadOnlyTablePerPayloadFieldUsingCheckedCaseVal
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		cloth::CheckedProgram     cp_program = checkProgram(R"(typedef<enum> Mode(def<string> label = "mode", pub def<usize> code = 7) {
-    Hidden("hidden", 90), pub Off, pub On("on", 42)
+    Hidden("hidden", 90), pub Off, pub On("on", 42);
 }
-fn<int> main() = (Mode.Off.code + read(Mode.On)) -> int
-fn<usize> read(final Mode mode) = mode.code)",
+fn<int> main() = (Mode.Off.code + read(Mode.On)) -> int;
+fn<usize> read(final Mode mode) = mode.code;)",
 		                                                    { .sizeBits=u_bits });
 		const cloth::SymbolScope &ss_members = cp_program.units.front()->getGlobals().at("Mode").front().members;
 		// Alter the checked selection independently of the declaration's literal.
@@ -197,9 +197,9 @@ TEST (BackendLowering, NullableScalarsStoreAPresenceByteAndAnAlignedPayload) {
 		                                     "float<64>", "bool", "char", "Mode" }) {
 			SCOPED_TRACE(::testing::Message() << s_payload << " on " << u_bits << "-bit target");
 			const std::string            s_type       = s_payload + "?";
-			const cloth::CheckedProgram  cp_program   = checkProgram("typedef<enum> Mode { pub Off }\n"
-			                                                         "fn<int> main() = if (identity(null) == null) 42 else 7\nfn<" +
-			                                                                 s_type + "> identity(final " + s_type + " value) = value",
+			const cloth::CheckedProgram  cp_program   = checkProgram("typedef<enum> Mode { pub Off; }\n"
+			                                                         "fn<int> main() = if (identity(null) == null) 42 else 7;\nfn<" +
+			                                                                 s_type + "> identity(final " + s_type + " value) = value;",
 			                                                         { .sizeBits=u_bits });
 			const cloth::Symbol         &sym_identity = cp_program.units.front()->getGlobals().at("identity").front();
 			const cloth::ResolvedType   &rt_type      = cp_program.declarations.at(&sym_identity).parameters.front();
@@ -231,9 +231,9 @@ TEST (BackendLowering, NullableBooleansStorePresenceAndTruthInSeparateBytes) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const cloth::CheckedProgram cp_program =
-		        checkProgram(R"(typedef<enum> Signal(pub def<bool?> flag = null) { pub Missing, pub Off(0), pub On(256 -> int?) }
-fn<int> main() = if (identity(Signal.On.flag) == true) 42 else 7
-fn<bool?> identity(final bool? flag) = flag)",
+		        checkProgram(R"(typedef<enum> Signal(pub def<bool?> flag = null) { pub Missing, pub Off(0), pub On(256 -> int?); }
+fn<int> main() = if (identity(Signal.On.flag) == true) 42 else 7;
+fn<bool?> identity(final bool? flag) = flag;)",
 		                     { .sizeBits=u_bits });
 		const backend::LoweredModule lm_module(cp_program);
 		ASSERT_NO_THROW(lm_module.verify());
@@ -269,15 +269,15 @@ fn<bool?> identity(final bool? flag) = flag)",
 TEST (BackendLowering, UsesCheckedStorageForImmutableStructFieldsOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(typedef<struct> Sample<T> { pub bool ready, pub T value }
-pub fn<int> main() = small(true, 42) + sized(true, 0)
+		const backend::LoweredModule lm_module(checkProgram(R"(typedef<struct> Sample<T> { pub bool ready, pub T value; }
+pub fn<int> main() = small(true, 42) + sized(true, 0);
 fn<int> small(final bool flag, final int<12> n) {
-    Sample<int<12>> sample := {flag, n}
-    return if (sample.ready) sample.value -> int else 0
+    Sample<int<12>> sample := {flag, n};
+    return if (sample.ready) sample.value -> int else 0;
 }
 fn<int> sized(final bool flag, final usize n) {
-    Sample<usize> sample := {flag, n}
-    return if (sample.ready) sample.value -> int else 0
+    Sample<usize> sample := {flag, n};
+    return if (sample.ready) sample.value -> int else 0;
 })",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -311,9 +311,9 @@ TEST (BackendLowering, StructRangeFieldsUseInlineStorageOnBothTargets) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const backend::LoweredModule lm_module(checkProgram(R"(typedef<struct> Window {
-    pub bool marked, pub range<int<12>> span, pub range<usize>? bounds, pub bool tail
+    pub bool marked, pub range<int<12>> span, pub range<usize>? bounds, pub bool tail;
 }
-fn<int> main() { Window window = {true, -3..=2, null, false}; return if (window.marked) 42 else 1 })",
+fn<int> main() { Window window = {true, -3..=2, null, false}; return if (window.marked) 42 else 1; })",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		const LLVMModuleRef     mod_module  = lm_module.get();
@@ -342,8 +342,8 @@ fn<int> main() { Window window = {true, -3..=2, null, false}; return if (window.
 TEST (BackendLowering, NullableStructLocalsUseTheCheckedPayloadAlignment) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const cloth::CheckedProgram cp_program = checkProgram(R"(typedef<struct> Sample { pub bool ready, pub usize word }
-fn<int> main() { Sample? sample = {false, 0}; return if (sample == null) 7 else sample.word -> int })",
+		const cloth::CheckedProgram cp_program = checkProgram(R"(typedef<struct> Sample { pub bool ready, pub usize word; }
+fn<int> main() { Sample? sample = {false, 0}; return if (sample == null) 7 else sample.word -> int; })",
 		                                                      { .sizeBits=u_bits });
 		ASSERT_EQ(cp_program.localTypes.size(), 1u);
 		const cloth::ResolvedType   &rt_nullable = cp_program.localTypes.begin()->second;
@@ -376,13 +376,13 @@ fn<int> main() { Sample? sample = {false, 0}; return if (sample == null) 7 else 
 TEST (BackendLowering, GuardedStructFieldReadsTheTargetSizedFieldOnThePresentEdge) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(typedef<struct> Sample { pub bool flag, pub usize word }
+		const backend::LoweredModule lm_module(checkProgram(R"(typedef<struct> Sample { pub bool flag, pub usize word; }
 fn<usize?> read(final bool present, final usize word) {
-    Sample full := {false, word}
-    Sample? sample := if (present) full else null
-    return sample?.word
+    Sample full := {false, word};
+    Sample? sample := if (present) full else null;
+    return sample?.word;
 }
-fn<int> main() = (read(true, 42) ?: 7) -> int)",
+fn<int> main() = (read(true, 42) ?: 7) -> int;)",
 		                                                    { .sizeBits = u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		const LLVMValueRef fn_read = LLVMGetNamedFunction(lm_module.get(), "cloth.read");
@@ -413,11 +413,11 @@ fn<int> main() = (read(true, 42) ?: 7) -> int)",
 TEST (BackendLowering, NullableFixedArrayLocalsStorePresenceBeforeTheAlignedBuffer) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = read(1)
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = read(1);
 fn<int> read(final usize index) {
-    usize[2]? pair = [0, 42]
-    if (pair == null) return 1
-    return pair[index] -> int
+    usize[2]? pair = [0, 42];
+    if (pair == null) return 1;
+    return pair[index] -> int;
 })",
 		                                                    { .sizeBits = u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -443,8 +443,8 @@ TEST (BackendLowering, NullableFixedArraySizeIncludesItsPresenceByte) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const cloth::CheckedProgram cp_program =
-		        checkProgram("fn<int> main() { unsigned int<8>[4294967295]? bytes = null; return 42 }", { .sizeBits = u_bits });
-		const backend::LoweredModule lm_module(checkProgram("fn<int> main() = 42", { .sizeBits = u_bits }));
+		        checkProgram("fn<int> main() { unsigned int<8>[4294967295]? bytes = null; return 42; }", { .sizeBits = u_bits });
+		const backend::LoweredModule lm_module(checkProgram("fn<int> main() = 42;", { .sizeBits = u_bits }));
 		backend::detail::ValueTypes  vt_types(lm_module.get(), cp_program);
 		ASSERT_EQ(cp_program.localTypes.size(), 1u);
 		const cloth::ResolvedType &rt_nullable = cp_program.localTypes.begin()->second;
@@ -456,8 +456,8 @@ TEST (BackendLowering, NullableFixedArraySizeIncludesItsPresenceByte) {
 TEST (BackendLowering, FixedArrayReadsAndWritesUseTheCheckedElementStrideOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const cloth::CheckedProgram                           cp_program = checkProgram(R"(fn<int> main() = replace(1, 42)
-fn<int> replace(final usize index, final int<12> next) { int<12>[2] values = [7, 9]; values[index] = next; return values[index] -> int })",
+		const cloth::CheckedProgram                           cp_program = checkProgram(R"(fn<int> main() = replace(1, 42);
+fn<int> replace(final usize index, final int<12> next) { int<12>[2] values = [7, 9]; values[index] = next; return values[index] -> int; })",
 		                                                                                { .sizeBits=u_bits });
 		const auto it_array   = std::ranges::find_if(
 		        cp_program.localTypes, [] (const decltype(cp_program.localTypes)::value_type &entry) { return entry.second.array(); });
@@ -513,16 +513,16 @@ TEST (BackendLowering, GrowableArrayRuntimeReceivesCheckedStrideAndTargetSizedCo
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		for (const char *s_declaration :
-		     { "int<65>[] values = [7]", "bool[] values = [false]", "char[] values = ['A']", "float<16>[] values = [7.0]", "float<32>[] values = [7.0]",
-		       "float<64>[] values = [7.0]", "int<65>?[] values = [null]", "bool?[] values = [false]", "char?[] values = [null]",
-		       "float<16>?[] values = [null]", "float<64>?[] values = [null]", "range<int<12>>?[] values = [null]" }) {
+		     { "int<65>[] values = [7];", "bool[] values = [false];", "char[] values = ['A'];", "float<16>[] values = [7.0];", "float<32>[] values = [7.0];",
+		       "float<64>[] values = [7.0];", "int<65>?[] values = [null];", "bool?[] values = [false];", "char?[] values = [null];",
+		       "float<16>?[] values = [null];", "float<64>?[] values = [null];", "range<int<12>>?[] values = [null];" }) {
 			SCOPED_TRACE(s_declaration);
 			const cloth::CheckedProgram cp_program = checkProgram(std::string("fn<int> main() { ") + s_declaration + R"(
-    values.reserve(3)
-    values.append(values[0])
-    values.insert(1, values.removeAt(0))
-    values.clear()
-    return 42
+    values.reserve(3);
+    values.append(values[0]);
+    values.insert(1, values.removeAt(0));
+    values.clear();
+    return 42;
 })",
 			                                                      { .sizeBits = u_bits });
 			ASSERT_EQ(cp_program.localTypes.size(), 1u);
@@ -568,10 +568,10 @@ TEST (BackendLowering, GrowableArrayRuntimeReceivesCheckedStrideAndTargetSizedCo
 TEST (BackendLowering, RectangularArrayReadsUseInlineRowsAndCheckEachIndex) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const cloth::CheckedProgram cp_program = checkProgram(R"(fn<int> main() = at(1, 2)
+		const cloth::CheckedProgram cp_program = checkProgram(R"(fn<int> main() = at(1, 2);
 fn<int> at(final usize row, final usize col) {
-    int<12>[2][3] rows := [[1, 2, 3], [4, 5, 42]]
-    return rows[row][col] -> int
+    int<12>[2][3] rows := [[1, 2, 3], [4, 5, 42]];
+    return rows[row][col] -> int;
 })",
 		                                                      { .sizeBits = u_bits });
 		const auto                  it_rows    = std::ranges::find_if(cp_program.localTypes, [] (const auto &local) { return local.second.array(); });
@@ -613,11 +613,11 @@ fn<int> at(final usize row, final usize col) {
 TEST (BackendLowering, RectangularArrayStoresAddressTheCellInTheMutableLocal) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = put(1, 2, 7)
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = put(1, 2, 7);
 fn<int> put(final usize row, final usize col, final int<12> value) {
-    int<12>[2][3] rows = [[1, 2, 3], [4, 5, 42]]
-    rows[row][col] = value
-    return rows[1][2] -> int
+    int<12>[2][3] rows = [[1, 2, 3], [4, 5, 42]];
+    rows[row][col] = value;
+    return rows[1][2] -> int;
 })",
 		                                                    { .sizeBits = u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -643,9 +643,9 @@ TEST (BackendLowering, RectangularArrayIterationCopiesEachRowIntoAnEntrySlot) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() {
-    int<65>[2][3] rows := [[1, 2, 20], [3, 4, 22]]
-    for (def row <- rows) row[2] = 0
-    return 42
+    int<65>[2][3] rows := [[1, 2, 20], [3, 4, 22]];
+    for (def row <- rows) row[2] = 0;
+    return 42;
 })",
 		                                                    { .sizeBits = u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -682,9 +682,9 @@ TEST (BackendLowering, RectangularArrayIterationCopiesEachRowIntoAnEntrySlot) {
 TEST (BackendLowering, CompoundArrayUpdateLoadsAndStoresThroughTheSameAddress) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = change(1)
-fn<int> change(final usize index) { int<65>[2] values = [7, 40]; values[index] += delta(); return 42 }
-fn<int<65>> delta() = 2)",
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = change(1);
+fn<int> change(final usize index) { int<65>[2] values = [7, 40]; values[index] += delta(); return 42; }
+fn<int<65>> delta() = 2;)",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		const LLVMValueRef fn_delta = LLVMGetNamedFunction(lm_module.get(), "cloth.delta");
@@ -719,8 +719,8 @@ fn<int<65>> delta() = 2)",
 TEST (BackendLowering, FixedIntegerArrayEqualityLoopsOverFullWidthElements) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = if (same(7)) 42 else 1
-fn<bool> same(final int<65> n) { int<65>[5] a = [n, 1, 2, 3, 4]; int<65>[5] b = [7, 1, 2, 3, 4]; return a == b })",
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = if (same(7)) 42 else 1;
+fn<bool> same(final int<65> n) { int<65>[5] a = [n, 1, 2, 3, 4]; int<65>[5] b = [7, 1, 2, 3, 4]; return a == b; })",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		const LLVMValueRef fn_same = LLVMGetNamedFunction(lm_module.get(), "cloth.same");
@@ -759,11 +759,11 @@ TEST (BackendLowering, GrowableArrayTraversalGuardsFullWidthCellLoadsOnBothTarge
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() {
-    int<65>[] values = [7, 42]
-    int<65>[] saved := values
-    if (values != saved) return 1
-    for (def cell <- values) { values.clear(); if (cell == 42) return 42 }
-    return 2
+    int<65>[] values = [7, 42];
+    int<65>[] saved := values;
+    if (values != saved) return 1;
+    for (def cell <- values) { values.clear(); if (cell == 42) return 42; }
+    return 2;
 })",
 		                                                    { .sizeBits = u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -800,11 +800,11 @@ TEST (BackendLowering, GrowableArrayTraversalGuardsFullWidthCellLoadsOnBothTarge
 TEST (BackendLowering, NullableFixedArrayEqualityGuardsCellLoadsWithBothPresenceFlags) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = if (same(true, false)) 1 else 42
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = if (same(true, false)) 1 else 42;
 fn<bool> same(final bool a, final bool b) {
-    int<65>[2]? left := if (a) [0, 1] else null
-    int<65>[2]? right := if (b) [0, 1] else null
-    return left == right
+    int<65>[2]? left := if (a) [0, 1] else null;
+    int<65>[2]? right := if (b) [0, 1] else null;
+    return left == right;
 })",
 		                                                    { .sizeBits = u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -842,13 +842,13 @@ fn<bool> same(final bool a, final bool b) {
 TEST (BackendLowering, RectangularArrayEqualityFoldsDifferentShapesAndEmptyBuffers) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = if (!differentShapes(7) && emptyRows()) 42 else 1
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = if (!differentShapes(7) && emptyRows()) 42 else 1;
 fn<bool> differentShapes(final int n) {
-    int[1][2][1] a := [[[n], [0]]]
-    int[1][1][2] b := [[[n, 0]]]
-    return a == b
+    int[1][2][1] a := [[[n], [0]]];
+    int[1][1][2] b := [[[n, 0]]];
+    return a == b;
 }
-fn<bool> emptyRows() { int[2][0] a := [[], []]; return a == a })",
+fn<bool> emptyRows() { int[2][0] a := [[], []]; return a == a; })",
 		                                                    { .sizeBits = u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		for (const auto &[s_name, b_expected] : { std::pair{ "cloth.differentShapes", false }, std::pair{ "cloth.emptyRows", true } }) {
@@ -871,8 +871,8 @@ TEST (BackendLowering, FixedFloatArrayInequalityUsesOrderedElementEquality) {
 		for (const unsigned u_width : { 16u, 32u, 64u }) {
 			SCOPED_TRACE(u_width);
 			const std::string            s_type = "float<" + std::to_string(u_width) + ">";
-			const backend::LoweredModule lm_module(checkProgram("fn<int> main() = if (different(0.0)) 1 else 42\nfn<bool> different(final " +
-			                                                            s_type + " value) { " + s_type + "[1] a := [value]; return a != a }",
+			const backend::LoweredModule lm_module(checkProgram("fn<int> main() = if (different(0.0)) 1 else 42;\nfn<bool> different(final " +
+			                                                            s_type + " value) { " + s_type + "[1] a := [value]; return a != a; }",
 			                                                    { .sizeBits=u_bits }));
 			ASSERT_NO_THROW(lm_module.verify());
 			const LLVMValueRef fn_different = LLVMGetNamedFunction(lm_module.get(), "cloth.different");
@@ -901,7 +901,7 @@ TEST (BackendLowering, FixedFloatArrayInequalityUsesOrderedElementEquality) {
 TEST (BackendLowering, AbsentScalarEqualityIgnoresTheUnusedPayload) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const cloth::CheckedProgram  cp_program = checkProgram("fn<int> main() { usize? value := null; return 42 }", { .sizeBits=u_bits });
+		const cloth::CheckedProgram  cp_program = checkProgram("fn<int> main() { usize? value := null; return 42; }", { .sizeBits=u_bits });
 		const backend::LoweredModule lm_module(cp_program);
 		const LLVMContextRef         ctx_context = LLVMGetModuleContext(lm_module.get());
 		const std::unique_ptr<LLVMOpaqueBuilder, decltype(&LLVMDisposeBuilder)> ir_builder(LLVMCreateBuilderInContext(ctx_context), LLVMDisposeBuilder);
@@ -940,7 +940,7 @@ TEST (BackendLowering, FixedArrayLayoutMatchesEverySupportedIntegerWidth) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const cloth::CheckedProgram cp_program =
-		        checkProgram("fn<int> main() { int[3] signedValues := [0, 0, 0]; unsigned int[3] unsignedValues := [0, 0, 0]; return 42 }", { .sizeBits=u_bits });
+		        checkProgram("fn<int> main() { int[3] signedValues := [0, 0, 0]; unsigned int[3] unsignedValues := [0, 0, 0]; return 42; }", { .sizeBits=u_bits });
 		const backend::LoweredModule lm_module(cp_program);
 		backend::detail::ValueTypes  vt_types(lm_module.get(), cp_program);
 		const LLVMTargetDataRef      td_target = LLVMGetModuleDataLayout(lm_module.get());
@@ -967,9 +967,9 @@ TEST (BackendLowering, FixedArrayLayoutMatchesEverySupportedIntegerWidth) {
 TEST (BackendLowering, EmbedsNestedStructFieldsAtTheirTargetAlignment) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(typedef<struct> Inner<T> { pub bool ready, pub T word, pub int<12> value }
-typedef<struct> Sample { pub bool first, pub Inner<usize> inner, pub bool last }
-fn<int> main() { Sample sample = {false, {true, 1, 42}, false}; sample.inner.value = 7; return sample.inner.value -> int })",
+		const backend::LoweredModule lm_module(checkProgram(R"(typedef<struct> Inner<T> { pub bool ready, pub T word, pub int<12> value; }
+typedef<struct> Sample { pub bool first, pub Inner<usize> inner, pub bool last; }
+fn<int> main() { Sample sample = {false, {true, 1, 42}, false}; sample.inner.value = 7; return sample.inner.value -> int; })",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		const LLVMTargetDataRef td_layout = LLVMGetModuleDataLayout(lm_module.get());
@@ -1000,8 +1000,8 @@ fn<int> main() { Sample sample = {false, {true, 1, 42}, false}; sample.inner.val
 TEST (BackendLowering, StoresIntoTheStructFieldSelectedByCheckedFactsOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		cloth::CheckedProgram      cp_program = checkProgram(R"(typedef<struct> Pair { pub int<12> left, pub int<12> right }
-fn<int> main() { Pair pair = {42, 0}; pair.left = 7; return pair.right -> int })",
+		cloth::CheckedProgram      cp_program = checkProgram(R"(typedef<struct> Pair { pub int<12> left, pub int<12> right; }
+fn<int> main() { Pair pair = {42, 0}; pair.left = 7; return pair.right -> int; })",
 		                                                     { .sizeBits=u_bits });
 		const cloth::StructLayout &sl_pair    = cp_program.structLayouts.begin()->second;
 		ASSERT_EQ(sl_pair.fields.size(), 2u);
@@ -1041,7 +1041,7 @@ fn<int> main() { Pair pair = {42, 0}; pair.left = 7; return pair.right -> int })
 }
 
 TEST (BackendLowering, ReadsTheLocalSelectedByCheckedFacts) {
-	cloth::CheckedProgram cp_program = checkProgram("fn<int> main() { int first := 42; int second := 7; return first }");
+	cloth::CheckedProgram cp_program = checkProgram("fn<int> main() { int first := 42; int second := 7; return first; }");
 	const cloth::Token   *t_second   = nullptr;
 	for (const decltype(cp_program.localTypes)::value_type &lt_local : cp_program.localTypes) {
 		if (lt_local.first->getLexeme() == "second") t_second = lt_local.first;
@@ -1056,7 +1056,7 @@ TEST (BackendLowering, ReadsTheLocalSelectedByCheckedFacts) {
 TEST (BackendLowering, WritesAndReadsOneIntegerSlotOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram("pub fn<int> main() { int answer = 42; answer = 7; return answer }", { .sizeBits=u_bits }));
+		const backend::LoweredModule lm_module(checkProgram("pub fn<int> main() { int answer = 42; answer = 7; return answer; }", { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		const LLVMTargetDataRef td_layout = LLVMGetModuleDataLayout(lm_module.get());
 		EXPECT_EQ(LLVMPointerSize(td_layout) * CHAR_BIT, u_bits);
@@ -1094,7 +1094,7 @@ TEST (BackendLowering, WritesAndReadsOneIntegerSlotOnBothTargetWidths) {
 }
 
 TEST (BackendLowering, WritesTheLocalSelectedByCheckedFacts) {
-	cloth::CheckedProgram cp_program = checkProgram("fn<int> main() { int first = 42; def second = 0; first = 7; return second }");
+	cloth::CheckedProgram cp_program = checkProgram("fn<int> main() { int first = 42; def second = 0; first = 7; return second; }");
 	const cloth::Token   *t_second   = nullptr;
 	for (const decltype(cp_program.localTypes)::value_type &lt_local : cp_program.localTypes) {
 		if (lt_local.first->getLexeme() == "second") t_second = lt_local.first;
@@ -1120,9 +1120,9 @@ TEST (BackendLowering, WritesTheLocalSelectedByCheckedFacts) {
 TEST (BackendLowering, CallsALaterPrivateFunctionOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() { return identity(42) }
-fn<int> identity(bool value) { println(1); return 7 }
-fn<int> identity(int value) = value
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() { return identity(42); }
+fn<int> identity(bool value) { println(1); return 7; }
+fn<int> identity(int value) = value;
 )",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -1151,9 +1151,9 @@ fn<int> identity(int value) = value
 TEST (BackendLowering, BranchesOnceAndReturnsFromTheSelectedArmOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = choose(true)
-fn<int> choose(final bool flag) { if (probe(flag)) { return 42 } else { return 7 } }
-fn<bool> probe(final bool flag) = flag
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = choose(true);
+fn<int> choose(final bool flag) { if (probe(flag)) { return 42; } else { return 7; } }
+fn<bool> probe(final bool flag) = flag;
 )",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -1193,8 +1193,8 @@ fn<bool> probe(final bool flag) = flag
 TEST (BackendLowering, JoinsBothConditionalValuesAtTheReturnOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = choose(true)
-fn<int> choose(final bool flag) { return if (flag) 42 else 7 }
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = choose(true);
+fn<int> choose(final bool flag) { return if (flag) 42 else 7; }
 )",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -1230,10 +1230,10 @@ fn<int> choose(final bool flag) { return if (flag) 42 else 7 }
 TEST (BackendLowering, JoinsOnlyTheContinuingPredecessorAfterAGuardedDivision) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = offset(false, 84, 2) -> int
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = offset(false, 84, 2) -> int;
 fn<int<12>> offset(final bool flag, final int<12> n, final int<12> divisor) {
-    int<12> selected := if (flag) { return n } else n / divisor
-    return selected + 1
+    int<12> selected := if (flag) { return n; } else n / divisor;
+    return selected + 1;
 }
 )",
 		                                                    { .sizeBits=u_bits }));
@@ -1264,8 +1264,8 @@ fn<int<12>> offset(final bool flag, final int<12> n, final int<12> divisor) {
 TEST (BackendLowering, SkipsTheCallWhenItsConditionalArgumentAlwaysReturns) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = unused(if (true) { return 42 } else 7)
-fn<int> unused(int n) = n
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = unused(if (true) { return 42; } else 7);
+fn<int> unused(int n) = n;
 )",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -1283,9 +1283,9 @@ fn<int> unused(int n) = n
 TEST (BackendLowering, EmitsOnlyTheOperandsReachedBeforeAReturn) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = (first() / (if (true) { return 42 } else 0)) + skipped()
-fn<int> first() = 7
-fn<int> skipped() { println(1); return 0 }
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = (first() / (if (true) { return 42; } else 0)) + skipped();
+fn<int> first() = 7;
+fn<int> skipped() { println(1); return 0; }
 )",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -1299,17 +1299,17 @@ fn<int> skipped() { println(1); return 0 }
 TEST (BackendLowering, RechecksTheWhileConditionAndReusesLoopLocalStorage) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = sum(3)
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = sum(3);
 fn<int> sum(int remaining) {
-    int total = 0
+    int total = 0;
     while (more(remaining)) {
-        int term = remaining
-        total += term
-        remaining--
+        int term = remaining;
+        total += term;
+        remaining--;
     }
-    return total
+    return total;
 }
-fn<bool> more(final int n) = n > 0
+fn<bool> more(final int n) = n > 0;
 )",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -1351,11 +1351,11 @@ TEST (BackendLowering, TraversesReadOnlyFixedArraysWithATargetSizedIndex) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() {
-    for (int unused <- []) skipped()
-    int[2] digits := [4, 2]
-    int result = 0
-    for (def digit <- digits) result = result * 10 + digit
-    return result
+    for (int unused <- []) skipped();
+    int[2] digits := [4, 2];
+    int result = 0;
+    for (def digit <- digits) result = result * 10 + digit;
+    return result;
 }
 fn<void> skipped() {})",
 		                                                    { .sizeBits=u_bits }));
@@ -1389,11 +1389,11 @@ TEST (BackendLowering, IntegerRangesCompareAndAdvanceAtTheCheckedWidth) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const backend::LoweredModule lm_module(
-		        checkProgram(R"(fn<int> main() = signedRange(-1, 1) + unsignedRange(0, 1) + signedInclusive(-1, 1) + unsignedInclusive(0, 1)
-fn<int> signedRange(final int<65> first, final int<65> last) { for (def n <- first..last) n = last; return 0 }
-fn<int> unsignedRange(final usize first, final usize last) { for (def n <- first..last) n = last; return 0 }
-fn<int> signedInclusive(final int<65> first, final int<65> last) { for (def n <- first..=last) n = last; return 0 }
-fn<int> unsignedInclusive(final usize first, final usize last) { for (def n <- first..=last) n = last; return 0 })",
+		        checkProgram(R"(fn<int> main() = signedRange(-1, 1) + unsignedRange(0, 1) + signedInclusive(-1, 1) + unsignedInclusive(0, 1);
+fn<int> signedRange(final int<65> first, final int<65> last) { for (def n <- first..last) n = last; return 0; }
+fn<int> unsignedRange(final usize first, final usize last) { for (def n <- first..last) n = last; return 0; }
+fn<int> signedInclusive(final int<65> first, final int<65> last) { for (def n <- first..=last) n = last; return 0; }
+fn<int> unsignedInclusive(final usize first, final usize last) { for (def n <- first..=last) n = last; return 0; })",
 		                     { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		for (const auto &[s_name, predicate] :
@@ -1430,9 +1430,9 @@ fn<int> unsignedInclusive(final usize first, final usize last) { for (def n <- f
 TEST (BackendLowering, InlineIntegerMembershipComparesAtTheCheckedWidth) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = if (signedMember(0, -1, 1) && unsignedMember(1, 0, 1)) 42 else 0
-fn<bool> signedMember(final int<65> n, final int<65> low, final int<65> high) = n : low..high
-fn<bool> unsignedMember(final usize n, final usize low, final usize high) = low..=high == n)",
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = if (signedMember(0, -1, 1) && unsignedMember(1, 0, 1)) 42 else 0;
+fn<bool> signedMember(final int<65> n, final int<65> low, final int<65> high) = n : low..high;
+fn<bool> unsignedMember(final usize n, final usize low, final usize high) = low..=high == n;)",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		for (const bool b_signed : { true, false }) {
@@ -1455,9 +1455,9 @@ fn<bool> unsignedMember(final usize n, final usize low, final usize high) = low.
 TEST (BackendLowering, RangeEqualityComparesBothEndpointsAtTheirFullWidth) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = if (wide(0, 1, 0, 1) && word(0, 1, 1, 0)) 42 else 1
-fn<bool> wide(final int<65> start, final int<65> end, final int<65> otherStart, final int<65> otherEnd) = start..=end == otherStart..=otherEnd
-fn<bool> word(final usize start, final usize end, final usize otherStart, final usize otherEnd) = start..end != otherStart..otherEnd)",
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = if (wide(0, 1, 0, 1) && word(0, 1, 1, 0)) 42 else 1;
+fn<bool> wide(final int<65> start, final int<65> end, final int<65> otherStart, final int<65> otherEnd) = start..=end == otherStart..=otherEnd;
+fn<bool> word(final usize start, final usize end, final usize otherStart, final usize otherEnd) = start..end != otherStart..otherEnd;)",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		for (const auto &[s_name, u_width] : { std::pair{ "cloth.wide", 65u }, std::pair{ "cloth.word", u_bits } }) {
@@ -1479,12 +1479,12 @@ TEST (BackendLowering, StoredIntegerRangesUseTheCheckedEndpointAndFlagLayout) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const cloth::CheckedProgram  cp_program = checkProgram(R"(fn<int> main() {
-    def small := int<1>::min..int<1>::max
-    def narrow := int<12>::min..=int<12>::max
-    def wide := int<65>::min..=int<65>::max
-    def largest := int<65536>::min..int<65536>::max
-    def word := usize::min..=usize::max
-    return 42
+    def small := int<1>::min..int<1>::max;
+    def narrow := int<12>::min..=int<12>::max;
+    def wide := int<65>::min..=int<65>::max;
+    def largest := int<65536>::min..int<65536>::max;
+    def word := usize::min..=usize::max;
+    return 42;
 })",
 		                                                       { .sizeBits=u_bits });
 		const backend::LoweredModule lm_module(cp_program);
@@ -1517,12 +1517,12 @@ TEST (BackendLowering, NullableIntegerRangeLocalsAlignTheRangeAfterThePresenceBy
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const cloth::CheckedProgram  cp_program = checkProgram(R"(fn<int> main() {
-    range<int<1>>? bit = null
-    range<unsigned int<12>>? small = 0..0
-    range<int<65>>? wide = -1..=0
-    range<unsigned int<65536>>? largest = null
-    range<usize>? word = 0..0
-    return 42
+    range<int<1>>? bit = null;
+    range<unsigned int<12>>? small = 0..0;
+    range<int<65>>? wide = -1..=0;
+    range<unsigned int<65536>>? largest = null;
+    range<usize>? word = 0..0;
+    return 42;
 })",
 		                                                       { .sizeBits=u_bits });
 		const backend::LoweredModule lm_module(cp_program);
@@ -1552,11 +1552,11 @@ TEST (BackendLowering, PostfixRangeStepsUseTheCounterWidthAndAllowOverflowDetect
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() {
-    for (int<65> n <- int<65>::min..=int<65>::max; n++) n = int<65>::max
-    for (usize n <- usize::min..=usize::max; n++) n = usize::max
-    for (int<65> n <- int<65>::max..=int<65>::min; n--) n = int<65>::min
-    for (usize n <- usize::max..=usize::min; n--) n = usize::min
-    return 0
+    for (int<65> n <- int<65>::min..=int<65>::max; n++) n = int<65>::max;
+    for (usize n <- usize::min..=usize::max; n++) n = usize::max;
+    for (int<65> n <- int<65>::max..=int<65>::min; n--) n = int<65>::min;
+    for (usize n <- usize::max..=usize::min; n--) n = usize::min;
+    return 0;
 })",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -1582,13 +1582,13 @@ TEST (BackendLowering, PostfixRangeStepsUseTheCounterWidthAndAllowOverflowDetect
 TEST (BackendLowering, RangeAdditionAndSubtractionCheckOverflowAtTheCounterWidth) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = walk(-2, 2)
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = walk(-2, 2);
 fn<int> walk(final int<65> signedStep, final usize unsignedStep) {
-    for (int<65> n <- int<65>::max..=int<65>::min; n += signedStep) n = int<65>::min
-    for (usize n <- 0..=usize::max; n += unsignedStep) n = usize::max
-    for (int<65> n <- int<65>::min..=int<65>::max; n -= signedStep) n = int<65>::max
-    for (usize n <- usize::max..=0; n -= unsignedStep) n = 0
-    return 0
+    for (int<65> n <- int<65>::max..=int<65>::min; n += signedStep) n = int<65>::min;
+    for (usize n <- 0..=usize::max; n += unsignedStep) n = usize::max;
+    for (int<65> n <- int<65>::min..=int<65>::max; n -= signedStep) n = int<65>::max;
+    for (usize n <- usize::max..=0; n -= unsignedStep) n = 0;
+    return 0;
 })",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -1607,12 +1607,12 @@ fn<int> walk(final int<65> signedStep, final usize unsignedStep) {
 TEST (BackendLowering, RangeProductsUseCheckedNativeOrMultiwordMultiplication) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = walk(-2, 2, -1)
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = walk(-2, 2, -1);
 fn<int> walk(final isize signedFactor, final usize unsignedFactor, final int<129> wideFactor) {
-    for (isize n <- isize::min..=isize::max; n *= signedFactor) n = isize::max
-    for (usize n <- 0..=usize::max; n *= unsignedFactor) n = usize::max
-    for (int<129> n <- int<129>::min..=int<129>::max; n *= wideFactor) n = int<129>::min
-    return 0
+    for (isize n <- isize::min..=isize::max; n *= signedFactor) n = isize::max;
+    for (usize n <- 0..=usize::max; n *= unsignedFactor) n = usize::max;
+    for (int<129> n <- int<129>::min..=int<129>::max; n *= wideFactor) n = int<129>::min;
+    return 0;
 })",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -1635,7 +1635,7 @@ fn<int> walk(final isize signedFactor, final usize unsignedFactor, final int<129
 TEST (BackendLowering, RangeDivisionAndRemainderUseTheSignednessAndWidthOfTheCounter) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = walk(-2, 2, 2, 2)
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = walk(-2, 2, 2, 2);
 fn<int> walk(final isize signedNative, final usize unsignedNative, final int<97> signedWide, final unsigned int<65> unsignedWide) {
     for (isize n <- 24..=6; n /= signedNative) {}
     for (usize n <- 24..=6; n /= unsignedNative) {}
@@ -1645,7 +1645,7 @@ fn<int> walk(final isize signedNative, final usize unsignedNative, final int<97>
     for (usize n <- 35..=7; n %= unsignedNative) {}
     for (int<97> n <- 35..=7; n %= signedWide) {}
     for (unsigned int<65> n <- 35..=7; n %= unsignedWide) {}
-    return 0
+    return 0;
 })",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -1680,10 +1680,10 @@ TEST (BackendLowering, RangeAssignmentUsesTheReplacementAsTheNextCounter) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() {
-    for (isize n <- 0..=19; n = replacement()) { if (n == 19) break }
-    return 42
+    for (isize n <- 0..=19; n = replacement()) { if (n == 19) break; }
+    return 42;
 }
-fn<isize> replacement() = 19)",
+fn<isize> replacement() = 19;)",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		const LLVMValueRef fn_replacement = LLVMGetNamedFunction(lm_module.get(), "cloth.replacement");
@@ -1705,7 +1705,7 @@ fn<isize> replacement() = 19)",
 TEST (BackendLowering, LeavesEndlessLoopsWithoutAnImplicitReturn) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		for (const char *s_source : { "pub fn<int> main() { while (true) {} }", "pub fn<int> main() { do {} while (true) }" }) {
+		for (const char *s_source : { "pub fn<int> main() { while (true) {} }", "pub fn<int> main() { do {} while (true); }" }) {
 			SCOPED_TRACE(s_source);
 			const backend::LoweredModule lm_module(checkProgram(s_source, { .sizeBits=u_bits }));
 			ASSERT_NO_THROW(lm_module.verify());
@@ -1723,9 +1723,9 @@ TEST (BackendLowering, LeavesEndlessLoopsWithoutAnImplicitReturn) {
 TEST (BackendLowering, ReturnsFromAWhileConditionBeforeEnteringTheBody) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = answer(true)
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = answer(true);
 fn<int> answer(final bool flag) {
-    while (if (flag) { return 42 } else { return 7 }) { unused() }
+    while (if (flag) { return 42; } else { return 7; }) { unused(); }
 }
 fn<void> unused() {}
 )",
@@ -1739,11 +1739,11 @@ TEST (BackendLowering, TestsTheDoWhileConditionAfterTheBody) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() {
-    do { touch() } while (again())
-    return 42
+    do { touch(); } while (again());
+    return 42;
 }
 fn<void> touch() {}
-fn<bool> again() = false
+fn<bool> again() = false;
 )",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -1777,7 +1777,7 @@ TEST (BackendLowering, SkipsTheDoWhileConditionWhenTheBodyReturns) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const backend::LoweredModule lm_module(
-		        checkProgram("pub fn<int> main() { do { return 42 } while (unused()) }\nfn<bool> unused() = true", { .sizeBits=u_bits }));
+		        checkProgram("pub fn<int> main() { do { return 42; } while (unused()); }\nfn<bool> unused() = true;", { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		EXPECT_EQ(LLVMGetNamedFunction(lm_module.get(), "cloth.unused"), nullptr);
 	}
@@ -1786,13 +1786,13 @@ TEST (BackendLowering, SkipsTheDoWhileConditionWhenTheBodyReturns) {
 TEST (BackendLowering, UsesTheCheckedLoopTargetForANestedContinue) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		cloth::CheckedProgram cp_program = checkProgram(R"(pub fn<int> main() = route(false, false)
+		cloth::CheckedProgram cp_program = checkProgram(R"(pub fn<int> main() = route(false, false);
 fn<int> route(final bool outer, final bool inner) {
     while (outer) {
-        while (inner) { continue }
-        break
+        while (inner) { continue; }
+        break;
     }
-    return 42
+    return 42;
 }
 )",
 		                                                { .sizeBits=u_bits });
@@ -1831,10 +1831,10 @@ TEST (BackendLowering, SkipsTheDoWhileConditionAfterBreakWithADeadContinue) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() {
-    do { if (false) continue; break } while (unused())
-    return 42
+    do { if (false) continue; break; } while (unused());
+    return 42;
 }
-fn<bool> unused() = true
+fn<bool> unused() = true;
 )",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -1846,7 +1846,7 @@ TEST (BackendLowering, KeepsADeadBreakFromOpeningAnEndlessLoop) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		for (const char *s_source :
-		     { "fn<int> main() { while (true) { if (false) break } }", "fn<int> main() { do { if (false) break; continue } while (true) }" }) {
+		     { "fn<int> main() { while (true) { if (false) break; } }", "fn<int> main() { do { if (false) break; continue; } while (true); }" }) {
 			SCOPED_TRACE(s_source);
 			const backend::LoweredModule lm_module(checkProgram(s_source, { .sizeBits=u_bits }));
 			ASSERT_NO_THROW(lm_module.verify());
@@ -1862,7 +1862,7 @@ TEST (BackendLowering, KeepsADeadBreakFromOpeningAnEndlessLoop) {
 TEST (BackendLowering, CallsAPrivateVoidHelperBeforeReturningOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram("pub fn<int> main() { touch(); return 42 }\nfn<void> touch() {}", { .sizeBits=u_bits }));
+		const backend::LoweredModule lm_module(checkProgram("pub fn<int> main() { touch(); return 42; }\nfn<void> touch() {}", { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		const LLVMValueRef fn_main = LLVMGetNamedFunction(lm_module.get(), "main");
 		ASSERT_NE(fn_main, nullptr);
@@ -1897,8 +1897,8 @@ TEST (BackendLowering, CallsAPrivateVoidHelperBeforeReturningOnBothTargetWidths)
 TEST (BackendLowering, CallsOneExternalInt32PrintlnDeclarationOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() { println(1); echo(2); return 42 }
-fn<void> echo(final int value) = println(value)
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() { println(1); echo(2); return 42; }
+fn<void> echo(final int value) = println(value);
 )",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -1926,8 +1926,8 @@ fn<void> echo(final int value) = println(value)
 
 TEST (BackendLowering, OmitsThePrintRuntimeForShadowedAndUnreachedCalls) {
 	for (const char *s_source : {
-	             "fn<int> main() = println(1)\nfn<int> println(final int value) = value + 41",
-	             "fn<int> main() { println(if (true) { return 42 } else 1) }",
+	             "fn<int> main() = println(1);\nfn<int> println(final int value) = value + 41;",
+	             "fn<int> main() { println(if (true) { return 42; } else 1); }",
 	     }) {
 		SCOPED_TRACE(s_source);
 		const backend::LoweredModule lm_module(checkProgram(s_source));
@@ -1939,8 +1939,8 @@ TEST (BackendLowering, OmitsThePrintRuntimeForShadowedAndUnreachedCalls) {
 TEST (BackendLowering, PassesTheCheckedInt32StatusToANonReturningExitOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = stop(7)
-fn<int> stop(final unsigned int<97> status) = exit(status)
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = stop(7);
+fn<int> stop(final unsigned int<97> status) = exit(status);
 )",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -1980,7 +1980,7 @@ fn<int> stop(final unsigned int<97> status) = exit(status)
 TEST (BackendLowering, PassesTheUtf8ByteSpanToANonReturningExitOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = exit(7, "é\0😀"))", { .sizeBits = u_bits }));
+		const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = exit(7, "é\0😀");)", { .sizeBits = u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		const LLVMModuleRef  mod_module  = lm_module.get();
 		const LLVMContextRef ctx_context = LLVMGetModuleContext(mod_module);
@@ -2012,8 +2012,8 @@ TEST (BackendLowering, PassesTheUtf8ByteSpanToANonReturningExitOnBothTargetWidth
 }
 
 TEST (BackendLowering, OmitsTheExitRuntimeWhenAnArgumentReturnsFromTheFunction) {
-	for (const char *s_source : { R"(fn<int> main() = exit(if (true) { return 42 } else { return 7 }, "unreached"))",
-	                              R"(fn<int> main() = exit(7, if (true) { return 42 } else { return 7 }))" }) {
+	for (const char *s_source : { R"(fn<int> main() = exit(if (true) { return 42; } else { return 7; }, "unreached");)",
+	                              R"(fn<int> main() = exit(7, if (true) { return 42; } else { return 7; });)" }) {
 		SCOPED_TRACE(s_source);
 		const backend::LoweredModule lm_module(checkProgram(s_source));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -2043,10 +2043,10 @@ void expectWrappingParameterOperation (const cloth::CheckedProgram &program, con
 TEST (BackendLowering, AddsTwoIntegerParametersWithWrappingSemanticsOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		expectWrappingParameterOperation(checkProgram("pub fn<int> main() = add(40, 2)\nfn<int> add(final int left, final int right) = left + right",
+		expectWrappingParameterOperation(checkProgram("pub fn<int> main() = add(40, 2);\nfn<int> add(final int left, final int right) = left + right;",
 		                                              { .sizeBits=u_bits }),
 		                                 "cloth.add", LLVMAdd);
-		expectReturn(checkProgram("fn<int> main() = 2147483647 + 1", { .sizeBits=u_bits }), 0x80000000u);
+		expectReturn(checkProgram("fn<int> main() = 2147483647 + 1;", { .sizeBits=u_bits }), 0x80000000u);
 	}
 }
 
@@ -2054,9 +2054,9 @@ TEST (BackendLowering, SubtractsTwoIntegerParametersWithWrappingSemanticsOnBothT
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		expectWrappingParameterOperation(
-		        checkProgram("pub fn<int> main() = subtract(44, 2)\nfn<int> subtract(final int left, final int right) = left - right", { .sizeBits=u_bits }),
+		        checkProgram("pub fn<int> main() = subtract(44, 2);\nfn<int> subtract(final int left, final int right) = left - right;", { .sizeBits=u_bits }),
 		        "cloth.subtract", LLVMSub);
-		expectReturn(checkProgram("fn<int> main() = (0 - 2147483647 - 1) - 1", { .sizeBits=u_bits }), 2147483647u);
+		expectReturn(checkProgram("fn<int> main() = (0 - 2147483647 - 1) - 1;", { .sizeBits=u_bits }), 2147483647u);
 	}
 }
 
@@ -2064,19 +2064,19 @@ TEST (BackendLowering, MultipliesTwoIntegerParametersWithWrappingSemanticsOnBoth
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		expectWrappingParameterOperation(
-		        checkProgram("pub fn<int> main() = multiply(6, 7)\nfn<int> multiply(final int left, final int right) = left * right", { .sizeBits=u_bits }),
+		        checkProgram("pub fn<int> main() = multiply(6, 7);\nfn<int> multiply(final int left, final int right) = left * right;", { .sizeBits=u_bits }),
 		        "cloth.multiply", LLVMMul);
-		expectReturn(checkProgram("fn<int> main() = 2147483647 * 2", { .sizeBits=u_bits }), 0xfffffffeu);
-		expectReturn(checkProgram("fn<int> main() = 65536 * 65536", { .sizeBits=u_bits }), 0u);
+		expectReturn(checkProgram("fn<int> main() = 2147483647 * 2;", { .sizeBits=u_bits }), 0xfffffffeu);
+		expectReturn(checkProgram("fn<int> main() = 65536 * 65536;", { .sizeBits=u_bits }), 0u);
 	}
 }
 
 TEST (BackendLowering, NegatesAnIntegerOperandOnceWithWrappingSemanticsOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = negate(-42)
-fn<int> negate(final int value) = -operand(value)
-fn<int> operand(final int value) = value
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = negate(-42);
+fn<int> negate(final int value) = -operand(value);
+fn<int> operand(final int value) = value;
 )",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -2105,11 +2105,11 @@ fn<int> operand(final int value) = value
 TEST (BackendLowering, NegatesIntegerLiteralsIncludingTheSignedMinimumOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		expectReturn(checkProgram("fn<int> main() = -42", { .sizeBits=u_bits }), 0xffffffd6u);
-		expectReturn(checkProgram("fn<int> main() = -(-42)", { .sizeBits=u_bits }), 42u);
-		expectReturn(checkProgram("fn<int> main() = -0", { .sizeBits=u_bits }), 0u);
-		expectReturn(checkProgram("fn<int> main() = -2147483648", { .sizeBits=u_bits }), 0x80000000u);
-		expectReturn(checkProgram("fn<int> main() = -(-2147483648)", { .sizeBits=u_bits }), 0x80000000u);
+		expectReturn(checkProgram("fn<int> main() = -42;", { .sizeBits=u_bits }), 0xffffffd6u);
+		expectReturn(checkProgram("fn<int> main() = -(-42);", { .sizeBits=u_bits }), 42u);
+		expectReturn(checkProgram("fn<int> main() = -0;", { .sizeBits=u_bits }), 0u);
+		expectReturn(checkProgram("fn<int> main() = -2147483648;", { .sizeBits=u_bits }), 0x80000000u);
+		expectReturn(checkProgram("fn<int> main() = -(-2147483648);", { .sizeBits=u_bits }), 0x80000000u);
 	}
 }
 
@@ -2117,7 +2117,7 @@ TEST (BackendLowering, UnaryPlusReturnsItsOperandDirectlyOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const backend::LoweredModule lm_module(
-		        checkProgram("pub fn<int> main() = +positive(42)\nfn<int> positive(final int value) = +value", { .sizeBits=u_bits }));
+		        checkProgram("pub fn<int> main() = +positive(42);\nfn<int> positive(final int value) = +value;", { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
 		const LLVMValueRef fn_positive = LLVMGetNamedFunction(lm_module.get(), "cloth.positive");
 		ASSERT_NE(fn_positive, nullptr);
@@ -2143,20 +2143,20 @@ TEST (BackendLowering, UnaryPlusReturnsItsOperandDirectlyOnBothTargetWidths) {
 TEST (BackendLowering, UnaryPlusPreservesSignedIntegerLiteralsOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		expectReturn(checkProgram("fn<int> main() = +42", { .sizeBits=u_bits }), 42u);
-		expectReturn(checkProgram("fn<int> main() = +(-42)", { .sizeBits=u_bits }), 0xffffffd6u);
-		expectReturn(checkProgram("fn<int> main() = +0", { .sizeBits=u_bits }), 0u);
-		expectReturn(checkProgram("fn<int> main() = +2147483647", { .sizeBits=u_bits }), 0x7fffffffu);
-		expectReturn(checkProgram("fn<int> main() = +(-2147483648)", { .sizeBits=u_bits }), 0x80000000u);
+		expectReturn(checkProgram("fn<int> main() = +42;", { .sizeBits=u_bits }), 42u);
+		expectReturn(checkProgram("fn<int> main() = +(-42);", { .sizeBits=u_bits }), 0xffffffd6u);
+		expectReturn(checkProgram("fn<int> main() = +0;", { .sizeBits=u_bits }), 0u);
+		expectReturn(checkProgram("fn<int> main() = +2147483647;", { .sizeBits=u_bits }), 0x7fffffffu);
+		expectReturn(checkProgram("fn<int> main() = +(-2147483648);", { .sizeBits=u_bits }), 0x80000000u);
 	}
 }
 
 TEST (BackendLowering, ComplementsAnIntegerOperandOnceOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = invert(-43)
-fn<int> invert(final int value) = ~operand(value)
-fn<int> operand(final int value) = value
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = invert(-43);
+fn<int> invert(final int value) = ~operand(value);
+fn<int> operand(final int value) = value;
 )",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -2185,11 +2185,11 @@ fn<int> operand(final int value) = value
 TEST (BackendLowering, ComplementsIntegerLiteralsOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		expectReturn(checkProgram("fn<int> main() = ~0", { .sizeBits=u_bits }), 0xffffffffu);
-		expectReturn(checkProgram("fn<int> main() = ~(-1)", { .sizeBits=u_bits }), 0u);
-		expectReturn(checkProgram("fn<int> main() = ~2147483647", { .sizeBits=u_bits }), 0x80000000u);
-		expectReturn(checkProgram("fn<int> main() = ~(-2147483648)", { .sizeBits=u_bits }), 0x7fffffffu);
-		expectReturn(checkProgram("fn<int> main() = ~~42", { .sizeBits=u_bits }), 42u);
+		expectReturn(checkProgram("fn<int> main() = ~0;", { .sizeBits=u_bits }), 0xffffffffu);
+		expectReturn(checkProgram("fn<int> main() = ~(-1);", { .sizeBits=u_bits }), 0u);
+		expectReturn(checkProgram("fn<int> main() = ~2147483647;", { .sizeBits=u_bits }), 0x80000000u);
+		expectReturn(checkProgram("fn<int> main() = ~(-2147483648);", { .sizeBits=u_bits }), 0x7fffffffu);
+		expectReturn(checkProgram("fn<int> main() = ~~42;", { .sizeBits=u_bits }), 42u);
 	}
 }
 
@@ -2249,10 +2249,10 @@ void expectGuardedDivisionOperation (LLVMModuleRef module, const char *functionN
 TEST (BackendLowering, GuardsSignedDivisionAndRemainderAfterEvaluatingBothOperandsOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = remainder(divide(284, 2), 100)
-fn<int> divide(final int left, final int right) = operand(left) / operand(right)
-fn<int> remainder(final int left, final int right) = operand(left) % operand(right)
-fn<int> operand(final int value) = value
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = remainder(divide(284, 2), 100);
+fn<int> divide(final int left, final int right) = operand(left) / operand(right);
+fn<int> remainder(final int left, final int right) = operand(left) % operand(right);
+fn<int> operand(final int value) = value;
 )",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -2264,8 +2264,8 @@ fn<int> operand(final int value) = value
 TEST (BackendLowering, GuardsWideUnsignedDivisorsWithANonReturningRuntimeCall) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = remainder(84, 2) -> int
-fn<unsigned int<97>> remainder(final unsigned int<97> n, final unsigned int<97> d) = n % d
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = remainder(84, 2) -> int;
+fn<unsigned int<97>> remainder(final unsigned int<97> n, final unsigned int<97> d) = n % d;
 )",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -2304,10 +2304,10 @@ fn<unsigned int<97>> remainder(final unsigned int<97> n, final unsigned int<97> 
 TEST (BackendLowering, GuardsFloatToIntegerCastsBeforeConvertingAtTheTargetWidth) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		expectReturn(checkProgram("pub fn<int> main() = 42.75 -> int", { .sizeBits=u_bits }), 42u);
-		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = (asSigned(42.75) -> int) + (asUnsigned(0.5) -> int)
-fn<isize> asSigned(final float<64> value) = value -> isize
-fn<usize> asUnsigned(final float<64> value) = value -> usize
+		expectReturn(checkProgram("pub fn<int> main() = 42.75 -> int;", { .sizeBits=u_bits }), 42u);
+		const backend::LoweredModule lm_module(checkProgram(R"(pub fn<int> main() = (asSigned(42.75) -> int) + (asUnsigned(0.5) -> int);
+fn<isize> asSigned(final float<64> value) = value -> isize;
+fn<usize> asUnsigned(final float<64> value) = value -> usize;
 )",
 		                                                    { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -2339,29 +2339,29 @@ fn<usize> asUnsigned(final float<64> value) = value -> usize
 TEST (BackendLowering, TruncatesSignedQuotientsTowardZeroOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		expectReturn(checkProgram("fn<int> main() = 85 / 2", { .sizeBits=u_bits }), 42u);
-		expectReturn(checkProgram("fn<int> main() = (0 - 85) / 2", { .sizeBits=u_bits }), 0xffffffd6u);
-		expectReturn(checkProgram("fn<int> main() = 85 / (0 - 2)", { .sizeBits=u_bits }), 0xffffffd6u);
-		expectReturn(checkProgram("fn<int> main() = (0 - 85) / (0 - 2)", { .sizeBits=u_bits }), 42u);
-		expectReturn(checkProgram("fn<int> main() = (2147483647 + 1) / 1", { .sizeBits=u_bits }), 0x80000000u);
+		expectReturn(checkProgram("fn<int> main() = 85 / 2;", { .sizeBits=u_bits }), 42u);
+		expectReturn(checkProgram("fn<int> main() = (0 - 85) / 2;", { .sizeBits=u_bits }), 0xffffffd6u);
+		expectReturn(checkProgram("fn<int> main() = 85 / (0 - 2);", { .sizeBits=u_bits }), 0xffffffd6u);
+		expectReturn(checkProgram("fn<int> main() = (0 - 85) / (0 - 2);", { .sizeBits=u_bits }), 42u);
+		expectReturn(checkProgram("fn<int> main() = (2147483647 + 1) / 1;", { .sizeBits=u_bits }), 0x80000000u);
 	}
 }
 
 TEST (BackendLowering, SignedRemaindersHaveTheSignOfTheDividendOnBothTargetWidths) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		expectReturn(checkProgram("fn<int> main() = 142 % 100", { .sizeBits=u_bits }), 42u);
-		expectReturn(checkProgram("fn<int> main() = (0 - 142) % 100", { .sizeBits=u_bits }), 0xffffffd6u);
-		expectReturn(checkProgram("fn<int> main() = 142 % (0 - 100)", { .sizeBits=u_bits }), 42u);
-		expectReturn(checkProgram("fn<int> main() = (0 - 142) % (0 - 100)", { .sizeBits=u_bits }), 0xffffffd6u);
-		expectReturn(checkProgram("fn<int> main() = 142 % (0 - 1)", { .sizeBits=u_bits }), 0u);
-		expectReturn(checkProgram("fn<int> main() = (2147483647 + 1) % 3", { .sizeBits=u_bits }), 0xfffffffeu);
+		expectReturn(checkProgram("fn<int> main() = 142 % 100;", { .sizeBits=u_bits }), 42u);
+		expectReturn(checkProgram("fn<int> main() = (0 - 142) % 100;", { .sizeBits=u_bits }), 0xffffffd6u);
+		expectReturn(checkProgram("fn<int> main() = 142 % (0 - 100);", { .sizeBits=u_bits }), 42u);
+		expectReturn(checkProgram("fn<int> main() = (0 - 142) % (0 - 100);", { .sizeBits=u_bits }), 0xffffffd6u);
+		expectReturn(checkProgram("fn<int> main() = 142 % (0 - 1);", { .sizeBits=u_bits }), 0u);
+		expectReturn(checkProgram("fn<int> main() = (2147483647 + 1) % 3;", { .sizeBits=u_bits }), 0xfffffffeu);
 	}
 }
 
 void expectBinaryCallOrder (const std::string &entry, LLVMOpcode opcode) {
 	SCOPED_TRACE(entry);
-	const backend::LoweredModule lm_module(checkProgram(entry + "\nfn<int> first() = 44\nfn<int> second() = 2"));
+	const backend::LoweredModule lm_module(checkProgram(entry + "\nfn<int> first() = 44;\nfn<int> second() = 2;"));
 	ASSERT_NO_THROW(lm_module.verify());
 	const LLVMValueRef      fn_main  = LLVMGetNamedFunction(lm_module.get(), "main");
 	const LLVMBasicBlockRef bb_entry = LLVMGetEntryBasicBlock(fn_main);
@@ -2382,17 +2382,17 @@ void expectBinaryCallOrder (const std::string &entry, LLVMOpcode opcode) {
 }
 
 TEST (BackendLowering, EvaluatesArithmeticOperandsOnceInSourceOrder) {
-	expectBinaryCallOrder("fn<int> main() = first() + second()", LLVMAdd);
-	expectBinaryCallOrder("fn<int> main() = first() - second()", LLVMSub);
-	expectBinaryCallOrder("fn<int> main() = first() * second()", LLVMMul);
+	expectBinaryCallOrder("fn<int> main() = first() + second();", LLVMAdd);
+	expectBinaryCallOrder("fn<int> main() = first() - second();", LLVMSub);
+	expectBinaryCallOrder("fn<int> main() = first() * second();", LLVMMul);
 }
 
 TEST (BackendLowering, EvaluatesForwardedVoidCallsAndDiscardedIntegerCalls) {
-	const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() { relay(7); return 42 }
-fn<void> relay(final int n) = middle(n)
-fn middle(final int n) { return finish(n) }
-fn<void> finish(final int n) { identity(n); return }
-fn<int> identity(final int n) = n
+	const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() { relay(7); return 42; }
+fn<void> relay(final int n) = middle(n);
+fn middle(final int n) { return finish(n); }
+fn<void> finish(final int n) { identity(n); return; }
+fn<int> identity(final int n) = n;
 )"));
 	ASSERT_NO_THROW(lm_module.verify());
 	const LLVMValueRef fn_main = LLVMGetNamedFunction(lm_module.get(), "main");
@@ -2420,7 +2420,7 @@ fn<int> identity(final int n) = n
 
 TEST (BackendLowering, UsesTheCalleeSelectedByTheFrontend) {
 	cloth::CheckedProgram cp_program =
-	        checkProgram("fn<int> main() = written(42)\nfn<int> written(int x) { println(1); return x }\nfn<int> selected(int x) = 7");
+	        checkProgram("fn<int> main() = written(42);\nfn<int> written(int x) { println(1); return x; }\nfn<int> selected(int x) = 7;");
 	const cloth::SymbolScope &ss_globals   = cp_program.units.front()->getGlobals();
 	const cloth::Symbol      &sym_written  = ss_globals.at("written").front();
 	const cloth::Symbol      &sym_selected = ss_globals.at("selected").front();
@@ -2440,9 +2440,9 @@ TEST (BackendLowering, UsesTheCalleeSelectedByTheFrontend) {
 }
 
 TEST (BackendLowering, EvaluatesNamedArgumentsInSourceOrderAndPassesThemInParameterOrder) {
-	const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = choose(last = identity(7), first = identity(42))
-fn<int> choose(int first, int last) = first
-fn<int> identity(int value) = value
+	const backend::LoweredModule lm_module(checkProgram(R"(fn<int> main() = choose(last = identity(7), first = identity(42));
+fn<int> choose(int first, int last) = first;
+fn<int> identity(int value) = value;
 )"));
 	ASSERT_NO_THROW(lm_module.verify());
 	const LLVMValueRef      fn_main  = LLVMGetNamedFunction(lm_module.get(), "main");
@@ -2466,7 +2466,7 @@ fn<int> identity(int value) = value
 }
 
 TEST (BackendLowering, ReusesDeclarationsAcrossMutualRecursion) {
-	const backend::LoweredModule lm_module(checkProgram("fn<int> main() = first(42)\nfn<int> first(int n) = second(n)\nfn<int> second(int n) = first(n)"));
+	const backend::LoweredModule lm_module(checkProgram("fn<int> main() = first(42);\nfn<int> first(int n) = second(n);\nfn<int> second(int n) = first(n);"));
 	ASSERT_NO_THROW(lm_module.verify());
 	const LLVMValueRef fn_main  = LLVMGetNamedFunction(lm_module.get(), "main");
 	const LLVMValueRef fn_first = LLVMGetNextFunction(fn_main);
@@ -2505,11 +2505,11 @@ TEST (BackendLowering, UsesTheCheckedSignednessAndEmitsWrappingArithmetic) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const backend::LoweredModule lm_module(checkProgram(
-		        R"(pub fn<int> main() = signedLess(-1, 1).toInt() + unsignedLess(4095, 1).toInt() + (sum(4095, 2) -> int) + (product(-2, 3) -> int)
-fn<bool> signedLess(final int<12> left, final int<12> right) = left < right
-fn<bool> unsignedLess(final unsigned int<12> left, final unsigned int<12> right) = left < right
-fn<unsigned int<12>> sum(final unsigned int<12> left, final unsigned int<12> right) = left + right
-fn<int<97>> product(final int<97> left, final int<97> right) = left * right
+		        R"(pub fn<int> main() = signedLess(-1, 1).toInt() + unsignedLess(4095, 1).toInt() + (sum(4095, 2) -> int) + (product(-2, 3) -> int);
+fn<bool> signedLess(final int<12> left, final int<12> right) = left < right;
+fn<bool> unsignedLess(final unsigned int<12> left, final unsigned int<12> right) = left < right;
+fn<unsigned int<12>> sum(final unsigned int<12> left, final unsigned int<12> right) = left + right;
+fn<int<97>> product(final int<97> left, final int<97> right) = left * right;
 )",
 		        { .sizeBits=u_bits }));
 		ASSERT_NO_THROW(lm_module.verify());
@@ -2536,64 +2536,64 @@ fn<int<97>> product(final int<97> left, final int<97> right) = left * right
 TEST (BackendLowering, PreservesPrimitiveWidthsAndTruthAtTheBoundaries) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		expectReturn(checkProgram("fn<int> main() { bool b := 0; return b.toInt() }", { .sizeBits=u_bits }), 0);
-		expectReturn(checkProgram("fn<int> main() = (false == 1).toInt()", { .sizeBits=u_bits }), 0);
-		expectReturn(checkProgram("fn<int> main() = (true == -2).toInt()", { .sizeBits=u_bits }), 1);
-		expectReturn(checkProgram("fn<int> main() = (int<65536>::max + 1 == int<65536>::min).toInt()", { .sizeBits=u_bits }), 1);
-		expectReturn(checkProgram("fn<int> main() = (unsigned int<1>::max + 1 == 0).toInt()", { .sizeBits=u_bits }), 1);
-		expectReturn(checkProgram("fn<int> main() = isize::size -> int", { .sizeBits=u_bits }), u_bits / 8);
-		expectReturn(checkProgram("fn<int> main() = ((-1 -> int<12>) -> int<40>) -> int", { .sizeBits=u_bits }), 0xffffffffu);
-		expectReturn(checkProgram("fn<int> main() = ((-1 -> unsigned int<12>) -> int<40>) -> int", { .sizeBits=u_bits }), 4095);
+		expectReturn(checkProgram("fn<int> main() { bool b := 0; return b.toInt(); }", { .sizeBits=u_bits }), 0);
+		expectReturn(checkProgram("fn<int> main() = (false == 1).toInt();", { .sizeBits=u_bits }), 0);
+		expectReturn(checkProgram("fn<int> main() = (true == -2).toInt();", { .sizeBits=u_bits }), 1);
+		expectReturn(checkProgram("fn<int> main() = (int<65536>::max + 1 == int<65536>::min).toInt();", { .sizeBits=u_bits }), 1);
+		expectReturn(checkProgram("fn<int> main() = (unsigned int<1>::max + 1 == 0).toInt();", { .sizeBits=u_bits }), 1);
+		expectReturn(checkProgram("fn<int> main() = isize::size -> int;", { .sizeBits=u_bits }), u_bits / 8);
+		expectReturn(checkProgram("fn<int> main() = ((-1 -> int<12>) -> int<40>) -> int;", { .sizeBits=u_bits }), 0xffffffffu);
+		expectReturn(checkProgram("fn<int> main() = ((-1 -> unsigned int<12>) -> int<40>) -> int;", { .sizeBits=u_bits }), 4095);
 	}
 }
 
 TEST (BackendLowering, LabelsUnsupportedStatementsInSourceOrder) {
-	expectUnsupported("fn<int> main() { def stop := exit(7); return 42 }", Code::UnsupportedLowering, "return 42");
-	expectUnsupported("pub fn<int> main() { print(1); return 42 }", Code::UnsupportedLowering, "print(1)");
-	expectUnsupported("pub fn<int> main() { return 42; println(1) }", Code::UnsupportedLowering, "println(1)");
-	expectUnsupported("pub fn<int> main() { return 42; return 7 }", Code::UnsupportedLowering, "return 7");
-	expectUnsupported("fn<int> main() { int a := 42; print(a); return a }", Code::UnsupportedLowering, "print(a)");
-	expectUnsupported("fn<int> main() { return 42; int a := 7 }", Code::UnsupportedLowering, "int a := 7");
-	expectUnsupported("fn<int> main() { int a = 42; return a; a = 7 }", Code::UnsupportedLowering, "a = 7");
-	expectUnsupported("fn<int> main() { touch(); return 42 }\nfn<void> touch() { return; other() }\nfn other() {}", Code::UnsupportedLowering, "other()",
+	expectUnsupported("fn<int> main() { def stop := exit(7); return 42; }", Code::UnsupportedLowering, "return 42");
+	expectUnsupported("pub fn<int> main() { 1.0 : 0.0..2.0; return 42; }", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
+	expectUnsupported("pub fn<int> main() { return 42; println(1); }", Code::UnsupportedLowering, "println(1)");
+	expectUnsupported("pub fn<int> main() { return 42; return 7; }", Code::UnsupportedLowering, "return 7");
+	expectUnsupported("fn<int> main() { int a := 42; 1.0 : 0.0..2.0; return a; }", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
+	expectUnsupported("fn<int> main() { return 42; int a := 7; }", Code::UnsupportedLowering, "int a := 7");
+	expectUnsupported("fn<int> main() { int a = 42; return a; a = 7; }", Code::UnsupportedLowering, "a = 7");
+	expectUnsupported("fn<int> main() { touch(); return 42; }\nfn<void> touch() { return; other(); }\nfn other() {}", Code::UnsupportedLowering, "other()",
 	                  2);
-	expectUnsupported("fn<int> main() { if (true) { return 42; println(1) } else { return 7 } }", Code::UnsupportedLowering, "println(1)");
-	expectUnsupported("fn<int> main() { if (false) { return 42 } else { return 7 }; println(1) }", Code::UnsupportedLowering, "println(1)");
-	expectUnsupported("fn<int> main() { while (true) {}; return 7 }", Code::UnsupportedLowering, "return 7");
-	expectUnsupported("fn<int> main() { do {} while (true); return 7 }", Code::UnsupportedLowering, "return 7");
-	expectUnsupported("fn<int> main() { while (true) { break; println(1) }; return 7 }", Code::UnsupportedLowering, "println(1)");
-	expectUnsupported("fn<int> main() { do { continue; return 7 } while (false); return 42 }", Code::UnsupportedLowering, "return 7");
+	expectUnsupported("fn<int> main() { if (true) { return 42; println(1); } else { return 7; } }", Code::UnsupportedLowering, "println(1)");
+	expectUnsupported("fn<int> main() { if (false) { return 42; } else { return 7; } println(1); }", Code::UnsupportedLowering, "println(1)");
+	expectUnsupported("fn<int> main() { while (true) {} return 7; }", Code::UnsupportedLowering, "return 7");
+	expectUnsupported("fn<int> main() { do {} while (true); return 7; }", Code::UnsupportedLowering, "return 7");
+	expectUnsupported("fn<int> main() { while (true) { break; println(1); } return 7; }", Code::UnsupportedLowering, "println(1)");
+	expectUnsupported("fn<int> main() { do { continue; return 7; } while (false); return 42; }", Code::UnsupportedLowering, "return 7");
 }
 
 TEST (BackendLowering, LabelsUnsupportedConditionalArmExpressions) {
-	expectUnsupported("fn<int> main() { if (true) { print(1) }; return 7 }", Code::UnsupportedLowering, "print(1)");
-	expectUnsupported("fn<int> main() = if (true) 42 else (int[2]::type::rank -> int)", Code::UnsupportedLowering, "int[2]::type::rank");
+	expectUnsupported("fn<int> main() { if (true) { 1.0 : 0.0..2.0; } return 7; }", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
+	expectUnsupported("fn<int> main() = if (true) 42 else ((1.0 : 0.0..2.0).toInt());", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
 }
 
 TEST (BackendLowering, LabelsUnsupportedLocalBindingsAndInitializers) {
-	expectUnsupported(R"(typedef<struct> S { pub typeinfo kind, pub int value }
-fn<int> main() { S s = {int::type, 42}; s.value = 7; return s.value })",
+	expectUnsupported(R"(typedef<struct> S { pub range<float> kind, pub int value; }
+fn<int> main() { S s = {0.0..1.0, 42}; s.value = 7; return s.value; })",
 	                  Code::UnsupportedLowering, "S", 2);
-	expectUnsupported(R"(typedef<struct> S { pub typeinfo kind, pub int value }
-fn<int> main() { S s := {int::type, 42}; return s.value })",
+	expectUnsupported(R"(typedef<struct> S { pub range<float> kind, pub int value; }
+fn<int> main() { S s := {0.0..1.0, 42}; return s.value; })",
 	                  Code::UnsupportedLowering, "S", 2);
-	expectUnsupported(R"(typedef<struct> Leaf { pub typeinfo kind }
-typedef<struct> Box { pub Leaf item }
-fn<int> main() { Box value = {{int::type}}; return 7 })",
+	expectUnsupported(R"(typedef<struct> Leaf { pub range<float> kind; }
+typedef<struct> Box { pub Leaf item; }
+fn<int> main() { Box value = {{0.0..1.0}}; return 7; })",
 	                  Code::UnsupportedLowering, "Box", 3);
-	expectUnsupported("fn<int> main() { typeinfo? kind = null; return 42 }", Code::UnsupportedLowering, "typeinfo?");
-	expectUnsupported("typedef<struct> S { pub typeinfo kind }\nfn<int> main() { S? value = null; return 42 }", Code::UnsupportedLowering, "S?", 2);
-	expectUnsupported("fn<int> main() { int[][] a := [[7]]; return 42 }", Code::UnsupportedLowering, "int[][]");
-	expectUnsupported("fn<int> main() { int[1][] rows := [[7, 42]]; return 42 }", Code::UnsupportedLowering, "int[1][]");
-	expectUnsupported("fn<int> main() { int unused := helper(int[2]::type::rank -> int); return 42 }\nfn<int> helper(int ignored) = 7",
-	                  Code::UnsupportedLowering, "int[2]::type::rank");
+	expectUnsupported("fn<int> main() { range<float>? kind = null; return 42; }", Code::UnsupportedLowering, "range<float>?");
+	expectUnsupported("typedef<struct> S { pub range<float> kind; }\nfn<int> main() { S? value = null; return 42; }", Code::UnsupportedLowering, "S?", 2);
+	expectUnsupported("fn<int> main() { int[][] a := [[7]]; return 42; }", Code::UnsupportedLowering, "int[][]");
+	expectUnsupported("fn<int> main() { int[1][] rows := [[7, 42]]; return 42; }", Code::UnsupportedLowering, "int[1][]");
+	expectUnsupported("fn<int> main() { int unused := helper((1.0 : 0.0..2.0).toInt()); return 42; }\nfn<int> helper(int ignored) = 7;",
+	                  Code::UnsupportedLowering, "1.0 : 0.0..2.0");
 }
 
 TEST (BackendLowering, StringLiteralStoresItsUtf8BytesAndTargetSizedByteLength) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const cloth::CheckedProgram cp_program =
-		        checkProgram(R"(fn<int> main() { string text = "A\0é😀"; return text::size -> int })", { .sizeBits = u_bits });
+		        checkProgram(R"(fn<int> main() { string text = "A\0é😀"; return text::size -> int; })", { .sizeBits = u_bits });
 		const backend::LoweredModule lm_module(cp_program);
 		ASSERT_NO_THROW(lm_module.verify());
 		const LLVMModuleRef mod_module = lm_module.get();
@@ -2626,28 +2626,30 @@ TEST (BackendLowering, StringLiteralStoresItsUtf8BytesAndTargetSizedByteLength) 
 }
 
 TEST (BackendLowering, LabelsUnsupportedAssignments) {
-	expectUnsupported("fn<int> main() { int a = 42; a += (int[2]::type::rank -> int); return a }", Code::UnsupportedLowering, "int[2]::type::rank");
-	expectUnsupported("fn<int> main() { int a = 42; a = (int[2]::type::rank -> int); a = 7; return a }", Code::UnsupportedLowering, "int[2]::type::rank");
+	expectUnsupported("fn<int> main() { int a = 42; a += ((1.0 : 0.0..2.0).toInt()); return a; }", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
+	expectUnsupported("fn<int> main() { int a = 42; a = ((1.0 : 0.0..2.0).toInt()); a = 7; return a; }", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
 }
 
 TEST (BackendLowering, LabelsUnsupportedExpressions) {
-	expectUnsupported(R"(fn<int> main() = exit(7, if (int[2]::type::rank == 1) "finished" else ""))", Code::UnsupportedLowering, "int[2]::type::rank");
-	expectUnsupported("pub fn<int> main() = 40 - (int[2]::type::rank -> int)", Code::UnsupportedLowering, "int[2]::type::rank");
-	expectUnsupported("pub fn<int> main() = (int[2]::type::rank -> int) + (if (true) { return 42 } else 0)", Code::UnsupportedLowering,
-	                  "int[2]::type::rank");
-	expectUnsupported("pub fn<int> main() = +(int[2]::type::rank -> int)", Code::UnsupportedLowering, "int[2]::type::rank");
-	expectUnsupported("pub fn<int> main() = ~(int[2]::type::rank -> int) ** 2", Code::UnsupportedLowering, "int[2]::type::rank");
-	expectUnsupported("pub fn<int> main() = sideEffect()\nfn<int> sideEffect() { print(1)\nreturn 42 }", Code::UnsupportedLowering, "print(1)", 2);
+	expectUnsupported(R"(fn<int> main() = exit(7, if (1.0 : 0.0..2.0) "finished" else "");)", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
+	expectUnsupported("pub fn<int> main() = 40 - ((1.0 : 0.0..2.0).toInt());", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
+	expectUnsupported("pub fn<int> main() = ((1.0 : 0.0..2.0).toInt()) + (if (true) { return 42; } else 0);", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
+	expectUnsupported("pub fn<int> main() = +((1.0 : 0.0..2.0).toInt());", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
+	expectUnsupported("pub fn<int> main() = ~((1.0 : 0.0..2.0).toInt()) ** 2;", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
+	expectUnsupported("pub fn<int> main() = sideEffect();\nfn<int> sideEffect() { 1.0 : 0.0..2.0;\nreturn 42; }", Code::UnsupportedLowering, "1.0 : 0.0..2.0",
+	                  2);
 }
 
 TEST (BackendLowering, LabelsUnsupportedEnumPayloadFieldTypes) {
-	const std::string source = "typedef<enum> Mode(pub def<int[]> row = [1, 2]) { pub On }\n";
-	expectUnsupported(source + "fn<int> main() { Mode mode = Mode.On; mode.row; return 42 }", Code::UnsupportedLowering, "mode.row", 2);
+	const std::string source = "typedef<enum> Mode(pub def<int[]> row = [1, 2]) { pub On; }\n";
+	expectUnsupported(source + "fn<int> main() { Mode mode = Mode.On; mode.row; return 42; }", Code::UnsupportedLowering, "mode.row", 2);
 }
 
-TEST (BackendLowering, LabelsUnsupportedPrintlnForms) {
+TEST (BackendLowering, EmitsTextOutputForms) {
 	for (const std::string s_call : { "println()", "println(true)", "println(1 -> int<64>)", "println(1 -> unsigned int)", "println(\"1\")" }) {
-		expectUnsupported("fn<int> main() { " + s_call + "; return 42 }", Code::UnsupportedLowering, s_call);
+		const backend::LoweredModule module(checkProgram("fn<int> main() { " + s_call + "; return 42; }"));
+		EXPECT_EQ(LLVMVerifyModule(module.get(), LLVMReturnStatusAction, nullptr), 0);
+		EXPECT_NE(LLVMGetNamedFunction(module.get(), "cloth_rt_text_write"), nullptr);
 	}
 }
 
@@ -2655,35 +2657,35 @@ TEST (BackendLowering, EmitsDirectOperatorsAndWidthSelectedOperands) {
 	const std::string s_declarations = R"(
 typedef<class> Item(int seed) {
     pub Item() : (0) {}
-    pub operator +() -> int = 7
-    pub operator -() -> int = 7
-    pub operator ~() -> int = 7
-    pub operator<int> ->() = 7
-    pub operator ==(Item other) = true
-    pub operator +(int n) -> int = n
-    pub operator -(int n) -> int = n
-    pub operator *(int n) -> int = n
-    pub operator /(int n) -> int = n
-    pub operator %(int n) -> int = n
+    pub operator +() -> int = 7;
+    pub operator -() -> int = 7;
+    pub operator ~() -> int = 7;
+    pub operator<int> ->() = 7;
+    pub operator ==(Item other) = true;
+    pub operator +(int n) -> int = n;
+    pub operator -(int n) -> int = n;
+    pub operator *(int n) -> int = n;
+    pub operator /(int n) -> int = n;
+    pub operator %(int n) -> int = n;
 }
 typedef<class> Gauge(int seed) {
     pub Gauge() : (0) {}
-    pub operator<int<auto>> +() -> int<auto> = 2
-    pub operator<int<auto>> -() -> int<auto> = 2
-    pub operator<int<auto>> *() -> int<auto> = 2
-    pub operator<int<auto>> /() -> int<auto> = 2
-    pub operator<int<auto>> %() -> int<auto> = 2
+    pub operator<int<auto>> +() -> int<auto> = 2;
+    pub operator<int<auto>> -() -> int<auto> = 2;
+    pub operator<int<auto>> *() -> int<auto> = 2;
+    pub operator<int<auto>> /() -> int<auto> = 2;
+    pub operator<int<auto>> %() -> int<auto> = 2;
 })";
 	for (const std::string s_expression :
 	     { "+Item::new()", "-Item::new()", "~Item::new()", "Item::new() + 2", "Item::new() - 2", "Item::new() * 2", "Item::new() / 2", "Item::new() % 2",
 	       "40 + Gauge::new()", "Gauge::new() - 2", "6 * Gauge::new()", "84 / Gauge::new()", "142 % Gauge::new()" }) {
 		SCOPED_TRACE(s_expression);
-		ASSERT_NO_THROW(backend::LoweredModule(checkProgram("fn<int> main() = " + s_expression + s_declarations)).verify());
+		ASSERT_NO_THROW(backend::LoweredModule(checkProgram("fn<int> main() = " + s_expression + ";" + s_declarations)).verify());
 	}
-	ASSERT_NO_THROW(backend::LoweredModule(checkProgram("fn<int> main() = Item::new() -> int" + s_declarations)).verify());
-	ASSERT_NO_THROW(backend::LoweredModule(checkProgram("fn<int> main() = (Item::new() == Item::new()).toInt()" + s_declarations)).verify());
-	const cloth::CheckedProgram cursor = checkProgram(R"(typedef<struct> Cursor { pub int at; pub operator +(int step) -> Cursor = {at + step} }
-fn<int> main() { Cursor[1] a = [{7}]; a[0] += 2; return a[0].at })");
+	ASSERT_NO_THROW(backend::LoweredModule(checkProgram("fn<int> main() = Item::new() -> int;" + s_declarations)).verify());
+	ASSERT_NO_THROW(backend::LoweredModule(checkProgram("fn<int> main() = (Item::new() == Item::new()).toInt();" + s_declarations)).verify());
+	const cloth::CheckedProgram cursor = checkProgram(R"(typedef<struct> Cursor { pub int at; pub operator +(int step) -> Cursor = {at + step}; }
+fn<int> main() { Cursor[1] a = [{7}]; a[0] += 2; return a[0].at; })");
 	ASSERT_NO_THROW(backend::LoweredModule(cursor).verify());
 }
 
@@ -2691,8 +2693,8 @@ TEST (BackendLowering, ClassHandleWidthIsIndependentOfPointerWidth) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
 		const cloth::CheckedProgram  cp_program = checkProgram(R"(typedef<class> Marker { pub Marker(int tag) : () {} }
-fn<Marker> make() = Marker::new(7)
-fn<int> main() { Marker[] items = [make()]; return if (items[0] === items[0]) 42 else 1 })",
+fn<Marker> make() = Marker::new(7);
+fn<int> main() { Marker[] items = [make()]; return if (items[0] === items[0]) 42 else 1; })",
 		                                                       { .sizeBits = u_bits });
 		const backend::LoweredModule lm_module(cp_program);
 		ASSERT_NO_THROW(lm_module.verify());
@@ -2710,17 +2712,17 @@ fn<int> main() { Marker[] items = [make()]; return if (items[0] === items[0]) 42
 }
 
 TEST (BackendLowering, EmitsOnlyReachableDispatchImplementations) {
-	const char *source = R"(typedef<interface> Contract { pub mt<int> read() }
+	const char *source = R"(typedef<interface> Contract { pub mt<int> read(); }
 typedef<class> Ready : Contract {
     pub Ready(int n) : () {}
-    pub mt<int> read() = 42
+    pub mt<int> read() = 42;
 }
 typedef<class> Unused : Contract {
     pub Unused(int n) : () {}
-    pub mt<int> read() { print(1); return 0 }
+    pub mt<int> read() { print(1); return 0; }
 }
-fn<int> invoke(Contract value) = value.read()
-fn<int> main() = invoke(Ready::new(0)))";
+fn<int> invoke(Contract value) = value.read();
+fn<int> main() = invoke(Ready::new(0));)";
 	for (const unsigned bits : { 32u, 64u }) {
 		const auto                   program = checkProgram(source, { .sizeBits = bits });
 		const backend::LoweredModule module(program);
@@ -2732,11 +2734,11 @@ fn<int> main() = invoke(Ready::new(0)))";
 TEST (BackendLowering, ChecksTheCapturedReceiverAroundArguments) {
 	const char *source = R"(typedef<class> Item {
     pub Item(int value) : () {}
-    pub mt<int> read(int n) = n
+    pub mt<int> read(int n) = n;
 }
-fn<int> invalidate(Item item) { item::delete; return 7 }
-fn<int> use(Item item) = item.read(invalidate(item))
-fn<int> main() = use(Item::new(42)))";
+fn<int> invalidate(Item item) { item::delete; return 7; }
+fn<int> use(Item item) = item.read(invalidate(item));
+fn<int> main() = use(Item::new(42));)";
 	for (const unsigned bits : { 32u, 64u }) {
 		SCOPED_TRACE(bits);
 		const cloth::CheckedProgram  program = checkProgram(source, { .sizeBits = bits });
@@ -2766,23 +2768,23 @@ fn<int> main() = use(Item::new(42)))";
 
 TEST (BackendLowering, RejectsClassFieldsWhoseCombinedSizeExceedsTheTarget) {
 	expectUnsupported(R"(typedef<class> Large(int seed) {
-    pub def<int[536870912]> first = unused()
-    pub def<int[536870912]> second = unused()
+    pub def<int[536870912]> first = unused();
+    pub def<int[536870912]> second = unused();
     pub Large() : (0) {}
 }
-fn<int[536870912]> unused() = exit(7)
-fn<int> main() { Large::new(); return 42 })",
+fn<int[536870912]> unused() = exit(7);
+fn<int> main() { Large::new(); return 42; })",
 	                  Code::UnsupportedLowering, "Large", 1, { .sizeBits = 32 });
 }
 
 TEST (BackendLowering, ReusesClosedInstancesAcrossCallersAndRecursion) {
-	const char *source = R"(fn<T> identity<T>(T n) = n
-fn<T> step<T>(T n, int depth) = if (depth == 0) identity(n) else step(n, depth - 1)
-fn<int<12>> narrow() = identity<int<12>>(42)
-fn<int<12>> again() = identity<int<12>>(7)
-fn<int> wide() = identity(11)
-fn<T> unused<T>(T n) = n
-fn<int> main() = (step(narrow(), 2) -> int) + (again() -> int) - wide())";
+	const char *source = R"(fn<T> identity<T>(T n) = n;
+fn<T> step<T>(T n, int depth) = if (depth == 0) identity(n) else step(n, depth - 1);
+fn<int<12>> narrow() = identity<int<12>>(42);
+fn<int<12>> again() = identity<int<12>>(7);
+fn<int> wide() = identity(11);
+fn<T> unused<T>(T n) = n;
+fn<int> main() = (step(narrow(), 2) -> int) + (again() -> int) - wide();)";
 	for (const unsigned bits : { 32u, 64u }) {
 		SCOPED_TRACE(bits);
 		const cloth::CheckedProgram  program = checkProgram(source, { .sizeBits = bits });
@@ -2820,14 +2822,14 @@ fn<int> main() = (step(narrow(), 2) -> int) + (again() -> int) - wide())";
 }
 
 TEST (BackendLowering, LabelsUnsupportedHelperSignatures) {
-	expectUnsupported("fn<int> main() = helper([[42]])\nfn<int> helper(int[][] values) = 7", Code::UnsupportedFunctionAbi, "helper", 2);
-	expectUnsupported("fn<int> main() { pair(); return 42 }\nfn<int, typeinfo> pair() = 1, int::type", Code::UnsupportedFunctionAbi, "pair", 2);
+	expectUnsupported("fn<int> main() = helper([[42]]);\nfn<int> helper(int[][] values) = 7;", Code::UnsupportedFunctionAbi, "helper", 2);
+	expectUnsupported("fn<int> main() { pair(); return 42; }\nfn<int, range<float>> pair() = 1, 0.0..1.0;", Code::UnsupportedFunctionAbi, "pair", 2);
 }
 
 TEST (BackendLowering, AdaptsCheckedEntriesToTheNativeCSignature) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		for (const char *source :
-		     { "fn<int> main(string[] args) = 42", "fn<int<12>> main(string[]? args) = 42", "fn<isize> main() = 42", "fn<void> main() {}" }) {
+		     { "fn<int> main(string[] args) = 42;", "fn<int<12>> main(string[]? args) = 42;", "fn<isize> main() = 42;", "fn<void> main() {}" }) {
 			SCOPED_TRACE(source);
 			const cloth::CheckedProgram  program = checkProgram(source, { .sizeBits = u_bits });
 			const backend::LoweredModule module(program);
@@ -2847,8 +2849,8 @@ TEST (BackendLowering, AdaptsCheckedEntriesToTheNativeCSignature) {
 TEST (BackendLowering, ReusesTheDeclaredDefaultAndPacksOrderedResults) {
 	for (const unsigned u_bits : { 32u, 64u }) {
 		const cloth::CheckedProgram  program = checkProgram(R"(
-fn<int<12>, bool> pair(opt<int<12>> n ?: 42) = n, true
-fn<int> main() { def a, ok := pair(); def b, _ := pair(); return if (ok) (a + b -> int) else 0 }
+fn<int<12>, bool> pair(opt<int<12>> n ?: 42) = n, true;
+fn<int> main() { def a, ok := pair(); def b, _ := pair(); return if (ok) (a + b -> int) else 0; }
 )",
 		                                                    { .sizeBits = u_bits });
 		const backend::LoweredModule module(program);
@@ -2867,7 +2869,7 @@ fn<int> main() { def a, ok := pair(); def b, _ := pair(); return if (ok) (a + b 
 }
 
 TEST (BackendLowering, RequiresAnEntrySelectedByTheFrontend) {
-	const cloth::CheckedProgram cp_library = checkProgram("pub fn<int> main () = 42", {}, cloth::ProgramKind::Library);
+	const cloth::CheckedProgram cp_library = checkProgram("pub fn<int> main () = 42;", {}, cloth::ProgramKind::Library);
 	ASSERT_EQ(cp_library.entryPoint, nullptr);
 	try {
 		const backend::LoweredModule lm_module(cp_library);
@@ -2878,8 +2880,8 @@ TEST (BackendLowering, RequiresAnEntrySelectedByTheFrontend) {
 }
 
 TEST (BackendObjectEmission, IndependentCompilationsReturnOwnedObjectBytes) {
-	const cloth::CheckedProgram         cp_first  = checkProgram("pub fn<int> main () = 42");
-	const cloth::CheckedProgram         cp_second = checkProgram("pub fn<int> main () = 7");
+	const cloth::CheckedProgram         cp_first  = checkProgram("pub fn<int> main () = 42;");
+	const cloth::CheckedProgram         cp_second = checkProgram("pub fn<int> main () = 7;");
 	std::future<std::vector<std::byte>> f_first   = std::async(std::launch::async, [&] { return backend::emitObject(cp_first); });
 	const std::vector<std::byte>        v_second  = backend::emitObject(cp_second);
 	const std::vector<std::byte>        v_first   = f_first.get();
@@ -2899,9 +2901,9 @@ template <typename Operation> void expectBackendError (Code code, std::string_vi
 }
 
 TEST (BackendObjectEmission, RejectsStructOffsetsAndSizesThatDisagreeWithCheckedFacts) {
-	cloth::CheckedProgram cp_program = checkProgram(R"(typedef<struct> Inner { pub bool ready, pub int<12> value }
-typedef<struct> Sample { pub bool tagged, pub Inner inner }
-pub fn<int> main() { Sample sample := {true, {true, 42}}; return sample.inner.value -> int })");
+	cloth::CheckedProgram cp_program = checkProgram(R"(typedef<struct> Inner { pub bool ready, pub int<12> value; }
+typedef<struct> Sample { pub bool tagged, pub Inner inner; }
+pub fn<int> main() { Sample sample := {true, {true, 42}}; return sample.inner.value -> int; })");
 	ASSERT_EQ(cp_program.localTypes.size(), 1u);
 	cloth::StructLayout &sl_outer   = cp_program.structLayouts.at(cp_program.localTypes.begin()->second);
 	cloth::StructLayout &sl_inner   = cp_program.structLayouts.at(sl_outer.fields.at(1).type);
@@ -2914,7 +2916,7 @@ pub fn<int> main() { Sample sample := {true, {true, 42}}; return sample.inner.va
 }
 
 TEST (BackendObjectEmission, RejectsUnknownTargetsAndEmbeddedNulls) {
-	const cloth::CheckedProgram cp_program = checkProgram("pub fn<int> main () = 42");
+	const cloth::CheckedProgram cp_program = checkProgram("pub fn<int> main () = 42;");
 	expectBackendError(Code::LlvmTarget, "cloth-unknown", [&] { static_cast<void>(backend::emitObject(cp_program, "cloth-unknown-none")); });
 	const char s_triple[] = "x86_64-linux-gnu\0unused";
 	expectBackendError(Code::LlvmTarget, "null byte",
@@ -2922,7 +2924,7 @@ TEST (BackendObjectEmission, RejectsUnknownTargetsAndEmbeddedNulls) {
 }
 
 TEST (BackendObjectEmission, ReportsVerifierFailures) {
-	const backend::LoweredModule lm_module(checkProgram("pub fn<int> main () = 42"));
+	const backend::LoweredModule lm_module(checkProgram("pub fn<int> main () = 42;"));
 	const LLVMValueRef           fn_main = LLVMGetNamedFunction(lm_module.get(), "main");
 	LLVMInstructionEraseFromParent(LLVMGetBasicBlockTerminator(LLVMGetEntryBasicBlock(fn_main)));
 	expectBackendError(Code::InvalidIr, "terminator", [&] { lm_module.verify(); });
@@ -2970,7 +2972,7 @@ TEST (BackendObjectEmission, EmitsCoffAndElfForBothX86Widths) {
 		                         { .triple="x86_64-unknown-linux-gnu", .layout={ .sizeBits=64, .scalar64Alignment32=4 }, .format=LLVMBinaryTypeELF64L, .symbol="main" } };
 	for (const TargetCase &tc_target : v_targets) {
 		SCOPED_TRACE(tc_target.triple);
-		const cloth::CheckedProgram cp_program = checkProgram("pub fn<int> main() { int answer = 42; answer = 7; return answer }", tc_target.layout);
+		const cloth::CheckedProgram cp_program = checkProgram("pub fn<int> main() { int answer = 42; answer = 7; return answer; }", tc_target.layout);
 		expectObject(backend::emitObject(cp_program, tc_target.triple), tc_target.format, tc_target.symbol);
 #if defined(_WIN32)
 		if (tc_target.format == LLVMBinaryTypeCOFF) expectObject(backend::emitObject(cp_program), tc_target.format, tc_target.symbol);
@@ -2981,7 +2983,7 @@ TEST (BackendObjectEmission, EmitsCoffAndElfForBothX86Widths) {
 }
 
 TEST (BackendObjectEmission, RejectsPointerWidthAndIntegerAlignmentMismatches) {
-	const cloth::CheckedProgram cp_program = checkProgram("pub fn<int> main () = 42", { .sizeBits=32, .scalar64Alignment32=4 });
+	const cloth::CheckedProgram cp_program = checkProgram("pub fn<int> main () = 42;", { .sizeBits=32, .scalar64Alignment32=4 });
 	expectBackendError(Code::AbiLayout, "64-bit pointers", [&] { static_cast<void>(backend::emitObject(cp_program, "x86_64-unknown-linux-gnu")); });
 	expectBackendError(Code::AbiLayout, "i64", [&] { static_cast<void>(backend::emitObject(cp_program, "i686-w64-windows-gnu")); });
 }

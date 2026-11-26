@@ -122,16 +122,21 @@ void Analyzer::checkFormatterDefaults () const {
 	}
 }
 
+std::optional<MethodRef> Analyzer::formatterFor (const ResolvedType &type) const {
+	for (const Candidate &candidate : dataProviders(*this, type, provider::S_STRING)) {
+		const auto &signature = declarations.at(candidate.symbol);
+		if (signature.parameters.empty())
+			return MethodRef{ .symbol = candidate.symbol, .owner = substitute(ownerType(*signature.owner), candidate.arguments) };
+	}
+	return {};
+}
+
 std::optional<ProviderSelection> BodyChecker::textConversion (const ResolvedType &type) const {
 	const ResolvedType           rt_element = formatElement(type);
 	ProviderSelection            ps_format{ .kind = ProviderKind::Format, .receiver = type, .typeReceiver = false };
-	const std::vector<Candidate> v_providers = dataProviders(analyzer, rt_element, provider::S_STRING);
-	for (const Candidate &c_formatter : v_providers) {
-		if (!analyzer.declarations.at(c_formatter.symbol).parameters.empty()) continue;
-		const Symbol *sym_owner  = analyzer.declarations.at(c_formatter.symbol).owner;
+	ps_format.formatter = analyzer.formatterFor(rt_element);
+	if (ps_format.formatter) {
 		ps_format.callsFormatter = true;
-		ps_format.formatter =
-		        MethodRef{ .symbol = c_formatter.symbol, .owner = analyzer.substitute(analyzer.ownerType(*sym_owner), c_formatter.arguments) };
 		return ps_format;
 	}
 	if (analyzer.referenceType(rt_element)) {

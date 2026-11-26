@@ -5,9 +5,9 @@
 #include <backend/class_objects.hpp>
 #include <backend/dispatch.hpp>
 #include <backend/function_abi.hpp>
-#include <backend/growable_array.hpp>
 #include <backend/nullable_value.hpp>
 #include <backend/runtime.hpp>
+#include <backend/string_value.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -69,7 +69,7 @@ LLVMValueRef NativeDispatch::lookup (LLVMBuilderRef builder, const DispatchSlot 
 	const auto &call  = request.call;
 	const auto  found = std::ranges::find_if(v_slots, [&] (const DispatchSlot &slot) {
 		return slot.call.kind == call.kind && slot.call.receiver == call.receiver && slot.call.contract == call.contract &&
-		       slot.arguments == request.arguments && slot.comparison == request.comparison;
+		       slot.arguments == request.arguments && slot.comparison == request.comparison && slot.text == request.text;
 	});
 	const auto  index = static_cast<std::size_t>(found - v_slots.begin());
 	if (found == v_slots.end()) v_slots.push_back(request);
@@ -90,6 +90,17 @@ LLVMValueRef NativeDispatch::compare (LLVMBuilderRef builder, const cloth::Resol
 	LLVMTypeRef  types[]  = { LLVMTypeOf(self), LLVMTypeOf(peer) };
 	LLVMValueRef inputs[] = { self, peer };
 	return LLVMBuildCall2(builder, LLVMFunctionType(LLVMInt8TypeInContext(LLVMGetModuleContext(mod_module)), types, 2, false), function, inputs, 2, "");
+}
+
+LLVMValueRef NativeDispatch::format (LLVMBuilderRef builder, const cloth::ResolvedType &view, LLVMValueRef self, bool directSelf, bool callsFormatter) {
+	const LLVMValueRef function =
+	        lookup(builder,
+	               { .call      = { .kind = cloth::DispatchKind::Direct, .receiver = view, .contract = { .symbol = nullptr, .owner = view } },
+	                 .arguments = {},
+	                 .text      = callsFormatter ? ObjectText::Formatter : ObjectText::TypeName },
+	               self, directSelf);
+	LLVMTypeRef parameter = LLVMTypeOf(self);
+	return LLVMBuildCall2(builder, LLVMFunctionType(string_value::type(mod_module), &parameter, 1, false), function, &self, 1, "");
 }
 
 LLVMValueRef NativeDispatch::comparisonBody (ModuleFunctions &functions, const cloth::TypeDispatch &checked, cloth::Operator op) {
@@ -150,7 +161,21 @@ void NativeDispatch::resolve (ModuleFunctions &functions) {
 			const auto  &views          = functions.objects.layout(type).nominalViews;
 			const bool   compatible     = std::ranges::find(views, slot.call.receiver) != views.end();
 			LLVMValueRef implementation = absent;
-			if (compatible && slot.comparison) {
+			if (compatible && slot.text != ObjectText::None) {
+				if (slot.text == ObjectText::Formatter && checked.formatter) {
+					implementation = functions.declareMember(*checked.formatter);
+				} else {
+					const LLVMContextRef context = LLVMGetModuleContext(mod_module);
+					LLVMTypeRef          handle  = LLVMInt64TypeInContext(context);
+					implementation               = LLVMAddFunction(mod_module, "cloth.format.type",
+					                                               LLVMFunctionType(string_value::type(mod_module), &handle, 1, false));
+					LLVMSetLinkage(implementation, LLVMInternalLinkage);
+					const std::unique_ptr<LLVMOpaqueBuilder, decltype(&LLVMDisposeBuilder)> builder(LLVMCreateBuilderInContext(context),
+					                                                                                LLVMDisposeBuilder);
+					LLVMPositionBuilderAtEnd(builder.get(), LLVMAppendBasicBlockInContext(context, implementation, "entry"));
+					LLVMBuildRet(builder.get(), string_value::constant(mod_module, type.spelling()));
+				}
+			} else if (compatible && slot.comparison) {
 				auto &callback = table.comparisons[*slot.comparison];
 				if (!callback) callback = comparisonBody(functions, checked, *slot.comparison);
 				implementation = callback;
@@ -203,18 +228,7 @@ void NativeDispatch::finish (const cloth::CheckedProgram &program) {
 LLVMValueRef NativeDispatch::payloadDisposer (ModuleFunctions &functions, const cloth::ResolvedType &type) {
 	const LLVMContextRef context = LLVMGetModuleContext(mod_module);
 	LLVMTypeRef          pointer = LLVMPointerTypeInContext(context, 0);
-	if (!growable_array::ownsBuffer(type)) return LLVMConstNull(pointer);
-	if (const auto found = m_disposers.find(type); found != m_disposers.end()) return found->second;
-	const LLVMValueRef function =
-	        LLVMAddFunction(mod_module, "cloth.dispose.payload", LLVMFunctionType(LLVMVoidTypeInContext(context), &pointer, 1, false));
-	LLVMSetLinkage(function, LLVMInternalLinkage);
-	const std::unique_ptr<LLVMOpaqueBuilder, decltype(&LLVMDisposeBuilder)> builder(LLVMCreateBuilderInContext(context), LLVMDisposeBuilder);
-	LLVMPositionBuilderAtEnd(builder.get(), LLVMAppendBasicBlockInContext(context, function, "entry"));
-	LLVMValueRef slot = LLVMGetParam(function, 0);
-	if (type.nullable()) slot = nullable::payloadAddress(builder.get(), functions.valueTypes.localType(type.element()), slot);
-	growable_array::release(builder.get(), mod_module, slot);
-	LLVMBuildRetVoid(builder.get());
-	m_disposers.emplace(type, function);
-	return function;
+	if (functions.valueTypes.ownsBuffers(type)) return functions.valueTypes.bufferDisposer(type);
+	return LLVMConstNull(pointer);
 }
 }

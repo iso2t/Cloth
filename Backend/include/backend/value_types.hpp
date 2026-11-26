@@ -57,6 +57,11 @@ class ValueTypes {
 	[[nodiscard]] LLVMTypeRef slotType (const cloth::ResolvedType &type);
 	// Fixed array values carry cells inline. Growable array values carry a descriptor.
 	[[nodiscard]] LLVMTypeRef localType (const cloth::ResolvedType &type);
+	[[nodiscard]] bool        ownsBuffers (const cloth::ResolvedType &type) const;
+	LLVMValueRef              metadata (const cloth::ResolvedType &type);
+	LLVMTypeRef               metadataType () const;
+	LLVMValueRef              bufferDisposer (const cloth::ResolvedType &type);
+	void                      copyBuffers (LLVMBuilderRef builder, const cloth::ResolvedType &type, LLVMValueRef slot, LLVMValueRef value);
 	LLVMValueRef              arrayFieldWitness (LLVMBuilderRef builder, const cloth::ResolvedType &owner, LLVMValueRef parentAddress, unsigned fieldIndex);
 	LLVMValueRef              arrayData (LLVMBuilderRef builder, const cloth::ResolvedType &type, LLVMValueRef slot);
 	LLVMValueRef              allocateLocal (LLVMBuilderRef builder, const cloth::ResolvedType &type, LLVMValueRef value);
@@ -66,6 +71,11 @@ class ValueTypes {
 	                         StoragePlace place = StoragePlace::Slot, LLVMValueRef witness = nullptr);
 
     private:
+	std::map<cloth::ResolvedType, LLVMValueRef> m_metadata;
+	bool                                        flatCell (const cloth::ResolvedType &type) const;
+	LLVMValueRef                                bufferOperation (const cloth::ResolvedType &type, bool copy);
+	void visitBuffers (LLVMBuilderRef builder, const cloth::ResolvedType &type, LLVMValueRef target, LLVMValueRef source);
+	std::map<std::pair<cloth::ResolvedType, bool>, LLVMValueRef> m_bufferOperations;
 	const StructTypes *structTypes (const cloth::ResolvedType &type);
 	const ArrayTypes  *arrayTypes (const cloth::ResolvedType &type);
 	LLVMTypeRef        nullableType (LLVMTypeRef payload) const;

@@ -26,18 +26,33 @@ Use `mingw32-make` in place of `make` on Windows with MinGW.
 ```sh
 make -C .. run
 make -C .. test-file CASE=Tests/Compiler/Semantic/stdlib-modules.test
+make -C .. test-file CASE=Tests/Compiler/Driver/stdlib-native.test
 ```
 
 The first command checks `cloth/Library.co` and its imports with the native
 frontend. The second checks the entry and imports every other shipped module
-from a separate consumer at both 32 and 64 bits. See the
+from a separate consumer at both 32 and 64 bits. The third links and runs
+consumers of the collection, math, text, path, and file modules. See the
 [full-library fixture](../Tests/Compiler/Semantic/stdlib-modules.test) and
 [test prerequisites](../Documentation/contributing/Testing.rst#test-dependencies).
+
+To run the collection example from the repository root, compile the consumer
+and link its object with the collection and integer-output runtime sources.
+
+```sh
+build/cloth --kind executable --stdlib Stdlib --src Tests/Compiler/Driver/Inputs/stdlib-collections.co --emit-object build/collections.o
+cc -IRuntime/include build/collections.o Runtime/src/array.c Runtime/src/errors.c Runtime/src/object.c Runtime/src/println.c -o build/collections
+```
+
+Running `build/collections` prints `40` and `2` on separate lines as the
+owned children are destroyed, then exits with status 42. On Windows use
+`build/cloth.exe`, MinGW `gcc`, and `build/collections.exe`. For the
+additional text and file link inputs, see the [runtime dependencies](../Documentation/compiler/driver/Objects.rst#runtime-dependencies).
 
 ## Numbers and math
 
 Import `using cloth.lang.num.Number : Number` to write a numeric bound such
-as `fn<T> twice<T: Number>(T value) = value + value`. Signed and unsigned
+as `fn<T> twice<T: Number>(T value) = value + value;`. Signed and unsigned
 integers, target-sized integers, and floating-point types satisfy this
 interface. A numeric type parameter retains its caller's exact type. Classes
 can implement `Number` explicitly and provide the operators their callers use.
@@ -55,23 +70,25 @@ field holds the supplied string. `File::new(path)` accepts a `Path` or a
 `string`. Import the path and file types separately.
 
 ```cloth
-using cloth.io.path.Path: Path, pathOf
-using cloth.io.fs.File: File, FileError
-using cloth.text.Utf8: decodeUtf8
+using cloth.io.path.Path: Path, pathOf;
+using cloth.io.fs.File: File, FileError;
+using cloth.text.Utf8: decodeUtf8;
 
-fn<Path> manifest() = pathOf("module.toml")
-fn<File> reader(Path path) = File::new(path)
-fn<FileError?> openFile(File file) = file.open()
-fn<unsigned int<8>[]?, FileError?> chunk(File file, usize limit) = file.read(limit)
-fn<string?> asText(unsigned int<8>[] bytes) = decodeUtf8(bytes)
+fn<Path> manifest() = pathOf("module.toml");
+fn<File> reader(Path path) = File::new(path);
+fn<FileError?> openFile(File file) = file.open();
+fn<unsigned int<8>[]?, FileError?> chunk(File file, usize limit) = file.read(limit);
+fn<string?> asText(unsigned int<8>[] bytes) = decodeUtf8(bytes);
 ```
 
 `file.open()` returns a nullable `FileError`. `file.read(maxBytes)`
 returns two ordered results, a nullable byte array and a nullable error.
 The declared cases are `InvalidPath`, `NotFound`, `PermissionDenied`,
 `OpenFailed`, `AlreadyOpen`, `NotOpen`, and `ReadFailed`. UTF-8
-decoding takes a byte array and returns `string?`. File access and UTF-8
-decoding are supported for source checking only. See the [file declarations](cloth/io/fs/File.co),
+decoding takes a byte array and returns an independent string on success
+or `null` on malformed input. A successful read at end of file returns a
+present empty byte array and a null error. Deleting the file closes the
+native stream. See the [file declarations](cloth/io/fs/File.co),
 [path type](cloth/io/path/Path.co), and [UTF-8 declaration](cloth/text/Utf8.co).
 
 ## Use library sources

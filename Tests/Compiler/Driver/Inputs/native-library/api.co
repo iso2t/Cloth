@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using offsets : offset;
+
+fn<int> adjust(int value) = value + offset();
+pub fn<int> pick(int value) = adjust(value);
+pub fn<int> pick(bool value) = 0;
+pub fn<int> seed(opt<int> value ?: 40) = value;

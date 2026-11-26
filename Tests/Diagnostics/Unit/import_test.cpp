@@ -12,7 +12,7 @@ namespace cde {
 namespace {
 
 TEST (DiagnosticsImports, DuplicateSelectionLabelsBothOccurrences) {
-	constexpr const char *s_source = "using shapes: Point, Point";
+	constexpr const char *s_source = "using shapes: Point, Point;";
 	cloth::Lexer          l_lexer(s_source);
 	cloth::Parser         p_parser(l_lexer);
 

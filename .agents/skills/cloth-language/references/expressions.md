@@ -6,11 +6,11 @@
 
 ~~~cloth
 fn<string> describe(int? count) {
-    def value := count ?: 0
-    int[3] sizes = [0b10, 0o10, 0x10]
-    char mark := 'λ'
-    def raw := """{literal}"""
-    return #"{{{value}}} {sizes[0]} {mark} {raw}"
+    def value := count ?: 0;
+    int[3] sizes = [0b10, 0o10, 0x10];
+    char mark := 'λ';
+    def raw := """{literal}""";
+    return #"{{{value}}} {sizes[0]} {mark} {raw}";
 }
 ~~~
 
@@ -22,19 +22,19 @@ fn<string> describe(int? count) {
 
 ~~~cloth
 typedef<class> Box(pub def<int> value) {
-    mt<int> read() = self.value
+    mt<int> read() = self.value;
 }
 
-fn<T> first<T>(T value) = value
+fn<T> first<T>(T value) = value;
 
 fn inspect(Box? box) {
-    def value := box?.read() ?: 0
-    def copy := first<int>(value)
-    def widened := copy -> float
-    def sameType := widened is float
-    def width := int::size
-    def other := Box::new(value)
-    other::delete
+    def value := box?.read() ?: 0;
+    def copy := first<int>(value);
+    def widened := copy -> float;
+    def sameType := widened is float;
+    def width := int::size;
+    def other := Box::new(value);
+    other::delete;
 }
 ~~~
 

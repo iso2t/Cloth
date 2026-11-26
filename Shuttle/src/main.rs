@@ -1,20 +1,83 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-use std::{env, ffi::OsStr, process::ExitCode};
+mod build;
+mod project;
+
+use std::{env, error::Error, ffi::OsStr, path::PathBuf, process::ExitCode};
+
+type Result<T> = std::result::Result<T, Box<dyn Error>>;
+
+const USAGE: &str = "Usage: shuttle build [--manifest-path PATH] [--target-bits 32|64] [--stdlib DIR] [--compiler PATH] [--cc PATH] [--runtime-dir DIR]";
+
+struct Options {
+    manifest: PathBuf,
+    compiler: PathBuf,
+    linker: PathBuf,
+    runtime: Option<PathBuf>,
+    stdlib: Option<PathBuf>,
+    bits: Option<String>,
+}
+
+impl Options {
+    fn parse(mut args: impl Iterator<Item = std::ffi::OsString>) -> Result<Self> {
+        let mut options = Self {
+            manifest: "build.toml".into(),
+            compiler: env::var_os("CLOTHC").map_or_else(|| "cloth".into(), PathBuf::from),
+            linker: env::var_os("CC").map_or_else(
+                || {
+                    if cfg!(windows) {
+                        "gcc".into()
+                    } else {
+                        "cc".into()
+                    }
+                },
+                PathBuf::from,
+            ),
+            runtime: env::var_os("CLOTH_RUNTIME_DIR").map(PathBuf::from),
+            stdlib: env::var_os("CLOTH_STDLIB").map(PathBuf::from),
+            bits: None,
+        };
+        while let Some(flag) = args.next() {
+            let value = args
+                .next()
+                .ok_or_else(|| format!("{} requires a value", flag.to_string_lossy()))?;
+            match flag.to_str() {
+                Some("--manifest-path") => options.manifest = value.into(),
+                Some("--compiler") => options.compiler = value.into(),
+                Some("--cc") => options.linker = value.into(),
+                Some("--stdlib") => options.stdlib = Some(value.into()),
+                Some("--runtime-dir") => options.runtime = Some(value.into()),
+                Some("--target-bits") => {
+                    if value != "32" && value != "64" {
+                        return Err("--target-bits requires 32 or 64".into());
+                    }
+                    options.bits = value.into_string().ok();
+                }
+                _ => {
+                    return Err(format!("unknown build option '{}'", flag.to_string_lossy()).into());
+                }
+            }
+        }
+        Ok(options)
+    }
+}
+
+fn run() -> Result<()> {
+    let mut args = env::args_os().skip(1);
+    if args.next().as_deref() != Some(OsStr::new("build")) {
+        return Err(USAGE.into());
+    }
+    let artifact = build::project(Options::parse(args)?)?;
+    println!("{}", artifact.display());
+    Ok(())
+}
 
 fn main() -> ExitCode {
-    if env::args_os().nth(1).as_deref() == Some(OsStr::new("build")) {
-        let make = if cfg!(windows) {
-            "mingw32-make"
-        } else {
-            "make"
-        };
-        eprintln!("Shuttle object emission is unavailable.");
-        eprintln!(
-            "To check the standard library, run `{make} run` from the Cloth repository root."
-        );
-    } else {
-        eprintln!("Usage: shuttle build");
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("shuttle: {error}");
+            ExitCode::FAILURE
+        }
     }
-    ExitCode::FAILURE
 }

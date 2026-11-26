@@ -3,8 +3,11 @@
 // See Documentation/compiler/driver/Objects.rst
 
 #include <inttypes.h>
+#include <stdint.h>
 #include <stdio.h>
 
-void cloth_rt_println_i32 (int32_t value) {
+#include "runtime.h"
+
+void clothRtPrintlnI32 (int32_t value) {
 	printf("%" PRId32 "\n", value);
 }

@@ -1,4 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-pub fn<string?> decode(unsigned int<8>[] bytes) = intrinsic "text.utf8.decode"
-pub fn<string> decode(string text) = text
+pub fn<string?> decode(unsigned int<8>[] bytes) = intrinsic "text.utf8.decode";
+pub fn<string> decode(string text) = text;

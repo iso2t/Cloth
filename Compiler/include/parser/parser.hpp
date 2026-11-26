@@ -36,24 +36,59 @@
 
 namespace cloth {
 
+enum class SourceConstruct {
+	Import,
+	Declaration,
+	TypeHeader,
+	Member,
+	StructFields,
+	EnumCases,
+	Statement,
+	Conditional,
+	ConditionalArm,
+	StructLiteral,
+	DeferredInitializer,
+	ForSeparator
+};
+
+enum class WrittenForm { SelfTerminated, Simple, Value, Results, BareConditional };
+
+/** Source extent from the first token through the last, excluding a trailing terminator. */
+struct SourceRange {
+	SourceConstruct construct;
+	TokenSpan       span;
+	WrittenForm     form = WrittenForm::SelfTerminated;
+	// The opening if keyword identifies the owner of an unbraced conditional arm.
+	std::optional<TokenSpan> conditional = std::nullopt;
+};
+
+struct ParsedSource {
+	SourceUnit               unit;
+	std::vector<SourceRange> ranges;
+};
+
 class Parser {
     public:
-	explicit Parser (std::vector<Token> tokens) : v_tokens(std::move(tokens)) {
-	}
+	explicit Parser (std::vector<Token> tokens, SourceGrammar grammar = DEFAULT_SOURCE_GRAMMAR);
 
-	explicit Parser (Lexer &lexer) : v_tokens(lexer.scanTokens()) {
+	explicit Parser (Lexer &lexer, SourceGrammar grammar = DEFAULT_SOURCE_GRAMMAR) : Parser(lexer.scanTokens(), grammar) {
 	}
 
 	SourceUnit parse ();
 	SourceUnit parseDeclarations ();
+	/** Collect written construct boundaries, including grouped bindings before AST expansion. */
+	ParsedSource parseWithRanges ();
 
 	static const std::unordered_set<std::string_view> ASSIGNMENT_OPERATORS;
 
     private:
+	enum class UnbracedContext { Statement, ConditionalStatement, ConditionalValue };
+
 	struct BindingBraceSyntax {
 		bool                 hasReturn       = false;
 		bool                 hasSemicolon    = false;
 		std::optional<Token> secondStatement = std::nullopt;
+		std::vector<SourceRange> candidateStatements;
 	};
 
 	friend class BindingsParser;
@@ -73,6 +108,8 @@ class Parser {
 	friend class WhileLoopParser;
 
 	std::vector<Token> v_tokens;
+	SourceGrammar             grammar;
+	std::vector<SourceRange> *sourceRanges = nullptr;
 
 	int                 i_currentIndex               = 0;
 	bool                b_inFnBody                   = false;
@@ -98,6 +135,12 @@ class Parser {
 	Token                       peek (int offset = 0);
 	Token                       previous ();
 	Token                       advance ();
+	[[nodiscard]] bool          explicitSemicolons () const;
+	Token                       requireSemicolon (std::string_view after);
+	bool                        consumeEmptyTypeHeader (std::string_view after);
+	void                        recordRange (SourceConstruct construct, const Token &first, WrittenForm form = WrittenForm::SelfTerminated);
+	void                        recordDeclaration (SourceConstruct construct, const Token &first, bool terminated);
+	void                        finishStatement (const Token &first, const Statement &last);
 	bool                        startsTypeDeclaration ();
 	TypeDeclarationPtr          parseNestedTypeDeclaration ();
 	DeclarationPtr              parseTypeDeclaration (bool nested = false);
@@ -113,8 +156,8 @@ class Parser {
 	int                         afterNewLines (int offset = 0);
 	static bool                 isSemiColon (const Token &token);
 	static bool                 isStatementSeparator (const Token &token);
-	StatementPtr                parseStatement (bool allowWhileTrailer = false, bool multilineResults = false);
-	BlockBody                   parseUnbracedBody (bool allowWhileTrailer = false);
+	StatementPtr                parseStatement (bool allowWhileTrailer = false, bool multilineResults = false, bool singleValue = false);
+	BlockBody parseUnbracedBody (bool allowWhileTrailer = false, UnbracedContext context = UnbracedContext::Statement, const Token *conditional = nullptr);
 	[[nodiscard]] TokenSpan     previousStatementEnd () const;
 	ReturnStatement             returnStatement (bool allowWhileTrailer);
 	bool                        startsAssignmentList ();

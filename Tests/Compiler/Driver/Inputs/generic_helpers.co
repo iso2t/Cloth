@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-pub fn<T> identity<T>(T value) = value
+pub fn<T> identity<T>(T value) = value;
 
 pub fn<T> repeat<T>(T value, int n, opt<T> fallback ?: value) {
-    T result = fallback
-    if (n > 0) result = repeat(value, n - 1)
-    return result
+    T result = fallback;
+    if (n > 0) result = repeat(value, n - 1);
+    return result;
 }

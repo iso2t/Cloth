@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    bool[] flags = [false]
-    flags.append(true)
-    if (flags != [false, true]) return 1
+    bool[] flags = [false];
+    flags.append(true);
+    if (flags != [false, true]) return 1;
 
-    char[] letters = ['A', '🙂']
-    letters.insert(1, '\0')
-    char[] saved := letters
-    if (letters.removeAt(1) != '\0' || saved != ['A', '\0', '🙂']) return 2
+    char[] letters = ['A', '🙂'];
+    letters.insert(1, '\0');
+    char[] saved := letters;
+    if (letters.removeAt(1) != '\0' || saved != ['A', '\0', '🙂']) return 2;
 
-    float[] values = [-0.0]
-    if (values != [0.0]) return 3
-    values.append(42.0)
-    return values.removeAt(1) -> int
+    float[] values = [-0.0];
+    if (values != [0.0]) return 3;
+    values.append(42.0);
+    return values.removeAt(1) -> int;
 }

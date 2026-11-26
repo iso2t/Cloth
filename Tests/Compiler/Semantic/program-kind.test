@@ -22,7 +22,7 @@
 # PARAMS: [C3036] Error:
 # PARAMS: invalid entry-point parameter list
 
-# RUN: echo "fn<usize> main() = 0" > "%t.co"
+# RUN: echo "fn<usize> main() = 0;" > "%t.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=RETURN --input-file "%t.err"
 # RETURN: [C3037] Error:

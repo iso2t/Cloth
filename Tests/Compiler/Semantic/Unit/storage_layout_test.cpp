@@ -40,12 +40,12 @@ TEST (SemanticStorage, IntegerAllocationSizeAndAlignmentFollowTheTarget) {
 
 TEST (SemanticStorage, FoldsScalarBytesAndKeepsArrayElementCounts) {
 	for (unsigned const u_bits : { 32u, 64u }) {
-		const CheckedProgram                    cp_program = checkSource(R"(fn<usize> signedBytes() = int<12>::size
-fn<usize> unsignedBytes(unsigned int<12> sample) = sample::size
-fn<usize> wideBytes() = unsigned int<257>::size
-fn<usize> wordBytes() = isize::size
-fn<usize> extent() = int<12>[3]::size
-fn<usize> length(int<12>[] samples) = samples::size)",
+		const CheckedProgram                    cp_program = checkSource(R"(fn<usize> signedBytes() = int<12>::size;
+fn<usize> unsignedBytes(unsigned int<12> sample) = sample::size;
+fn<usize> wideBytes() = unsigned int<257>::size;
+fn<usize> wordBytes() = isize::size;
+fn<usize> extent() = int<12>[3]::size;
+fn<usize> length(int<12>[] samples) = samples::size;)",
 		                                                                 { .sizeBits=u_bits });
 		const SymbolScope                      &ss_globals = cp_program.units.front()->getGlobals();
 		const std::pair<const char *, unsigned> v_counts[] = {
@@ -64,9 +64,9 @@ fn<usize> length(int<12>[] samples) = samples::size)",
 TEST (SemanticStorage, PlacesFieldsAndStridesArraysOfConcreteTypes) {
 	for (unsigned const u_bits : { 32u, 64u }) {
 		SCOPED_TRACE(u_bits);
-		const CheckedProgram cp_program = checkSource(R"(typedef<struct> Sample { int<8> z, int<12> a, int<8> m }
-typedef<struct> Box<T> { int<8> tag, T value }
-typedef<struct> Buffer { int<8> z, unsigned int<12>[3] samples, int<12> a }
+		const CheckedProgram cp_program = checkSource(R"(typedef<struct> Sample { int<8> z, int<12> a, int<8> m; }
+typedef<struct> Box<T> { int<8> tag, T value; }
+typedef<struct> Buffer { int<8> z, unsigned int<12>[3] samples, int<12> a; }
 fn layout(Sample[3] records, int<12>[] data, unsigned int<12>[3] fixedSamples, Box<int<12>> small,
           Box<int<24>> wide, Box<Sample> nested, Buffer buffer) {})",
 		                                              { .sizeBits=u_bits });
@@ -111,9 +111,9 @@ fn layout(Sample[3] records, int<12>[] data, unsigned int<12>[3] fixedSamples, B
 TEST (SemanticStorage, UsesTheFieldAlignmentForWideArrayElements) {
 	for (unsigned const u_bits : { 32u, 64u }) {
 		const TargetLayout   tl_target{ .sizeBits=u_bits };
-		const CheckedProgram cp_program = checkSource(R"(typedef<struct> Measure { int<8> first, int<48> value, int<8> last }
-typedef<struct> Wide { int<8> first, unsigned int<257> value, int<8> last }
-typedef<struct> OptionalSample { int<8> tag, int<12>? reading }
+		const CheckedProgram cp_program = checkSource(R"(typedef<struct> Measure { int<8> first, int<48> value, int<8> last; }
+typedef<struct> Wide { int<8> first, unsigned int<257> value, int<8> last; }
+typedef<struct> OptionalSample { int<8> tag, int<12>? reading; }
 fn store(Measure[] measures, Wide[] blocks, int<257>[] scalars, int<12>?[] optionalSamples, OptionalSample tagged) {})",
 		                                              tl_target);
 		const SymbolScope   &ss_globals = cp_program.units.front()->getGlobals();
@@ -136,14 +136,14 @@ fn store(Measure[] measures, Wide[] blocks, int<257>[] scalars, int<12>?[] optio
 
 TEST (SemanticStorage, DiagnosesUnrepresentableStructsAndArrayLiterals) {
 	// Each level doubles its inline storage. The source never allocates the backing bytes.
-	std::string s_source = "typedef<struct> Level0 { int<12> sample }\n";
+	std::string s_source = "typedef<struct> Level0 { int<12> sample; }\n";
 	for (unsigned u_level = 1; u_level <= 30; ++u_level) {
 		const std::string s_field = "Level" + std::to_string(u_level - 1);
-		s_source += "typedef<struct> Level" + std::to_string(u_level) + " { " + s_field + " left, " + s_field + " right }\n";
+		s_source += "typedef<struct> Level" + std::to_string(u_level) + " { " + s_field + " left, " + s_field + " right; }\n";
 	}
 	const std::pair<std::string, cde::DiagnosticCode> v_overflows[] = {
-		{ "fn pair(Level30 value) { def items = [value, value] }", cde::DiagnosticCode::InvalidArray },
-		{ "typedef<struct> Pair { Level30 left, Level30 right }", cde::DiagnosticCode::InvalidStructField }
+		{ "fn pair(Level30 value) { def items = [value, value]; }", cde::DiagnosticCode::InvalidArray },
+		{ "typedef<struct> Pair { Level30 left, Level30 right; }", cde::DiagnosticCode::InvalidStructField }
 	};
 	for (const std::pair<std::string, cde::DiagnosticCode> &entry : v_overflows) {
 		EXPECT_NO_THROW(checkSource(s_source + entry.first, { 64 }));

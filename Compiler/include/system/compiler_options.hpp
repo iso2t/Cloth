@@ -12,6 +12,7 @@
 #include <variant>
 #include <vector>
 
+#include <semantic/native_module.hpp>
 #include <semantic/program_kind.hpp>
 #include <semantic/target_layout.hpp>
 
@@ -46,6 +47,8 @@ class CompilerOptions {
 	TargetLayout                         targetLayout;
 	std::filesystem::path                standardLibraryRoot;
 	ProgramKind                          kind = ProgramKind::Library;
+	NativeModules                        modules;
+	bool                                 printTarget = false;
 
 	[[nodiscard]] int getLexerFlag () const {
 		return i_lexer;
@@ -58,7 +61,6 @@ class CompilerOptions {
 	std::string_view          s_emitFlag;
 	int                       i_lexer = 0;
 	int                       args{};
-	const char *const        *argv{};
 };
 
 }

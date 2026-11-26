@@ -7,33 +7,57 @@
 #include <stdint.h>
 #include <string.h>
 
-static ptrdiff_t native_word_stride (void) {
+#include "runtime.h"
+
+static ptrdiff_t nativeWordStride (void) {
 	const uint32_t one = 1;
 	return *(const unsigned char *)&one ? 1 : -1;
 }
 
-static ptrdiff_t significant_words (const uint32_t *value, ptrdiff_t words, ptrdiff_t stride) {
+size_t clothRtIntegerZeros (const unsigned char *bits, uint32_t width, uint8_t leading) {
+	const size_t bytes        = ((size_t)width + 7) / 8;
+	const int    littleEndian = nativeWordStride() == 1;
+	size_t       count        = 0;
+	for (size_t n = 0; n < bytes; ++n) {
+		const size_t   limb = leading ? bytes - 1 - n : n;
+		const unsigned used = limb == bytes - 1 && width % 8 ? width % 8 : 8;
+		unsigned       byte = bits[littleEndian ? limb : bytes - 1 - limb] & ((1u << used) - 1);
+		if (!byte) {
+			count += used;
+			continue;
+		}
+		unsigned mask = leading ? 1u << (used - 1) : 1u;
+		while (!(byte & mask)) {
+			++count;
+			mask = leading ? mask >> 1 : mask << 1;
+		}
+		break;
+	}
+	return count;
+}
+
+static ptrdiff_t significantWords (const uint32_t *value, ptrdiff_t words, ptrdiff_t stride) {
 	while (words && value[(words - 1) * stride] == 0) --words;
 	return words;
 }
 
-// Write the low word_count words into a separate output buffer. All buffers use the target's native integer layout.
-void cloth_rt_mul_words (uint32_t *product, const uint32_t *left, const uint32_t *right, uint32_t word_count) {
-	if (!word_count) return;
-	const ptrdiff_t words  = word_count;
-	const ptrdiff_t stride = native_word_stride();
+// Write the low wordCount words into a separate output buffer. All buffers use the target's native integer layout.
+void clothRtMulWords (uint32_t *product, const uint32_t *left, const uint32_t *right, uint32_t wordCount) {
+	if (!wordCount) return;
+	const ptrdiff_t words  = wordCount;
+	const ptrdiff_t stride = nativeWordStride();
 	memset(product, 0, words * sizeof(*product));
 	if (stride < 0) {
 		product += words - 1;
 		left += words - 1;
 		right += words - 1;
 	}
-	const ptrdiff_t left_words  = significant_words(left, words, stride);
-	const ptrdiff_t right_words = significant_words(right, words, stride);
-	for (ptrdiff_t i = 0; i < left_words; ++i) {
+	const ptrdiff_t leftWords  = significantWords(left, words, stride);
+	const ptrdiff_t rightWords = significantWords(right, words, stride);
+	for (ptrdiff_t i = 0; i < leftWords; ++i) {
 		const uint32_t a = left[i * stride];
 		if (!a) continue;
-		const ptrdiff_t count = right_words < words - i ? right_words : words - i;
+		const ptrdiff_t count = rightWords < words - i ? rightWords : words - i;
 		uint64_t        carry = 0;
 		for (ptrdiff_t j = 0; j < count; ++j) {
 			const ptrdiff_t offset  = (i + j) * stride;
@@ -45,7 +69,7 @@ void cloth_rt_mul_words (uint32_t *product, const uint32_t *left, const uint32_t
 	}
 }
 
-static void negate_words (uint32_t *value, ptrdiff_t words, ptrdiff_t stride) {
+static void negateWords (uint32_t *value, ptrdiff_t words, ptrdiff_t stride) {
 	uint64_t carry = 1;
 	for (ptrdiff_t i = 0; i < words; ++i) {
 		const uint64_t negated = (uint64_t)~value[i * stride] + carry;
@@ -54,14 +78,14 @@ static void negate_words (uint32_t *value, ptrdiff_t words, ptrdiff_t stride) {
 	}
 }
 
-static bool at_least (const uint32_t *left, const uint32_t *right, ptrdiff_t words, ptrdiff_t stride) {
+static bool atLeast (const uint32_t *left, const uint32_t *right, ptrdiff_t words, ptrdiff_t stride) {
 	for (ptrdiff_t i = words; i-- > 0;) {
 		if (left[i * stride] != right[i * stride]) return left[i * stride] > right[i * stride];
 	}
 	return true;
 }
 
-static void subtract_words (uint32_t *left, const uint32_t *right, ptrdiff_t words, ptrdiff_t stride) {
+static void subtractWords (uint32_t *left, const uint32_t *right, ptrdiff_t words, ptrdiff_t stride) {
 	uint64_t borrow = 0;
 	for (ptrdiff_t i = 0; i < words; ++i) {
 		const uint32_t original   = left[i * stride];
@@ -71,12 +95,12 @@ static void subtract_words (uint32_t *left, const uint32_t *right, ptrdiff_t wor
 	}
 }
 
-static void divide_magnitudes (uint32_t *dividend, const uint32_t *divisor, uint32_t *remainder, ptrdiff_t words, ptrdiff_t stride) {
-	const ptrdiff_t dividend_words = significant_words(dividend, words, stride);
-	const ptrdiff_t divisor_words  = significant_words(divisor, words, stride);
-	if (divisor_words == 1) {
+static void divideMagnitudes (uint32_t *dividend, const uint32_t *divisor, uint32_t *remainder, ptrdiff_t words, ptrdiff_t stride) {
+	const ptrdiff_t dividendWords = significantWords(dividend, words, stride);
+	const ptrdiff_t divisorWords  = significantWords(divisor, words, stride);
+	if (divisorWords == 1) {
 		uint64_t carry = 0;
-		for (ptrdiff_t i = dividend_words; i-- > 0;) {
+		for (ptrdiff_t i = dividendWords; i-- > 0;) {
 			const uint64_t partial = (carry << 32) | dividend[i * stride];
 			dividend[i * stride]   = (uint32_t)(partial / divisor[0]);
 			carry                  = partial % divisor[0];
@@ -86,8 +110,8 @@ static void divide_magnitudes (uint32_t *dividend, const uint32_t *divisor, uint
 	}
 
 	// A prefix shorter than the divisor already fits in the remainder.
-	const ptrdiff_t pending = dividend_words >= divisor_words ? dividend_words - divisor_words + 1 : 0;
-	for (ptrdiff_t i = pending; i < dividend_words; ++i) {
+	const ptrdiff_t pending = dividendWords >= divisorWords ? dividendWords - divisorWords + 1 : 0;
+	for (ptrdiff_t i = pending; i < dividendWords; ++i) {
 		remainder[(i - pending) * stride] = dividend[i * stride];
 		dividend[i * stride]              = 0;
 	}
@@ -96,14 +120,14 @@ static void divide_magnitudes (uint32_t *dividend, const uint32_t *divisor, uint
 		uint32_t       quotient = 0;
 		for (unsigned bit = 32; bit-- > 0;) {
 			uint32_t carry = (input >> bit) & 1u;
-			for (ptrdiff_t j = 0; j < divisor_words; ++j) {
+			for (ptrdiff_t j = 0; j < divisorWords; ++j) {
 				const uint32_t previous = remainder[j * stride];
 				remainder[j * stride]   = (previous << 1) | carry;
 				carry                   = previous >> 31;
 			}
 			// The shifted remainder is less than twice the divisor, so one subtraction suffices.
-			if (carry || at_least(remainder, divisor, divisor_words, stride)) {
-				subtract_words(remainder, divisor, divisor_words, stride);
+			if (carry || atLeast(remainder, divisor, divisorWords, stride)) {
+				subtractWords(remainder, divisor, divisorWords, stride);
 				quotient |= UINT32_C(1) << bit;
 			}
 		}
@@ -113,22 +137,22 @@ static void divide_magnitudes (uint32_t *dividend, const uint32_t *divisor, uint
 
 // The caller checks for zero and signed overflow at the Cloth width, then extends into three disjoint native-order buffers.
 // The quotient replaces the dividend. The divisor is scratch, and the remainder takes the dividend's sign.
-void cloth_rt_divmod_words (uint32_t *dividend, uint32_t *divisor, uint32_t *remainder, uint32_t word_count, uint32_t signed_operands) {
-	if (!word_count) return;
-	const ptrdiff_t words  = word_count;
-	const ptrdiff_t stride = native_word_stride();
+void clothRtDivmodWords (uint32_t *dividend, uint32_t *divisor, uint32_t *remainder, const uint32_t wordCount, const uint32_t signedOperands) {
+	if (!wordCount) return;
+	const ptrdiff_t words  = wordCount;
+	const ptrdiff_t stride = nativeWordStride();
 	memset(remainder, 0, words * sizeof(*remainder));
 	if (stride < 0) {
 		dividend += words - 1;
 		divisor += words - 1;
 		remainder += words - 1;
 	}
-	const ptrdiff_t high              = (words - 1) * stride;
-	const bool      negative_dividend = signed_operands && dividend[high] >> 31;
-	const bool      negative_divisor  = signed_operands && divisor[high] >> 31;
-	if (negative_dividend) negate_words(dividend, words, stride);
-	if (negative_divisor) negate_words(divisor, words, stride);
-	divide_magnitudes(dividend, divisor, remainder, words, stride);
-	if (negative_dividend != negative_divisor) negate_words(dividend, words, stride);
-	if (negative_dividend) negate_words(remainder, words, stride);
+	const ptrdiff_t high             = (words - 1) * stride;
+	const bool      negativeDividend = signedOperands && dividend[high] >> 31;
+	const bool      negativeDivisor  = signedOperands && divisor[high] >> 31;
+	if (negativeDividend) negateWords(dividend, words, stride);
+	if (negativeDivisor) negateWords(divisor, words, stride);
+	divideMagnitudes(dividend, divisor, remainder, words, stride);
+	if (negativeDividend != negativeDivisor) negateWords(dividend, words, stride);
+	if (negativeDividend) negateWords(remainder, words, stride);
 }

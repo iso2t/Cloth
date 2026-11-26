@@ -1,131 +1,131 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    if (!changesDirection() || !capturesCounter()) return 1
-    if (!integerLimits() || !wrappedStepExpression()) return 2
-    if (returnFromStep(true) != 42 || returnFromStep(false) != 7) return 3
-    if (nestedStep() != 3) return 4
+    if (!changesDirection() || !capturesCounter()) return 1;
+    if (!integerLimits() || !wrappedStepExpression()) return 2;
+    if (returnFromStep(true) != 42 || returnFromStep(false) != 7) return 3;
+    if (nestedStep() != 3) return 4;
 
-    int total = 0
+    int total = 0;
     for (int n <- 1..=5; n += tracedStep(n)) {
-        if (n == 3) continue
-        total += n
+        if (n == 3) continue;
+        total += n;
     }
-    for (int n <- 4..4; n += tracedStep(n)) return 5
-    for (int n <- 6..=6; n += tracedStep(n)) break
-    if (total != 6) return 6
-    if (!subtractAfterContinue() || !subtractLimits(int<8>::min)) return 7
-    return 42
+    for (int n <- 4..4; n += tracedStep(n)) return 5;
+    for (int n <- 6..=6; n += tracedStep(n)) break;
+    if (total != 6) return 6;
+    if (!subtractAfterContinue() || !subtractLimits(int<8>::min)) return 7;
+    return 42;
 }
 
-fn<int> tracedStep(final int n) { println(n); return 2 }
+fn<int> tracedStep(final int n) { println(n); return 2; }
 
 fn<bool> subtractAfterContinue() {
-    int digits = 0
-    int updates = 0
-    for (int n <- 9..3; n -= if (n == 8) { updates++; n = 100; 2 } else { updates++; 3 }) {
-        digits = digits * 10 + n
-        if (n == 9) { n = 8; continue }
-        if (digits != 96) return false
+    int digits = 0;
+    int updates = 0;
+    for (int n <- 9..3; n -= if (n == 8) { updates++; n = 100; 2; } else { updates++; 3; }) {
+        digits = digits * 10 + n;
+        if (n == 9) { n = 8; continue; }
+        if (digits != 96) return false;
     }
-    if (digits != 96 || updates != 2) return false
+    if (digits != 96 || updates != 2) return false;
     for (int n <- 5..3; n -= 0) {
-        if (updates != 2) return false
-        updates++
-        n = 3
+        if (updates != 2) return false;
+        updates++;
+        n = 3;
     }
-    return updates == 3
+    return updates == 3;
 }
 
 fn<bool> subtractLimits(final int<8> step) {
-    int visits = 0
+    int visits = 0;
     for (int<8> n <- int<8>::min..=int<8>::max; n -= step) {
-        if (visits == 0 && n != int<8>::min || visits == 1 && n != 0 || visits >= 2) return false
-        visits++
+        if (visits == 0 && n != int<8>::min || visits == 1 && n != 0 || visits >= 2) return false;
+        visits++;
     }
-    if (visits != 2) return false
+    if (visits != 2) return false;
     for (usize n <- usize::max..=0; n -= 2) {
-        if (visits != 2) return false
-        visits++
-        n = 1
+        if (visits != 2) return false;
+        visits++;
+        n = 1;
     }
     for (int<1> n <- int<1>::min..=int<1>::max; n -= -1) {
-        if (visits >= 5) return false
-        visits++
+        if (visits >= 5) return false;
+        visits++;
     }
-    return visits == 5
+    return visits == 5;
 }
 
 fn<bool> changesDirection() {
-    int step = 1
-    int digits = 0
+    int step = 1;
+    int digits = 0;
     for (int n <- 1..=3; n += step) {
-        digits = digits * 10 + n
-        if (n == 3) step = -1
-        if (digits > 12321) return false
+        digits = digits * 10 + n;
+        if (n == 3) step = -1;
+        if (digits > 12321) return false;
     }
-    if (digits != 12321) return false
-    int total = 0
-    for (int n <- 16..12; n += -2) total += n
-    return total == 30
+    if (digits != 12321) return false;
+    int total = 0;
+    for (int n <- 16..12; n += -2) total += n;
+    return total == 30;
 }
 
 fn<bool> capturesCounter() {
-    int digits = 0
-    for (int n <- 1..8; n += if (n == 3) { n = 100; 2 } else 1) {
-        digits = digits * 10 + n
-        if (n == 1) { n = 3; continue }
-        if (n == 6) break
+    int digits = 0;
+    for (int n <- 1..8; n += if (n == 3) { n = 100; 2; } else 1) {
+        digits = digits * 10 + n;
+        if (n == 1) { n = 3; continue; }
+        if (n == 6) break;
     }
-    if (digits != 156) return false
-    int visits = 0
+    if (digits != 156) return false;
+    int visits = 0;
     for (int n <- 2..4; n += 0) {
-        visits++
-        n = 4
-        if (visits > 1) return false
+        visits++;
+        n = 4;
+        if (visits > 1) return false;
     }
-    return visits == 1
+    return visits == 1;
 }
 
 fn<bool> integerLimits() {
-    int visits = 0
+    int visits = 0;
     for (usize n <- 0..=usize::max; n += 2) {
-        if (visits != 0) return false
-        visits++
-        n = usize::max - 1
+        if (visits != 0) return false;
+        visits++;
+        n = usize::max - 1;
     }
     for (int<65> n <- int<65>::min..=int<65>::max; n += -2) {
-        if (visits != 1) return false
-        visits++
-        n = int<65>::min + 1
+        if (visits != 1) return false;
+        visits++;
+        n = int<65>::min + 1;
     }
     for (int<1> n <- int<1>::max..=int<1>::min; n += -1) {
-        if (visits >= 4) return false
-        visits++
+        if (visits >= 4) return false;
+        visits++;
     }
-    return visits == 4
+    return visits == 4;
 }
 
 fn<bool> wrappedStepExpression() {
-    int<8> delta := 127
-    int visits = 0
+    int<8> delta := 127;
+    int visits = 0;
     for (int<8> n <- 100..=-128; n += delta + 1) {
-        if (visits == 0 && n != 100 || visits == 1 && n != -28 || visits >= 2) return false
-        visits++
+        if (visits == 0 && n != 100 || visits == 1 && n != -28 || visits >= 2) return false;
+        visits++;
     }
-    return visits == 2
+    return visits == 2;
 }
 
 fn<int> returnFromStep(final bool flag) {
-    for (int n <- 1..=1; n += if (flag) { return 42 } else { return 7 }) continue
-    return 0
+    for (int n <- 1..=1; n += if (flag) { return 42; } else { return 7; }) continue;
+    return 0;
 }
 
 fn<int> nestedStep() {
-    int visits = 0
+    int visits = 0;
     while (visits < 3) {
-        for (int n <- 1..=2; n += if (visits < 3) { continue } else { break }) visits++
-        return 0
+        for (int n <- 1..=2; n += if (visits < 3) { continue; } else { break; }) visits++;
+        return 0;
     }
-    return visits
+    return visits;
 }

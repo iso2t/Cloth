@@ -10,19 +10,19 @@ carries an integer and supplies the ``reading()`` method.
 .. code-block:: text
 
    pub typedef<class> Meter {
-       pub state<int> ::reading()
+       pub state<int> ::reading();
        pub default state<void> Idle {}
-       pub state Loaded
+       pub state Loaded;
    }
 
    typedef<state<int>> pub Loaded for Meter {
-       mt<int> reading() = state
+       mt<int> reading() = state;
    }
 
    fn<int> load(Meter meter) {
-       def alias = meter
-       alias -> Loaded(42)
-       return meter::reading()
+       def alias = meter;
+       alias -> Loaded(42);
+       return meter::reading();
    }
 
 In ``load``, ``alias`` and ``meter`` refer to the same instance. Entering
@@ -34,8 +34,10 @@ Declaring and attaching states
 ------------------------------
 
 Use ``state<Payload> Name { ... }`` to define a state inside a class.
-Use ``state Name`` to attach a separate definition. A separate state
-names its host with ``for``. A state declared for an interface can be
+For an empty definition, write ``state<void> Ready;``. Use ``state Ready;``
+to attach a separate definition with that name. A separate state
+names its host with ``for``, as in ``typedef<state<void>> Ready for Lamp;``.
+A state declared for an interface can be
 attached to classes that implement it. To export a separate state from
 its file, put ``pub`` after the ``typedef<state<...>>`` header.
 
@@ -43,7 +45,7 @@ A class that declares or attaches states must mark one of them
 ``default``. A derived class that only inherits states keeps its base
 class's choice. A default state with a payload needs an initial value.
 To start the meter with a reading of 1, move ``default`` from ``Idle``
-to the attachment and write ``pub default(1) state Loaded``.
+to the attachment and write ``pub default(1) state Loaded;``.
 
 Transitions and payloads
 ------------------------
@@ -66,7 +68,7 @@ The payload must match the declared type. Changing the transition in
 State methods
 -------------
 
-The host declaration ``pub state<int> ::reading()`` gives the method's
+The host declaration ``pub state<int> ::reading();`` gives the method's
 name and return type. A state provides its body with ``mt<int> reading()``.
 A call written ``meter::reading()`` selects the active state's body.
 Ordinary class methods use the dot in ``meter.method()``.

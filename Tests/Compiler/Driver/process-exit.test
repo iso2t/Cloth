@@ -1,34 +1,34 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # REQUIRES: x86 && (linux || win32)
 
-# RUN: echo "pub fn<int> main() { println(1); exit(7) }" > "%t.co"
+# RUN: echo "pub fn<int> main() { println(1); exit(7); }" > "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --target-bits 32 --emit-object "%t.32.o"
 # RUN: %cloth --kind executable --src "%t.co" --target-bits 64 --emit-object "%t.64.o"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 1 --empty-stderr 7 "%t.exe"
 
-# RUN: echo "pub fn<int> main() { println(choose(false)); return choose(true) }" > "%t.co"
-# RUN: echo "fn<int> choose(bool stop) = if (stop) exit(7) else 42" >> "%t.co"
+# RUN: echo "pub fn<int> main() { println(choose(false)); return choose(true); }" > "%t.co"
+# RUN: echo "fn<int> choose(bool stop) = if (stop) exit(7) else 42;" >> "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 42 --empty-stderr 7 "%t.exe"
 
 # The status expression runs once. Exiting in a helper also stops its caller.
-# RUN: echo "pub fn<int> main() { finish(); println(99); return 42 }" > "%t.co"
-# RUN: echo "fn<void> finish() = exit(status())" >> "%t.co"
-# RUN: echo "fn<unsigned int<97>> status() { println(3); return 18446744073709551879 }" >> "%t.co"
+# RUN: echo "pub fn<int> main() { finish(); println(99); return 42; }" > "%t.co"
+# RUN: echo "fn<void> finish() = exit(status());" >> "%t.co"
+# RUN: echo "fn<unsigned int<97>> status() { println(3); return 18446744073709551879; }" >> "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 3 --empty-stderr 263 "%t.exe"
 
-# RUN: echo "pub fn<int> main() = exit(-1 -> int<8>)" > "%t.co"
+# RUN: echo "pub fn<int> main() = exit(-1 -> int<8>);" > "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0xffffffff "%t.exe"
 
-# RUN: echo "pub fn<int> main() = exit(first(), exit(0))" > "%t.co"
-# RUN: echo "fn<int> first() { println(2); return 19 }" >> "%t.co"
+# RUN: echo "pub fn<int> main() = exit(first(), exit(0));" > "%t.co"
+# RUN: echo "fn<int> first() { println(2); return 19; }" >> "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 2 --empty-stderr 0 "%t.exe"
@@ -42,20 +42,20 @@
 # RUN: %python -c "import os, sys; from pathlib import Path; Path(sys.argv[1]).write_bytes(('1' + os.linesep + '2' + os.linesep).encode('ascii') + bytes.fromhex('4100c3a9f09f9880250a5a'))" "%t.stdout"
 # RUN: %expect_exit --stdout-file "%t.stdout" --empty-stderr 263 "%t.exe"
 
-# RUN: echo 'pub fn<int> main() = exit(-2 -> int<8>, "")' > "%t.co"
+# RUN: echo 'pub fn<int> main() = exit(-2 -> int<8>, "");' > "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0xfffffffe "%t.exe"
 
 # A read-only file handle makes even a buffered write fail when the message is flushed.
-# RUN: echo 'pub fn<int> main() = exit(7, "X")' > "%t.co"
+# RUN: echo 'pub fn<int> main() = exit(7, "X");' > "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: standard output write failed" 1 %python -c "import subprocess, sys; sys.exit(subprocess.run([sys.argv[2]], stdout=open(sys.argv[1], 'rb')).returncode)" "%t.co" "%t.exe"
 
 # A user-defined exit is an ordinary call and its result reaches main.
-# RUN: echo "pub fn<int> main() = exit(34)" > "%t.co"
-# RUN: echo "fn<int> exit(int n) = n + 8" >> "%t.co"
+# RUN: echo "pub fn<int> main() = exit(34);" > "%t.co"
+# RUN: echo "fn<int> exit(int n) = n + 8;" >> "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" -o "%t.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"

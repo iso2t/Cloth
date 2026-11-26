@@ -1,38 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    unsigned int<97> high := 79228162514264337593543950336
-    bool comparisons := signedLess(-1, 1) && !unsignedLess(4095, 1)
-    bool booleans := !asBool(0) && asBool(-2) && acceptsBool(high) && !fromInteger(0) && fromInteger(-2)
-    bool equality := false == 0 && 12 == true && false != -1 && false != 2
-    bool arithmetic := update(4095) == 8 && power(-2, 5) == -32 && power(2, 12) == 0 && power(0, 0) == 1
-    bool wide := wideDivide(high, 3) == 26409387504754779197847983445 && wrapMaximum(int<65536>::max) == int<65536>::min
-    bool sized := invertSize(0) == usize::max && signedSize(-9) == -4
-    bool logical := (true || fails(0)) && !(false && fails(0))
-    return 42 * (comparisons && booleans && equality && arithmetic && wide && sized && logical).toInt()
+    unsigned int<97> high := 79228162514264337593543950336;
+    bool comparisons := signedLess(-1, 1) && !unsignedLess(4095, 1);
+    bool booleans := !asBool(0) && asBool(-2) && acceptsBool(high) && !fromInteger(0) && fromInteger(-2);
+    bool equality := false == 0 && 12 == true && false != -1 && false != 2;
+    bool arithmetic := update(4095) == 8 && power(-2, 5) == -32 && power(2, 12) == 0 && power(0, 0) == 1;
+    bool wide := wideDivide(high, 3) == 26409387504754779197847983445 && wrapMaximum(int<65536>::max) == int<65536>::min;
+    bool sized := invertSize(0) == usize::max && signedSize(-9) == -4;
+    bool logical := (true || fails(0)) && !(false && fails(0));
+    return 42 * (comparisons && booleans && equality && arithmetic && wide && sized && logical).toInt();
 }
 
-fn<bool> signedLess(int<12> left, int<12> right) = left < right
-fn<bool> unsignedLess(unsigned int<12> left, unsigned int<12> right) = left < right
-fn<bool> acceptsBool(bool value) = value
-fn<bool> fromInteger(int value) = value
+fn<bool> signedLess(int<12> left, int<12> right) = left < right;
+fn<bool> unsignedLess(unsigned int<12> left, unsigned int<12> right) = left < right;
+fn<bool> acceptsBool(bool value) = value;
+fn<bool> fromInteger(int value) = value;
 fn<bool> asBool(int value) {
-    bool flag = 0
-    flag = value
-    return flag
+    bool flag = 0;
+    flag = value;
+    return flag;
 }
 fn<unsigned int<12>> update(unsigned int<12> n) {
-    n += 7
-    n--
-    n *= 3
-    n /= 2
-    n %= 9
-    n++
-    return n
+    n += 7;
+    n--;
+    n *= 3;
+    n /= 2;
+    n %= 9;
+    n++;
+    return n;
 }
-fn<int<12>> power(int<12> base, int<12> exponent) = base ** exponent
-fn<unsigned int<97>> wideDivide(unsigned int<97> value, unsigned int<97> divisor) = value / divisor
-fn<int<65536>> wrapMaximum(final int<65536> value) = value + 1
-fn<usize> invertSize(usize n) = ~n
-fn<isize> signedSize(isize n) = n / 2
-fn<bool> fails(int divisor) = 1 / divisor == 0
+fn<int<12>> power(int<12> base, int<12> exponent) = base ** exponent;
+fn<unsigned int<97>> wideDivide(unsigned int<97> value, unsigned int<97> divisor) = value / divisor;
+fn<int<65536>> wrapMaximum(final int<65536> value) = value + 1;
+fn<usize> invertSize(usize n) = ~n;
+fn<isize> signedSize(isize n) = n / 2;
+fn<bool> fails(int divisor) = 1 / divisor == 0;

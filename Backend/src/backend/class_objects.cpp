@@ -5,7 +5,6 @@
 #include <backend/class_objects.hpp>
 #include <backend/function_abi.hpp>
 #include <backend/growable_array.hpp>
-#include <backend/nullable_value.hpp>
 #include <backend/value_types.hpp>
 
 #include <algorithm>
@@ -193,11 +192,11 @@ void ClassObjects::describe (const cloth::ResolvedType &type, ClassStorage &stor
 		}
 		for (const cloth::Symbol *field : current->fields) {
 			const cloth::ResolvedType &type = fieldType(*current, *field);
-			if (!growable_array::ownsBuffer(type)) continue;
+			if (!vt_types.ownsBuffers(type)) continue;
 			const LLVMValueRef data = callback(storage.dispose, "cloth.dispose", pointer);
 			LLVMValueRef       slot = fieldAddress(builder.get(), data, *current, *field);
-			if (type.nullable()) slot = nullable::payloadAddress(builder.get(), vt_types.localType(type.element()), slot);
-			growable_array::release(builder.get(), mod_module, slot);
+			const LLVMValueRef dispose = vt_types.bufferDisposer(type);
+			LLVMBuildCall2(builder.get(), LLVMGlobalGetValueType(dispose), dispose, &slot, 1, "");
 		}
 	}
 	for (const LLVMValueRef function : { storage.destroy, storage.dispose }) {

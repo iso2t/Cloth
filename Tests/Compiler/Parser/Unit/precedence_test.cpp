@@ -23,7 +23,7 @@ namespace cloth {
 namespace {
 
 TEST (ParserPrecedence, PowerBindsBeforeUnaryMinus) {
-	Lexer            l_lexer("fn<int> value() = -2 ** 2");
+	Lexer            l_lexer("fn<int> value() = -2 ** 2;");
 	Parser           p_parser(l_lexer);
 	const SourceUnit su_unit = p_parser.parse();
 
@@ -49,7 +49,7 @@ TEST (ParserPrecedence, PowerBindsBeforeUnaryMinus) {
 }
 
 TEST (ParserPrecedence, PreservesComparisonsThatResembleTypedBindings) {
-	Lexer                      l_lexer("fn probe() { left < middle > right, tail }");
+	Lexer                      l_lexer("fn probe() { left < middle > right, tail; }");
 	Parser                     p_parser(l_lexer);
 	const SourceUnit           su_unit     = p_parser.parse();
 	const auto &fd_function = dynamic_cast<const FunctionDeclaration &>(*su_unit.declarations.front());
@@ -63,7 +63,7 @@ TEST (ParserPrecedence, PreservesComparisonsThatResembleTypedBindings) {
 }
 
 TEST (ParserDeclarations, RejectsBracketedLocalTypesAndMisplacedOverrideModifiers) {
-	for (const char *s_source : { "fn f() { def<int> x = 1 }", "fn f() { for (def<int> i <- 0..2) {} }", "typedef<class> C { override: pub mt f() {} }",
+	for (const char *s_source : { "fn f() { def<int> x = 1; }", "fn f() { for (def<int> i <- 0..2) {} }", "typedef<class> C { override: pub mt f() {} }",
 	                              "typedef<class> C { override pub mt f() {} }", "typedef<class> C { pub override: mt f() {} }" }) {
 		SCOPED_TRACE(s_source);
 		Lexer  l_lexer(s_source);
@@ -112,7 +112,7 @@ TEST (ParserDeclarations, RecordsInitialStateModifiersOnDeclarationsAndAttachmen
     pub default state<void> Ready {}
 }
 typedef<class> Meter {
-    pub default(1) state Busy
+    pub default(1) state Busy;
 }
 typedef<state<int>> pub Busy for Meter {}
 )");
@@ -137,8 +137,8 @@ typedef<state<int>> pub Busy for Meter {}
 
 TEST (ParserDeclarations, RejectsMisplacedInitialStateModifiers) {
 	for (const char *s_member :
-	     { "default: state<void> Ready {}", "default: (1) pub state Busy", "pub default: state<void> Ready {}", "default pub state<void> Ready {}",
-	       "default(1) pub state Busy", "pub default mt read() {}", "pub default state<int> ::read()" }) {
+	     { "default: state<void> Ready {}", "default: (1) pub state Busy;", "pub default: state<void> Ready {}", "default pub state<void> Ready {}",
+	       "default(1) pub state Busy;", "pub default mt read() {}", "pub default state<int> ::read();" }) {
 		SCOPED_TRACE(s_member);
 		Lexer  l_lexer(std::string("typedef<class> C { ") + s_member + " }");
 		Parser p_parser(l_lexer);

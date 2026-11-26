@@ -2,12 +2,12 @@
 # REQUIRES: x86 && (linux || win32)
 
 # RUN: mkdir -p "%t"
-# RUN: echo "pub fn<int> main () { return 42 }" > "%t/answer.co"
+# RUN: echo "pub fn<int> main () { return 42; }" > "%t/answer.co"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --src "%t/answer.co" --emit-object "%t/answer file.o"
 # RUN: %cc "%t/answer file.o" -o "%t/answer.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t/answer.exe"
 
-# RUN: echo "pub fn<int> main () = 7" > "%t/answer.co"
+# RUN: echo "pub fn<int> main () = 7;" > "%t/answer.co"
 # RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --emit-object "%t/answer file.o" --src "%t/answer.co" --kind executable
 # RUN: %cc "%t/answer file.o" -o "%t/answer.exe"
 # RUN: %expect_exit --empty-stdout --empty-stderr 7 "%t/answer.exe"

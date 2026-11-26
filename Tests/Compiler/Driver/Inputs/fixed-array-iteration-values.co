@@ -1,70 +1,70 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<struct> Digit { pub int value }
+typedef<struct> Digit { pub int value; }
 
 pub fn<int> main() {
-    int[0] empty := []
-    for (def unused <- (if (trace(1) == 1) empty else empty)) return 1
-    for (int unused <- []) return 2
+    int[0] empty := [];
+    for (def unused <- (if (trace(1) == 1) empty else empty)) return 1;
+    for (int unused <- []) return 2;
 
-    int seen = 0
+    int seen = 0;
     for (def value <- [trace(2), trace(3), trace(4)]) {
-        if (value == 2) continue
-        seen = value
-        println(5)
-        break
+        if (value == 2) continue;
+        seen = value;
+        println(5);
+        break;
     }
-    if (seen != 3) return 3
-    if (capture() != 42 || nested() != 42 || first() != 42) return 4
-    if (!convertedBindings()) return 5
-    if (leaveFromSource(true) != 42 || leaveFromSource(false) != 7) return 6
-    return 42
+    if (seen != 3) return 3;
+    if (capture() != 42 || nested() != 42 || first() != 42) return 4;
+    if (!convertedBindings()) return 5;
+    if (leaveFromSource(true) != 42 || leaveFromSource(false) != 7) return 6;
+    return 42;
 }
 
 fn<int> capture() {
-    Digit[2] digits = [{4}, {2}]
-    int result = 0
+    Digit[2] digits = [{4}, {2}];
+    int result = 0;
     for (def digit <- digits) {
-        digits[1] = {8}
-        result = result * 10 + digit.value
-        digit.value = 0
+        digits[1] = {8};
+        result = result * 10 + digit.value;
+        digit.value = 0;
     }
-    return if (digits[0].value == 4 && digits[1].value == 8) result else 0
+    return if (digits[0].value == 4 && digits[1].value == 8) result else 0;
 }
 
 fn<int> nested() {
-    int result = 0
+    int result = 0;
     for (def row <- [4, 7, 2, 9, 8]) {
-        for (int digit <- (if (row == 7) { continue } else if (row == 9) { break } else [row, 0])) {
-            if (digit == 0) break
-            result = result * 10 + digit
+        for (int digit <- (if (row == 7) { continue; } else if (row == 9) { break; } else [row, 0])) {
+            if (digit == 0) break;
+            result = result * 10 + digit;
         }
     }
-    return result
+    return result;
 }
 
 fn<int> first() {
-    for (def value <- [42, 7]) return value
-    return 0
+    for (def value <- [42, 7]) return value;
+    return 0;
 }
 
 fn<bool> convertedBindings() {
-    unsigned int<65>?[3] words := [null, 0, 18446744073709551616]
-    int result = 0
+    unsigned int<65>?[3] words := [null, 0, 18446744073709551616];
+    int result = 0;
     for (bool? flag <- words) {
-        result *= 10
-        if (flag == null) result += 1
-        else if (flag) result += 3
-        else result += 2
+        result *= 10;
+        if (flag == null) result += 1;
+        else if (flag) result += 3;
+        else result += 2;
     }
-    return result == 123
+    return result == 123;
 }
 
 fn<int> leaveFromSource(final bool first) {
-    for (int unused <- [trace(6), (if (first) { return 42 } else { return 7 }), trace(99)]) return 99
+    for (int unused <- [trace(6), (if (first) { return 42; } else { return 7; }), trace(99)]) return 99;
 }
 
 fn<int> trace(final int value) {
-    println(value)
-    return value
+    println(value);
+    return value;
 }

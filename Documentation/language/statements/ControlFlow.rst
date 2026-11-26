@@ -10,7 +10,9 @@ An ``if`` tests a ``bool`` condition in parentheses. With one or more
 ``else if`` branches, Cloth tests the conditions in order and runs the
 first branch whose condition is true. If all are false, the final
 ``else`` runs when present. A branch can be a single statement or a
-braced block. A guard such as ``if (n == 5) break`` can omit ``else``.
+braced block. A single statement keeps its own terminator, as in
+``if (ready) start(); else stop();``. An ``else`` pairs with the nearest
+unmatched ``if``. A guard such as ``if (n == 5) break;`` can omit ``else``.
 
 When an ``if`` supplies a value, give it an ``else`` branch. The last
 expression in the selected branch supplies its result. A ``return``
@@ -19,7 +21,15 @@ the conditional is part of a larger expression.
 
 .. code-block:: text
 
-   fn<int> choose(bool flag) { return if (flag) 42 else 7 }
+   fn<int> choose(bool flag) { return if (flag) 42 else 7; }
+
+An unbraced value arm supplies one expression. In
+``pair(if (ready) 4 else 2, 3)``, the call always receives two arguments.
+Use braced arms for multiple results, with a semicolon inside each arm.
+
+.. code-block:: text
+
+   fn<int, int> choosePair(bool ready) = if (ready) { 4, 3; } else { 2, 1; };
 
 Only the selected branch is evaluated. A division in the other branch
 is skipped, as in the `conditional expressions example
@@ -31,13 +41,14 @@ While and do/while loops
 A ``while`` loop tests its condition before each iteration. A ``do``
 loop runs its body before the first test, then repeats while the
 condition is true. Both forms take a ``bool`` condition in parentheses
-and accept a single statement or a braced block.
+and accept a single statement or a braced block. End the trailing condition
+of a ``do`` loop with a semicolon. Use ``{}`` for an empty loop body.
 
 .. code-block:: text
 
-   int count = 0
-   while (false) count++
-   do { count++ } while (false)
+   int count = 0;
+   while (false) count++;
+   do { count++; } while (false);
 
 The first loop leaves ``count`` at zero. The second increments it once.
 A ``return`` from the body leaves the function immediately and skips the
@@ -54,8 +65,8 @@ The default loop step adds one. With reversed bounds it skips the body.
 
 .. code-block:: text
 
-   int total = 0
-   for (int n <- 13..16) total += n
+   int total = 0;
+   for (int n <- 13..16) total += n;
 
 The loop adds 13, 14, and 15. Using ``13..=15`` gives the same sum, 42.
 See the `half-open example <../../../Tests/Compiler/Driver/Inputs/integer-range-loop.co>`_
@@ -169,9 +180,9 @@ advances to the next element.
 
 .. code-block:: text
 
-   int[2] digits := [4, 2]
-   int result = 0
-   for (def digit <- digits) result = result * 10 + digit
+   int[2] digits := [4, 2];
+   int result = 0;
+   for (def digit <- digits) result = result * 10 + digit;
 
 The loop reads 4 and then 2, leaving ``result`` equal to 42. See the
 `array iteration example <../../../Tests/Compiler/Driver/Inputs/fixed-array-iteration.co>`_.
@@ -204,12 +215,12 @@ sequence intact.
 
 .. code-block:: text
 
-   using cloth.collections.List : List
+   using cloth.collections.List : List;
 
    fn<int> sumPresent(List<int?> values) {
-       int total = 0
-       for (int? value <- values) total += value ?: 0
-       return total
+       int total = 0;
+       for (int? value <- values) total += value ?: 0;
+       return total;
    }
 
 For a ``List<int>``, ``for (def value <- values)`` infers ``int``.

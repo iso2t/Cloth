@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<int> main() {
-    unsigned int<65>[2][3] rows = [[1, 2, 3], [4, 5, 0]]
-    def saved := rows
-    if (!(rows == saved) || rows != saved) return 1
+    unsigned int<65>[2][3] rows = [[1, 2, 3], [4, 5, 0]];
+    def saved := rows;
+    if (!(rows == saved) || rows != saved) return 1;
 
-    rows[1][2] = 18446744073709551616
-    if (saved == rows || !(rows != saved)) return 2
+    rows[1][2] = 18446744073709551616;
+    if (saved == rows || !(rows != saved)) return 2;
 
-    unsigned int<65>[3][2] pairs := [[1, 2], [3, 4], [5, 0]]
-    return if (saved != pairs && !(pairs == saved)) 42 else 3
+    unsigned int<65>[3][2] pairs := [[1, 2], [3, 4], [5, 0]];
+    return if (saved != pairs && !(pairs == saved)) 42 else 3;
 }

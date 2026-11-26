@@ -20,33 +20,31 @@ arguments require the name to touch `<` and the closing `>` to touch `(`, as in
 ~~~cloth
 typedef<struct> Pair<T> {
     T left, T right;
-    mt<T> first() = self.left
+    mt<T> first() = self.left;
 }
 
-typedef<enum> Mode(pub def<int> code) { Off(0), On(1) }
+typedef<enum> Mode(pub def<int> code) { Off(0), On(1); }
 
 typedef<interface> Sized {
-    mt<int> length()
-    mt<bool> empty() = default (self.length() == 0)
+    mt<int> length();
+    mt<bool> empty() = default (self.length() == 0);
 }
 
 pub final typedef<class> Counter(pub def<int> value) : Sized {
     Counter() : (0) {}
-    pub mt<int> length() = self.value
-    operator +(int delta) -> int = self.value + delta
+    pub mt<int> length() = self.value;
+    operator +(int delta) -> int = self.value + delta;
     ~Counter {}
 }
 ~~~
 
-- In a struct, write comma-separated `Type name` fields. A semicolon separates the field list from following methods or
-  operators. In an enum, put payload fields in the header and supply their values on the cases. Each enum needs at least
-  one
-  case. [Struct parser](../../../../Compiler/src/parser/subs/struct_parser.cpp) · [Enum parser](../../../../Compiler/src/parser/subs/enum_parser.cpp)
-- Use `mt` for a method. An interface accepts a signature, `= default (expression)`, or `= default { ... }`. A class or
+- In a struct, write comma-separated `Type name` fields. End a nonempty field list with one semicolon, including before `}`.
+  An enum needs at least one case. Separate cases with commas and end the list with `;`. [Struct parser](../../../../Compiler/src/parser/subs/struct_parser.cpp) · [Enum parser](../../../../Compiler/src/parser/subs/enum_parser.cpp)
+- Use `mt` for a method. An interface accepts a signature ending in `;`, `= default (expression);`, or `= default { ... }`. A class or
   interface parent list starts with `:`. Class parents may also take constructor
   arguments. [Interface parser](../../../../Compiler/src/parser/subs/interface_parser.cpp) · [Method bodies](../../../../Compiler/src/parser/subs/function_parser.cpp) · [Parent clauses](../../../../Compiler/include/parser/subs/type_parser.hpp)
 - A class header can hold ordinary parameters and `def<Type>` field parameters. A class-body field uses
-  `def<Type> name = expression`. A secondary constructor repeats the class name and delegates with `: (arguments)`. The
+  `def<Type> name = expression;`. A secondary constructor repeats the class name and delegates with `: (arguments)`. The
   destructor is `~Name` followed directly by a block. A virtual class method uses `pub virtual mt`. An override uses `pub override mt`. [Class parser](../../../../Compiler/src/parser/subs/class_parser.cpp)
 - `operator` takes the operator spelling, parameters, an optional `->` result type, and a body. Nested type declarations
   use the same `typedef<kind>` header. Consult the enclosing member parser for valid positions and
@@ -56,20 +54,20 @@ pub final typedef<class> Counter(pub def<int> value) : Sized {
 
 ~~~cloth
 typedef<class> Lamp {
-    state<void> ::toggle()
+    state<void> ::toggle();
     default state<void> Off {
-        mt toggle() { self -> On() }
+        mt toggle() { self -> On(); }
     }
-    state On
+    state On;
 }
 
 typedef<state<void>> pub On for Lamp {
-    mt toggle() { self -> Off() }
+    mt toggle() { self -> Off(); }
 }
 ~~~
 
-Within a class, `state<void> ::toggle()` declares a state-method signature. `state<Type> Name { ... }` declares a nested
-state, and `state Name` attaches a separately declared state. Place `default` after any `pub` and before `state` to select the initial state.
+Within a class, `state<void> ::toggle();` declares a state-method signature. `state<Type> Name { ... }` declares a nested
+state, and `state Name;` attaches a separately declared state. An empty typed state can use `state<void> Name;`. Place `default` after any `pub` and before `state` to select the initial state.
 Use `pub default(1) state<int> Busy {}` to supply an initial payload. A top-level state places its optional `pub` after `typedef<state<Type>>` and names its host
 with `for`. State bodies accept `init` blocks and `mt` methods. In a state method, `state` can appear as a payload
 expression. [State grammar](../../../../Compiler/src/parser/subs/class_parser.cpp) · [State nodes](../../../../Compiler/include/ast/decl/state_declaration.hpp) · [State expressions](../../../../Compiler/src/parser/subs/expression_parser.cpp)

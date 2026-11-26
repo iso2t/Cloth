@@ -1,79 +1,79 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<enum> Reading(pub def<int> code = 0) { pub Off, pub On(42), pub Other(42) }
+typedef<enum> Reading(pub def<int> code = 0) { pub Off, pub On(42), pub Other(42); }
 
 fn<bool> integers(final unsigned int<65> high) {
-    unsigned int<65>?[] values = [null, high, 0]
-    unsigned int<65>?[3] fixed := values
-    if (values != fixed || fixed != values) return false
+    unsigned int<65>?[] values = [null, high, 0];
+    unsigned int<65>?[3] fixed := values;
+    if (values != fixed || fixed != values) return false;
     if (values[1] != null) {
-        if (values[1] != high) return false
-        values[1] = (values[1] ?: 0) + 1
+        if (values[1] != high) return false;
+        values[1] = (values[1] ?: 0) + 1;
     }
-    if (values[1] != high + 1 || values == fixed) return false
-    values[1] = null
-    values[0] = 0
-    int absent = 0
-    int zero = 0
+    if (values[1] != high + 1 || values == fixed) return false;
+    values[1] = null;
+    values[0] = 0;
+    int absent = 0;
+    int zero = 0;
     for (unsigned int<65>? cell <- values) {
-        values.clear()
-        if (cell == null) absent++ else if (cell == 0) zero++
+        values.clear();
+        if (cell == null) absent++; else if (cell == 0) zero++;
     }
-    return absent == 1 && zero == 2 && values::size == 0 && fixed[1] == high
+    return absent == 1 && zero == 2 && values::size == 0 && fixed[1] == high;
 }
 
 fn<bool> flagsAndLetters(final unsigned int<65> high) {
-    bool?[] flags = [null, false]
-    flags.insert(0, high)
-    bool?[] saved := flags
-    flags[1] = 0
-    if (flags == saved || flags != [true, false, false]) return false
-    if (saved[1] != null || (flags.removeAt(1) ?: true)) return false
-    char?[] letters = ['\0', null]
-    letters.append('🙂')
-    char?[3] characters := letters
-    letters[1] = '\0'
-    if (letters == characters || (letters.removeAt(0) ?: 'A') != '\0') return false
-    return characters[1] == null && letters == ['\0', '🙂']
+    bool?[] flags = [null, false];
+    flags.insert(0, high);
+    bool?[] saved := flags;
+    flags[1] = 0;
+    if (flags == saved || flags != [true, false, false]) return false;
+    if (saved[1] != null || (flags.removeAt(1) ?: true)) return false;
+    char?[] letters = ['\0', null];
+    letters.append('🙂');
+    char?[3] characters := letters;
+    letters[1] = '\0';
+    if (letters == characters || (letters.removeAt(0) ?: 'A') != '\0') return false;
+    return characters[1] == null && letters == ['\0', '🙂'];
 }
 
 fn<bool> floats(final float<64> zero) {
-    float<16>?[] half = [null, -0.0]
-    float<32>?[] single = [0.0, null]
-    float<64>?[] wide = [-zero, null]
-    if (half != [null, 0.0] || single != [-0.0, null] || wide != [zero, null]) return false
-    float<64> nan := zero / zero
-    half.insert(1, nan -> float<16>)
-    single[1] = nan -> float<32>
-    wide.append(nan)
-    if (half == half || single == single || wide == wide) return false
-    half[1] = null
-    return half == [null, null, -0.0] && (single.removeAt(0) ?: 7.0) == 0.0
+    float<16>?[] half = [null, -0.0];
+    float<32>?[] single = [0.0, null];
+    float<64>?[] wide = [-zero, null];
+    if (half != [null, 0.0] || single != [-0.0, null] || wide != [zero, null]) return false;
+    float<64> nan := zero / zero;
+    half.insert(1, nan -> float<16>);
+    single[1] = nan -> float<32>;
+    wide.append(nan);
+    if (half == half || single == single || wide == wide) return false;
+    half[1] = null;
+    return half == [null, null, -0.0] && (single.removeAt(0) ?: 7.0) == 0.0;
 }
 
 fn<bool> enumsAndRanges() {
-    Reading[] modes = [Reading.Off, Reading.On]
-    Reading[] before := modes
-    modes[1] = Reading.Other
-    if (before == modes || modes.removeAt(1).code != 42) return false
-    Reading?[] readings = [null, Reading.Off]
-    readings.insert(0, Reading.On)
-    if (readings == [Reading.Other, null, Reading.Off]) return false
-    if (readings.removeAt(1) != null || readings != [Reading.On, Reading.Off]) return false
-    range<int<12>>?[] ranges = [null, 0..0, 13..=15]
-    range<int<12>>?[] saved := ranges
-    ranges[2] = 13..15
-    if (ranges == saved || saved == [0..0, 0..0, 13..=15]) return false
-    range<int<12>> closed := saved[2] ?: 0..0
-    int total = 0
-    for (int<12> n <- closed) total += n -> int
-    return total == 42 && ranges.removeAt(0) == null
+    Reading[] modes = [Reading.Off, Reading.On];
+    Reading[] before := modes;
+    modes[1] = Reading.Other;
+    if (before == modes || modes.removeAt(1).code != 42) return false;
+    Reading?[] readings = [null, Reading.Off];
+    readings.insert(0, Reading.On);
+    if (readings == [Reading.Other, null, Reading.Off]) return false;
+    if (readings.removeAt(1) != null || readings != [Reading.On, Reading.Off]) return false;
+    range<int<12>>?[] ranges = [null, 0..0, 13..=15];
+    range<int<12>>?[] saved := ranges;
+    ranges[2] = 13..15;
+    if (ranges == saved || saved == [0..0, 0..0, 13..=15]) return false;
+    range<int<12>> closed := saved[2] ?: 0..0;
+    int total = 0;
+    for (int<12> n <- closed) total += n -> int;
+    return total == 42 && ranges.removeAt(0) == null;
 }
 
 pub fn<int> main() {
-    if (!integers(18446744073709551616)) return 1
-    if (!flagsAndLetters(18446744073709551616)) return 2
-    if (!floats(0.0)) return 3
-    if (!enumsAndRanges()) return 4
-    return 42
+    if (!integers(18446744073709551616)) return 1;
+    if (!flagsAndLetters(18446744073709551616)) return 2;
+    if (!floats(0.0)) return 3;
+    if (!enumsAndRanges()) return 4;
+    return 42;
 }

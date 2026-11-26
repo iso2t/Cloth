@@ -17,21 +17,21 @@ def main():
             name = f"{'unsigned' if prefix else 'signed'}{width}"
             marker = f"{element}::{limit}"
             update, wrapped = ("++", "0") if prefix else ("--", f"{element}::max")
-            checks.append(f"    if (!{name}(1)) {{ println({width if prefix else -width}); return 1 }}")
+            checks.append(f"    if (!{name}(1)) {{ println({width if prefix else -width}); return 1; }}")
             functions.append(f"""fn<bool> {name}(final usize index) {{
-    {element}[3] values = [{marker}, 0, {marker}]
-    def saved := values
-    if (!(values == saved)) return false
-    values[index] = {marker}
-    if (values[1] != {marker} || values == saved) return false
-    values[index] = 0
-    if (values[1] != 0 || saved != values) return false
-    values[index] += values[0]
-    if (values[1] != {marker}) return false
-    values[index]{update}
-    return values[0] == {marker} && values[1] == {wrapped} && values[2] == {marker}
+    {element}[3] values = [{marker}, 0, {marker}];
+    def saved := values;
+    if (!(values == saved)) return false;
+    values[index] = {marker};
+    if (values[1] != {marker} || values == saved) return false;
+    values[index] = 0;
+    if (values[1] != 0 || saved != values) return false;
+    values[index] += values[0];
+    if (values[1] != {marker}) return false;
+    values[index]{update};
+    return values[0] == {marker} && values[1] == {wrapped} && values[2] == {marker};
 }}""")
-    entry = "\n".join(["pub fn<int> main() {", *checks, "    return 42", "}"])
+    entry = "\n".join(["pub fn<int> main() {", *checks, "    return 42;", "}"])
     Path(sys.argv[1]).write_text("\n\n".join([entry, *functions]) + "\n", encoding="utf-8")
 
 

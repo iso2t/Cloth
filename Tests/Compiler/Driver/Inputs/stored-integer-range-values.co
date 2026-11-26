@@ -1,66 +1,66 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 fn<int> endpoint(final int n) {
-    println(n)
-    return n
+    println(n);
+    return n;
 }
 
 fn<int> sum(final bool inclusive) {
-    def numbers := if (inclusive) 13..=16 else 13..16
-    int total = 0
-    for (def n <- numbers) total += n
-    return total
+    def numbers := if (inclusive) 13..=16 else 13..16;
+    int total = 0;
+    for (def n <- numbers) total += n;
+    return total;
 }
 
 fn<bool> crossesSignBit(final bool inclusive) {
-    def signedBounds := if (inclusive) int<1>::min..=0 else int<1>::min..0
-    def unsignedBounds := if (inclusive) unsigned int<1>::min..=1 else unsigned int<1>::min..1
-    int signedCount = 0
-    int unsignedCount = 0
-    for (def n <- signedBounds) signedCount++
-    for (def n <- unsignedBounds) unsignedCount++
-    int expected := if (inclusive) 2 else 1
-    return signedCount == expected && unsignedCount == expected
+    def signedBounds := if (inclusive) int<1>::min..=0 else int<1>::min..0;
+    def unsignedBounds := if (inclusive) unsigned int<1>::min..=1 else unsigned int<1>::min..1;
+    int signedCount = 0;
+    int unsignedCount = 0;
+    for (def n <- signedBounds) signedCount++;
+    for (def n <- unsignedBounds) unsignedCount++;
+    int expected := if (inclusive) 2 else 1;
+    return signedCount == expected && unsignedCount == expected;
 }
 
 fn<bool> keepsOriginalBounds() {
-    range<int> source = 13..16
-    def saved := source
-    int total = 0
+    range<int> source = 13..16;
+    def saved := source;
+    int total = 0;
     for (def n <- source) {
-        source = 7..=7
-        total += n
+        source = 7..=7;
+        total += n;
     }
-    if (total != 42) return false
-    for (def n <- saved) total -= n
-    for (def n <- source) total += n
-    return total == 7
+    if (total != 42) return false;
+    for (def n <- saved) total -= n;
+    for (def n <- source) total += n;
+    return total == 7;
 }
 
 pub fn<int> main() {
-    int last = 16
-    def numbers := endpoint(13)..endpoint(last)
-    def copy := numbers
-    last = 99
-    println(last)
-    int first = 0
-    int second = 0
-    for (def n <- numbers) first += n
-    for (def n <- numbers) second += n
-    if (first != 42 || second != 42) return 1
-    for (def n <- copy) second -= n
-    if (second != 0 || sum(false) != 42) return 1
+    int last = 16;
+    def numbers := endpoint(13)..endpoint(last);
+    def copy := numbers;
+    last = 99;
+    println(last);
+    int first = 0;
+    int second = 0;
+    for (def n <- numbers) first += n;
+    for (def n <- numbers) second += n;
+    if (first != 42 || second != 42) return 1;
+    for (def n <- copy) second -= n;
+    if (second != 0 || sum(false) != 42) return 1;
 
-    def singleton := usize::max..=usize::max
-    def empty := usize::max..usize::max
-    def reversed := int<65>::max..=int<65>::min
-    int count = 0
+    def singleton := usize::max..=usize::max;
+    def empty := usize::max..usize::max;
+    def reversed := int<65>::max..=int<65>::min;
+    int count = 0;
     for (def n <- singleton) {
-        if (n != usize::max || count != 0) return 2
-        count++
+        if (n != usize::max || count != 0) return 2;
+        count++;
     }
-    for (def n <- empty) return 3
-    for (def n <- reversed) return 4
-    if (count != 1 || !keepsOriginalBounds() || !crossesSignBit(false) || !crossesSignBit(true)) return 5
-    return sum(true)
+    for (def n <- empty) return 3;
+    for (def n <- reversed) return 4;
+    if (count != 1 || !keepsOriginalBounds() || !crossesSignBit(false) || !crossesSignBit(true)) return 5;
+    return sum(true);
 }

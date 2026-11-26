@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub fn<isize> main(string[] args) {
-    if (args::size == 0) return 42
-    if (args::size != 3 || args[0]::size != 0 || args[1]::size != 3) return 1
-    string saved := args[2]
-    args.clear()
-    exit(7, saved)
+    if (args::size == 0) return 42;
+    if (args::size != 3 || args[0]::size != 0 || args[1]::size != 3) return 1;
+    string saved := args[2];
+    args.clear();
+    exit(7, saved);
 }

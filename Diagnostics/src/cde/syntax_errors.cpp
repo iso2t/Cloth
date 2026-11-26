@@ -34,6 +34,14 @@ SyntaxException newline (const cloth::Token &token) {
 		 std::format("Start the next statement on a new line or separate it with '{}'.", semicolon) };
 }
 
+SyntaxException missingSemicolon (const cloth::TokenSpan &last, const std::string_view after, const bool allowBody) {
+	const std::string s_expected = allowBody ? std::format("'{}' or '{}'", cloth::toString(cloth::OBraceOpen), cloth::toString(cloth::OSemicolon)) :
+	                                           std::format("'{}'", cloth::toString(cloth::OSemicolon));
+	return { DiagnosticCode::ExpectedSemicolon,
+		 std::format("Expected {} after {}", s_expected, after),
+		 { .startLine = last.endLine, .startCol = last.endCol, .endLine = last.endLine, .endCol = last.endCol, .source = last.source } };
+}
+
 SyntaxException reassignment (const cloth::Token &token) {
 	return { DiagnosticCode::InvalidReassignment,
 		 std::format("'{}' is only allowed in a binding declaration; use '{}' for reassignment", cloth::toString(cloth::Operator::OFinalAssign),

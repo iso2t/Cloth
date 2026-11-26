@@ -8,7 +8,7 @@ declarations. For example, this file defines a function that formats a count.
 
 .. code-block:: text
 
-   fn<string> label(int count) = #"count = {count}"
+   fn<string> label(int count) = #"count = {count}";
 
 Save it as ``label.co`` and run ``cloth --src label.co`` to check it. A file
 containing only declarations can be checked on its own. The compiler also
@@ -25,16 +25,23 @@ to infer. Words such as ``fn``, ``pub`` and ``return`` are reserved. ``range``,
 ``auto`` and ``intrinsic`` have special meanings in particular declarations or
 expressions and can also be ordinary identifiers.
 
-Inside a block, separate statements with a newline or semicolon. The last
-statement can end at the closing brace. At file scope, a brace-bodied
-function or type declaration can end at a newline or the end of the file.
-An expression-bodied function also accepts a semicolon. Parentheses,
-brackets and comma-separated argument lists can span lines.
+End each binding, assignment, update, expression statement, or jump with
+a semicolon, including the last one before ``}``. Imports and declarations
+with an ``=`` body also take a semicolon. Braced functions, types, and
+``if``, ``while``, or ``for`` statements end at their closing brace.
+For example, ``fn stop() { return; }`` and ``fn stop() = return;`` both
+define a function that returns immediately.
 
-``//`` starts a comment that ends at the newline. A block comment starts
-with ``/*`` and ends at the first ``*/``. A newline inside a block comment
-does not separate statements. A ``using`` import must keep its module path
-and colon on the same line.
+Wherever the grammar accepts a space, it also accepts a newline. An import
+can wrap before its colon, and an expression can continue onto the next
+line. In a generic call such as ``first<int>(x)``, keep the name next to
+``<`` and the closing ``>`` next to ``(``.
+
+``//`` starts a comment that ends at the newline. Place a statement's
+terminator before a trailing line comment. A block comment starts with
+``/*`` and ends at the first ``*/``. To update a source file that used
+newlines as statement boundaries, see `Migrating legacy semicolons
+<../../compiler/Flags.rst#migrating-legacy-semicolons>`_.
 
 Numbers
 -------

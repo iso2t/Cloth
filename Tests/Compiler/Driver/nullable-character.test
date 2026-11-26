@@ -11,14 +11,14 @@
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 1 --stdout-line 2 --stdout-line 3 --empty-stderr 42 "%t.exe"
 
-# RUN: echo "fn<char> read(final char? value) = value -> char" > "%t.co"
-# RUN: echo "pub fn<int> main() = read(null).toInt()" >> "%t.co"
+# RUN: echo "fn<char> read(final char? value) = value -> char;" > "%t.co"
+# RUN: echo "pub fn<int> main() = read(null).toInt();" >> "%t.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=UNPROVEN --input-file "%t.err"
 # UNPROVEN: [C3062] Error: A nullable value needs a null check before casting
 
-# RUN: echo "fn<bool> isZero(final char? value) = value == 0" > "%t.co"
-# RUN: echo "pub fn<int> main() = if (isZero(null)) 1 else 42" >> "%t.co"
+# RUN: echo "fn<bool> isZero(final char? value) = value == 0;" > "%t.co"
+# RUN: echo "pub fn<int> main() = if (isZero(null)) 1 else 42;" >> "%t.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=INTEGER --input-file "%t.err"
 # INTEGER: [C3009] Error: Cannot compare char? with int

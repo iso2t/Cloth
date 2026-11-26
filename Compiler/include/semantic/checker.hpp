@@ -129,7 +129,7 @@ enum class MemberLookup { Declaration, CallContract };
 
 class Analyzer {
     public:
-	explicit Analyzer (CheckedProgram &program);
+	explicit Analyzer (CheckedProgram &program, const NativeModules &modules);
 	CheckedProgram                                      &program;
 	std::unordered_map<const Symbol *, DeclarationInfo> &declarations;
 
@@ -173,6 +173,7 @@ class Analyzer {
 	[[nodiscard]] bool                           moreSpecificOperator (const ResolvedType &left, const ResolvedType &right, const ResolvedType &otherLeft,
 	                                                                   const ResolvedType &otherRight) const;
 	[[nodiscard]] bool         anyReceiverClass (const ResolvedType &type, const std::function<bool(const ResolvedType &)> &matches) const;
+	std::optional<MethodRef>                     formatterFor (const ResolvedType &type) const;
 	void                       checkFormatterDefault (const ResolvedType &element, const TokenSpan &receiver, const Token &parameter, bool record);
 	bool                       checkDefaultExpression (const std::function<bool()> &check);
 	[[nodiscard]] bool         mayBeAbsent (const ResolvedType &type) const;
@@ -298,7 +299,7 @@ class Analyzer {
 	// A unit can be reached through several imports. Only selections from the standard library confer a library path.
 	using LibraryPaths = std::map<std::size_t, std::set<std::string, std::less<>>>;
 	LibraryPaths m_libraryPaths;
-	void         loadImports ();
+	void                                         loadImports (const NativeModules &modules);
 	void         registerIntrinsics ();
 	void         checkIntrinsicSignature (const Symbol &symbol, LibraryIntrinsic operation) const;
 	void         registerScope (const SymbolScope &scope, std::size_t file, const Symbol *owner);

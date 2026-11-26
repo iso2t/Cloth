@@ -11,7 +11,7 @@
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 1 --stdout-line 2 --empty-stderr 42 "%t.exe"
 
-# RUN: echo "pub fn<int> main() { int?[1] a := [0]; int[1] b := [0]; return if (a == b) 42 else 7 }" > "%t.co"
+# RUN: echo "pub fn<int> main() { int?[1] a := [0]; int[1] b := [0]; return if (a == b) 42 else 7; }" > "%t.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.co" --emit-object "%t.o" 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=NULLABILITY --input-file "%t.err"
 # NULLABILITY: [C3009] Error: Cannot compare int?[1] with int[1]

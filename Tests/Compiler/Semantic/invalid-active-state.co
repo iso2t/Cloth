@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 typedef<class> Player {
-    pub state<int> ::read(int value)
-    pub default state<void> Ready { mt<int> read(int value) = value }
+    pub state<int> ::read(int value);
+    pub default state<void> Ready { mt<int> read(int value) = value; }
     pub state<void> Stopped {}
 }
 fn<int> test(Player player) {
-    player -> Stopped
-    return player::read(if (true) { player -> Stopped; 1 } else { 2 })
+    player -> Stopped;
+    return player::read(if (true) { player -> Stopped; 1; } else { 2; });
 }
 
 // RUN: %expect_exit --empty-stdout 1 %cloth --src "%/s" 2> "%t.err"

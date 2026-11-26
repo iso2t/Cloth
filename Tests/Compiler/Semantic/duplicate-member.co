@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 pub typedef<class> Device(pub def<int> pin) {
-    def<int> pin = unresolved()
+    def<int> pin = unresolved();
 }
 
 // RUN: %expect_exit --empty-stdout 1 %cloth --src "%/s" 2> "%t.err"

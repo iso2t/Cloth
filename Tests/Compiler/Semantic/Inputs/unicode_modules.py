@@ -18,7 +18,7 @@ with TemporaryDirectory() as folder:
 
     (root / "Cafe\u0301.co").write_text("pub fn ok() {}\n", encoding="utf-8")
     entry = root / "Main.co"
-    entry.write_text("using Caf\u00e9: ok\nfn check() { ok() }\n", encoding="utf-8")
+    entry.write_text("using Caf\u00e9: ok;\nfn check() { ok(); }\n", encoding="utf-8")
     command = [sys.argv[1], "--src", str(entry)]
     subprocess.run(command, check=True)
 
@@ -32,5 +32,5 @@ with TemporaryDirectory() as folder:
 
     (root / "Mixed.CO").write_text("pub fn ok() {}\n", encoding="utf-8")
     if (root / "Mixed.co").is_file():
-        entry.write_text("using Mixed: ok\nfn check() { ok() }\n", encoding="utf-8")
+        entry.write_text("using Mixed: ok;\nfn check() { ok(); }\n", encoding="utf-8")
         subprocess.run(command, check=True)

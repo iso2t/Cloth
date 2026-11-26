@@ -55,6 +55,9 @@ ForStatement ForLoopParser::parseFor (bool allowWhileTrailer) const {
 
 	p_parser.skipNewLines();
 	std::optional<Token> opt_separator = p_parser.isSemiColon(p_parser.peek()) ? std::make_optional(p_parser.advance()) : std::nullopt;
+	if (opt_separator && p_parser.sourceRanges) {
+		p_parser.sourceRanges->push_back({ .construct = SourceConstruct::ForSeparator, .span = opt_separator->getSpan() });
+	}
 	if (opt_separator && !b_isRange) {
 		throw cde::SyntaxErrors::expected(
 		        std::format("'{}' after a foreach source; steppers are only allowed on numeric ranges", toString(OParenClose)), *opt_separator);

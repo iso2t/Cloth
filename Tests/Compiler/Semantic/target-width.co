@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-fn<usize> boundary() = 4294967296
+fn<usize> boundary() = 4294967296;
 
 // RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --target-bits 64 --src "%/s"
 // RUN: %expect_exit --empty-stdout 1 %cloth --target-bits 32 --src "%/s" 2> "%t.err"

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-using Inputs.modules.Café: 計算, café
+using Inputs.modules.Café: 計算, café;
 
-fn<int, bool> use() = 計算(café = café(7)), café(true)
+fn<int, bool> use() = 計算(café = café(7)), café(true);
 
 // RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 32 --src "%/s"
 // RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind library --target-bits 64 --src "%/s"

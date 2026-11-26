@@ -83,6 +83,8 @@ ClassDeclaration ClassParser::parse (const Token &keyword, std::optional<Token> 
 		        [this, &t_name, &v_nestedTypes] () -> std::vector<ClassMember> { return parseMembers(t_name, v_nestedTypes); });
 	} else {
 		p_parser.i_currentIndex = i_headerEnd;
+		p_parser.consumeEmptyTypeHeader("class header");
+		p_parser.recordRange(SourceConstruct::TypeHeader, keyword, WrittenForm::Simple);
 	}
 	const TokenSpan ts_start = (visibility ? *visibility : finalKeyword ? *finalKeyword : keyword).getSpan();
 	const TokenSpan ts_span  = TokenSpan::spanThrough(ts_start, p_parser.previous().getSpan());
@@ -133,6 +135,7 @@ std::vector<ClassMember> ClassParser::parseMembers (const Token &owner, std::vec
 			nestedTypes.emplace_back(p_parser.parseNestedTypeDeclaration());
 			continue;
 		}
+		const Token first = p_parser.peek();
 		v_members.push_back(parseMember(owner));
 		const auto &[value]                   = v_members.back();
 		const MethodDeclaration   *md_method  = std::get_if<MethodDeclaration>(&value);
@@ -140,7 +143,14 @@ std::vector<ClassMember> ClassParser::parseMembers (const Token &owner, std::vec
 		const bool b_allowsTerminator         = std::holds_alternative<ClassFieldDeclaration>(value) || (md_method && md_method->body.getEquals()) ||
 		                                (scmp_state && (dynamic_cast<const StateMethodContractDeclaration *>(scmp_state->get()) ||
 		                                                dynamic_cast<const StateAttachmentDeclaration *>(scmp_state->get())));
-		finishMember(b_allowsTerminator, KClass);
+		p_parser.recordDeclaration(SourceConstruct::Member, first, b_allowsTerminator);
+		if (p_parser.explicitSemicolons()) {
+			if (b_allowsTerminator && !md_method) {
+				p_parser.requireSemicolon("class member");
+			}
+		} else {
+			finishMember(b_allowsTerminator, KClass);
+		}
 	}
 	return v_members;
 }
@@ -242,6 +252,9 @@ StateClassMemberPtr ClassParser::parseState (std::optional<Token> visibility, st
 }
 
 std::vector<StateMemberPtr> ClassParser::parseStateBody (std::vector<TypeDeclarationPtr> *nestedTypes) const {
+	if (p_parser.consumeEmptyTypeHeader("state header")) {
+		return {};
+	}
 	return p_parser.p_delimitedParser.braces([this, nestedTypes] () -> std::vector<StateMemberPtr> {
 		std::vector<StateMemberPtr> v_members;
 		const bool                  b_previousStateBody = std::exchange(p_parser.b_inStateBody, true);
@@ -252,6 +265,7 @@ std::vector<StateMemberPtr> ClassParser::parseStateBody (std::vector<TypeDeclara
 					nestedTypes->emplace_back(p_parser.parseNestedTypeDeclaration());
 					continue;
 				}
+				const Token          first          = p_parser.peek();
 				std::optional<Token> opt_visibility = p_parser.parseVisibility();
 				if (p_parser.atKeyword(KFn)) {
 					throw cde::SyntaxErrors::functionInType(p_parser.peek());
@@ -270,7 +284,10 @@ std::vector<StateMemberPtr> ClassParser::parseStateBody (std::vector<TypeDeclara
 					throw cde::SyntaxErrors::expected(std::format("an '{}' block or a '{}' declaration", toString(KInit), toString(KMt)),
 					                                  p_parser.peek());
 				}
-				finishMember(b_allowsTerminator, KState);
+				p_parser.recordDeclaration(SourceConstruct::Member, first, b_allowsTerminator);
+				if (!p_parser.explicitSemicolons()) {
+					finishMember(b_allowsTerminator, KState);
+				}
 			}
 		} catch (...) {
 			p_parser.b_inStateBody = b_previousStateBody;

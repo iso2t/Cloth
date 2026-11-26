@@ -53,6 +53,7 @@ enum class DiagnosticCode : std::uint16_t {
 	DuplicateImportSelection = 2010,
 	UnsupportedGenericSyntax = 2011,
 	GenericArgumentNesting   = 2012,
+	ExpectedSemicolon        = 2013,
 
 	// C3000 retired with snippet checking.
 	DuplicateBinding              = 3001,

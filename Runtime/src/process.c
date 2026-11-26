@@ -7,32 +7,34 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "runtime.h"
+
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
 #endif
 
-_Noreturn void cloth_rt_exit (int32_t status) {
+_Noreturn void clothRtExit (int32_t status) {
 	exit(status);
 }
 
-static _Noreturn void output_error (void) {
+static _Noreturn void outputError (void) {
 	fputs("Cloth runtime error: standard output write failed\n", stderr);
 	exit(1);
 }
 
-_Noreturn void cloth_rt_exit_message (int32_t status, const unsigned char *data, size_t length) {
+_Noreturn void clothRtExitMessage (int32_t status, const unsigned char *data, size_t length) {
 	if (length != 0) {
 #ifdef _WIN32
 		// Flush preceding text in its original mode. The message is a byte span and may contain literal LF bytes.
-		if (fflush(stdout) == EOF) output_error();
-		const int original_mode = _setmode(_fileno(stdout), _O_BINARY);
-		if (original_mode == -1) output_error();
+		if (fflush(stdout) == EOF) outputError();
+		const int originalMode = _setmode(_fileno(stdout), _O_BINARY);
+		if (originalMode == -1) outputError();
 #endif
-		if (fwrite(data, 1, length, stdout) != length || fflush(stdout) == EOF) output_error();
+		if (fwrite(data, 1, length, stdout) != length || fflush(stdout) == EOF) outputError();
 #ifdef _WIN32
-		if (_setmode(_fileno(stdout), original_mode) == -1) output_error();
+		if (_setmode(_fileno(stdout), originalMode) == -1) outputError();
 #endif
 	}
-	cloth_rt_exit(status);
+	clothRtExit(status);
 }

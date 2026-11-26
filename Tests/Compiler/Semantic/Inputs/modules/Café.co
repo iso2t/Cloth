@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-pub fn<int> 計算(int café) = café
-pub fn<int> café(int n) = n
-pub fn<bool> café(bool n) = n
+pub fn<int> 計算(int café) = café;
+pub fn<int> café(int n) = n;
+pub fn<bool> café(bool n) = n;

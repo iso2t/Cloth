@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <string_view>
+
 #include <llvm-c/Types.h>
 
 namespace cloth {
@@ -15,6 +17,7 @@ struct Bytes {
 };
 
 LLVMTypeRef  type (LLVMModuleRef module);
+LLVMValueRef constant (LLVMModuleRef module, std::string_view text);
 LLVMValueRef literal (LLVMModuleRef module, const cloth::StringLiteral &value);
 Bytes        bytes (LLVMBuilderRef builder, LLVMValueRef value);
 LLVMValueRef scalarCount (LLVMBuilderRef builder, LLVMValueRef value);

@@ -12,13 +12,42 @@ Source files and imports
 
 ``--src PATH`` selects a UTF-8 ``.co`` or ``.clib`` entry file. Quote
 paths that contain spaces. The compiler follows ``using`` imports from
-the entry file. See `Names and visibility <../language/source/Visibility.rst>`_.
+the entry file. The entry and all imported modules use the same grammar.
+Terminate each import and simple statement with ``;``. See `Source files
+and literals <../language/source/Source.rst#names-and-statement-boundaries>`_
+for statement boundaries and `Names and visibility
+<../language/source/Visibility.rst>`_ for import selection.
 
 ``--stdlib PATH`` sets the standard library source root. Imports search
 the entry directory first, then this root. To use the library in this
 checkout, pass ``--stdlib Stdlib`` from the repository root. This
 supplies the standard library declaration for `collection iteration
 <../language/statements/ControlFlow.rst#collection-iteration>`_.
+
+Migrating legacy semicolons
+---------------------------
+
+Build the standalone converter with ``make migrate-semicolons`` or
+``mingw32-make migrate-semicolons`` on Windows. Run it on individual
+``.co`` or ``.clib`` files, or on directories to process them recursively.
+For a checkout known to use the legacy grammar, use the following command.
+
+.. code-block:: console
+
+   build/cloth-migrate-semicolons --from-legacy src
+
+The converter reads the legacy parse first and verifies that each proposed
+file has the same syntax tree under strict parsing. It replaces each verified
+file atomically. A second run leaves its bytes and modification time intact.
+Without ``--from-legacy``, a file that parses both ways with different meanings
+produces a diagnostic at the conflicting source range. A parse failure in both
+grammars or a rewrite that changes the tree also leaves that file untouched.
+The command exits with status 1 if any input needs attention.
+
+For example, the legacy initializer ``Box x := {;}`` creates an empty
+deferred binding. Removing its interior semicolon would make ``{}`` a
+struct literal in strict syntax. The converter reports the difference
+and preserves the original file.
 
 Lexer modes
 -----------
@@ -68,7 +97,10 @@ Native output
 
 ``--emit object`` writes a relocatable object file. ``--emit assembly``
 writes assembly for the selected target. Both require ``--src PATH`` and
-``--kind executable`` and are incompatible with the lexer modes.
+either ``--kind executable`` or a library ``--module-name NAME``.
+Lexer modes stop before code generation. Use ``--extern NAME=SOURCE`` to
+bind a separately built library and ``--print-target`` to print the target
+triple. See `Native libraries <driver/Objects.rst#native-libraries>`_.
 
 By default, Cloth replaces the source file's extension with ``.o`` or
 ``.s`` in the same directory. For ``src/main.co``, assembly goes to

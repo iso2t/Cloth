@@ -35,10 +35,12 @@ objects := $(addprefix $(BUILD_DIR)/obj/,$(obj-y)) \
            $(musubi_object) $(utf8proc_object)
 program := $(BUILD_DIR)/cloth$(exe_suffix)
 
+include Runtime/Makefile
+include Compiler/migration.mk
 include Tests/Makefile
 
 .PHONY: all run
-all: $(program)
+all: $(program) $(migrator) runtime
 
 run: $(program)
 	"$(run_path)" --kind library --stdlib Stdlib --src Stdlib/cloth/Library.co
@@ -60,6 +62,8 @@ $(BUILD_DIR)/obj/Diagnostics/%.o: Diagnostics/src/%.cpp Makefile compile_flags.t
 $(BUILD_DIR)/obj/Backend/%.o: Backend/src/%.cpp Makefile Backend/Kbuild compile_flags.txt
 	@$(make_dir)
 	$(CXX) @compile_flags.txt $(CPPFLAGS) $(backend_cppflags) $(CXXFLAGS) -MMD -MP -c "$<" -o "$@"
+
+$(BUILD_DIR)/obj/Runtime/text.o: private override CPPFLAGS += -IThirdParty/utf8proc -DUTF8PROC_STATIC
 
 $(BUILD_DIR)/obj/Runtime/%.o: Runtime/src/%.c Makefile Runtime/Kbuild
 	@$(make_dir)

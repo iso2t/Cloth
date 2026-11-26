@@ -1,7 +1,7 @@
 // Library entry checked by the native frontend smoke test.
-using cloth.collections.List : List
-using cloth.collections.OwningList : OwningList
-using cloth.collections.Deque : Deque
-using cloth.collections.Queue : Queue
-using cloth.collections.Stack : Stack
-using cloth.lang.num.Number : Number
+using cloth.collections.List : List;
+using cloth.collections.OwningList : OwningList;
+using cloth.collections.Deque : Deque;
+using cloth.collections.Queue : Queue;
+using cloth.collections.Stack : Stack;
+using cloth.lang.num.Number : Number;

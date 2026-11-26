@@ -19,25 +19,29 @@ namespace cloth {
 
 ImportDeclaration ImportParser::parse () const {
 	const Token        t_keyword = p_parser.advance();
-	std::vector        v_components{ identifierOnLine(t_keyword) };
+	std::vector        v_components{ pathIdentifier(t_keyword) };
 	std::vector<Token> v_dots;
-	while (at(ODot) && onLine(t_keyword)) {
+	while (at(ODot) && canContinueAfter(t_keyword)) {
 		v_dots.push_back(p_parser.advance());
-		v_components.push_back(identifierOnLine(t_keyword));
+		v_components.push_back(pathIdentifier(t_keyword));
 	}
-	if (!onLine(t_keyword)) {
+	if (!canContinueAfter(t_keyword)) {
 		throw cde::SyntaxErrors::expected(std::format("'{}' on the same line as the import path", toString(OColon)), p_parser.peek());
 	}
 	const Token t_colon = p_parser.expect(OColon);
 	p_parser.skipNewLines();
 	ImportSelection is_selection = at(OMul) ? ImportSelection{ ImportSelection::Wildcard{ p_parser.advance() } } : ImportSelection{ names() };
 
-	const Token          t_last         = p_parser.previous();
-	const bool           b_sameLine     = onLine(t_last);
-	const Token          t_next         = p_parser.peek();
-	std::optional<Token> opt_terminator = b_sameLine && Parser::isSemiColon(t_next) ? std::make_optional(p_parser.advance()) : std::nullopt;
-	if (!opt_terminator && b_sameLine && t_next.getType() != TokenType::NewLine && t_next.getType() != TokenType::EndOfFile) {
-		throw cde::SyntaxErrors::newline(t_next);
+	std::optional<Token> opt_terminator;
+	if (p_parser.explicitSemicolons()) {
+		opt_terminator = p_parser.requireSemicolon("import");
+	} else if (canContinueAfter(p_parser.previous())) {
+		const Token next = p_parser.peek();
+		if (Parser::isSemiColon(next)) {
+			opt_terminator = p_parser.advance();
+		} else if (next.getType() != TokenType::NewLine && next.getType() != TokenType::EndOfFile) {
+			throw cde::SyntaxErrors::newline(next);
+		}
 	}
 	return { .keyword    = t_keyword,
 		 .path       = { .components = std::move(v_components), .dots = std::move(v_dots) },
@@ -60,7 +64,7 @@ ImportSelection::Names ImportParser::names () const {
 			throw cde::ImportErrors::duplicateSelection(fst->second, t_name);
 		}
 		v_names.push_back(t_name);
-		if (!onLine(t_name) || !at(OComma)) {
+		if (!canContinueAfter(t_name) || !at(OComma)) {
 			break;
 		}
 		v_commas.push_back(p_parser.advance());
@@ -69,16 +73,16 @@ ImportSelection::Names ImportParser::names () const {
 	return { .names = std::move(v_names), .commas = std::move(v_commas) };
 }
 
-Token ImportParser::identifierOnLine (const Token &keyword) const {
-	if (!onLine(keyword)) {
+Token ImportParser::pathIdentifier (const Token &keyword) const {
+	if (!canContinueAfter(keyword)) {
 		throw cde::SyntaxErrors::expected(std::format("an import path identifier on the same line as '{}'", keyword.getLexeme()), p_parser.peek());
 	}
 	return p_parser.expect(TokenType::Identifier, "an import path identifier");
 }
 
-bool ImportParser::onLine (const Token &token) const {
+bool ImportParser::canContinueAfter (const Token &token) const {
 	// Block comments can span lines without emitting newline tokens.
-	return p_parser.peek().getSpan().startLine == token.getSpan().endLine;
+	return p_parser.explicitSemicolons() || p_parser.peek().getSpan().startLine == token.getSpan().endLine;
 }
 
 bool ImportParser::at (const Operator op) const {

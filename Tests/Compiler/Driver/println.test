@@ -7,8 +7,8 @@
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 1 --empty-stderr 42 "%t.exe"
 
-# RUN: echo "pub fn<int> main() { println(-2147483648); println(value()); return 42 }" > "%t.co"
-# RUN: echo "fn<int> value() { println(0); return 2147483647 }" >> "%t.co"
+# RUN: echo "pub fn<int> main() { println(-2147483648); println(value()); return 42; }" > "%t.co"
+# RUN: echo "fn<int> value() { println(0); return 2147483647; }" >> "%t.co"
 # RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line=-2147483648 --stdout-line 0 --stdout-line 2147483647 --empty-stderr 42 "%t.exe"

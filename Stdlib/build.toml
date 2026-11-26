@@ -1,7 +1,9 @@
 [project]
 name = "Cloth-Standard-Library"
 version = "0.0.1"
-entryPoint = "StandardLibrary.cloth.Library.main"
+kind = "library"
+module = "StandardLibrary"
+entryPoint = "StandardLibrary.cloth.Library"
 
 [modules]
 StandardLibrary = "."

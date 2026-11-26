@@ -9,36 +9,36 @@ pub fn<int> main() {
         else if (typeTest(true) != 42 || typeTest(false) != 7) 6
         else if (storageSize(true) != 42 || storageSize(false) != 7) 7
         else if (namedValueTest(true) != 42 || namedValueTest(false) != 7) 8
-        else 42
+        else 42;
 }
 
 fn<int> exitOnRight() {
-    int visits = 0
-    int effects = 0
+    int visits = 0;
+    int effects = 0;
     do {
-        visits++
-        def value := (if (true) { effects += visits; effects } else 0) + (if (effects < 6) { continue } else { break })
-    } while (visits < 5)
-    return effects * 10 + visits
+        visits++;
+        def value := (if (true) { effects += visits; effects; } else 0) + (if (effects < 6) { continue; } else { break; });
+    } while (visits < 5);
+    return effects * 10 + visits;
 }
 
 fn<int> exitOnLeft(int divisor) {
-    int visits = 0
-    int effects = 0
+    int visits = 0;
+    int effects = 0;
     do {
-        visits++
-        def value = (if (visits < 3) { continue } else { break }) / (if (true) { effects++; 1 / divisor } else 1)
-    } while (visits < 5)
-    return visits * 10 + effects
+        visits++;
+        def value = (if (visits < 3) { continue; } else { break; }) / (if (true) { effects++; 1 / divisor; } else 1);
+    } while (visits < 5);
+    return visits * 10 + effects;
 }
 
 fn<int> returnFromSum(bool early) {
-    int effects = 0
-    return (if (early) { return 7 } else { effects++; effects }) + (if (effects == 1) { return 42 } else { return 3 })
+    int effects = 0;
+    return (if (early) { return 7; } else { effects++; effects; }) + (if (effects == 1) { return 42; } else { return 3; });
 }
 
-fn<int> negatedCast(bool flag) = -((if (flag) { return 42 } else { return 7 }) -> int<12>)
-fn<int> comparison(bool flag) = (5 < (if (flag) { return 42 } else { return 7 })).toInt()
-fn<int> typeTest(bool flag) = ((if (flag) { return 42 } else { return 7 }) is int).toInt()
-fn<int> storageSize(bool flag) = (if (flag) { return 42 } else { return 7 })::size -> int
-fn<int> namedValueTest(bool flag) = ((if (flag) { return 42 } else { return 7 }) is flag).toInt()
+fn<int> negatedCast(bool flag) = -((if (flag) { return 42; } else { return 7; }) -> int<12>);
+fn<int> comparison(bool flag) = (5 < (if (flag) { return 42; } else { return 7; })).toInt();
+fn<int> typeTest(bool flag) = ((if (flag) { return 42; } else { return 7; }) is int).toInt();
+fn<int> storageSize(bool flag) = (if (flag) { return 42; } else { return 7; })::size -> int;
+fn<int> namedValueTest(bool flag) = ((if (flag) { return 42; } else { return 7; }) is flag).toInt();

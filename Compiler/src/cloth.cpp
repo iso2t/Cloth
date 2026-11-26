@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <backend/backend.hpp>
+
 #include <cstdio>
 #include <exception>
 #include <iostream>
@@ -38,6 +40,10 @@ int main (const int argc, char *argv[]) try {
 		std::fprintf(stderr, "incorrect usage: cloth <args>");
 	}
 
+	if (co_options.printTarget) {
+		std::cout << backend::toolchainTriple(co_options.targetLayout.sizeBits) << '\n';
+		return SUCCESS;
+	}
 	if (!co_options.p_sourcePath) return FAILED;
 
 	auto l_lexer = cloth::Lexer{ cloth::SourceFile{ *co_options.p_sourcePath } };
@@ -53,7 +59,8 @@ int main (const int argc, char *argv[]) try {
 
 	cloth::Parser               p_parser{ l_lexer };
 	cloth::SymbolTable          st_symbols{ p_parser.parse() };
-	const cloth::CheckedProgram cp_program{ std::move(st_symbols), co_options.targetLayout, co_options.standardLibraryRoot, co_options.kind };
+	const cloth::CheckedProgram cp_program{ std::move(st_symbols), co_options.targetLayout, co_options.standardLibraryRoot, co_options.kind,
+		                                co_options.modules };
 	if (co_options.p_outputPath) cloth::emitFile(cp_program, co_options.emitKind, *co_options.p_outputPath);
 
 	return SUCCESS;

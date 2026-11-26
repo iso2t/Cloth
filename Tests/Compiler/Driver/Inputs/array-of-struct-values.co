@@ -1,94 +1,94 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-typedef<struct> Row { pub int<12>[2] cells, pub int stamp }
-typedef<struct> Batch { pub Row[2] rows }
-typedef<struct> Pair { pub Row[2] left, pub Row[2] right }
-typedef<struct> Optional { pub int[2]? cells, pub int[0]? empty }
-typedef<enum> Preset(pub def<Row[2]> rows = [{[0, 20], 1}, {[0, 22], 2}]) { pub Default }
+typedef<struct> Row { pub int<12>[2] cells, pub int stamp; }
+typedef<struct> Batch { pub Row[2] rows; }
+typedef<struct> Pair { pub Row[2] left, pub Row[2] right; }
+typedef<struct> Optional { pub int[2]? cells, pub int[0]? empty; }
+typedef<enum> Preset(pub def<Row[2]> rows = [{[0, 20], 1}, {[0, 22], 2}]) { pub Default; }
 
 fn<int> trace(final int label, final int value) {
-    println(label)
-    return value
+    println(label);
+    return value;
 }
 
 fn<bool> nestedWrite() {
-    Row[2][1] rows = [[{[0, 1], 10}], [{[0, 42], 20}]]
-    def saved := rows
+    Row[2][1] rows = [[{[0, 1], 10}], [{[0, 42], 20}]];
+    def saved := rows;
     rows[trace(1, 1)][trace(2, 0)].cells[trace(3, 1)] += (if (trace(4, 1) == 1) {
-        rows = [[{[8, 9], 11}], [{[10, 90], 21}]]
-        1
-    } else 0)
-    if (rows[1][0].cells[0] != 10 || rows[1][0].cells[1] != 43 || rows[1][0].stamp != 21) return false
-    Row captured := rows[if (trace(5, 1) == 1) { rows = saved; 1 } else 0][0]
-    return captured.cells[1] == 43 && rows[1][0].cells[1] == 42 && saved[0][0].stamp == 10
+        rows = [[{[8, 9], 11}], [{[10, 90], 21}]];
+        1;
+    } else 0);
+    if (rows[1][0].cells[0] != 10 || rows[1][0].cells[1] != 43 || rows[1][0].stamp != 21) return false;
+    Row captured := rows[if (trace(5, 1) == 1) { rows = saved; 1; } else 0][0];
+    return captured.cells[1] == 43 && rows[1][0].cells[1] == 42 && saved[0][0].stamp == 10;
 }
 
 fn<bool> loopCopies() {
-    Batch batch = {Preset.Default.rows}
-    Batch saved := batch
-    int<12> total = 0
+    Batch batch = {Preset.Default.rows};
+    Batch saved := batch;
+    int<12> total = 0;
     for (Row row <- batch.rows) {
-        batch.rows[1].cells[1] = 9
-        total += row.cells[1]
-        row.cells = [1, 7]
+        batch.rows[1].cells[1] = 9;
+        total += row.cells[1];
+        row.cells = [1, 7];
     }
-    return total == 42 && batch.rows[0].cells[1] == 20 && batch.rows[1].cells[1] == 9 && saved.rows[1].cells[1] == 22
+    return total == 42 && batch.rows[0].cells[1] == 20 && batch.rows[1].cells[1] == 9 && saved.rows[1].cells[1] == 22;
 }
 
 fn<bool> optionalFields() {
-    Optional[2] rows = [{[0, 42], []}, {null, null}]
-    def saved := rows
-    rows[0].cells = null
-    rows[0].empty = null
-    rows[1] = saved[0]
-    if (rows[1].cells == null || rows[1].empty == null) return false
-    rows[1].cells[1] = 7
-    if (rows[0].cells != null || rows[0].empty != null || rows[1].cells[1] != 7) return false
-    return saved[0].cells != null && saved[0].cells[1] == 42 && saved[0].empty != null && saved[0].empty::size == 0 && saved[1].empty == null
+    Optional[2] rows = [{[0, 42], []}, {null, null}];
+    def saved := rows;
+    rows[0].cells = null;
+    rows[0].empty = null;
+    rows[1] = saved[0];
+    if (rows[1].cells == null || rows[1].empty == null) return false;
+    rows[1].cells[1] = 7;
+    if (rows[0].cells != null || rows[0].empty != null || rows[1].cells[1] != 7) return false;
+    return saved[0].cells != null && saved[0].cells[1] == 42 && saved[0].empty != null && saved[0].empty::size == 0 && saved[1].empty == null;
 }
 
 fn<bool> siblingBuffers(final usize index) {
-    Row[2] initial := Preset.Default.rows
-    Pair pair := {initial, initial}
-    Pair[2] pairs = [pair, pair]
-    Pair[2] saved := pairs
-    pairs[index].left[1].cells[1] = 7
-    pairs[1 - index].right[0].cells[1] = 42
-    if (pairs[index].right[0].cells[1] != 20 || pairs[1 - index].left[1].cells[1] != 22) return false
-    if (pairs[index].left[1].cells[1] != 7 || pairs[1 - index].right[0].cells[1] != 42) return false
-    return saved[index].left[1].cells[1] == 22 && saved[1 - index].right[0].cells[1] == 20
+    Row[2] initial := Preset.Default.rows;
+    Pair pair := {initial, initial};
+    Pair[2] pairs = [pair, pair];
+    Pair[2] saved := pairs;
+    pairs[index].left[1].cells[1] = 7;
+    pairs[1 - index].right[0].cells[1] = 42;
+    if (pairs[index].right[0].cells[1] != 20 || pairs[1 - index].left[1].cells[1] != 22) return false;
+    if (pairs[index].left[1].cells[1] != 7 || pairs[1 - index].right[0].cells[1] != 42) return false;
+    return saved[index].left[1].cells[1] == 22 && saved[1 - index].right[0].cells[1] == 20;
 }
 
 fn<bool> optionalRows() {
-    Row full := {[0, 42], 1}
-    Row?[2]? rows = [null, full]
-    Row?[2]? saved := rows
-    if (rows == null) return false
-    Row selected = rows[1] ?: full
-    selected.cells[1] = 7
-    rows[1] = selected
-    Row?[2] current := rows
-    rows = null
-    if (saved == null) return false
-    Row? original := saved[1]
-    Row? changed := current[1]
-    return saved[0] == null && original != null && original.cells[1] == 42 && changed != null && changed.cells[1] == 7 && rows == null
+    Row full := {[0, 42], 1};
+    Row?[2]? rows = [null, full];
+    Row?[2]? saved := rows;
+    if (rows == null) return false;
+    Row selected = rows[1] ?: full;
+    selected.cells[1] = 7;
+    rows[1] = selected;
+    Row?[2] current := rows;
+    rows = null;
+    if (saved == null) return false;
+    Row? original := saved[1];
+    Row? changed := current[1];
+    return saved[0] == null && original != null && original.cells[1] == 42 && changed != null && changed.cells[1] == 7 && rows == null;
 }
 
 fn<int> leaveAtIndex() {
-    Row[1] rows = [{[0, 1], 0}]
-    rows[if (trace(6, 0) == 0) { return 42 } else 0].cells[trace(99, 0)] = trace(99, 7) -> int<12>
-    return 1
+    Row[1] rows = [{[0, 1], 0}];
+    rows[if (trace(6, 0) == 0) { return 42; } else 0].cells[trace(99, 0)] = trace(99, 7) -> int<12>;
+    return 1;
 }
 
 pub fn<int> main() {
-    Row[2][0] empty := [[], []]
-    int visits = 0
+    Row[2][0] empty := [[], []];
+    int visits = 0;
     for (def row <- empty) {
-        for (Row entry <- row) return 1
-        visits++
+        for (Row entry <- row) return 1;
+        visits++;
     }
-    if (visits != 2 || !nestedWrite() || !loopCopies() || !optionalFields() || !optionalRows()) return 2
-    if (!siblingBuffers(0) || !siblingBuffers(1)) return 3
-    return leaveAtIndex()
+    if (visits != 2 || !nestedWrite() || !loopCopies() || !optionalFields() || !optionalRows()) return 2;
+    if (!siblingBuffers(0) || !siblingBuffers(1)) return 3;
+    return leaveAtIndex();
 }

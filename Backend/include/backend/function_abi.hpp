@@ -52,7 +52,8 @@ struct ModuleFunctions {
 	cloth::ResolvedType           receiverType (const cloth::Symbol &symbol, const cloth::GenericInstance *instance) const;
 	LLVMValueRef                  declareFunction (const cloth::Symbol &symbol, const cloth::GenericInstance *instance = nullptr);
 	LLVMValueRef                  declareDefault (const cloth::Symbol &contract, std::size_t index, const cloth::GenericInstance *instance);
-	void         emitNativeEntry (LLVMBuilderRef builder, LLVMValueRef function);
+	void                          declareExports ();
+	void                          emitNativeEntry (LLVMBuilderRef builder, LLVMValueRef function);
 
     private:
 	LLVMValueRef declare (const cloth::Symbol &symbol, const cloth::GenericInstance *instance, std::optional<std::size_t> index,
