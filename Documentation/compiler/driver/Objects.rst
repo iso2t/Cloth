@@ -77,6 +77,14 @@ configured Stdlib root. Callers can use defaults from the library.
 The source-backed interface also supplies generic bodies for local
 specialization.
 
+Named library objects record their target triple, module name, and checked
+native interfaces for the library and its imported native modules. Each
+export records its parameter names in order, which parameters have defaults,
+and its parameter and result types. Reordering overload declarations or
+editing a function body preserves the interface. Shuttle checks these
+records when linking a prebuilt, including calls made inside that object
+to another library.
+
 The native export ABI supports integers, floats, booleans, characters
 and strings, their nullable forms, and multiple results of those types.
 Functions may also return ``void``. An unsupported concrete export is

@@ -42,7 +42,7 @@ struct ClassStorage {
 	const cloth::Symbol               *destructor;
 	std::vector<const cloth::Symbol *> fields;
 	cloth::ResultTypes                 nominalViews = {};
-	LLVMValueRef                       views = nullptr, destroy = nullptr, dispose = nullptr;
+	LLVMValueRef                       views = nullptr, dispatch = nullptr, destroy = nullptr, dispose = nullptr;
 };
 
 class ClassObjects {

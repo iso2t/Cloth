@@ -1,37 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+use crate::interface::Interfaces;
 use crate::manifest::Kind;
 use crate::project::{self, Graph, Project};
+use crate::staging::Staging;
 use crate::{Action, Options, Result};
 use std::env;
 use std::ffi::OsString;
 use std::fs;
-use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
-
-struct Staging(PathBuf);
-
-impl Staging {
-    fn create(directory: &Path) -> Result<Self> {
-        fs::create_dir_all(directory)?;
-        for attempt in 0.. {
-            let path = directory.join(format!(".shuttle-{}-{attempt}", process::id()));
-            match fs::create_dir(&path) {
-                Ok(()) => return Ok(Self(path)),
-                Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
-                Err(error) => return Err(error.into()),
-            }
-        }
-        unreachable!()
-    }
-}
-
-impl Drop for Staging {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
 
 fn executable(path: &Path) -> Option<PathBuf> {
     if path.is_file() {
@@ -91,6 +69,9 @@ fn compile(
         }
         Kind::Executable => {
             command.args(["--kind", "executable"]);
+            if project.dependencies.values().any(|&prebuilt| prebuilt) {
+                command.arg("--record-extern-interfaces");
+            }
         }
     }
     if let Some(stdlib) = &options.stdlib {
@@ -137,7 +118,49 @@ fn link_input(source: &Path, directory: &Path, name: &str) -> Result<()> {
     Ok(())
 }
 
-fn link(options: &Options, target: &str, objects: &[PathBuf], output: &Path) -> Result<()> {
+struct LibraryInput<'a> {
+    project: &'a Project,
+    object: PathBuf,
+    prebuilt: bool,
+}
+
+impl LibraryInput<'_> {
+    fn stage(&self, interfaces: Option<&Interfaces>, directory: &Path, name: &str) -> Result<()> {
+        let Some(expected) = interfaces else {
+            return link_input(&self.object, directory, name);
+        };
+        let bytes = fs::read(&self.object)
+            .map_err(|error| format!("reading {}: {error}", self.object.display()))?;
+        expected
+            .check_library(&self.project.module, &bytes)
+            .map_err(|error| {
+                if self.prebuilt {
+                    format!(
+                        "{error}. Please rebuild prebuilt library '{}' (target '{}' in {}).",
+                        self.project.module,
+                        self.project.name,
+                        self.project.manifest.display()
+                    )
+                } else {
+                    format!(
+                        "{error} while building source library '{}'",
+                        self.project.module
+                    )
+                }
+            })?;
+        // The linker must see the bytes we checked even if the provider replaces or rewrites its object.
+        fs::write(directory.join(name), bytes)?;
+        Ok(())
+    }
+}
+
+fn link(
+    options: &Options,
+    target: &str,
+    libraries: &[LibraryInput],
+    entry: &Path,
+    output: &Path,
+) -> Result<()> {
     let root = options
         .runtime
         .clone()
@@ -167,11 +190,19 @@ fn link(options: &Options, target: &str, objects: &[PathBuf], output: &Path) -> 
         }
         _ => {}
     }
-    for (id, object) in objects.iter().enumerate() {
+    let entry_bytes = if libraries.iter().any(|library| library.prebuilt) {
+        Some(fs::read(entry)?)
+    } else {
+        None
+    };
+    let interfaces = entry_bytes.as_deref().map(Interfaces::read).transpose()?;
+    for (id, library) in libraries.iter().enumerate() {
         let name = format!("{id}.o");
-        link_input(object, directory, &name)?;
+        library.stage(interfaces.as_ref(), directory, &name)?;
         command.arg(name);
     }
+    link_input(entry, directory, "main.o")?;
+    command.arg("main.o");
     link_input(&archive, directory, "libcloth_runtime.a")?;
     command.arg("libcloth_runtime.a");
     if target.contains("mingw") || target.contains("windows") {
@@ -206,7 +237,7 @@ pub fn project(mut options: Options, action: Action) -> Result<Artifact> {
     )?;
     let path = selected.artifact(&target);
     let staging = Staging::create(path.parent().unwrap())?;
-    let object = |index: usize| staging.0.join(format!("{index}.o"));
+    let object = |index: usize| staging.path.join(format!("{index}.o"));
     for &index in &graph.sources {
         compile(
             &options,
@@ -223,7 +254,7 @@ pub fn project(mut options: Options, action: Action) -> Result<Artifact> {
         let output = match project.kind {
             Kind::Library => object(index),
             Kind::Executable => {
-                let directory = staging.0.join(format!("link-{index}"));
+                let directory = staging.path.join(format!("link-{index}"));
                 fs::create_dir(&directory)?;
                 let output = directory.join("output").with_extension(
                     artifact
@@ -231,25 +262,29 @@ pub fn project(mut options: Options, action: Action) -> Result<Artifact> {
                         .filter(|ext| *ext == "exe")
                         .unwrap_or_default(),
                 );
-                let mut objects = Vec::new();
+                let mut libraries = Vec::new();
                 for (&dependency, &prebuilt) in &project.dependencies {
-                    objects.push(if prebuilt {
-                        graph.projects[dependency].artifact(&target)
-                    } else {
-                        object(dependency)
+                    let library = &graph.projects[dependency];
+                    libraries.push(LibraryInput {
+                        project: library,
+                        object: if prebuilt {
+                            library.artifact(&target)
+                        } else {
+                            object(dependency)
+                        },
+                        prebuilt,
                     });
                 }
-                objects.push(object(index));
-                link(&options, &target, &objects, &output)?;
+                link(&options, &target, &libraries, &object(index), &output)?;
                 output
             }
         };
+        if !output.is_file() {
+            return Err(format!("no staged file for {}", artifact.display()).into());
+        }
         outputs.push((output, artifact));
     }
-    for (output, artifact) in outputs {
-        fs::rename(output, &artifact)
-            .map_err(|error| format!("publishing {}: {error}", artifact.display()))?;
-    }
+    staging.publish(&selected.output, &outputs)?;
     Ok(Artifact {
         path,
         directory: selected.manifest.parent().unwrap().to_owned(),

@@ -408,6 +408,7 @@ struct CheckedProgram : BodyFacts {
 	const TargetLayout          layout;
 	const std::filesystem::path standardLibraryRoot;
 	const ProgramKind           kind;
+	const bool                  recordExternInterfaces;
 	const Symbol               *entryPoint = nullptr;
 	// Named library entry units share an ABI identity with their separately compiled consumers.
 	std::map<std::size_t, std::string> nativeModules;

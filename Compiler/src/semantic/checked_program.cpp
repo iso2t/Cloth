@@ -275,7 +275,8 @@ CheckedProgram::CheckedProgram (SymbolTable entry, const TargetLayout layout, st
                                 const NativeModules &modules) :
         layout(layout),
         standardLibraryRoot(std::move(standardLibraryRoot)),
-        kind(kind) {
+        kind(kind),
+        recordExternInterfaces(modules.recordExternInterfaces) {
 	if (layout.sizeBits != 32 && layout.sizeBits != 64) throw std::invalid_argument("A Cloth target requires a 32- or 64-bit size type");
 	if (layout.scalar64Alignment32 != 4 && layout.scalar64Alignment32 != 8) throw std::invalid_argument("Invalid 32-bit target scalar alignment");
 	units.emplace_back(std::make_unique<SymbolTable>(std::move(entry)));
@@ -513,6 +514,21 @@ void Analyzer::loadImports (const NativeModules &modules) {
 			v_sourceRoots[*preludeFile] = p_libraryRoot;
 		}
 	}
+	const auto loadUnit = [&] (const fs::path &path, const fs::path &sourceRoot) {
+		const auto [file, inserted] = m_files.emplace(path, program.units.size());
+		if (inserted) {
+			const auto module = m_moduleNames.find(path);
+			if (module != m_moduleNames.end()) program.nativeModules.emplace(file->second, module->second);
+			v_sourceRoots.push_back(module != m_moduleNames.end() ? path.parent_path() : sourceRoot);
+			Lexer lexer{ SourceFile(path) };
+			program.units.emplace_back(std::make_unique<SymbolTable>(Parser(lexer).parse()));
+		}
+		return file->second;
+	};
+	// A prebuilt may still call a manifest dependency that the current source no longer imports.
+	if (modules.recordExternInterfaces) {
+		for (const auto &[path, name] : m_moduleNames) loadUnit(path, path.parent_path());
+	}
 	for (std::size_t st_file = 0; st_file < program.units.size(); ++st_file) {
 		v_names.emplace_back();
 		v_edges.emplace_back();
@@ -561,16 +577,9 @@ void Analyzer::loadImports (const NativeModules &modules) {
 			if (p_target.empty()) {
 				fail(Code::ImportedSourceNotFound, id_import.path.getSpan(), "Cannot find source for '" + id_import.path.getSpelling() + "'");
 			}
-			const std::pair<decltype(m_files)::iterator, bool> inserted = m_files.emplace(p_target, program.units.size());
-			if (!s_libraryPath.empty()) m_libraryPaths[inserted.first->second].insert(std::move(s_libraryPath));
-			if (inserted.second) {
-				const auto it_module = m_moduleNames.find(p_target);
-				if (it_module != m_moduleNames.end()) program.nativeModules.emplace(inserted.first->second, it_module->second);
-				v_sourceRoots.push_back(it_module != m_moduleNames.end() ? p_target.parent_path() : p_sourceRoot);
-				Lexer l_lexer{ SourceFile(p_target) };
-				program.units.emplace_back(std::make_unique<SymbolTable>(Parser(l_lexer).parse()));
-			}
-			v_edges[st_file].emplace_back(&id_import, inserted.first->second);
+			const auto file = loadUnit(p_target, p_sourceRoot);
+			if (!s_libraryPath.empty()) m_libraryPaths[file].insert(std::move(s_libraryPath));
+			v_edges[st_file].emplace_back(&id_import, file);
 		}
 	}
 	for (std::size_t st_file = 0; st_file < v_edges.size(); ++st_file) {

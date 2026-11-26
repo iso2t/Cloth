@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %python "%S/Inputs/check_reproducible.py" %cloth %stdlib "%S/Inputs/stdlib-collections.co" "%t.collections"
+# RUN: %python "%S/Inputs/check_reproducible.py" %cloth %stdlib "%S/Inputs/state-dispatch.co" "%t.states"

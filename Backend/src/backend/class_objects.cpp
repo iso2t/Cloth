@@ -159,9 +159,8 @@ void ClassObjects::describe (const cloth::ResolvedType &type, ClassStorage &stor
 		const auto                base    = std::ranges::find_if(parents, &cloth::ResolvedType::classReference);
 		view                              = base == parents.end() ? nullptr : &*base;
 	}
-	if (const auto table = cp_program.dispatchTables.find(type); table != cp_program.dispatchTables.end()) {
-		storage.nominalViews.insert(storage.nominalViews.end(), table->second.interfaces.begin(), table->second.interfaces.end());
-	}
+	const auto &checked = cp_program.dispatchTables.at(type);
+	storage.nominalViews.insert(storage.nominalViews.end(), checked.interfaces.begin(), checked.interfaces.end());
 	for (const auto &view : storage.nominalViews) tags.push_back(typeTag(view));
 	tags.push_back(absent);
 	const LLVMValueRef list = LLVMConstArray2(pointer, tags.data(), tags.size());
@@ -204,11 +203,12 @@ void ClassObjects::describe (const cloth::ResolvedType &type, ClassStorage &stor
 		LLVMPositionBuilderAtEnd(builder.get(), LLVMGetEntryBasicBlock(function));
 		LLVMBuildRetVoid(builder.get());
 	}
+	functions.dispatch.declareTable(storage, checked);
 }
 
 LLVMValueRef ClassObjects::create (LLVMBuilderRef builder, const cloth::ResolvedType &type, ModuleFunctions &functions) {
 	ClassStorage &storage = layout(type);
-	if (!storage.views) describe(type, storage, functions);
+	if (!storage.dispatch) describe(type, storage, functions);
 	const LLVMContextRef    context = LLVMGetModuleContext(mod_module);
 	const LLVMTargetDataRef target  = LLVMGetModuleDataLayout(mod_module);
 	const LLVMTypeRef       word    = LLVMIntPtrTypeInContext(context, target);
@@ -217,7 +217,7 @@ LLVMValueRef ClassObjects::create (LLVMBuilderRef builder, const cloth::Resolved
 	                                             { LLVMConstInt(word, LLVMABISizeOfType(target, storage.storage), false),
 	                                               LLVMConstInt(word, LLVMABIAlignmentOfType(target, storage.storage), false), storage.views,
 	                                               storage.destroy ? storage.destroy : absent, storage.dispose ? storage.dispose : absent });
-	objectCall(builder, mod_module, ObjectOperation::Configure, { self, functions.dispatch.descriptor(type) });
+	objectCall(builder, mod_module, ObjectOperation::Configure, { self, storage.dispatch });
 	return self;
 }
 }

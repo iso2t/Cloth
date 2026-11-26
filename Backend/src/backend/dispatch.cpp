@@ -41,15 +41,15 @@ LLVMValueRef methodArray (LLVMModuleRef module, LLVMTypeRef pointer, std::vector
 NativeDispatch::NativeDispatch (LLVMModuleRef module) : mod_module(module) {
 }
 
-LLVMValueRef NativeDispatch::descriptor (const cloth::ResolvedType &type) {
-	if (const auto found = m_tables.find(type); found != m_tables.end()) return found->second.descriptor;
+void NativeDispatch::declareTable (ClassStorage &owner, const cloth::TypeDispatch &checked) {
 	const LLVMContextRef context        = LLVMGetModuleContext(mod_module);
 	const LLVMTypeRef    ptr            = LLVMPointerTypeInContext(context, 0);
 	LLVMTypeRef          fields[]       = { ptr, ptr, ptr };
 	const LLVMTypeRef    descriptorType = LLVMStructTypeInContext(context, fields, 3, false);
-	const LLVMValueRef   global         = constant(mod_module, descriptorType, "cloth.dispatch", LLVMConstNull(descriptorType));
-	m_tables.emplace(type, ClassDispatchTable{ .descriptor = global, .methods = {}, .states = {} });
-	return global;
+	owner.dispatch                      = constant(mod_module, descriptorType, "cloth.dispatch", LLVMConstNull(descriptorType));
+	auto &table                         = v_tables.emplace_back(owner, checked);
+	table.states.reserve(checked.states.size());
+	for (const auto &[name, state] : checked.states) table.states.push_back({ .selection = state.selection });
 }
 
 LLVMValueRef NativeDispatch::stateTag (const cloth::Symbol &selection) {
@@ -153,12 +153,11 @@ LLVMValueRef NativeDispatch::comparisonBody (ModuleFunctions &functions, const c
 
 void NativeDispatch::resolve (ModuleFunctions &functions) {
 	const LLVMValueRef absent = LLVMConstNull(LLVMPointerTypeInContext(LLVMGetModuleContext(mod_module), 0));
-	for (auto &[type, table] : m_tables) {
-		const auto &checked = functions.program.dispatchTables.at(type);
-		for (const auto &[name, state] : checked.states) table.states.try_emplace(state.selection);
+	for (auto &table : v_tables) {
+		const auto &checked = table.checked;
 		while (table.methods.size() < v_slots.size()) {
 			const auto  &slot           = v_slots[table.methods.size()];
-			const auto  &views          = functions.objects.layout(type).nominalViews;
+			const auto  &views          = table.owner.nominalViews;
 			const bool   compatible     = std::ranges::find(views, slot.call.receiver) != views.end();
 			LLVMValueRef implementation = absent;
 			if (compatible && slot.text != ObjectText::None) {
@@ -173,7 +172,7 @@ void NativeDispatch::resolve (ModuleFunctions &functions) {
 					const std::unique_ptr<LLVMOpaqueBuilder, decltype(&LLVMDisposeBuilder)> builder(LLVMCreateBuilderInContext(context),
 					                                                                                LLVMDisposeBuilder);
 					LLVMPositionBuilderAtEnd(builder.get(), LLVMAppendBasicBlockInContext(context, implementation, "entry"));
-					LLVMBuildRet(builder.get(), string_value::constant(mod_module, type.spelling()));
+					LLVMBuildRet(builder.get(), string_value::constant(mod_module, table.owner.type.spelling()));
 				}
 			} else if (compatible && slot.comparison) {
 				auto &callback = table.comparisons[*slot.comparison];
@@ -197,19 +196,16 @@ void NativeDispatch::resolve (ModuleFunctions &functions) {
 	}
 }
 
-void NativeDispatch::finish (const cloth::CheckedProgram &program) {
+void NativeDispatch::finish () {
 	const LLVMContextRef context       = LLVMGetModuleContext(mod_module);
 	const LLVMTypeRef    ptr           = LLVMPointerTypeInContext(context, 0);
 	LLVMTypeRef          stateFields[] = { ptr, ptr };
 	const LLVMTypeRef    stateType     = LLVMStructTypeInContext(context, stateFields, 2, false);
-	for (auto &[type, table] : m_tables) {
+	for (auto &table : v_tables) {
 		std::vector<LLVMValueRef> states;
 		unsigned                  initial  = 0;
-		const auto               &checked  = program.dispatchTables.at(type);
-		const auto               *selected = checked.initialState;
-		for (const auto &[name, state] : checked.states) {
-			const auto *selection = state.selection;
-			auto       &row       = table.states.at(selection);
+		const auto               *selected = table.checked.initialState;
+		for (auto &[selection, row] : table.states) {
 			if (selection == selected) initial = static_cast<unsigned>(states.size());
 			LLVMValueRef fields[] = { stateTag(*selection), methodArray(mod_module, ptr, row) };
 			states.push_back(LLVMConstStructInContext(context, fields, 2, false));
@@ -221,7 +217,7 @@ void NativeDispatch::finish (const cloth::CheckedProgram &program) {
 		LLVMValueRef       path[]    = { LLVMConstNull(i32), LLVMConstInt(i32, initial, false) };
 		LLVMValueRef       fields[]  = { methodArray(mod_module, ptr, table.methods), stateList,
 			                         selected ? LLVMConstInBoundsGEP2(LLVMTypeOf(values), stateList, path, 2) : LLVMConstNull(ptr) };
-		LLVMSetInitializer(table.descriptor, LLVMConstStructInContext(context, fields, 3, false));
+		LLVMSetInitializer(table.owner.dispatch, LLVMConstStructInContext(context, fields, 3, false));
 	}
 }
 

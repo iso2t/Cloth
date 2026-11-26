@@ -155,8 +155,13 @@ With several named targets, Shuttle lists the choices. Use
 from a different working directory.
 
 The default output is ``build/<target-triple>/<artifact>``. A project can
-add ``output "out"`` to choose another directory. A failed compile or link
-preserves the previous artifact.
+add ``output "out"`` to choose another directory. Shuttle finishes compilation
+and linking before publishing the selected targets. If publication fails, Shuttle
+restores the previous executables and library objects and removes any
+outputs the failed build added. If the filesystem prevents a restore,
+Shuttle reports the affected path and keeps the backups for recovery.
+Concurrent builds use ``.shuttle.lock`` in the output directory to publish
+one at a time.
 
 Use a library from another project
 ----------------------------------
@@ -179,7 +184,15 @@ reachable source library compiles once per executable build. For an
 existing object, build its named target for the same machine width and
 add ``prebuilt=#true`` to the ``dependency`` node. Keep its manifest,
 API source and imports beside the artifact for type checking and generic
-specialization. See `Native libraries <../Documentation/compiler/driver/Objects.rst#native-libraries>`_.
+specialization.
+
+Before linking a prebuilt, Shuttle checks the native interfaces recorded in
+the object against the source checked for this executable. For example,
+swapping two ``int`` parameter names changes how a named call passes its
+arguments and requires a provider rebuild. Edits confined to function bodies
+leave the existing object usable. If an interface has changed or an older
+object lacks a record, rebuild the library target named in the diagnostic
+for the same target width. See `Native libraries <../Documentation/compiler/driver/Objects.rst#native-libraries>`_.
 
 The shipped `standard library project <../Stdlib/build.k>`_ can be built
 from the checkout with its source root supplied to the native compiler.

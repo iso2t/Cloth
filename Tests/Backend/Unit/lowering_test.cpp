@@ -2936,7 +2936,7 @@ TEST (BackendObjectEmission, ReportsVerifierFailures) {
 }
 
 #if defined(__i386__) || defined(__x86_64__)
-void expectObject (const std::vector<std::byte> &bytes, LLVMBinaryType format, const char *entrySymbol) {
+void inspectObject (const std::vector<std::byte> &bytes, const auto &inspect) {
 	ASSERT_FALSE(bytes.empty());
 	const std::unique_ptr<LLVMOpaqueMemoryBuffer, decltype(&LLVMDisposeMemoryBuffer)> mb_buffer(
 	        LLVMCreateMemoryBufferWithMemoryRange(reinterpret_cast<const char *>(bytes.data()), bytes.size(), "cloth", false), LLVMDisposeMemoryBuffer);
@@ -2945,22 +2945,53 @@ void expectObject (const std::vector<std::byte> &bytes, LLVMBinaryType format, c
 	                                                                                 LLVMDisposeBinary);
 	const std::unique_ptr<char, decltype(&LLVMDisposeMessage)>            msg_error(s_error, LLVMDisposeMessage);
 	ASSERT_NE(bin_object, nullptr) << (msg_error ? msg_error.get() : "");
-	EXPECT_EQ(LLVMBinaryGetType(bin_object.get()), format);
-	const std::unique_ptr<LLVMOpaqueSymbolIterator, decltype(&LLVMDisposeSymbolIterator)> it_symbol(LLVMObjectFileCopySymbolIterator(bin_object.get()),
-	                                                                                                LLVMDisposeSymbolIterator);
-	ASSERT_NE(it_symbol, nullptr);
-	for (; !LLVMObjectFileIsSymbolIteratorAtEnd(bin_object.get(), it_symbol.get()); LLVMMoveToNextSymbol(it_symbol.get())) {
-		const char *s_name = LLVMGetSymbolName(it_symbol.get());
-		if (s_name && std::strcmp(s_name, entrySymbol) == 0) {
-			const std::unique_ptr<LLVMOpaqueSectionIterator, decltype(&LLVMDisposeSectionIterator)> it_section(
-			        LLVMObjectFileCopySectionIterator(bin_object.get()), LLVMDisposeSectionIterator);
-			ASSERT_NE(it_section, nullptr);
-			LLVMMoveToContainingSection(it_section.get(), it_symbol.get());
-			EXPECT_FALSE(LLVMObjectFileIsSectionIteratorAtEnd(bin_object.get(), it_section.get()));
-			return;
+	inspect(bin_object.get());
+}
+
+void expectObject (const std::vector<std::byte> &bytes, LLVMBinaryType format, const char *entrySymbol) {
+	inspectObject(bytes, [&] (LLVMBinaryRef object) {
+		EXPECT_EQ(LLVMBinaryGetType(object), format);
+		const std::unique_ptr<LLVMOpaqueSymbolIterator, decltype(&LLVMDisposeSymbolIterator)> it_symbol(LLVMObjectFileCopySymbolIterator(object),
+		                                                                                                LLVMDisposeSymbolIterator);
+		ASSERT_NE(it_symbol, nullptr);
+		for (; !LLVMObjectFileIsSymbolIteratorAtEnd(object, it_symbol.get()); LLVMMoveToNextSymbol(it_symbol.get())) {
+			const char *s_name = LLVMGetSymbolName(it_symbol.get());
+			if (s_name && std::strcmp(s_name, entrySymbol) == 0) {
+				const std::unique_ptr<LLVMOpaqueSectionIterator, decltype(&LLVMDisposeSectionIterator)> it_section(
+				        LLVMObjectFileCopySectionIterator(object), LLVMDisposeSectionIterator);
+				ASSERT_NE(it_section, nullptr);
+				LLVMMoveToContainingSection(it_section.get(), it_symbol.get());
+				EXPECT_FALSE(LLVMObjectFileIsSectionIteratorAtEnd(object, it_section.get()));
+				return;
+			}
 		}
+		FAIL() << "Missing entry symbol " << entrySymbol;
+	});
+}
+
+TEST (BackendObjectEmission, NamedLibraryInterfaceSurvivesObjectEmission) {
+	cloth::Lexer                lexer("pub fn<int> diff(int left, int right) = left - right;");
+	const cloth::CheckedProgram program(cloth::SymbolTable(cloth::Parser(lexer).parse()), { .sizeBits = 64 }, {}, cloth::ProgramKind::Library,
+	                                    { .name = "Arithmetic", .imports = {} });
+	const std::pair<const char *, const char *> targets[] = { { "x86_64-w64-windows-gnu", ".clapi" },
+		                                                  { "x86_64-unknown-linux-gnu", ".clapi" },
+		                                                  { "x86_64-apple-darwin", "__clapi" } };
+	for (const auto &[triple, section] : targets) {
+		SCOPED_TRACE(triple);
+		inspectObject(backend::emitObject(program, triple), [&] (LLVMBinaryRef object) {
+			const std::unique_ptr<LLVMOpaqueSectionIterator, decltype(&LLVMDisposeSectionIterator)> sections(
+			        LLVMObjectFileCopySectionIterator(object), LLVMDisposeSectionIterator);
+			ASSERT_NE(sections, nullptr);
+			for (; !LLVMObjectFileIsSectionIteratorAtEnd(object, sections.get()); LLVMMoveToNextSection(sections.get())) {
+				const char *name = LLVMGetSectionName(sections.get());
+				if (!name || std::strcmp(name, section) != 0) continue;
+				const std::string_view contents(LLVMGetSectionContents(sections.get()), LLVMGetSectionSize(sections.get()));
+				EXPECT_TRUE(contents.starts_with(std::string("cloth-interface-v1\n") + triple + "\nArithmetic\nArithmetic\tcloth_v1_"));
+				return;
+			}
+			FAIL() << "Missing native interface section " << section;
+		});
 	}
-	FAIL() << "Missing entry symbol " << entrySymbol;
 }
 
 struct TargetCase {

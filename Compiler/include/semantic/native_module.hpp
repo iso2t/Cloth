@@ -11,6 +11,7 @@ namespace cloth {
 struct NativeModules {
 	std::string                                  name;
 	std::map<std::string, std::filesystem::path> imports;
+	bool                                         recordExternInterfaces = false;
 };
 
 }

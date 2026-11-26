@@ -53,6 +53,7 @@ struct ModuleFunctions {
 	LLVMValueRef                  declareFunction (const cloth::Symbol &symbol, const cloth::GenericInstance *instance = nullptr);
 	LLVMValueRef                  declareDefault (const cloth::Symbol &contract, std::size_t index, const cloth::GenericInstance *instance);
 	void                          declareExports ();
+	void                          recordInterfaces ();
 	void                          emitNativeEntry (LLVMBuilderRef builder, LLVMValueRef function);
 
     private:

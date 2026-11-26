@@ -2,8 +2,10 @@
 
 mod build;
 mod init;
+mod interface;
 mod manifest;
 mod project;
+mod staging;
 
 use std::{
     env,

@@ -77,7 +77,10 @@ writes assembly for the selected target. Both require ``--src PATH`` and
 either ``--kind executable`` or a library ``--module-name NAME``.
 Lexer modes stop before code generation. Use ``--extern NAME=SOURCE`` to
 bind a separately built library and ``--print-target`` to print the target
-triple. See `Native libraries <driver/Objects.rst#native-libraries>`_.
+triple. With ``--record-extern-interfaces``, the compiler checks every
+``--extern`` source and records its native interface in the output. Shuttle
+uses this option when linking a prebuilt library. See
+`Native libraries <driver/Objects.rst#native-libraries>`_.
 
 By default, Cloth replaces the source file's extension with ``.o`` or
 ``.s`` in the same directory. For ``src/main.co``, assembly goes to

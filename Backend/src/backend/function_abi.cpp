@@ -6,6 +6,7 @@
 #include <backend/growable_array.hpp>
 #include <backend/nullable_value.hpp>
 #include <backend/runtime.hpp>
+#include <backend/string_value.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -13,6 +14,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -59,11 +61,8 @@ void appendExportType (std::string &name, const cloth::ResolvedType &type) {
 	if (type.nullable()) name += "_q";
 }
 
-std::string exportName (const std::string &module, const cloth::Symbol &symbol, const cloth::DeclarationInfo &signature) {
-	if (!std::ranges::all_of(signature.parameters, exportType) || !std::ranges::all_of(signature.returns, exportType))
-		throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedFunctionAbi,
-		                           "A native library export requires scalar or string parameters and results",
-		                           { { .span = symbol.name.getSpan(), .text = "unsupported native export signature" } });
+std::optional<std::string> exportName (const std::string &module, const cloth::Symbol &symbol, const cloth::DeclarationInfo &signature) {
+	if (!std::ranges::all_of(signature.parameters, exportType) || !std::ranges::all_of(signature.returns, exportType)) return std::nullopt;
 	std::string s_name = "cloth_v1";
 	appendComponent(s_name, module);
 	appendComponent(s_name, symbol.name.getNameKey());
@@ -225,7 +224,14 @@ LLVMValueRef ModuleFunctions::declare (const cloth::Symbol &symbol, const cloth:
 	const auto &info      = program.declarations.at(&symbol);
 	const auto  it_module = program.nativeModules.find(info.file);
 	const auto *fn_export = !instance && !info.owner && it_module != program.nativeModules.end() ? exportedFunction(symbol) : nullptr;
-	if (fn_export) s_name = exportName(it_module->second, symbol, info);
+	if (fn_export) {
+		auto name = exportName(it_module->second, symbol, info);
+		if (!name)
+			throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedFunctionAbi,
+			                           "A native library export requires scalar or string parameters and results",
+			                           { { .span = symbol.name.getSpan(), .text = "unsupported native export signature" } });
+		s_name = std::move(*name);
+	}
 	if (index) s_name += ".default." + std::to_string(*index);
 	const LLVMTypeRef  ty_function = functionType(symbol, instance, index);
 	const LLVMValueRef fn_function = LLVMAddFunction(module, s_name.c_str(), ty_function);
@@ -246,6 +252,54 @@ void ModuleFunctions::declareExports () {
 				if (fn->parameters[i].defaultValue) declareDefault(symbol, i, nullptr);
 		}
 	}
+}
+
+void ModuleFunctions::recordInterfaces () {
+	// Named calls and omitted arguments depend on information absent from the raw link name.
+	std::vector<std::string> modules;
+	for (const auto &[file, name] : program.nativeModules) {
+		std::vector<std::string> exports;
+		for (const auto &[key, symbols] : program.units[file]->getGlobals()) {
+			for (const auto &symbol : symbols) {
+				const auto *fn = exportedFunction(symbol);
+				if (!fn) continue;
+				// An unused import may have an unsupported export. Such an API cannot match an emitted provider.
+				std::string signature = exportName(name, symbol, program.declarations.at(&symbol)).value_or("unsupported");
+				for (const auto &parameter : fn->parameters) {
+					appendComponent(signature, parameter.name.getNameKey());
+					if (parameter.defaultValue) signature += '?';
+				}
+				exports.push_back(std::move(signature));
+			}
+		}
+		std::ranges::sort(exports);
+		std::string line = name + '\t';
+		for (const auto &signature : exports) {
+			line += signature;
+			line += ';';
+		}
+		modules.push_back(std::move(line));
+	}
+	std::ranges::sort(modules);
+	// Shuttle reads three header lines followed by one tab-separated module name and export list per line.
+	const auto  producer = program.nativeModules.find(0);
+	std::string data     = "cloth-interface-v1\n";
+	data += LLVMGetTarget(module);
+	data += '\n';
+	if (producer != program.nativeModules.end()) data += producer->second;
+	data += '\n';
+	for (const auto &line : modules) {
+		data += line;
+		data += '\n';
+	}
+	const auto contents = string_value::literalBytes(LLVMGetModuleContext(module), data);
+	const auto global   = LLVMAddGlobal(module, LLVMTypeOf(contents), "cloth.interfaces");
+	LLVMSetInitializer(global, contents);
+	LLVMSetGlobalConstant(global, true);
+	LLVMSetLinkage(global, LLVMPrivateLinkage);
+	LLVMSetAlignment(global, 1);
+	const bool machO = std::string_view(LLVMGetDataLayoutStr(module)).find("m:o") != std::string_view::npos;
+	LLVMSetSection(global, machO ? "__DATA,__clapi" : ".clapi");
 }
 
 void ModuleFunctions::emitNativeEntry (LLVMBuilderRef builder, LLVMValueRef function) {

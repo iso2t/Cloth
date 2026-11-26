@@ -57,18 +57,21 @@ fn success(output: Output) {
     );
 }
 
-fn shuttle(dir: &Path, subcommand: &str) -> Command {
+fn compiler_path() -> PathBuf {
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let compiler = env::var_os("CLOTHC").map(PathBuf::from).unwrap_or_else(|| {
+    env::var_os("CLOTHC").map(PathBuf::from).unwrap_or_else(|| {
         repo.join("build")
             .join(if cfg!(windows) { "cloth.exe" } else { "cloth" })
-    });
+    })
+}
+
+fn shuttle(dir: &Path, subcommand: &str) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_shuttle"));
     command
         .current_dir(dir)
         .arg(subcommand)
         .arg("--compiler")
-        .arg(compiler);
+        .arg(compiler_path());
     if let Ok(bits) = env::var("SHUTTLE_TEST_TARGET_BITS") {
         command.args(["--target-bits", &bits]);
     }
@@ -350,10 +353,9 @@ pub fn<int> main(string[] args) {
     assert_program(output, 42, "two words π\n--help\n\n");
     let triple = fs::read_dir(root.join("out"))
         .unwrap()
-        .next()
-        .unwrap()
-        .unwrap()
-        .path();
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.is_dir())
+        .unwrap();
     assert!(triple.join("arithmetic-lib.o").is_file());
     let inspect = triple.join(format!("inspect{}", env::consts::EXE_SUFFIX));
     run(&inspect, 7, "");
@@ -372,6 +374,87 @@ pub fn<int> main(string[] args) {
     assert!(failed.stdout.is_empty());
     failure(failed, "missing");
     run(&inspect, 7, "");
+}
+
+#[test]
+fn failed_publication_preserves_every_previous_output() {
+    let work = Directory::new("publication");
+    let root = &work.0;
+    let manifest = r#"project app {
+        target executable entry="src/main.co"
+        target library name="api" module="Api" entry="src/api.co"
+        target executable name="tool" entry="src/tool.co"
+    }"#;
+    write(root, "build.k", manifest);
+    write(root, "src/main.co", "pub fn<int> main() = 7;");
+    write(root, "src/api.co", "pub fn<int> value() = 10;");
+    write(root, "src/tool.co", "pub fn<int> main() = 11;");
+    let app = artifact(&mut build(root));
+    assert_program(shuttle(root, "run").output().unwrap(), 7, "");
+    let directory = app.parent().unwrap();
+    let executable = |name: &str| directory.join(format!("{name}{}", env::consts::EXE_SUFFIX));
+    let library = directory.join("api.o");
+    let tool = executable("tool");
+    let outputs = [&app, &library, &tool];
+    let previous = outputs.map(|path| fs::read(path).unwrap());
+
+    write(root, "src/main.co", "pub fn<int> main() = 42;");
+    write(root, "src/api.co", "pub fn<int> value() = 20;");
+    write(root, "src/tool.co", "pub fn<int> main() = 21;");
+    write(
+        root,
+        "build.k",
+        &manifest.replace(
+            '}',
+            r#"
+        target executable name="new" entry="src/main.co"
+        target executable name="zz-blocked" entry="src/tool.co"
+    }"#,
+        ),
+    );
+    let blocked = executable("zz-blocked");
+    fs::create_dir(&blocked).unwrap();
+    let sentinel = blocked.join("keep");
+    fs::write(&sentinel, "original").unwrap();
+
+    let assert_previous = || {
+        for (path, old) in outputs.into_iter().zip(&previous) {
+            assert!(
+                fs::read(path).unwrap() == *old,
+                "{} changed",
+                path.display()
+            );
+        }
+        assert!(!executable("new").exists());
+    };
+    let failed = shuttle(root, "run").output().unwrap();
+    assert!(failed.stdout.is_empty());
+    failure(failed, "zz-blocked");
+    assert_previous();
+    assert_eq!(fs::read(&sentinel).unwrap(), b"original");
+    run(&app, 7, "");
+    run(&tool, 11, "");
+
+    fs::remove_file(sentinel).unwrap();
+    fs::remove_dir(&blocked).unwrap();
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // Reading is allowed, but Windows will refuse to replace this executable.
+        let _held = fs::File::options()
+            .read(true)
+            .share_mode(1)
+            .open(&tool)
+            .unwrap();
+        failure(shuttle(root, "run").output().unwrap(), "tool.exe");
+        assert_previous();
+        assert!(!blocked.exists());
+    }
+    assert_program(shuttle(root, "run").output().unwrap(), 42, "");
+    assert!(fs::read(&library).unwrap() != previous[1]);
+    run(&executable("new"), 42, "");
+    run(&blocked, 21, "");
+    run(&tool, 21, "");
 }
 
 #[test]
@@ -522,6 +605,150 @@ fn whole_project_runs_keep_each_executables_library_bindings() {
         shuttle(root, "run").output().unwrap(),
         "module 'Shared' is supplied by",
     );
+}
+
+#[test]
+fn prebuilt_library_must_match_the_named_argument_interface() {
+    let work = Directory::new("prebuilt API π");
+    let api = work.0.join("provider");
+    let app = work.0.join("consumer");
+    write(
+        &api,
+        "build.k",
+        r#"project "calculator" { target "library" entry="src/api.co" name="math-lib" module="Arithmetic" }"#,
+    );
+    let signature = "pub fn<int> diff(int left, int right) = left - right;\n";
+    let overload = "pub fn<int> diff(bool flag) = 0;\n";
+    write(&api, "src/api.co", &format!("{signature}{overload}"));
+    write(
+        &app,
+        "build.k",
+        r#"project "answer" {
+            dependency "Arithmetic" path="../provider" prebuilt=#true
+            target "executable" entry="src/main.co" { uses "Arithmetic" }
+        }"#,
+    );
+    write(
+        &app,
+        "src/main.co",
+        "using Arithmetic : diff;\nusing cloth.Console : println;\n\
+         pub fn<void> main() { println(diff(left=43, right=1)); }\n",
+    );
+    let library = artifact(&mut build(&api));
+    let executable = artifact(&mut build(&app));
+    run(&executable, 0, "42\n");
+
+    let body_edit = signature.replace("left - right", "left + right");
+    write(&api, "src/api.co", &format!("{overload}{body_edit}"));
+    assert_program(shuttle(&app, "run").output().unwrap(), 0, "42\n");
+    let previous = fs::read(&executable).unwrap();
+
+    // The caller supplies both arguments, so the native linker alone would accept either object.
+    let default_added = signature.replace("int right)", "opt<int> right ?: 1)");
+    write(&api, "src/api.co", &format!("{overload}{default_added}"));
+    failure(
+        build(&app).output().unwrap(),
+        "rebuild prebuilt library 'Arithmetic'",
+    );
+    let swapped = signature.replace("left, int right", "right, int left");
+    write(&api, "src/api.co", &format!("{overload}{swapped}"));
+    failure(
+        shuttle(&app, "run").output().unwrap(),
+        "rebuild prebuilt library 'Arithmetic' (target 'math-lib'",
+    );
+    assert_eq!(fs::read(&executable).unwrap(), previous);
+    run(&executable, 0, "42\n");
+
+    artifact(&mut build(&api));
+    assert_program(shuttle(&app, "run").output().unwrap(), 0, "42\n");
+
+    // A native object without an interface record must also fail before linking.
+    write(&api, "src/plain.co", "pub fn<int> main() = 0;\n");
+    let mut cloth = Command::new(compiler_path());
+    if let Ok(bits) = env::var("SHUTTLE_TEST_TARGET_BITS") {
+        cloth.args(["--target-bits", &bits]);
+    }
+    success(
+        cloth
+            .current_dir(&api)
+            .args([
+                "--src",
+                "src/plain.co",
+                "--kind",
+                "executable",
+                "--emit-object",
+            ])
+            .arg(&library)
+            .output()
+            .unwrap(),
+    );
+    let rejected = build(&app).output().unwrap();
+    assert!(
+        String::from_utf8_lossy(&rejected.stderr).contains("object has no Cloth interface record")
+    );
+    failure(rejected, "rebuild prebuilt library 'Arithmetic'");
+    run(&executable, 0, "42\n");
+}
+
+#[test]
+fn prebuilt_library_keeps_the_interfaces_of_its_native_dependencies() {
+    let work = Directory::new("prebuilt dependency");
+    let api = work.0.join("arithmetic");
+    let adapter = work.0.join("adapter");
+    let app = work.0.join("app");
+    write(
+        &api,
+        "build.k",
+        r#"project Arithmetic { target library entry="src/api.co" }"#,
+    );
+    let signature = "pub fn<int> diff(int left, int right) = left - right;\n";
+    write(&api, "src/api.co", signature);
+    write(
+        &adapter,
+        "build.k",
+        r#"project Adapter {
+        dependency Arithmetic path="../arithmetic"
+        target library entry="src/api.co" { uses Arithmetic }
+    }"#,
+    );
+    write(
+        &adapter,
+        "src/api.co",
+        "using Arithmetic : diff;\npub fn<int> answer() = diff(left=43, right=1);\n",
+    );
+    write(
+        &app,
+        "build.k",
+        r#"project app {
+        dependency Adapter path="../adapter" prebuilt=#true
+        target executable entry="src/main.co" { uses Adapter }
+    }"#,
+    );
+    write(
+        &app,
+        "src/main.co",
+        "using Adapter : answer;\npub fn<int> main() = answer();\n",
+    );
+    artifact(&mut build(&adapter));
+    let executable = artifact(&mut build(&app));
+    run(&executable, 42, "");
+
+    // Only the old Adapter object still calls Arithmetic.
+    write(&adapter, "src/api.co", "pub fn<int> answer() = 42;\n");
+    write(
+        &api,
+        "src/api.co",
+        &signature.replace("left, int right", "right, int left"),
+    );
+    let rejected = build(&app).output().unwrap();
+    assert!(
+        String::from_utf8_lossy(&rejected.stderr)
+            .contains("native interface for 'Arithmetic' differs")
+    );
+    failure(rejected, "rebuild prebuilt library 'Adapter'");
+    run(&executable, 42, "");
+    artifact(&mut build(&adapter));
+    run(&artifact(&mut build(&app)), 42, "");
 }
 
 #[test]

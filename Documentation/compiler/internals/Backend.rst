@@ -207,10 +207,12 @@ The checked call records a static receiver, a contract, and any concrete
 method type arguments. Lowering assigns that combination a slot. As
 reachable bodies allocate classes or introduce more slots, the backend
 resolves each new class/slot pair against the frontend's ``TypeDispatch``.
-It queues the selected implementations and publishes the constant tables
-once the body queue is empty. The call evaluates arguments and defaults
-using its static contract before looking up the implementation on the
-captured handle. See the `dispatch emitter <../../../Backend/src/backend/dispatch.cpp>`_.
+It visits concrete classes in order of first allocation during lowering
+and each class's states in name order. The selected implementations enter
+the body queue in that order. Once the queue is empty, the backend emits
+the constant tables in the same order. The call evaluates arguments and
+defaults using its static contract before looking up the implementation
+on the captured handle. See the `dispatch emitter <../../../Backend/src/backend/dispatch.cpp>`_.
 
 Each object records its concrete descriptor and active state. A state row
 contains the callable slots provided by that state. A separate state

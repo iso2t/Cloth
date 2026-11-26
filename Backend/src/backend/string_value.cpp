@@ -18,6 +18,7 @@
 namespace backend::detail::string_value {
 namespace {
 enum Field : unsigned { Data, ByteLength, FieldCount };
+}
 
 LLVMValueRef literalBytes (LLVMContextRef context, std::string_view bytes) {
 	// LLVM 18 takes an unsigned length for each constant string. Keep larger literals contiguous in a packed global.
@@ -30,7 +31,6 @@ LLVMValueRef literalBytes (LLVMContextRef context, std::string_view bytes) {
 	if (v_chunks.empty()) return ir_tail;
 	v_chunks.push_back(ir_tail);
 	return LLVMConstStructInContext(context, v_chunks.data(), static_cast<unsigned>(v_chunks.size()), true);
-}
 }
 
 LLVMTypeRef type (LLVMModuleRef module) {

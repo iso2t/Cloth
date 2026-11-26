@@ -2919,6 +2919,7 @@ void lowerProgram (const cloth::CheckedProgram &program, LLVMModuleRef module) {
 	const LLVMContextRef                                                    ctx_context = LLVMGetModuleContext(module);
 	ModuleFunctions                                                         mf_functions(program, module);
 	const std::unique_ptr<LLVMOpaqueBuilder, decltype(&LLVMDisposeBuilder)> ir_builder(LLVMCreateBuilderInContext(ctx_context), LLVMDisposeBuilder);
+	if (program.nativeModules.contains(0) || program.recordExternInterfaces) mf_functions.recordInterfaces();
 	if (program.entryPoint)
 		mf_functions.emitNativeEntry(ir_builder.get(), mf_functions.declareFunction(*program.entryPoint));
 	else
@@ -2934,7 +2935,7 @@ void lowerProgram (const cloth::CheckedProgram &program, LLVMModuleRef module) {
 		}
 		mf_functions.dispatch.resolve(mf_functions);
 	} while (st_index < mf_functions.pending.size());
-	mf_functions.dispatch.finish(program);
+	mf_functions.dispatch.finish();
 }
 
 void checkLLVMResult (LLVMBool failed, char *message, Code code, const char *operation) {

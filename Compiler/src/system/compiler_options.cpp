@@ -87,6 +87,8 @@ CompilerOptions::CompilerOptions (const int argc, const char *const argv[]) : ar
 		}
 	}
 	if (printTarget && (p_sourcePath || !s_emitFlag.empty() || i_lexer)) throw std::invalid_argument("--print-target takes no source or output");
+	if (modules.recordExternInterfaces && (!p_sourcePath || i_lexer))
+		throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidCompilationRequest, "--record-extern-interfaces requires a checked --src PATH");
 	if (!modules.name.empty() && (kind != ProgramKind::Library || modules.imports.contains(modules.name)))
 		throw std::invalid_argument("--module-name requires a library name distinct from its dependencies");
 	if (!s_emitFlag.empty()) {
@@ -111,6 +113,7 @@ void CompilerOptions::addFlag (const CompilerFlag &flag) {
 // TODO: "path1","path" "path3" fails as path3 is seen as another arg.
 void CompilerOptions::buildDefaults () {
 	addFlag({ .s_flag = "--print-target", .v_action = [this] { printTarget = true; } });
+	addFlag({ .s_flag = "--record-extern-interfaces", .v_action = [this] { modules.recordExternInterfaces = true; } });
 	addFlag({ .s_flag = "--module-name", .v_action = CompilerFlag::Value{ .s_description = "a library name", .f_func = [this] (std::string_view name) {
 		                                                                     modules.name = moduleName(name);
 	                                                                     } } });
