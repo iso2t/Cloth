@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-use crate::Result;
 use crate::manifest::{Kind, Manifest, Module, Target, Uses};
+use crate::{Action, Result};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
+use std::{fs, io::ErrorKind};
 
 pub struct Project {
+    pub manifest: PathBuf,
     pub name: String,
     pub module: String,
     pub kind: Kind,
     pub entry: PathBuf,
     pub output: PathBuf,
-    pub dependencies: BTreeSet<usize>,
-    pub prebuilt: bool,
+    // A target links a prebuilt object only if every path to that dependency requests it.
+    pub dependencies: BTreeMap<usize, bool>,
 }
 
 impl Kind {
@@ -34,10 +36,27 @@ impl Project {
             .join(target)
             .join(self.kind.artifact_name(&self.name, target))
     }
+
+    fn add_dependency(&mut self, index: usize, prebuilt: bool) {
+        *self.dependencies.entry(index).or_insert(true) &= prebuilt;
+    }
 }
 
 fn canonical(path: &Path) -> Result<PathBuf> {
     dunce::canonicalize(path).map_err(|error| format!("{}: {error}", path.display()).into())
+}
+
+pub fn enclosing_manifest(directory: &Path) -> Result<PathBuf> {
+    let directory = canonical(directory)?;
+    for dir in directory.ancestors() {
+        let path = dir.join("build.k");
+        match fs::symlink_metadata(&path) {
+            Ok(_) => return canonical(&path),
+            Err(e) if e.kind() == ErrorKind::NotFound => continue,
+            Err(e) => return Err(format!("{}: {e}", path.display()).into()),
+        }
+    }
+    Err(format!("no build.k in {} or its parents", directory.display()).into())
 }
 
 fn source_file(directory: &Path, relative: &Path) -> Result<PathBuf> {
@@ -74,6 +93,17 @@ struct Package {
     modules: BTreeMap<String, IncludedModule>,
     // An external project can consume only a library that has a build target.
     libraries: BTreeMap<String, String>,
+}
+
+pub fn check_new_module(path: &Path, name: &str) -> Result<()> {
+    let package = Package::read(path)?;
+    if package.modules.contains_key(name)
+        || package.libraries.contains_key(name)
+        || package.manifest.dependencies.contains_key(name)
+    {
+        return Err(format!("{}: module name '{name}' is already in use", path.display()).into());
+    }
+    Ok(())
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -176,28 +206,49 @@ impl Package {
         })
     }
 
-    fn select(&self, requested: Option<&str>) -> Result<Unit> {
+    fn select(&self, requested: Option<&str>, action: Action) -> Result<Unit> {
         let targets = &self.manifest.targets;
-        let name = requested
-            .or(self.manifest.default_target.as_deref())
-            .or_else(|| {
-                (targets.len() == 1).then(|| targets.first_key_value().unwrap().0.as_str())
-            });
-        if let Some(name) = name.filter(|name| targets.contains_key(*name)) {
-            return Ok(Unit::Target(name.into()));
+        let choices: Vec<_> = targets
+            .iter()
+            .filter(|(_, target)| action == Action::Build || target.kind == Kind::Executable)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        let default = self
+            .manifest
+            .default_target
+            .as_deref()
+            .filter(|n| choices.contains(n));
+        let name = requested.or(default).or(match choices.as_slice() {
+            [only] => Some(*only),
+            _ => None,
+        });
+        if let Some(name) = name {
+            if choices.contains(&name) {
+                return Ok(Unit::Target(name.into()));
+            }
+            if targets.contains_key(name) {
+                return Err(
+                    format!("{}: target '{name}' is a library", self.path.display()).into(),
+                );
+            }
         }
-        let reason = match requested {
-            Some(name) => format!("unknown target '{name}'"),
-            None => "select a target".into(),
+        if choices.is_empty() {
+            return Err(
+                format!("{}: project has no executable targets", self.path.display()).into(),
+            );
+        }
+        let (kind, prompt) = match action {
+            Action::Build => ("target", "select a target"),
+            Action::Run => ("executable", "select an executable with --target NAME"),
         };
-        let choices = targets
-            .keys()
-            .map(String::as_str)
-            .collect::<Vec<_>>()
-            .join(", ");
+        let reason = requested.map_or_else(
+            || prompt.to_owned(),
+            |name| format!("unknown {kind} '{name}'"),
+        );
         Err(format!(
-            "{}: {reason}; available targets: {choices}",
-            self.path.display()
+            "{}: {reason}; available {kind}s: {}",
+            self.path.display(),
+            choices.join(", ")
         )
         .into())
     }
@@ -252,13 +303,13 @@ impl Package {
             file
         };
         let project = Project {
+            manifest: self.path.clone(),
             name: unit.name().into(),
             kind: target.kind,
             module,
             entry,
             output: self.directory.join(&self.manifest.output),
-            dependencies: BTreeSet::new(),
-            prebuilt: false,
+            dependencies: BTreeMap::new(),
         };
         Ok((project, uses))
     }
@@ -269,10 +320,12 @@ type Key = (PathBuf, Unit);
 #[derive(Default)]
 pub struct Graph {
     pub projects: Vec<Project>,
+    pub targets: Vec<usize>,
+    pub sources: BTreeSet<usize>,
+    prebuilt: BTreeSet<usize>,
     packages: BTreeMap<PathBuf, Rc<Package>>,
     loaded: BTreeMap<Key, usize>,
     visiting: BTreeSet<Key>,
-    providers: BTreeMap<String, Key>,
     inputs: BTreeSet<PathBuf>,
 }
 
@@ -294,15 +347,48 @@ impl Graph {
         Ok(package)
     }
 
-    pub fn load(path: &Path, target: Option<&str>) -> Result<(Self, usize)> {
+    pub fn load(path: &Path, target: Option<&str>, action: Action) -> Result<(Self, usize)> {
         let mut graph = Self::default();
         let package = graph.package(path)?;
-        let unit = package.select(target)?;
-        let index = graph.visit(&package, unit, false)?;
+        let unit = package.select(target, action)?;
+        let index = graph.plan(&package, unit.clone(), action)?;
+        if action == Action::Run {
+            for name in package
+                .manifest
+                .targets
+                .keys()
+                .filter(|name| *name != unit.name())
+            {
+                graph.plan(&package, Unit::Target(name.clone()), action)?;
+            }
+            for (name, module) in &package.modules {
+                if module.definition.api.is_some() && !package.libraries.contains_key(name) {
+                    graph.plan(&package, Unit::LocalModule(name.clone()), action)?;
+                }
+            }
+        }
         Ok((graph, index))
     }
 
-    pub fn check_destination(&self, artifact: &Path, target: &str) -> Result<()> {
+    fn plan(&mut self, package: &Rc<Package>, unit: Unit, action: Action) -> Result<usize> {
+        let publish = matches!(unit, Unit::Target(_));
+        let index = self.visit(package, unit)?;
+        if publish {
+            self.targets.push(index);
+        }
+        self.sources.insert(index);
+        let project = &self.projects[index];
+        for (&dependency, &prebuilt) in &project.dependencies {
+            if prebuilt {
+                self.prebuilt.insert(dependency);
+            } else if action == Action::Run || project.kind == Kind::Executable {
+                self.sources.insert(dependency);
+            }
+        }
+        Ok(index)
+    }
+
+    pub fn check_destinations(&self, target: &str, need_prebuilt: bool) -> Result<()> {
         for package in self.packages.values() {
             let mut filenames = BTreeMap::new();
             for (name, declaration) in &package.manifest.targets {
@@ -319,27 +405,41 @@ impl Graph {
                 }
             }
         }
-        if !artifact.exists() {
-            return Ok(());
+        let mut prebuilt_inputs = BTreeSet::new();
+        for &index in &self.prebuilt {
+            let path = self.projects[index].artifact(target);
+            if path.is_file() {
+                prebuilt_inputs.insert(canonical(&path)?);
+            } else if need_prebuilt {
+                return Err(format!(
+                    "missing prebuilt library for {target} at {}",
+                    path.display()
+                )
+                .into());
+            }
         }
-        let existing = canonical(artifact)?;
-        if self.inputs.contains(&existing)
-            || self.projects.iter().any(|project| {
-                project.prebuilt
-                    && dunce::canonicalize(project.artifact(target))
-                        .is_ok_and(|path| path == existing)
-            })
-        {
-            return Err(format!(
-                "output would overwrite a project input at {}",
-                artifact.display()
-            )
-            .into());
+        for &index in &self.targets {
+            let artifact = self.projects[index].artifact(target);
+            if artifact.try_exists()? {
+                let existing = canonical(&artifact)?;
+                if self.inputs.contains(&existing) || prebuilt_inputs.contains(&existing) {
+                    return Err(format!(
+                        "output would overwrite a project input at {}",
+                        artifact.display()
+                    )
+                    .into());
+                }
+            }
         }
         Ok(())
     }
 
-    fn dependency(&mut self, package: &Rc<Package>, name: &str, location: &str) -> Result<usize> {
+    fn dependency(
+        &mut self,
+        package: &Rc<Package>,
+        name: &str,
+        location: &str,
+    ) -> Result<(usize, bool)> {
         if let Some(external) = package.manifest.dependencies.get(name) {
             let provider = self.package(&package.directory.join(&external.path))?;
             let target = provider.libraries.get(name).ok_or_else(|| {
@@ -348,21 +448,23 @@ impl Graph {
                     provider.path.display()
                 )
             })?;
-            return self.visit(&provider, Unit::Target(target.clone()), external.prebuilt);
+            return Ok((
+                self.visit(&provider, Unit::Target(target.clone()))?,
+                external.prebuilt,
+            ));
         }
         if let Some(target) = package.libraries.get(name) {
-            return self.visit(package, Unit::Target(target.clone()), false);
+            return Ok((self.visit(package, Unit::Target(target.clone()))?, false));
         }
         if package.modules.contains_key(name) {
-            return self.visit(package, Unit::LocalModule(name.into()), false);
+            return Ok((self.visit(package, Unit::LocalModule(name.into()))?, false));
         }
         Err(format!("{location}: unknown module '{name}' in uses").into())
     }
 
-    fn visit(&mut self, package: &Rc<Package>, unit: Unit, prebuilt: bool) -> Result<usize> {
+    fn visit(&mut self, package: &Rc<Package>, unit: Unit) -> Result<usize> {
         let key = (package.path.clone(), unit);
         if let Some(&index) = self.loaded.get(&key) {
-            self.projects[index].prebuilt &= prebuilt;
             return Ok(index);
         }
         if !self.visiting.insert(key.clone()) {
@@ -374,26 +476,34 @@ impl Graph {
             .into());
         }
         let (mut project, uses) = package.resolve(&key.1)?;
-        if project.kind == Kind::Library {
-            if let Some(previous) = self.providers.insert(project.module.clone(), key.clone()) {
+        self.inputs.insert(project.entry.clone());
+        for (name, location) in uses {
+            let (index, prebuilt) = self.dependency(package, &name, &location)?;
+            for (&dependency, &prebuilt) in &self.projects[index].dependencies {
+                project.add_dependency(dependency, prebuilt);
+            }
+            project.add_dependency(index, prebuilt);
+        }
+        // Executables may use independent providers of the same import name.
+        // Each target's own dependency closure must still have one provider per name.
+        let mut providers = BTreeMap::new();
+        for library in project
+            .dependencies
+            .keys()
+            .map(|&i| &self.projects[i])
+            .chain(std::iter::once(&project))
+            .filter(|p| p.kind == Kind::Library)
+        {
+            if let Some(previous) = providers.insert(&library.module, &library.manifest) {
                 return Err(format!(
                     "module '{}' is supplied by {} and {}",
-                    project.module,
-                    previous.0.display(),
-                    package.path.display()
+                    library.module,
+                    previous.display(),
+                    library.manifest.display()
                 )
                 .into());
             }
         }
-        self.inputs.insert(project.entry.clone());
-        for (name, location) in uses {
-            let index = self.dependency(package, &name, &location)?;
-            project
-                .dependencies
-                .extend(&self.projects[index].dependencies);
-            project.dependencies.insert(index);
-        }
-        project.prebuilt = prebuilt;
         self.visiting.remove(&key);
         let index = self.projects.len();
         self.projects.push(project);

@@ -24,7 +24,7 @@ Manuals
 
 * `Run your first Cloth program <getting-started/FirstProgram.rst>`_
 * `Cloth language reference <language/index.rst>`_
-* `Build projects and link libraries with Shuttle <../Shuttle/README.rst>`_
+* `Create projects, add modules, and link libraries with Shuttle <../Shuttle/README.rst>`_
 * `Cloth compiler manual <compiler/index.rst>`_
 * `Standard library modules <../Stdlib/README.md>`_
 

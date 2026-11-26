@@ -6,7 +6,7 @@ Emitting object files and assembly
 Compile the source file that defines ``main``. The emitted object or
 assembly contains the entry point and the functions it calls. Link an
 object with a C compiler for the same platform and width to produce an
-executable. For a complete example, see `Run your first Cloth program
+executable. Shuttle handles these steps in `Run your first Cloth program
 <../../getting-started/FirstProgram.rst>`_.
 
 Entry point and output

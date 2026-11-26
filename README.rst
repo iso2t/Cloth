@@ -12,7 +12,7 @@ Getting started
 
 * `Build the compiler <Documentation/building/Building.rst>`_
 * `Run your first Cloth program <Documentation/getting-started/FirstProgram.rst>`_
-* `Build a project with Shuttle <Shuttle/README.rst>`_
+* `Create, build, and run a project with Shuttle <Shuttle/README.rst>`_
 * `Use the compiler <Documentation/compiler/index.rst>`_
 * `Read the language reference <Documentation/language/index.rst>`_
 * `Browse the standard library <Stdlib/README.md>`_

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 use crate::manifest::Kind;
-use crate::project::{Graph, Project};
-use crate::{Options, Result};
+use crate::project::{self, Graph, Project};
+use crate::{Action, Options, Result};
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -96,7 +96,7 @@ fn compile(
     if let Some(stdlib) = &options.stdlib {
         command.arg("--stdlib").arg(stdlib);
     }
-    for &index in &project.dependencies {
+    for &index in project.dependencies.keys() {
         let library = &projects[index];
         let mut binding = OsString::from(&library.module);
         binding.push("=");
@@ -182,55 +182,76 @@ fn link(options: &Options, target: &str, objects: &[PathBuf], output: &Path) -> 
     checked(command.arg("-o").arg(output.file_name().unwrap()))
 }
 
-pub fn project(mut options: Options) -> Result<PathBuf> {
-    let (graph, root) = Graph::load(&options.manifest, options.target.as_deref())?;
-    options.compiler = find_compiler(&options.compiler)?;
-    let target = target(&options)?;
-    let project = &graph.projects[root];
-    let artifact = project.artifact(&target);
-    graph.check_destination(&artifact, &target)?;
-    let staging = Staging::create(artifact.parent().unwrap())?;
-    let output = staging.0.join("output").with_extension(
-        artifact
-            .extension()
-            .filter(|ext| *ext == "exe")
-            .unwrap_or_default(),
-    );
-    if project.kind == Kind::Library {
-        compile(&options, &graph.projects, project, &output)?;
-    } else {
-        let objects = compile_objects(&options, &graph.projects, &target, &staging)?;
-        link(&options, &target, &objects, &output)?;
-    }
-    fs::rename(output, &artifact)
-        .map_err(|error| format!("publishing {}: {error}", artifact.display()))?;
-    Ok(artifact)
+pub struct Artifact {
+    pub path: PathBuf,
+    pub directory: PathBuf,
 }
 
-fn compile_objects(
-    options: &Options,
-    projects: &[Project],
-    target: &str,
-    staging: &Staging,
-) -> Result<Vec<PathBuf>> {
-    let mut objects = Vec::new();
-    for (id, dependency) in projects.iter().enumerate() {
-        let object = if dependency.prebuilt {
-            let path = dependency.artifact(target);
-            if !path.is_file() {
-                return Err(format!(
-                    "missing prebuilt library for {target} at {}",
-                    path.display()
-                )
-                .into());
-            }
-            path
-        } else {
-            let path = staging.0.join(format!("{id}.o"));
-            compile(options, projects, dependency, &path)?;
-            path
-        };
-        objects.push(object);
+pub fn project(mut options: Options, action: Action) -> Result<Artifact> {
+    let default = match action {
+        Action::Build => "build.k",
+        Action::Run => ".",
+    };
+    let mut manifest = options.manifest.take().unwrap_or_else(|| default.into());
+    if action == Action::Run && manifest.is_dir() {
+        manifest = project::enclosing_manifest(&manifest)?;
     }
-    Ok(objects)
+    let (graph, root) = Graph::load(&manifest, options.target.as_deref(), action)?;
+    options.compiler = find_compiler(&options.compiler)?;
+    let target = target(&options)?;
+    let selected = &graph.projects[root];
+    graph.check_destinations(
+        &target,
+        action == Action::Run || selected.kind == Kind::Executable,
+    )?;
+    let path = selected.artifact(&target);
+    let staging = Staging::create(path.parent().unwrap())?;
+    let object = |index: usize| staging.0.join(format!("{index}.o"));
+    for &index in &graph.sources {
+        compile(
+            &options,
+            &graph.projects,
+            &graph.projects[index],
+            &object(index),
+        )?;
+    }
+
+    let mut outputs = Vec::new();
+    for &index in &graph.targets {
+        let project = &graph.projects[index];
+        let artifact = project.artifact(&target);
+        let output = match project.kind {
+            Kind::Library => object(index),
+            Kind::Executable => {
+                let directory = staging.0.join(format!("link-{index}"));
+                fs::create_dir(&directory)?;
+                let output = directory.join("output").with_extension(
+                    artifact
+                        .extension()
+                        .filter(|ext| *ext == "exe")
+                        .unwrap_or_default(),
+                );
+                let mut objects = Vec::new();
+                for (&dependency, &prebuilt) in &project.dependencies {
+                    objects.push(if prebuilt {
+                        graph.projects[dependency].artifact(&target)
+                    } else {
+                        object(dependency)
+                    });
+                }
+                objects.push(object(index));
+                link(&options, &target, &objects, &output)?;
+                output
+            }
+        };
+        outputs.push((output, artifact));
+    }
+    for (output, artifact) in outputs {
+        fs::rename(output, &artifact)
+            .map_err(|error| format!("publishing {}: {error}", artifact.display()))?;
+    }
+    Ok(Artifact {
+        path,
+        directory: selected.manifest.parent().unwrap().to_owned(),
+    })
 }

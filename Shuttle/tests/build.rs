@@ -2,8 +2,9 @@
 
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 const API: &str = include_str!("../../Tests/Compiler/Driver/Inputs/native-library/api.co");
 const MAIN: &str = include_str!("../../Tests/Compiler/Driver/Inputs/native-library/main.co");
@@ -39,7 +40,24 @@ fn write(root: &Path, relative: &str, contents: &str) {
     fs::write(path, contents).unwrap();
 }
 
-fn build(dir: &Path) -> Command {
+fn init(dir: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_shuttle"))
+        .current_dir(dir)
+        .arg("init")
+        .args(args)
+        .output()
+        .unwrap()
+}
+
+fn success(output: Output) {
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn shuttle(dir: &Path, subcommand: &str) -> Command {
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let compiler = env::var_os("CLOTHC").map(PathBuf::from).unwrap_or_else(|| {
         repo.join("build")
@@ -48,13 +66,17 @@ fn build(dir: &Path) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_shuttle"));
     command
         .current_dir(dir)
-        .arg("build")
+        .arg(subcommand)
         .arg("--compiler")
         .arg(compiler);
     if let Ok(bits) = env::var("SHUTTLE_TEST_TARGET_BITS") {
         command.args(["--target-bits", &bits]);
     }
     command
+}
+
+fn build(dir: &Path) -> Command {
+    shuttle(dir, "build")
 }
 
 fn artifact(command: &mut Command) -> PathBuf {
@@ -76,7 +98,10 @@ fn failure(output: Output, expected: &str) {
 }
 
 fn run(path: &Path, code: i32, stdout: &str) {
-    let output = Command::new(path).output().unwrap();
+    assert_program(Command::new(path).output().unwrap(), code, stdout);
+}
+
+fn assert_program(output: Output, code: i32, stdout: &str) {
     assert_eq!(
         output.status.code(),
         Some(code),
@@ -108,6 +133,8 @@ fn missing_command_shows_the_same_guide_as_the_help_flags() {
         assert!(help.lines().any(|line| line == heading), "{help}");
     }
     assert!(help.contains("shuttle build arithmetic-lib"));
+    assert!(help.contains("shuttle init --module NAME"));
+    assert!(help.contains("shuttle run [PATH]"));
 
     let missing = shuttle(&[]);
     assert!(missing.stdout.is_empty());
@@ -115,6 +142,8 @@ fn missing_command_shows_the_same_guide_as_the_help_flags() {
 
     for args in [
         &["-h"][..],
+        &["init", "--help"],
+        &["run", "--help"],
         &["build", "--help"],
         &["build", "arithmetic-lib", "-h"],
     ] {
@@ -123,6 +152,376 @@ fn missing_command_shows_the_same_guide_as_the_help_flags() {
         assert!(output.stderr.is_empty());
         assert_eq!(output.stdout, requested.stdout);
     }
+}
+
+#[test]
+fn init_creates_a_runnable_project_and_an_importable_module() {
+    let work = Directory::new("init");
+    let root = work.0.join("hello π");
+    success(init(&work.0, &["hello π"]));
+    run(&artifact(&mut build(&root)), 0, "Hello, world!\n");
+
+    success(init(&root.join("src"), &["--module", "Arithmetic"]));
+    let manifest = fs::read_to_string(root.join("build.k")).unwrap();
+    assert!(manifest.contains("include \"Arithmetic\""));
+    let consumer = manifest.replace(
+        "entry=\"src/main.co\"",
+        "entry=\"src/main.co\" {\n        uses \"Arithmetic\"\n    }",
+    );
+    write(&root, "build.k", &consumer);
+    write(
+        &root,
+        "src/main.co",
+        "using Arithmetic : answer;\npub fn<int> main() = answer();\n",
+    );
+    run(&artifact(&mut build(&root)), 42, "");
+}
+
+#[test]
+fn init_preserves_existing_files_and_requires_a_project_for_modules() {
+    let work = Directory::new("init existing");
+    failure(init(&work.0, &["--module", "Math"]), "no build.k");
+    failure(init(&work.0, &["--module"]), "requires a module name");
+    failure(init(&work.0, &["one", "two"]), "accepts one");
+    failure(init(&work.0, &["--unknown"]), "unexpected init option");
+    assert_eq!(fs::read_dir(&work.0).unwrap().count(), 0);
+
+    write(&work.0, "src/main.co", "user source");
+    failure(init(&work.0, &[]), "main.co");
+    assert_eq!(
+        fs::read_to_string(work.0.join("src/main.co")).unwrap(),
+        "user source"
+    );
+    assert!(!work.0.join("build.k").exists());
+
+    let app = work.0.join("existing app");
+    write(&app, "src/other.co", "user source");
+    success(init(&app, &[]));
+    assert_eq!(
+        fs::read_to_string(app.join("src/other.co")).unwrap(),
+        "user source"
+    );
+    let manifest = fs::read_to_string(app.join("build.k")).unwrap();
+    failure(init(&app, &[]), "build.k already exists");
+    for name in ["bad-name", "../escape", "fn", "_"] {
+        failure(
+            init(&app, &["--module", name]),
+            "must be a Cloth identifier",
+        );
+    }
+    write(&app, "Existing/module.k", "user manifest");
+    failure(init(&app, &["--module", "Existing"]), "Existing");
+    assert_eq!(
+        fs::read_to_string(app.join("Existing/module.k")).unwrap(),
+        "user manifest"
+    );
+    assert_eq!(fs::read_to_string(app.join("build.k")).unwrap(), manifest);
+    assert!(!work.0.join("escape").exists());
+
+    let invalid = "project \"broken\" { unknown \"value\" }\n";
+    write(&app, "build.k", invalid);
+    failure(init(&app, &["--module", "Math"]), "unknown project node");
+    assert_eq!(fs::read_to_string(app.join("build.k")).unwrap(), invalid);
+    assert!(!app.join("Math").exists());
+}
+
+#[test]
+fn module_init_preserves_kdl_and_checks_existing_providers() {
+    let work = Directory::new("module registration");
+    let root = &work.0;
+    write(root, "src/api.co", "pub fn<int> value() = 0;\n");
+    write(
+        root,
+        "Alias/module.k",
+        "module \"Café\" api=\"src/api.co\"\n",
+    );
+    write(root, "Alias/src/api.co", "pub fn<int> value() = 1;\n");
+    let before = concat!(
+        "// Project {header}\r\nproject tools {\r\n",
+        "\t// Keep this comment with the first target.\r\n",
+        "\ttarget library name=\"first\" module=\"Exported\" entry=\"src/api.co\"\r\n",
+        "\ttarget library name=\"second\" module=\"Other\" entry=\"src/api.co\"\r\n",
+        "\tdependency \"Foreign\" path=\"../foreign\"\r\n",
+        "\tinclude \"Alias\"\r\n}\r\n// trailing }\r\n",
+    );
+    write(root, "build.k", before);
+    for name in ["Cafe\u{301}", "Exported", "Foreign"] {
+        failure(init(root, &["--module", name]), "already in use");
+        assert!(!root.join(name).exists());
+    }
+    success(init(root, &["--module", "Math"]));
+    let registered = before.replacen("tools {\r\n", "tools {\r\n\tinclude \"Math\"\r\n", 1);
+    assert_eq!(
+        fs::read_to_string(root.join("build.k")).unwrap(),
+        registered
+    );
+    write(root, "Math/src/api.co", "user edits");
+    failure(init(root, &["--module", "Math"]), "already in use");
+    assert_eq!(
+        fs::read_to_string(root.join("Math/src/api.co")).unwrap(),
+        "user edits"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("build.k")).unwrap(),
+        registered
+    );
+
+    let inline = "project tools { target library module=\"Other\" entry=\"src/api.co\" } // }";
+    write(root, "build.k", inline);
+    success(init(root, &["--module", "Ω"]));
+    let registered = fs::read_to_string(root.join("build.k")).unwrap();
+    assert_eq!(registered, inline.replacen("{", "{ include \"Ω\";", 1));
+    artifact(&mut build(root));
+}
+
+#[test]
+fn concurrent_module_additions_preserve_each_registration() {
+    let work = Directory::new("concurrent init");
+    let root = &work.0;
+    success(init(root, &[]));
+    let names = ["Left", "Right"];
+    let results = std::thread::scope(|scope| {
+        let jobs = names.map(|name| scope.spawn(move || init(root, &["--module", name])));
+        jobs.map(|job| job.join().unwrap())
+    });
+    for (name, output) in names.into_iter().zip(results) {
+        if !output.status.success() {
+            failure(output, ".build.k.shuttle-init");
+            success(init(root, &["--module", name]));
+        }
+    }
+    let manifest = fs::read_to_string(root.join("build.k")).unwrap();
+    for name in names {
+        assert_eq!(manifest.matches(&format!("include \"{name}\"")).count(), 1);
+        assert!(root.join(name).join("module.k").is_file());
+    }
+}
+
+#[test]
+fn run_builds_the_whole_project_and_forwards_arguments_and_exit_status() {
+    let work = Directory::new("run");
+    let root = work.0.join("hello π");
+    success(init(&work.0, &["hello π"]));
+    assert_program(
+        shuttle(&root, "run").output().unwrap(),
+        0,
+        "Hello, world!\n",
+    );
+    for module in ["Arithmetic", "Unused"] {
+        success(init(&root, &["--module", module]));
+    }
+    write(
+        &root,
+        "build.k",
+        r#"project "hello π" {
+        include "Arithmetic"
+        include "Unused"
+        target "executable" entry="src/main.co" { uses "Arithmetic" }
+        target "library" name="arithmetic-lib" module="Arithmetic"
+        target "executable" name="inspect" entry="src/inspect.co"
+        output "out"
+    }"#,
+    );
+    write(&root, "asset.txt", "project-relative input");
+    write(&root, "src/inspect.co", "pub fn<int> main() = 7;\n");
+    write(
+        &root,
+        "src/main.co",
+        r#"using Arithmetic : answer;
+using cloth.Console : println;
+using cloth.io.fs.File : File;
+pub fn<int> main(string[] args) {
+    def file = File::new("asset.txt");
+    if (file.open() != null) return 5;
+    file::delete;
+    if (args::size != 3) return 6;
+    println(args[0]);
+    println(args[1]);
+    println(args[2]);
+    return answer();
+}
+"#,
+    );
+    let args = ["--", "two words π", "--help", ""];
+    let output = shuttle(&root.join("src"), "run")
+        .args(args)
+        .output()
+        .unwrap();
+    assert_program(output, 42, "two words π\n--help\n\n");
+    let triple = fs::read_dir(root.join("out"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    assert!(triple.join("arithmetic-lib.o").is_file());
+    let inspect = triple.join(format!("inspect{}", env::consts::EXE_SUFFIX));
+    run(&inspect, 7, "");
+
+    write(&root, "src/inspect.co", "pub fn<int> main() = 8;\n");
+    write(
+        &root,
+        "Unused/src/api.co",
+        "pub fn<int> broken() = missing();\n",
+    );
+    let failed = shuttle(&work.0, "run")
+        .arg("hello π")
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(failed.stdout.is_empty());
+    failure(failed, "missing");
+    run(&inspect, 7, "");
+}
+
+#[test]
+fn run_selects_only_executables_and_inherits_standard_input() {
+    let work = Directory::new("run targets");
+    let app = work.0.join("app");
+    failure(shuttle(&work.0, "run").output().unwrap(), "no build.k");
+    write(&app, "src/api.co", "pub fn<int> value() = 1;\n");
+    let library = "target library entry=\"src/api.co\"";
+    let echo = "target executable name=\"echo\" entry=\"src/echo.co\"";
+    let other = "target executable name=\"other\" entry=\"src/other.co\"";
+    write(&app, "build.k", &format!("project tools {{\n{library}\n}}"));
+    failure(
+        shuttle(&app, "run").output().unwrap(),
+        "no executable targets",
+    );
+    write(
+        &app,
+        "src/echo.co",
+        "using cloth.Console : input, println;\npub fn<int> main() {\n    println(input());\n    return 19;\n}\n",
+    );
+    write(&app, "src/other.co", "pub fn<int> main() = 23;\n");
+    write(
+        &app,
+        "build.k",
+        &format!("project tools {{\n{library}\n{echo}\n{other}\n}}"),
+    );
+    failure(
+        shuttle(&app, "run").output().unwrap(),
+        "available executables: echo, other",
+    );
+    failure(
+        shuttle(&app, "run")
+            .args(["--target", "tools"])
+            .output()
+            .unwrap(),
+        "is a library",
+    );
+    failure(
+        shuttle(&app, "run")
+            .args(["--target", "unknown"])
+            .output()
+            .unwrap(),
+        "unknown executable",
+    );
+    assert!(!app.join("build").exists());
+    assert_program(
+        shuttle(&work.0, "run")
+            .args(["app/src", "--target", "other"])
+            .output()
+            .unwrap(),
+        23,
+        "",
+    );
+
+    write(
+        &app,
+        "build.k",
+        &format!("project tools {{\n{library}\n{echo}\n}}"),
+    );
+    let mut child = shuttle(&work.0, "run")
+        .args(["--manifest-path", "app/build.k"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"from stdin\n")
+        .unwrap();
+    assert_program(child.wait_with_output().unwrap(), 19, "from stdin\n");
+}
+
+#[test]
+fn whole_project_runs_keep_each_executables_library_bindings() {
+    let work = Directory::new("run providers");
+    let root = &work.0;
+    let api = root.join("api");
+    let library = "project Shared { target library entry=\"src/api.co\" }";
+    write(&api, "build.k", library);
+    write(&api, "src/api.co", "pub fn<int> value() = 10;\n");
+    let prebuilt = artifact(&mut build(&api));
+    write(&api, "src/api.co", "pub fn<int> value() = 20;\n");
+    let wrapper = |name: &str, provider: &str, prebuilt: bool| {
+        format!(
+            r#"project "{name}" {{
+        dependency "Shared" path="{provider}" prebuilt=#{prebuilt}
+        target library entry="src/api.co" {{ uses "Shared" }}
+    }}"#
+        )
+    };
+    for (name, prebuilt) in [("Left", true), ("Right", false)] {
+        write(
+            &root.join(name),
+            "build.k",
+            &wrapper(name, "../api", prebuilt),
+        );
+        write(
+            &root.join(name),
+            "src/api.co",
+            &format!("using Shared : value;\npub fn<int> from{name}() = value();\n"),
+        );
+        write(
+            root,
+            &format!("src/{name}.co"),
+            &format!("using {name} : from{name};\npub fn<int> main() = from{name}();\n"),
+        );
+    }
+    let manifest = r#"project app {
+        dependency "Left" path="Left"
+        dependency "Right" path="Right"
+        target executable entry="src/Left.co" { uses "Left" }
+        target executable name="second" entry="src/Right.co" { uses "Right" }
+    }"#;
+    write(root, "build.k", manifest);
+    assert_program(shuttle(root, "run").output().unwrap(), 10, "");
+    let second = root
+        .join("build")
+        .join(prebuilt.parent().unwrap().file_name().unwrap())
+        .join(format!("second{}", env::consts::EXE_SUFFIX));
+    run(&second, 20, "");
+
+    let v2 = root.join("v2");
+    write(&v2, "build.k", library);
+    write(&v2, "src/api.co", "pub fn<int> value() = 30;\n");
+    write(
+        &root.join("Right"),
+        "build.k",
+        &wrapper("Right", "../v2", false),
+    );
+    assert_program(
+        shuttle(root, "run")
+            .args(["--target", "second"])
+            .output()
+            .unwrap(),
+        30,
+        "",
+    );
+    write(
+        root,
+        "build.k",
+        &manifest.replace("uses \"Left\"", "uses \"Left\"; uses \"Right\""),
+    );
+    failure(
+        shuttle(root, "run").output().unwrap(),
+        "module 'Shared' is supplied by",
+    );
 }
 
 #[test]

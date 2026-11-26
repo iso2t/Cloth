@@ -152,19 +152,21 @@ impl Source<'_> {
     }
 
     fn identifier(&self, node: &KdlNode, name: &str) -> Result<String> {
-        let mut chars = name.chars();
-        if !chars
-            .next()
-            .is_some_and(|c| c == '_' || unicode_ident::is_xid_start(c))
-            || !chars.all(unicode_ident::is_xid_continue)
-        {
-            return Err(self.error(
+        identifier(name).ok_or_else(|| {
+            self.error(
                 node.span().offset(),
                 format!("module name '{name}' must be a Cloth identifier"),
-            ));
-        }
-        Ok(name.nfc().collect())
+            )
+        })
     }
+}
+
+pub fn identifier(name: &str) -> Option<String> {
+    let mut chars = name.chars();
+    let first = chars.next()?;
+    ((first == '_' || unicode_ident::is_xid_start(first))
+        && chars.all(unicode_ident::is_xid_continue))
+    .then(|| name.nfc().collect())
 }
 
 fn read<T>(
@@ -212,7 +214,7 @@ fn read<T>(
     decode(&source, node)
 }
 
-fn filename(name: &str) -> bool {
+pub fn filename(name: &str) -> bool {
     Path::new(name).file_name().is_some_and(|part| part == name)
         && !name.contains(['/', '\\', ':', '\0'])
 }

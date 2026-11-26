@@ -3,38 +3,96 @@
 Building Cloth projects with Shuttle
 ====================================
 
-Run ``shuttle build`` from a project directory containing ``build.k``.
-Shuttle reads KDL v2 manifests, invokes the Cloth compiler, and prints the
-path of the finished artifact. A project can keep its own sources in ``src/``.
+Use ``shuttle init`` to start a Cloth project and ``shuttle run`` to build and
+run it. Shuttle reads the KDL v2 manifest in ``build.k`` and invokes the
+Cloth compiler. Use ``shuttle build`` to build a single target and print its
+artifact path.
 
 A first executable
 ------------------
-
-Create ``build.k`` alongside the ``src/`` directory.
-
-.. code-block:: text
-
-   project "answer" version="0.1.0" {
-       target "executable" entry="src/main.co"
-   }
-
-Put the program in ``src/main.co``.
-
-.. code-block:: text
-
-   pub fn<int> main() = 42;
 
 From the Cloth checkout, build the compiler and runtime with ``make`` or
 ``mingw32-make`` and build Shuttle with
 ``cargo build --release --locked --manifest-path Shuttle/Cargo.toml``.
 Put ``shuttle`` and ``cloth`` on your path or pass the compiler path with
-``--compiler``. From the example project, ``shuttle build`` builds ``answer``
-(``answer.exe`` on Windows). Running it returns exit status 42.
+``--compiler``.
+
+.. code-block:: sh
+
+   shuttle init hello
+   cd hello
+   shuttle run
+
+The program prints ``Hello, world!``.
+With no path argument, ``shuttle init`` initializes the current directory.
+The directory name supplies the project name. Shuttle creates ``src/main.co``
+and the following ``build.k``. If either file already exists, initialization
+stops and preserves the existing files.
+
+.. code-block:: text
+
+   project "hello" version="0.1.0" {
+       target "executable" entry="src/main.co"
+   }
 
 A standalone library can use the same layout. Give the library target
 ``entry="src/api.co"`` and the kind ``"library"``. Its import name
 defaults to the project name. Set ``module="Arithmetic"`` to supply another
 Cloth identifier, for example when the project name contains a hyphen.
+
+Run a project
+-------------
+
+Shuttle looks for ``build.k`` in the given directory and its parents.
+With no path, it starts in the current directory. You can also pass the
+manifest file directly. Arguments after ``--`` go directly to the program.
+For example, from the Cloth checkout the calculator prints ``42``.
+
+.. code-block:: sh
+
+   shuttle run examples/calculator -- 6 '*' 7
+
+Shuttle builds every declared executable and library and compiles each
+included module with an ``api``, including unused APIs. A module that owns
+a target's entry file builds with that target. Each executable links its own
+``uses`` dependencies. All compilation and linking must succeed before the
+program starts.
+
+Shuttle runs the executable that inherits the project name, or the sole
+executable when there is only one. To choose among several named executables,
+use ``shuttle run --target NAME``. The program starts in the project directory,
+inherits standard input, output, and error, and supplies Shuttle's exit status.
+``run`` accepts the same manifest and toolchain options as ``build``.
+
+Add a module to a project
+-------------------------
+
+Run this command from the project directory or one of its subdirectories.
+
+.. code-block:: sh
+
+   shuttle init --module Arithmetic
+
+Shuttle finds the nearest ``build.k`` and adds ``include "Arithmetic"``.
+The new ``Arithmetic/`` directory at the project root contains ``module.k``
+and ``src/api.co``. The name must be a Cloth identifier available in the project.
+
+The generated API exports ``answer()``. To call it from the executable,
+add a ``uses`` declaration to its target in ``build.k``.
+
+.. code-block:: text
+
+   target "executable" entry="src/main.co" {
+       uses "Arithmetic"
+   }
+
+Use the exported function in ``src/main.co``, then run ``shuttle run``.
+The command returns exit status 42.
+
+.. code-block:: text
+
+   using Arithmetic : answer;
+   pub fn<int> main() = answer();
 
 Build an executable and a library
 ---------------------------------
@@ -75,7 +133,8 @@ Shuttle builds the modules reached through ``uses``. To use a module from
 a project-owned entry such as ``src/main.co``, put ``uses`` inside that
 ``target`` node.
 
-To build both targets, start in the Cloth checkout and enter the example directory.
+To build either target on its own, start in the Cloth checkout and enter
+the example directory.
 
 .. code-block:: sh
 
