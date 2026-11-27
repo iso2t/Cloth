@@ -31,7 +31,6 @@ utf8proc_object := $(BUILD_DIR)/obj/ThirdParty/utf8proc/utf8proc.o
 objects := $(addprefix $(BUILD_DIR)/obj/,$(obj-y)) \
            $(addprefix $(BUILD_DIR)/obj/Diagnostics/,$(diagnostics-obj-y)) \
            $(addprefix $(BUILD_DIR)/obj/Backend/,$(backend-obj-y)) \
-           $(addprefix $(BUILD_DIR)/obj/Runtime/,$(runtime-obj-y)) \
            $(musubi_object) $(utf8proc_object)
 program := $(BUILD_DIR)/cloth$(exe_suffix)
 
@@ -62,12 +61,6 @@ $(BUILD_DIR)/obj/Diagnostics/%.o: Diagnostics/src/%.cpp Makefile compile_flags.t
 $(BUILD_DIR)/obj/Backend/%.o: Backend/src/%.cpp Makefile Backend/Kbuild compile_flags.txt
 	@$(make_dir)
 	$(CXX) @compile_flags.txt $(CPPFLAGS) $(backend_cppflags) $(CXXFLAGS) -MMD -MP -c "$<" -o "$@"
-
-$(BUILD_DIR)/obj/Runtime/text.o: private override CPPFLAGS += -IThirdParty/utf8proc -DUTF8PROC_STATIC
-
-$(BUILD_DIR)/obj/Runtime/%.o: Runtime/src/%.c Makefile Runtime/Kbuild
-	@$(make_dir)
-	$(CC) -std=c11 -IRuntime/include $(CPPFLAGS) $(CFLAGS) -MMD -MP -c "$<" -o "$@"
 
 $(musubi_object): ThirdParty/musubi/src/musubi_impl.c Makefile
 	@$(make_dir)

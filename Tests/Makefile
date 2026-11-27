@@ -35,7 +35,9 @@ unit_obj_dir := $(BUILD_DIR)/obj/Tests
 unit_objects := $(addprefix $(unit_obj_dir)/,$(unit_sources:.cpp=.o))
 backend_unit_objects := $(filter $(unit_obj_dir)/Backend/%,$(unit_objects))
 gtest_objects := $(addprefix $(unit_obj_dir)/googletest/,gtest-all.o gtest_main.o)
-unit_cloth_objects := $(filter-out $(BUILD_DIR)/obj/cloth.o,$(objects))
+# The host Unicode digit test uses text.o and its array and error helpers.
+unit_runtime_objects := $(addprefix $(unit_obj_dir)/Runtime/,text.o array.o errors.o)
+unit_cloth_objects := $(filter-out $(BUILD_DIR)/obj/cloth.o,$(objects)) $(unit_runtime_objects)
 unit_program := $(BUILD_DIR)/Tests/cloth-unit$(exe_suffix)
 unit_cxxflags = @compile_flags.txt $(CPPFLAGS) $(CXXFLAGS) $(gtest_thread_flags) -I"$(gtest_dir)/include"
 
@@ -54,11 +56,17 @@ $(unit_objects): $(unit_obj_dir)/%.o: Tests/%.cpp Makefile Tests/Makefile compil
 	@$(make_dir)
 	$(CXX) $(unit_cxxflags) -MMD -MP -c "$<" -o "$@"
 
+$(unit_obj_dir)/Runtime/text.o: private override CPPFLAGS += -IThirdParty/utf8proc -DUTF8PROC_STATIC
+
+$(unit_runtime_objects): $(unit_obj_dir)/Runtime/%.o: Runtime/src/%.c Makefile Tests/Makefile
+	@$(make_dir)
+	$(CC) -std=c11 -IRuntime/include $(CPPFLAGS) $(CFLAGS) -MMD -MP -c "$<" -o "$@"
+
 $(unit_program): $(unit_objects) $(gtest_objects) $(unit_cloth_objects) Makefile Tests/Makefile Compiler/Kbuild Diagnostics/Kbuild Backend/Kbuild
 	@$(make_dir)
 	$(CXX) $(LDFLAGS) $(unit_objects) $(gtest_objects) $(unit_cloth_objects) $(gtest_thread_flags) $(backend_ldlibs) $(LDLIBS) -o "$@"
 
--include $(unit_objects:.o=.d) $(gtest_objects:.o=.d)
+-include $(unit_objects:.o=.d) $(unit_runtime_objects:.o=.d) $(gtest_objects:.o=.d)
 
 .PHONY: test test-build test-driver test-lexer test-parser test-diagnostics test-file test-unit test-shuttle
 .PHONY: lit-all lit-lexer lit-diagnostics unit-all unit-lexer unit-diagnostics
