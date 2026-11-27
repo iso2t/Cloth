@@ -58,9 +58,9 @@ Object emission and runtime errors
 ----------------------------------
 
 A program can pass source checking and report an error when compiled
-with ``--emit-object``. For example, the frontend accepts the type test
-``1 is string``. Object emission reports ``C4040`` at the expression
-because this type test has no native implementation. See
+with ``--emit-object``. For example, the frontend accepts ``1 -> Number``.
+Object emission reports ``C4040`` at the cast because materializing an
+integer as an interface value requires native boxing. See
 `Emitting and linking object files <Objects.rst>`_.
 
 A runtime error comes from the linked program. In the `division example

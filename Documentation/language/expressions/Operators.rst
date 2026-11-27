@@ -208,6 +208,14 @@ In ``item is Gauge`` the target is a type. For a class's named states the
 same syntax tests the active state, as in `State tests
 <../objects/States.rst>`_.
 
+For strings and structs, the built-in ``is`` test evaluates the operand
+once and compares its concrete Cloth type with the target. Two structs
+with identical fields still have distinct types, and the type arguments
+of a generic struct must match. For ``Point? p``, ``p is Point`` is true
+when ``p`` holds a point, including one with all-zero fields. An absent
+value matches a nullable string or struct target. See the `native type
+test example <../../../Tests/Compiler/Driver/Inputs/value-type-tests.co>`_.
+
 Default equality
 ----------------
 

@@ -9,9 +9,11 @@ typedef<struct> Matcher { pub operator<string> is() = true; }
 
 fn<bool> isString(string text) = text is string;
 fn<bool> isPoint(Point point) = point is Point;
+fn<bool> isNullablePoint(string? text) = text is Point?;
 fn<bool> matches<T, U>(T value) = value is U;
 fn<string> readText() { println(1); return ""; }
 fn<Point> readPoint() { println(2); return {0}; }
+fn<int> early(bool stop) = if ((if (stop) { return 42; } else "") is string) 7 else 1;
 
 pub fn<int> main() {
     Point point := {0};
@@ -24,8 +26,9 @@ pub fn<int> main() {
     if (!matches<Point?, Point>(point) || matches<Point?, Point>(null)) return 5;
     if (matches<Point?, Other>(point) || matches<Point?, Other>(null)) return 6;
     if (!matches<Point?, Point?>(null) || !matches<Point, Point?>(point)) return 7;
-    if (!matches<string?, Point?>(null) || matches<string?, Point?>("")) return 8;
+    if (!isNullablePoint(null) || isNullablePoint("")) return 8;
     Matcher custom := {};
     if (!(custom is string)) return 9;
-    return 42;
+    if (early(false) != 7) return 10;
+    return early(true);
 }

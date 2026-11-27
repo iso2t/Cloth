@@ -559,30 +559,24 @@ LLVMValueRef FunctionLowering::lowerExpression (const cloth::Expression &express
 	if (const auto *tc_test = dynamic_cast<const cloth::TypeCheckExpression *>(&expression)) {
 		if (const auto it_test = bf_body.valueTests.find(tc_test); it_test != bf_body.valueTests.end()) return lowerBinary(*it_test->second);
 		if (!ei_value.fallsThrough) return lowerExpression(*tc_test->operand);
-		if (ei_value.testedType && ei_value.testedType->objectReference() && !ei_value.argumentContract) {
-			const auto        &source = ef_expressions.at(tc_test->operand.get());
-			const LLVMValueRef value  = lowerExpression(*tc_test->operand);
-			if (!source.fallsThrough) return nullptr;
-			const auto &type = source.types.front();
-			if (!(type.nullable() ? type.element() : type).objectReference()) {
-				if (type.nullable() && ei_value.primitiveMatchesTest) return detail::nullable::presence(ir_builder, value);
-				return LLVMConstInt(sl_scalars.type(*rt_result), ei_value.primitiveMatchesTest, false);
-			}
-			return detail::objectCall(ir_builder, mf_functions.module, detail::ObjectOperation::Is,
-			                          { handleOrZero(value, type), mf_functions.objects.typeTag(*ei_value.testedType),
-			                            LLVMConstInt(sl_scalars.type(*rt_result), bf_body.isDirectReceiver(*tc_test->operand), false) });
-		}
-		if (ei_value.testedType) {
-			const auto &target     = *ei_value.testedType;
-			const auto  targetType = target.nullable() ? target.element() : target;
-			if (valueReceiver(targetType)) {
-				const auto        &source  = ef_expressions.at(tc_test->operand.get()).types.front();
+		if (ei_value.testedType && !ei_value.argumentContract) {
+			const auto &target        = *ei_value.testedType;
+			const auto  targetPayload = target.nullable() ? target.element() : target;
+			if (target.objectReference() || valueReceiver(targetPayload)) {
 				const LLVMValueRef operand = lowerExpression(*tc_test->operand);
-				const bool         matches = (source.nullable() ? source.element() : source) == targetType;
-				// A present value matches by its Cloth type. An absent value matches a nullable target.
-				if (!source.nullable() || matches == target.nullable()) return LLVMConstInt(sl_scalars.type(*rt_result), matches, false);
+				if (!operand) return nullptr;
+				const auto       &source        = ef_expressions.at(tc_test->operand.get()).types.front();
+				const auto        sourcePayload = source.nullable() ? source.element() : source;
+				const LLVMTypeRef boolean       = sl_scalars.type(*rt_result);
+				if (target.objectReference() && sourcePayload.objectReference())
+					return detail::objectCall(ir_builder, mf_functions.module, detail::ObjectOperation::Is,
+					                          { handleOrZero(operand, source), mf_functions.objects.typeTag(target),
+					                            LLVMConstInt(boolean, bf_body.isDirectReceiver(*tc_test->operand), false) });
+				const bool matchesPresent = target.objectReference() ? ei_value.primitiveMatchesTest : sourcePayload == targetPayload;
+				const bool matchesAbsent  = target.nullable();
+				if (!source.nullable() || matchesPresent == matchesAbsent) return LLVMConstInt(boolean, matchesPresent, false);
 				const LLVMValueRef present = detail::nullable::presence(ir_builder, operand);
-				return matches ? present : sl_scalars.boolean(LLVMBuildIsNull(ir_builder, present, ""));
+				return matchesPresent ? present : sl_scalars.boolean(LLVMBuildIsNull(ir_builder, present, ""));
 			}
 		}
 	}
