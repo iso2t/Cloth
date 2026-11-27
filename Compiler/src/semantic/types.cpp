@@ -650,7 +650,7 @@ ResolvedType Analyzer::boundShape (const ResolvedType &value) const {
 		if (!s_active.insert(rt_result.parameter).second)
 			fail(Code::InvalidGenericBound, tr_shape->getSpan(), "Cyclic array bound", &rt_result.parameter->name);
 		ResolvedType rt_required = substitute(type(*tr_shape, *m_genericOwners.at(pc_contract.parameter)), pc_contract.arguments);
-		if (tr_shape->getArraySuffixes().empty() || (sym_number && rt_required.declaration == sym_number)) {
+		if (tr_shape->getArraySuffixes().empty() || (program.numberInterface && rt_required.declaration == program.numberInterface)) {
 			rt_required.name        = rt_result.name;
 			rt_required.parameter   = rt_result.parameter;
 			rt_required.declaration = nullptr;
@@ -666,8 +666,8 @@ ResolvedType Analyzer::boundShape (const ResolvedType &value) const {
 
 bool Analyzer::numeric (const ResolvedType &value) const {
 	if (value.integer() || value.floating()) return true;
-	if (!sym_number || !value.parameter || !value.suffixes.empty()) return false;
-	return std::ranges::any_of(typeBounds(value), [&] (const ResolvedType &bound) { return bound.declaration == sym_number && bound.suffixes.empty(); });
+	if (!program.numberInterface || !value.parameter || !value.suffixes.empty()) return false;
+	return std::ranges::any_of(typeBounds(value), [&] (const ResolvedType &bound) { return program.isNumber(bound); });
 }
 
 ResultTypes Analyzer::applicationsOf (const ResolvedType &actual, const Symbol &definition) const {
@@ -687,7 +687,7 @@ ResultTypes Analyzer::applicationsOf (const ResolvedType &actual, const Symbol &
 
 bool Analyzer::referenceType (const ResolvedType &type) const {
 	if (!type.suffixes.empty()) return false;
-	if (sym_number && type.declaration == sym_number) return false;
+	if (program.isNumber(type)) return false;
 	if (!type.parameter) return asClass(type.declaration) || asInterface(type.declaration);
 	const ParameterContract pc_contract = parameterContract(*type.parameter);
 	for (const TypeParameterBound &tp_bound : pc_contract.parameter->bounds) {
@@ -695,8 +695,7 @@ bool Analyzer::referenceType (const ResolvedType &type) const {
 		if (!tr_bound) return true;
 		const ResolvedType rt_bound   = substitute(this->type(*tr_bound, *m_genericOwners.at(pc_contract.parameter)), pc_contract.arguments);
 		const ResolvedType rt_payload = rt_bound.nullable() ? rt_bound.element() : rt_bound;
-		if (rt_payload.declaration != sym_number && rt_payload.suffixes.empty() &&
-		    (asClass(rt_payload.declaration) || asInterface(rt_payload.declaration)))
+		if (!program.isNumber(rt_payload) && rt_payload.suffixes.empty() && (asClass(rt_payload.declaration) || asInterface(rt_payload.declaration)))
 			return true;
 	}
 	return false;
@@ -798,7 +797,7 @@ bool Analyzer::accepts (const ResolvedType &expected, const ResolvedType &actual
 		return false;
 	}
 	if (expected.convertsIntegerToBool(actual)) return true;
-	if (sym_number && expected.declaration == sym_number && expected.suffixes.empty() && numeric(actual)) return true;
+	if (program.isNumber(expected) && numeric(actual)) return true;
 	if (expected.array() && actual.array()) {
 		if (expected.suffixes.back() != arraySuffix() && actual.suffixes.back() != arraySuffix() &&
 		    expected.suffixes.back() != actual.suffixes.back()) {
@@ -879,10 +878,10 @@ void Analyzer::resolveDeclaration (const Symbol &symbol) {
 				if (intrinsic->parent)
 					fail(Code::InvalidIntrinsicBinding, intrinsic->parent->getSpan(), "This primitive family has no parent type");
 			} else {
-				if (!intrinsic->parent || !sym_number || valueType(*intrinsic->parent) != ownerType(*sym_number))
+				if (!intrinsic->parent || !program.numberInterface || valueType(*intrinsic->parent) != ownerType(*program.numberInterface))
 					fail(Code::InvalidIntrinsicBinding, intrinsic->parent ? intrinsic->parent->getSpan() : intrinsic->name.getSpan(),
 					     std::format("The {} family must implement the standard library Number interface", primitiveFamilyName(family)));
-				info.parents.push_back(ownerType(*sym_number));
+				info.parents.push_back(ownerType(*program.numberInterface));
 			}
 		} else if (const auto *id = dynamic_cast<const InterfaceDeclaration *>(td)) {
 			for (const TypeReference &parent : id->parents) {
@@ -906,11 +905,11 @@ void Analyzer::checkBounds (const ResolvedType &type, const TokenSpan &where, co
 bool Analyzer::acceptsBound (const ResolvedType &required, const ResolvedType &actual) const {
 	if (required.nullable() != actual.nullable()) return false;
 	if (!(required.nullable() ? required.element() : required).array()) return accepts(required, actual);
-	if (!sym_number || required.declaration != sym_number) return required == actual;
+	if (!program.numberInterface || required.declaration != program.numberInterface) return required == actual;
 	if (required.suffixes != actual.suffixes) return false;
 	ResolvedType rt_leaf = actual;
 	rt_leaf.suffixes.clear();
-	return accepts(ownerType(*sym_number), rt_leaf);
+	return accepts(ownerType(*program.numberInterface), rt_leaf);
 }
 
 void Analyzer::checkBounds (const TypeParameterDeclaration &parameter, const Substitutions &arguments, const Symbol &use, const TokenSpan &where) const {
@@ -1067,7 +1066,7 @@ void Analyzer::checkDeclaredBounds (const TypeParameterDeclaration &parameter, c
 			const auto        &tr_bound    = std::get<TypeReference>(tp_bound.value);
 			const ResolvedType rt_required = type(tr_bound, symbol);
 			const ResolvedType rt_payload  = rt_required.nullable() ? rt_required.element() : rt_required;
-			if (rt_payload.array() || (sym_number && rt_payload.declaration == sym_number)) {
+			if (rt_payload.array() || program.isNumber(rt_payload)) {
 				if (parameter.bounds.size() > 1)
 					fail(Code::InvalidGenericBound, tr_bound.getSpan(), rt_required.spelling() + " must be the only bound",
 					     &parameter.name);

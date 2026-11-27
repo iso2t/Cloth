@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using Geometry : origin, optionalOrigin, sample, observation;
+
+pub fn<int> main() {
+    if (origin().y != 7) return 1;
+    def value := sample();
+    if (!value.valid || value.count != 3 || value.weight != 0.5 || value.tag != 's' || value.correction != -12) return 2;
+    if (optionalOrigin(false) != null || optionalOrigin(true)?.x != 42) return 3;
+    def reading, point := observation();
+    if (reading.value != 9 || point.x != 42) return 4;
+    return origin().x;
+}

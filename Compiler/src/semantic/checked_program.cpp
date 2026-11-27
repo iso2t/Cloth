@@ -376,7 +376,7 @@ void Analyzer::registerScope (const SymbolScope &scope, const std::size_t file, 
 				const SourceFile *sf_source = program.units[file]->getSourceUnit().getSource();
 				std::error_code   ec_file;
 				if (sf_source && std::filesystem::equivalent(sf_source->getPath(), program.standardLibraryRoot / NUMERIC_MODULE, ec_file))
-					sym_number = &sym;
+					program.numberInterface = &sym;
 			}
 			if (const auto *intrinsic = asIntrinsicType(&sym)) m_genericOwners.emplace(&intrinsic->self, &sym);
 			if (sym.kind == SymbolKind::Constructor && dynamic_cast<const PrimaryConstructorDeclaration *>(callable(sym))) {

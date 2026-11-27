@@ -85,9 +85,15 @@ editing a function body preserves the interface. Shuttle checks these
 records when linking a prebuilt, including calls made inside that object
 to another library.
 
-The native export ABI supports integers, floats, booleans, characters
-and strings, their nullable forms, and multiple results of those types.
-Functions may also return ``void``. An unsupported concrete export is
+Native library parameters accept integers, floats, booleans, characters,
+strings, and their nullable forms. A function can return any of these types
+or a struct whose fields are integers, floats, booleans, or characters.
+Both the struct and its scalar fields can be nullable. Multiple results
+can include a struct, and a function can also return ``void``.
+The `Geometry consumer <../../../Tests/Compiler/Driver/Inputs/native-library/geometry-main.co>`_
+reads ``origin().x`` from a separately compiled library.
+
+An unsupported concrete export is
 diagnosed at its declaration. Ordinary source imports still support
 the full set of types the backend can lower within one object.
 
@@ -140,6 +146,16 @@ types inferred or written at the call. A numeric bound can use the
 standard library's ``Number``. Arithmetic uses the
 concrete integer width and signedness, floating-point operation, or selected
 operator body. See `generic types and functions <../../language/types/Generics.rst>`_.
+
+A function can also return a concrete numeric value as ``Number``. Passing that
+value to a ``Number`` parameter preserves its concrete type for ``is`` checks.
+Two boxed primitives compare equal when their concrete types match and their
+values compare equal under that type's ``==`` operator.
+The native representation stores a signed 32-bit ``int`` directly in the
+interface handle. For other primitive numeric types the runtime shares one
+immutable box per distinct type and bit pattern until the process exits.
+A class that implements ``Number`` uses its existing object handle. See the
+`boxing example <../../../Tests/Compiler/Driver/Inputs/boxed-number.co>`_.
 
 For a virtual or interface call, the receiver's concrete class supplies
 the implementation. The type at the call site supplies the argument
@@ -357,9 +373,8 @@ visits its snapshot while clearing the list, and exits with status 42.
 See the `collection consumer <../../../Tests/Compiler/Driver/Inputs/stdlib-collections.co>`_
 and the `standard library guide <../../../Stdlib/README.md>`_.
 
-The frontend also accepts primitive boxing into an interface value and
-growable arrays with nullable rows.
-A reachable use of these forms can produce an object emission diagnostic.
+The frontend also accepts growable arrays with nullable rows.
+A reachable use of this array type can produce an object emission diagnostic.
 See the `driver tests <../../../Tests/Compiler/Driver/emit-object-errors.test>`_.
 
 Runtime dependencies
@@ -393,8 +408,9 @@ C compiler's link command. For the effects of printing and exiting, see
   <../../../Runtime/src/errors.c>`_ for capacity, allocation, bounds, and length errors.
   Rectangular growable arrays also use `Runtime/src/array_rows.c
   <../../../Runtime/src/array_rows.c>`_ to manage the row buffers.
-* Class allocation, access, deletion, method and state dispatch, and struct
-  methods that check their receiver's owning object use `Runtime/src/object.c
+* Boxed numeric type tests and equality, class allocation, access, deletion,
+  method and state dispatch, and struct methods that check their receiver's
+  owning object use `Runtime/src/object.c
   <../../../Runtime/src/object.c>`_. Pass ``-IRuntime/include`` when
   compiling the runtime from the repository root. Classes with growable
   array fields or growable state payloads also use the array runtime.

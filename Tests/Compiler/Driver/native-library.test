@@ -71,7 +71,13 @@
 # RUN: echo "pub { fn<int> first(int[] values) = values[0]; }" > "%t.dir/unsupported.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --kind library --module-name Buffer --src "%t.dir/unsupported.co" --emit-object "%t.dir/unsupported.o" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=ABI --input-file "%t.err"
-# ABI: A native library export requires scalar or string parameters and results
+# RUN: echo "pub typedef<struct> Point { pub int x; } pub fn<int> read(Point value) = value.x;" > "%t.dir/struct-parameter.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind library --module-name Geometry --src "%t.dir/struct-parameter.co" --emit-object "%t.dir/unsupported.o" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=ABI --input-file "%t.err"
+# RUN: echo "pub typedef<struct> Row { pub int[] cells; } pub fn<Row> row() = { [42] };" > "%t.dir/array-field.co"
+# RUN: %expect_exit --empty-stdout 1 %cloth --kind library --module-name Geometry --src "%t.dir/array-field.co" --emit-object "%t.dir/unsupported.o" 2> "%t.err"
+# RUN: %filecheck "%s" --check-prefix=ABI --input-file "%t.err"
+# ABI: [C4030] Error: A native library export requires scalar or string parameters and scalar, string, or scalar-field struct results
 
 # RUN: %cloth --kind library --module-name Arithmetic --target-bits 32 --src "%S/Inputs/native-library/api.co" --emit-object "%t.dir/lib32.o"
 # RUN: %cloth --kind library --module-name Arithmetic --target-bits 64 --src "%S/Inputs/native-library/api.co" --emit-object "%t.dir/lib64.o"
@@ -79,3 +85,12 @@
 # RUN: %llvm_readobj --file-headers "%t.dir/lib64.o" | %filecheck "%s" --check-prefix=BITS64
 # BITS32: AddressSize: 32bit
 # BITS64: AddressSize: 64bit
+
+# RUN: %cloth --kind library --module-name Geometry --src "%S/Inputs/native-library/geometry.co" --emit-object "%t.dir/geometry.o"
+# RUN: %cloth --kind executable --extern "Geometry=%S/Inputs/native-library/geometry.co" --src "%S/Inputs/native-library/geometry-main.co" --emit-object "%t.dir/geometry-main.o"
+# RUN: %cc "%t.dir/geometry-main.o" "%t.dir/geometry.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+# RUN: %cloth --kind library --module-name Geometry --target-bits 32 --src "%S/Inputs/native-library/geometry.co" --emit-object "%t.dir/geometry32.o"
+# RUN: %cloth --kind executable --target-bits 32 --extern "Geometry=%S/Inputs/native-library/geometry.co" --src "%S/Inputs/native-library/geometry-main.co" --emit-object "%t.dir/geometry-main32.o"
+# RUN: %cloth --kind library --module-name Geometry --target-bits 64 --src "%S/Inputs/native-library/geometry.co" --emit-object "%t.dir/geometry64.o"
+# RUN: %cloth --kind executable --target-bits 64 --extern "Geometry=%S/Inputs/native-library/geometry.co" --src "%S/Inputs/native-library/geometry-main.co" --emit-object "%t.dir/geometry-main64.o"

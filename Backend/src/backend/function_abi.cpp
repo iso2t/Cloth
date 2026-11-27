@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -38,14 +39,16 @@ const cloth::FunctionDeclaration *exportedFunction (const cloth::Symbol &symbol)
 	return fn && !fn->typeParameters ? fn : nullptr;
 }
 
-bool exportType (const cloth::ResolvedType &type) {
-	const cloth::ResolvedType leaf = type.nullable() ? type.element() : type;
-	return !leaf.declaration && leaf.suffixes.empty() &&
-	       (leaf.integer() || leaf.floating() || leaf == cloth::ResolvedType(cloth::KBoolean) || leaf == cloth::ResolvedType(cloth::KCharacter) ||
-	        leaf == cloth::ResolvedType(cloth::KString));
+bool exportScalar (const cloth::ResolvedType &leaf) {
+	return leaf.integer() || leaf.floating() || leaf == cloth::ResolvedType(cloth::KBoolean) || leaf == cloth::ResolvedType(cloth::KCharacter);
 }
 
-// Hex-encoded UTF-8 components cannot contain the separator. Paths and declaration order never enter the link name.
+bool exportType (const cloth::ResolvedType &type) {
+	const auto leaf = type.nullable() ? type.element() : type;
+	return exportScalar(leaf) || leaf == cloth::ResolvedType(cloth::KString);
+}
+
+// Hex-encoded UTF-8 identifiers keep the separator unambiguous across source locations and overload orderings.
 void appendComponent (std::string &name, std::string_view part) {
 	static constexpr char digits[] = "0123456789abcdef";
 	name += '_';
@@ -61,14 +64,72 @@ void appendExportType (std::string &name, const cloth::ResolvedType &type) {
 	if (type.nullable()) name += "_q";
 }
 
-std::optional<std::string> exportName (const std::string &module, const cloth::Symbol &symbol, const cloth::DeclarationInfo &signature) {
-	if (!std::ranges::all_of(signature.parameters, exportType) || !std::ranges::all_of(signature.returns, exportType)) return std::nullopt;
+// Back-references to shared generic applications use their first position in this traversal.
+void appendStructTypeName (std::string &name, const cloth::ResolvedType &type, const cloth::CheckedProgram &program,
+                           std::map<cloth::ResolvedType, std::size_t> &seen) {
+	if (!type.arguments().empty()) {
+		const auto [it, inserted] = seen.try_emplace(type, seen.size());
+		if (!inserted) {
+			name += "_ref" + std::to_string(it->second);
+			return;
+		}
+	}
+	// The implicit Object root has no declaring source module.
+	if (type.declaration && type.declaration->name.getSpan().source) {
+		const auto &info = program.declarations.at(type.declaration);
+		if (const auto module = program.nativeModules.find(info.file); module != program.nativeModules.end()) {
+			name += "_module";
+			appendComponent(name, module->second);
+		}
+		// Inner-to-outer scope order also distinguishes two nested declarations with the same name.
+		for (const cloth::Symbol *owner = info.owner; owner; owner = program.declarations.at(owner).owner) {
+			name += "_in";
+			appendComponent(name, owner->name.getNameKey());
+		}
+	}
+	appendComponent(name, type.name);
+	name += "_w" + std::to_string(type.width);
+	for (const auto &suffix : type.suffixes) appendComponent(name, suffix);
+	name += "_args" + std::to_string(type.arguments().size());
+	for (const auto &argument : type.arguments()) appendStructTypeName(name, argument, program, seen);
+}
+
+bool appendExportResult (std::string &name, const cloth::ResolvedType &type, const cloth::CheckedProgram &program) {
+	if (exportType(type)) {
+		appendExportType(name, type);
+		return true;
+	}
+	const auto payload = type.nullable() ? type.element() : type;
+	const auto layout  = program.structLayouts.find(payload);
+	if (layout == program.structLayouts.end() || !std::ranges::all_of(layout->second.fields, [] (const auto &field) {
+		    return exportScalar(field.type.nullable() ? field.type.element() : field.type);
+	    }))
+		return false;
+
+	// Scalar-field structs use their checked storage layout as the by-value return representation.
+	std::map<cloth::ResolvedType, std::size_t> seen;
+	name += "_struct";
+	appendStructTypeName(name, type, program, seen);
+	name += "_size" + std::to_string(layout->second.storage.size) + "_align" + std::to_string(layout->second.storage.alignment);
+	for (const auto &field : layout->second.fields) {
+		appendComponent(name, field.symbol->name.getNameKey());
+		appendExportType(name, field.type);
+		name += "_o" + std::to_string(layout->second.fieldOffsets.at(field.symbol));
+	}
+	name += "_end";
+	return true;
+}
+
+std::optional<std::string> exportName (const std::string &module, const cloth::Symbol &symbol, const cloth::CheckedProgram &program) {
+	const auto &signature = program.declarations.at(&symbol);
+	if (!std::ranges::all_of(signature.parameters, exportType)) return std::nullopt;
 	std::string s_name = "cloth_v1";
 	appendComponent(s_name, module);
 	appendComponent(s_name, symbol.name.getNameKey());
 	for (const cloth::ResolvedType &type : signature.parameters) appendExportType(s_name, type);
 	s_name += "_r";
-	for (const auto &type : signature.returns) appendExportType(s_name, type);
+	for (const auto &type : signature.returns)
+		if (!appendExportResult(s_name, type, program)) return std::nullopt;
 	return s_name;
 }
 
@@ -225,11 +286,12 @@ LLVMValueRef ModuleFunctions::declare (const cloth::Symbol &symbol, const cloth:
 	const auto  it_module = program.nativeModules.find(info.file);
 	const auto *fn_export = !instance && !info.owner && it_module != program.nativeModules.end() ? exportedFunction(symbol) : nullptr;
 	if (fn_export) {
-		auto name = exportName(it_module->second, symbol, info);
+		auto name = exportName(it_module->second, symbol, program);
 		if (!name)
-			throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedFunctionAbi,
-			                           "A native library export requires scalar or string parameters and results",
-			                           { { .span = symbol.name.getSpan(), .text = "unsupported native export signature" } });
+			throw cde::ClothDiagnostic(
+			        cde::DiagnosticCode::UnsupportedFunctionAbi,
+			        "A native library export requires scalar or string parameters and scalar, string, or scalar-field struct results",
+			        { { .span = symbol.name.getSpan(), .text = "unsupported native export signature" } });
 		s_name = std::move(*name);
 	}
 	if (index) s_name += ".default." + std::to_string(*index);
@@ -264,7 +326,7 @@ void ModuleFunctions::recordInterfaces () {
 				const auto *fn = exportedFunction(symbol);
 				if (!fn) continue;
 				// An unused import may have an unsupported export. Such an API cannot match an emitted provider.
-				std::string signature = exportName(name, symbol, program.declarations.at(&symbol)).value_or("unsupported");
+				std::string signature = exportName(name, symbol, program).value_or("unsupported");
 				for (const auto &parameter : fn->parameters) {
 					appendComponent(signature, parameter.name.getNameKey());
 					if (parameter.defaultValue) signature += '?';

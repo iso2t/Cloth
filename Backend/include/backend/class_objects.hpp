@@ -21,6 +21,9 @@ enum class ObjectOperation {
 	Backing,
 	Delete,
 	Is,
+	NumberBox,
+	NumberIs,
+	NumberEqual,
 	Acquire,
 	Release,
 	CheckMutation,
@@ -53,14 +56,18 @@ class ClassObjects {
 	const cloth::ResolvedType &fieldType (const ClassStorage &owner, const cloth::Symbol &field) const;
 	LLVMValueRef               fieldAddress (LLVMBuilderRef builder, LLVMValueRef storage, const ClassStorage &owner, const cloth::Symbol &field);
 	LLVMValueRef               typeTag (const cloth::ResolvedType &type);
+	LLVMValueRef boxNumber (LLVMBuilderRef builder, const cloth::ResolvedType &primitive, const cloth::ResolvedType &number, LLVMValueRef value,
+	                        LLVMValueRef present);
 	LLVMValueRef               create (LLVMBuilderRef builder, const cloth::ResolvedType &type, ModuleFunctions &functions);
 
     private:
+	LLVMValueRef                                  numberType (const cloth::ResolvedType &primitive, const cloth::ResolvedType &number, unsigned bits);
 	void                                          describe (const cloth::ResolvedType &type, ClassStorage &storage, ModuleFunctions &functions);
 	LLVMModuleRef                                 mod_module;
 	const cloth::CheckedProgram                  &cp_program;
 	ValueTypes                                   &vt_types;
 	std::map<cloth::ResolvedType, ClassStorage>   m_classes;
 	std::map<cloth::ResolvedType, LLVMValueRef>   m_tags;
+	std::map<cloth::ResolvedType, LLVMValueRef>   m_numberTypes;
 };
 }

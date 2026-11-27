@@ -7,12 +7,25 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 struct Backing {
 	struct Backing *next;
 };
 
-enum Lifetime { Vacant, Live, Destroying };
+enum Lifetime { Vacant, Live, Destroying, BoxedNumber };
+
+struct NumberBox {
+	struct NumberBox      *next;
+	const ClothNumberType *type;
+	uint64_t               handle;
+	unsigned char          value[];
+};
+
+// Ordinary object handles have a nonzero generation and a nonzero slot.
+// The 2^32 handles from 1 through 2^32 encode every signed int without allocating.
+static const uint64_t    LAST_INLINE_INT = UINT64_C(1) << 32;
+static struct NumberBox *numberBuckets[1021];
 
 struct ObjectSlot {
 	uint32_t             generation;
@@ -79,6 +92,7 @@ static void shutdownRegistry (void) {
 	// Process shutdown releases native storage. Cloth destructor effects run at explicit deletion.
 	for (size_t i = 0; i < count; ++i) freeStorage(&slots[i]);
 	free(slots);
+	memset(numberBuckets, 0, sizeof(numberBuckets));
 	slots = NULL;
 	count = capacity = 0;
 	freeHead         = 0;
@@ -180,10 +194,58 @@ uint8_t clothRtObjectIs (const uint64_t handle, const void *type, const uint8_t 
 	return found;
 }
 
+uint64_t clothRtNumberBox (const ClothNumberType *type, const void *value, const uint8_t present) {
+	if (!present) return 0;
+	lockRegistry();
+	if (type->bytes > SIZE_MAX - sizeof(struct NumberBox)) failLocked("numeric value exceeds addressable memory");
+	const unsigned char *bytes = value;
+	uint32_t             hash  = (uint32_t)(uintptr_t)type->views[0];
+	for (size_t i = 0; i < type->bytes; ++i) hash = (hash ^ bytes[i]) * UINT32_C(16777619);
+	struct NumberBox **bucket = &numberBuckets[hash % (sizeof(numberBuckets) / sizeof(*numberBuckets))];
+	for (const struct NumberBox *box = *bucket; box; box = box->next) {
+		if (box->type == type && !memcmp(box->value, value, type->bytes)) {
+			const uint64_t handle = box->handle;
+			unlockRegistry();
+			return handle;
+		}
+	}
+	const uint32_t     index  = reserveSlot();
+	struct ObjectSlot *slot   = &slots[index - 1];
+	struct NumberBox  *box    = allocateBlock(&slot->blocks, sizeof(*box) + type->bytes, _Alignof(struct NumberBox));
+	const uint64_t     handle = ((uint64_t)slot->generation << 32) | index;
+	*box                      = (struct NumberBox){ .next = *bucket, .type = type, .handle = handle };
+	memcpy(box->value, value, type->bytes);
+	*bucket       = box;
+	slot->state   = BoxedNumber;
+	slot->types   = type->views;
+	slot->storage = box;
+	unlockRegistry();
+	return handle;
+}
+
+uint8_t clothRtNumberIs (const uint64_t value, const void *type, const uint8_t matchesInt, const uint8_t directSelf) {
+	if (value <= LAST_INLINE_INT) return value && matchesInt;
+	return clothRtObjectIs(value, type, directSelf);
+}
+
+uint8_t clothRtNumberEqual (const uint64_t left, const uint64_t right, const uint8_t leftSelf, const uint8_t rightSelf) {
+	if (!left || !right || (left <= LAST_INLINE_INT && right <= LAST_INLINE_INT)) return left == right;
+	lockRegistry();
+	const struct ObjectSlot *a = left > LAST_INLINE_INT ? lookup(left, leftSelf) : NULL;
+	const struct ObjectSlot *b = right > LAST_INLINE_INT ? lookup(right, rightSelf) : NULL;
+	const struct NumberBox  *x = a && a->state == BoxedNumber ? a->storage : NULL;
+	const struct NumberBox  *y = b && b->state == BoxedNumber ? b->storage : NULL;
+	unlockRegistry();
+	// Floating equality handles signed zeros and NaNs. Interned integer handles already compare by exact type and value.
+	if (x && y && x->type == y->type && x->type->equal) return x->type->equal(x->value, y->value);
+	return left == right;
+}
+
 void clothRtObjectDelete (const uint64_t handle, const uint64_t authority) {
 	if (!handle) return;
 	lockRegistry();
 	struct ObjectSlot *slot = lookup(handle, 0);
+	if (slot->state == BoxedNumber) failLocked("cannot delete a boxed number");
 	if (authority) lookup(authority, 1);
 	if (slot->owner != authority) failLocked("only the owning list can delete its object");
 	slot->state                   = Destroying;

@@ -226,7 +226,6 @@ class Analyzer {
 
     private:
 	bool                                             b_hasReferenceDeclarations = false;
-	const Symbol                                    *sym_number                 = nullptr;
 	std::map<PrimitiveFamily, const Symbol *>        m_primitiveFamilies;
 	const Symbol                                    *sym_owningList             = nullptr;
 	std::set<std::string, std::less<>>               s_operatorNames;

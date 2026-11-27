@@ -250,6 +250,8 @@ class FunctionLowering {
 	LoweredValue              objectField (const cloth::Symbol &field, const ObjectAccess &access, const cloth::ResolvedType *receiver = nullptr) const;
 	void                      validateReference (LLVMValueRef value, const cloth::ResolvedType &type, bool directSelf) const;
 	LLVMValueRef              equalObjects (const ObjectAccess &left, const ObjectAccess &right, bool nullable, bool check) const;
+	LLVMValueRef              equalNumbers (const ObjectAccess &left, const ObjectAccess &right) const;
+	LLVMValueRef              numberIs (const ObjectAccess &value, const cloth::ResolvedType &target) const;
 	void                      validateWrite (const ObjectAccess &owner) const;
 	void                      lowerStatementBody (const cloth::Statement &statement);
 	void                      lowerLibraryIntrinsic (cloth::LibraryIntrinsic intrinsic, LLVMValueRef function);
@@ -353,11 +355,15 @@ LLVMValueRef FunctionLowering::convertValue (LLVMValueRef value, const cloth::Re
                                              const cloth::Expression &at, const cloth::ExpressionInfo *cast) {
 	if (source == destination) return value;
 	if (source.objectReference() && destination.objectReference()) return value;
-	if ((destination.nullable() ? destination.element() : destination).objectReference()) {
-		const cloth::ResolvedType payload = source.nullable() ? source.element() : source;
-		if (payload.integer() || payload.floating())
-			throw cde::ClothDiagnostic(Code::UnsupportedLowering, "Materializing a primitive as an interface value requires native boxing",
-			                           { { .span = at.getSpan(), .text = "primitive converted to an interface value" } });
+	const auto destinationPayload = destination.nullable() ? destination.element() : destination;
+	if (mf_functions.program.isNumber(destinationPayload)) {
+		const auto primitive = source.nullable() ? source.element() : source;
+		if (primitive.integer() || primitive.floating()) {
+			const LLVMValueRef present = source.nullable() ? detail::nullable::presence(ir_builder, value) : nullptr;
+			const LLVMValueRef payload = present ? detail::nullable::payload(ir_builder, value) : value;
+			const LLVMValueRef boxed   = mf_functions.objects.boxNumber(ir_builder, primitive, destinationPayload, payload, present);
+			return destination.nullable() ? detail::nullable::pack(ir_builder, boxed, present) : boxed;
+		}
 	}
 	if (destination.nullable() && destination.element().objectReference()) {
 		if (source.objectReference()) return detail::nullable::pack(ir_builder, value);
@@ -562,12 +568,22 @@ LLVMValueRef FunctionLowering::lowerExpression (const cloth::Expression &express
 		if (ei_value.testedType && !ei_value.argumentContract) {
 			const auto &target        = *ei_value.testedType;
 			const auto  targetPayload = target.nullable() ? target.element() : target;
-			if (target.objectReference() || valueReceiver(targetPayload)) {
+			const auto &source        = ef_expressions.at(tc_test->operand.get()).types.front();
+			const auto  sourcePayload = source.nullable() ? source.element() : source;
+			const bool  boxed         = mf_functions.program.isNumber(sourcePayload);
+			if (target.objectReference() || valueReceiver(targetPayload) || (boxed && targetPayload.objectReference())) {
 				const LLVMValueRef operand = lowerExpression(*tc_test->operand);
 				if (!operand) return nullptr;
-				const auto       &source        = ef_expressions.at(tc_test->operand.get()).types.front();
-				const auto        sourcePayload = source.nullable() ? source.element() : source;
 				const LLVMTypeRef boolean       = sl_scalars.type(*rt_result);
+				if (boxed) {
+					const LLVMValueRef match =
+					        numberIs({ .handle = handleOrZero(operand, source), .directSelf = bf_body.isDirectReceiver(*tc_test->operand) },
+					                 targetPayload);
+					if (source.nullable() && target.nullable())
+						return LLVMBuildSelect(ir_builder, sl_scalars.predicate(detail::nullable::presence(ir_builder, operand)), match,
+						                       LLVMConstInt(boolean, 1, false), "");
+					return match;
+				}
 				if (target.objectReference() && sourcePayload.objectReference())
 					return detail::objectCall(ir_builder, mf_functions.module, detail::ObjectOperation::Is,
 					                          { handleOrZero(operand, source), mf_functions.objects.typeTag(target),
@@ -892,6 +908,9 @@ LLVMValueRef FunctionLowering::equalArrayBuffers (const cloth::ResolvedType &typ
 			                         info.elementEquality ? &*info.elementEquality : nullptr, false, at);
 		else if ((rt_element.nullable() ? rt_element.element() : rt_element) == cloth::ResolvedType(cloth::KString))
 			ir_equal = bl_builtins.equalText(ir_left, ir_right, rt_element.nullable());
+		else if (mf_functions.program.isNumber(rt_element.nullable() ? rt_element.element() : rt_element))
+			ir_equal = equalNumbers({ .handle = handleOrZero(ir_left, rt_element), .directSelf = false },
+			                        { .handle = handleOrZero(ir_right, rt_element), .directSelf = false });
 		else if ((rt_element.nullable() ? rt_element.element() : rt_element).objectReference())
 			ir_equal = equalObjects({ .handle = handleOrZero(ir_left, rt_element), .directSelf = false },
 			                        { .handle = handleOrZero(ir_right, rt_element), .directSelf = false }, rt_element.nullable(), true);
@@ -1566,6 +1585,16 @@ LLVMValueRef FunctionLowering::lowerBuiltinEquality (const cloth::BinaryExpressi
 		const LLVMValueRef a = convertValue(lhs, leftType, type, *binary.left), b = convertValue(rhs, rightType, type, *binary.right);
 		return equalResult(bl_builtins.equalText(a, b, type.nullable()));
 	}
+	if (mf_functions.program.isNumber(leftPayload) || mf_functions.program.isNumber(rightPayload)) {
+		const auto &number = mf_functions.program.isNumber(leftPayload) ? leftPayload : rightPayload;
+		const auto  handle = [&] (LLVMValueRef value, const cloth::ResolvedType &source, const cloth::Expression &at) {
+			auto destination = number;
+			if (source.nullable()) destination.suffixes.emplace_back(cloth::toString(cloth::OQuestion));
+			return handleOrZero(convertValue(value, source, destination, at), destination);
+		};
+		return equalResult(equalNumbers({ .handle = handle(lhs, leftType, *binary.left), .directSelf = directLeft },
+		                                { .handle = handle(rhs, rightType, *binary.right), .directSelf = directRight }));
+	}
 	if (leftPayload.objectReference() && rightPayload.objectReference()) {
 		const bool optional = leftType.nullable() || rightType.nullable();
 		const bool check    = (op != cloth::OIdentity || info.checkedIdentity) && (info.receiverChecks.atAccess || optional);
@@ -1750,6 +1779,11 @@ LLVMValueRef FunctionLowering::handleOrZero (LLVMValueRef value, const cloth::Re
 
 void FunctionLowering::validateReference (LLVMValueRef value, const cloth::ResolvedType &type, bool directSelf) const {
 	if (type == cloth::ResolvedType(cloth::KNull)) return;
+	const auto payload = type.nullable() ? type.element() : type;
+	if (mf_functions.program.isNumber(payload)) {
+		numberIs({ .handle = handleOrZero(value, type), .directSelf = directSelf }, payload);
+		return;
+	}
 	if (!type.nullable()) {
 		objectData({ .handle = value, .directSelf = directSelf });
 		return;
@@ -1760,6 +1794,21 @@ void FunctionLowering::validateReference (LLVMValueRef value, const cloth::Resol
 	objectData({ .handle = detail::nullable::payload(ir_builder, value), .directSelf = directSelf });
 	LLVMBuildBr(ir_builder, done);
 	LLVMPositionBuilderAtEnd(ir_builder, done);
+}
+
+LLVMValueRef FunctionLowering::numberIs (const ObjectAccess &value, const cloth::ResolvedType &target) const {
+	const LLVMTypeRef byte      = sl_scalars.type(cloth::ResolvedType(cloth::KBoolean));
+	const bool        inlineInt = target == cloth::ResolvedType(cloth::KInteger) || mf_functions.program.isNumber(target);
+	return detail::objectCall(ir_builder, mf_functions.module, detail::ObjectOperation::NumberIs,
+	                          { value.handle, mf_functions.objects.typeTag(target), LLVMConstInt(byte, inlineInt, false),
+	                            LLVMConstInt(byte, value.directSelf, false) });
+}
+
+LLVMValueRef FunctionLowering::equalNumbers (const ObjectAccess &left, const ObjectAccess &right) const {
+	const LLVMTypeRef byte = sl_scalars.type(cloth::ResolvedType(cloth::KBoolean));
+	return sl_scalars.predicate(
+	        detail::objectCall(ir_builder, mf_functions.module, detail::ObjectOperation::NumberEqual,
+	                           { left.handle, right.handle, LLVMConstInt(byte, left.directSelf, false), LLVMConstInt(byte, right.directSelf, false) }));
 }
 
 LLVMValueRef FunctionLowering::equalObjects (const ObjectAccess &left, const ObjectAccess &right, const bool nullable, const bool check) const {

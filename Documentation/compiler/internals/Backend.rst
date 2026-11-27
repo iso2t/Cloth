@@ -25,6 +25,11 @@ instances continue to use the requesting object's specialization cache.
 The ``cloth_v1`` link name encodes the normalized module and function
 names as UTF-8 hex components. Parameter and result types
 record the checked base name, integer or floating width and nullability.
+For a struct result the link name also records the concrete type arguments,
+the target size and alignment, and each field's normalized name, type and
+byte offset in declaration order. The same encoding appears in the object's
+native interface record, so Shuttle can detect a field swap even when the
+total size and alignment stay the same.
 A default thunk adds its parameter index. This makes the same overload
 addressable after source relocation, declaration reordering or a
 parameter rename. Changes

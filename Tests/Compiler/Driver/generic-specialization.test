@@ -13,12 +13,8 @@
 # RUN: %expect_exit --stdout-line 1 --stdout-line 42 --stderr-line "Cloth runtime error: access to a deleted class instance" 1 "%t.borrow.exe" read
 # RUN: %expect_exit --stdout-line 1 --stdout-line 42 --stderr-line "Cloth runtime error: access to a deleted class instance" 1 "%t.borrow.exe" write after
 
-# RUN: echo "using cloth.lang.num.Number: Number;" > "%t.box.co"
-# RUN: echo "fn<Number> boxed<T: Number>(T value) = value;" >> "%t.box.co"
-# RUN: echo "pub fn<int> main() { Number n := boxed(42); return 42; }" >> "%t.box.co"
-# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%t.box.co"
-# RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --stdlib "%S/../../../Stdlib/StandardLibrary/src" --src "%t.box.co" --emit object -o "%t.box.o" 2> "%t.err"
-# RUN: %filecheck "%s" --check-prefix=BOX --input-file "%t.err"
-# BOX: [C4040] Error: Materializing a primitive as an interface value requires native boxing
-# BOX: fn<Number> boxed<T: Number>(T value) = value
-# BOX: primitive converted to an interface value
+# RUN: %cloth --kind executable --stdlib %stdlib --src "%S/Inputs/boxed-number.co" --target-bits 32 --emit object -o "%t.box32.o"
+# RUN: %cloth --kind executable --stdlib %stdlib --src "%S/Inputs/boxed-number.co" --target-bits 64 --emit object -o "%t.box64.o"
+# RUN: %cloth --kind executable --stdlib %stdlib --src "%S/Inputs/boxed-number.co" --emit object -o "%t.box.o"
+# RUN: %cc "%t.box.o" %runtime -o "%t.box.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.box.exe"

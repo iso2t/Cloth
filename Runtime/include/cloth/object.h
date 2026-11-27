@@ -17,6 +17,12 @@ typedef void (*ClothDispose)(void *storage);
 typedef void (*ClothMethod)(void);
 typedef void (*ClothResourceOperation)(void **resource, void *argument);
 
+typedef struct {
+	const void *views[3]; // Concrete numeric type, standard Number interface, terminator.
+	size_t      bytes;
+	uint8_t (*equal)(const void *, const void *);
+} ClothNumberType;
+
 // Keep the C names used by existing clients of this header.
 typedef ClothDestructor        CLOTH_C_NAME(destructor);
 typedef ClothDispose           CLOTH_C_NAME(dispose);
@@ -43,6 +49,9 @@ CLOTH_RT_API(void *, clothRtObjectData, object_data, uint64_t handle, uint8_t di
 CLOTH_RT_API(void, clothRtObjectCheckBorrow, object_check_borrow, uint64_t owner, uint8_t directSelf);
 CLOTH_RT_API(void *, clothRtObjectBacking, object_backing, uint64_t handle, size_t bytes, size_t alignment);
 CLOTH_RT_API(uint8_t, clothRtObjectIs, object_is, uint64_t handle, const void *type, uint8_t directSelf);
+CLOTH_RT_API(uint64_t, clothRtNumberBox, number_box, const ClothNumberType *type, const void *value, uint8_t present);
+CLOTH_RT_API(uint8_t, clothRtNumberIs, number_is, uint64_t value, const void *type, uint8_t matchesInt, uint8_t directSelf);
+CLOTH_RT_API(uint8_t, clothRtNumberEqual, number_equal, uint64_t left, uint64_t right, uint8_t leftSelf, uint8_t rightSelf);
 CLOTH_RT_API(void, clothRtObjectDelete, object_delete, uint64_t handle, uint64_t authority);
 CLOTH_RT_API(void, clothRtObjectAcquire, object_acquire, uint64_t owner, uint64_t child);
 CLOTH_RT_API(void, clothRtObjectRelease, object_release, uint64_t owner, uint64_t child);

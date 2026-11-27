@@ -48,6 +48,12 @@ LLVMValueRef objectCall (LLVMBuilderRef builder, LLVMModuleRef module, ObjectOpe
 		return call("cloth_rt_object_delete", nothing, { handle, handle });
 	case ObjectOperation::Is:
 		return call("cloth_rt_object_is", byte, { handle, pointer, byte });
+	case ObjectOperation::NumberBox:
+		return call("cloth_rt_number_box", handle, { pointer, pointer, byte });
+	case ObjectOperation::NumberIs:
+		return call("cloth_rt_number_is", byte, { handle, pointer, byte, byte });
+	case ObjectOperation::NumberEqual:
+		return call("cloth_rt_number_equal", byte, { handle, handle, byte, byte });
 	case ObjectOperation::Acquire:
 		return call("cloth_rt_object_acquire", nothing, { handle, handle });
 	case ObjectOperation::Release:

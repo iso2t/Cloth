@@ -189,7 +189,9 @@ specialization.
 Before linking a prebuilt, Shuttle checks the native interfaces recorded in
 the object against the source checked for this executable. For example,
 swapping two ``int`` parameter names changes how a named call passes its
-arguments and requires a provider rebuild. Edits confined to function bodies
+arguments and requires a provider rebuild. Swapping two ``int`` fields in
+a returned struct also requires a rebuild because a consumer reads each
+field at its checked byte offset. Edits confined to function bodies
 leave the existing object usable. If an interface has changed or an older
 object lacks a record, rebuild the library target named in the diagnostic
 for the same target width. See `Native libraries <../Documentation/compiler/driver/Objects.rst#native-libraries>`_.

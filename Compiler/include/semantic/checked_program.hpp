@@ -409,6 +409,8 @@ struct CheckedProgram : BodyFacts {
 	const std::filesystem::path standardLibraryRoot;
 	const ProgramKind           kind;
 	const bool                  recordExternInterfaces;
+	// The numeric interface from the standard library, distinguished from user declarations named Number.
+	const Symbol               *numberInterface = nullptr;
 	const Symbol               *entryPoint = nullptr;
 	// Named library entry units share an ABI identity with their separately compiled consumers.
 	std::map<std::size_t, std::string> nativeModules;
@@ -420,6 +422,10 @@ struct CheckedProgram : BodyFacts {
 	std::map<InstanceKey, GenericInstance>              instances;
 	std::map<ResolvedType, TypeDispatch>                dispatchTables;
 	std::map<ResolvedType, StructLayout>                structLayouts;
+
+	[[nodiscard]] bool isNumber (const ResolvedType &type) const {
+		return numberInterface && type.declaration == numberInterface && type.suffixes.empty();
+	}
 	[[nodiscard]] const GenericInstance                *typeInstance (const ResolvedType &type) const;
 	[[nodiscard]] std::optional<StorageLayout>          storageLayout (const ResolvedType &type) const;
 	// The selected explicit value or default for this payload field, indexed by case tag.

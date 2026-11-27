@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub typedef<struct> Point { pub int x, pub int y; }
+pub fn<Point> origin() = {42, 7};
+
+pub typedef<struct> Sample {
+    pub bool valid,
+    pub usize count,
+    pub float<64> weight,
+    pub char tag,
+    pub int<12>? correction;
+}
+pub fn<Sample> sample() = {true, 3, 0.5, 's', -12};
+pub fn<Point?> optionalOrigin(bool present) {
+    if (present) return origin();
+    return null;
+}
+
+pub typedef<struct> Reading<T> { pub T value; }
+pub fn<Reading<int>, Point> observation() = {9}, origin();

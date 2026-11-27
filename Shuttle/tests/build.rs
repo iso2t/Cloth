@@ -691,6 +691,66 @@ fn prebuilt_library_must_match_the_named_argument_interface() {
 }
 
 #[test]
+fn prebuilt_library_must_match_the_returned_struct_layout() {
+    let work = Directory::new("prebuilt struct");
+    let api = work.0.join("provider");
+    let app = work.0.join("consumer");
+    write(
+        &api,
+        "build.k",
+        r#"project geometry { target library entry="src/api.co" module="Geometry" }"#,
+    );
+    let point_api = |fields: &str, first: i32| {
+        write(
+            &api,
+            "src/api.co",
+            &format!(
+                "pub typedef<struct> Point {{ {fields}; }}\npub fn<Point> origin() = {{{first}, 7}};\n"
+            ),
+        );
+    };
+    point_api("pub int x, pub int y", 42);
+    write(
+        &app,
+        "build.k",
+        r#"project picture {
+            dependency Geometry path="../provider" prebuilt=#true
+            target executable entry="src/main.co" { uses Geometry }
+        }"#,
+    );
+    write(
+        &app,
+        "src/main.co",
+        "using Geometry : origin;\npub fn<int> main() = origin().x;\n",
+    );
+    artifact(&mut build(&api));
+    let executable = artifact(&mut build(&app));
+    run(&executable, 42, "");
+
+    // Equivalent field types let the consumer link the existing provider and receive its original value.
+    point_api("pub int<32> x, pub int y", 99);
+    run(&artifact(&mut build(&app)), 42, "");
+
+    // Each changed API still type-checks the caller. Swapping x and y even preserves size and alignment.
+    for fields in [
+        "pub int x, pub int<64> y",
+        "pub int x, pub unsigned int y",
+        "pub int y, pub int x",
+    ] {
+        point_api(fields, 42);
+        let rejected = build(&app).output().unwrap();
+        assert!(
+            String::from_utf8_lossy(&rejected.stderr)
+                .contains("native interface for 'Geometry' differs from the checked source")
+        );
+        failure(rejected, "rebuild prebuilt library 'Geometry'");
+    }
+    run(&executable, 42, "");
+    artifact(&mut build(&api));
+    run(&artifact(&mut build(&app)), 7, "");
+}
+
+#[test]
 fn prebuilt_library_keeps_the_interfaces_of_its_native_dependencies() {
     let work = Directory::new("prebuilt dependency");
     let api = work.0.join("arithmetic");

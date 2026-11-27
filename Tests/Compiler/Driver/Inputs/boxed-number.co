@@ -1,0 +1,55 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<Number> box(int value) = value;
+fn<Number> forward(Number value) = value;
+fn<bool> isInt(Number value) = value is int;
+fn<Number> genericBox<T: Number>(T value) = value;
+fn<Number?> maybeBox(int? value) = value;
+fn<bool> maybeInt(Number? value) = value is int;
+fn<bool> maybeOptionalInt(Number? value) = value is int?;
+
+typedef<struct> Measurement {
+    pub Number value;
+}
+
+typedef<class> Amount : Number {
+    pub Amount(int tag) : () {}
+}
+
+pub fn<int> main() {
+    Number boxed := forward(box(42));
+    if (!isInt(boxed) || boxed is float || !(boxed is Number)) return 1;
+    if (boxed != box(42) || boxed == box(7)) return 2;
+    if (42 != boxed || boxed != 42 || box(-1) == box(0) || box(-2147483648) == box(2147483647)) return 3;
+    if (!isInt(box(-1)) || !isInt(box(-2147483648)) || !isInt(box(2147483647))) return 4;
+
+    unsigned int u := 42;
+    int<66> wide := 0x10000000000000000;
+    Number[] values = [boxed, genericBox(u), genericBox(wide), genericBox(1.5)];
+    if (values[1] is int || !(values[1] is unsigned int)) return 5;
+    if (values[2] is int || !(values[2] is int<66>) || values[2] == genericBox(0 -> int<66>)) return 6;
+    if (isInt(values[3]) || !(values[3] is float)) return 7;
+    if (!maybeInt(maybeBox(0)) || maybeInt(maybeBox(null)) || maybeBox(null) != null) return 8;
+    if (!maybeOptionalInt(maybeBox(null)) || !maybeOptionalInt(maybeBox(0)) || maybeOptionalInt(values[3])) return 9;
+
+    Number[] copy = values;
+    if (copy != values || genericBox(-0.0) != genericBox(0.0)) return 10;
+    copy[2] = box(0);
+    if (copy == values || !(values[2] is int<66>)) return 11;
+    Number sized := (42 -> usize) -> Number;
+    if (!(sized is usize) || sized is unsigned int || sized == boxed) return 12;
+
+    Measurement measurement = {box(-1)};
+    Measurement previous := measurement;
+    measurement.value = genericBox(1.5 -> float<16>);
+    if (!isInt(previous.value) || previous.value != -1 || !(measurement.value is float<16>)) return 13;
+    float<64> zero := 0.0;
+    Number nan := genericBox(zero / zero);
+    if (nan == nan || !(nan is float<64>) || genericBox(0.0 -> float<16>) != genericBox(-0.0 -> float<16>)) return 14;
+
+    Amount amount := Amount::new(0);
+    Number alias := forward(amount);
+    bool classOK := alias is Amount && alias is Number && !isInt(alias) && !(boxed is Amount);
+    amount::delete;
+    return if (classOK) 42 else 15;
+}
