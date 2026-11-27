@@ -7,7 +7,6 @@
 #include <iostream>
 #include <string>
 #include <string_view>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -62,7 +61,7 @@ int main (const int argc, char *argv[]) try {
 
 	auto l_lexer = cloth::Lexer{ cloth::SourceFile{ *co_options.p_sourcePath } };
 	if (co_options.getLexerFlag() == 1) {
-		std::ignore = l_lexer.scanTokens(); // discards result, not capturing the vector.
+		l_lexer.scan();
 		return LEXED_ONLY;
 	}
 
@@ -71,7 +70,7 @@ int main (const int argc, char *argv[]) try {
 		return PRINT_LEXED_ONLY;
 	}
 
-	cloth::Parser               p_parser{ l_lexer };
+	cloth::Parser               p_parser{ std::move(l_lexer) };
 	cloth::SymbolTable          st_symbols{ p_parser.parse() };
 	const cloth::CheckedProgram cp_program{ std::move(st_symbols), co_options.targetLayout, co_options.standardLibraryRoot, co_options.kind,
 		                                co_options.modules };

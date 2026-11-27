@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+// See Documentation/compiler/Flags.rst
+
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
@@ -52,10 +54,11 @@ std::string_view toString (const Extension type) {
 }
 
 std::string SourceFile::sourceName (const std::filesystem::path &path) {
-	if (const std::string s_name = pathUtf8(path.stem()); !s_name.empty() || s_name != SEPERATOR) {
-		return s_name;
-	}
-	throw std::invalid_argument("Invalid source file name '" + pathUtf8(path) + "'");
+	const std::string s_name = pathUtf8(path.stem());
+	if (s_name.empty() || s_name == ".")
+		throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidPath,
+		                           "Invalid source file name '" + pathUtf8(path) + "' (expected a nonempty stem other than '.')");
+	return s_name;
 }
 
 std::string lowercaseExtension (const std::filesystem::path &path) {

@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <diagnostics.hpp>
@@ -191,14 +192,14 @@ bool Lexer::isAtEnd () const {
 	return st_current >= sourceText().size();
 }
 
-/**
- * @brief Scans the source and returns a vector of tokens.
- *
- * @return std::vector<Token> The scanned tokens.
- */
-std::vector<Token> Lexer::scanTokens () {
+std::vector<Token> Lexer::scanTokens () & {
 	scan();
 	return v_tokens;
+}
+
+std::vector<Token> Lexer::scanTokens () && {
+	scan();
+	return std::move(v_tokens);
 }
 
 void Lexer::scan () {

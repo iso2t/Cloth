@@ -16,8 +16,12 @@ Source files and imports
 ------------------------
 
 ``--src PATH`` selects a UTF-8 ``.co`` or ``.clib`` entry file. Quote
-paths that contain spaces. The compiler follows ``using`` imports from
-the entry file. The entry and all imported modules use the same grammar.
+paths that contain spaces. An empty filename stem or the single-dot stem
+in ``..co`` produces ``C0012``. A name such as ``.hidden.part.CLIB`` has the
+valid stem ``.hidden.part``.
+
+The compiler follows ``using`` imports from the entry file. The entry and
+all imported modules use the same grammar.
 Terminate each import and simple statement with ``;``. See `Source files
 and literals <../language/source/Source.rst#names-and-statement-boundaries>`_
 for statement boundaries and `Names and visibility

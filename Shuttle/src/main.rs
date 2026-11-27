@@ -30,7 +30,7 @@ Usage
 Examples
   shuttle init hello            Create a runnable project in hello/
   shuttle init --module Math    Add Math to the enclosing Cloth project
-  shuttle build                 Build the default target in this directory
+  shuttle build                 Build the enclosing project's default target
   shuttle build arithmetic-lib  Build the calculator example's library
   shuttle run                   Build the enclosing project and run its executable
   shuttle run examples/calculator -- 6 + 7

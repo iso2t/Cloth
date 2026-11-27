@@ -43,6 +43,9 @@ class Parser {
 	explicit Parser (Lexer &lexer) : Parser(lexer.scanTokens()) {
 	}
 
+	explicit Parser (Lexer &&lexer) : Parser(std::move(lexer).scanTokens()) {
+	}
+
 	SourceUnit parse ();
 	SourceUnit parseDeclarations ();
 

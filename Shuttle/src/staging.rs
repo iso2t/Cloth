@@ -11,6 +11,21 @@ pub(crate) struct Staging {
     keep: bool,
 }
 
+// Keep the file between operations so waiters and new arrivals lock the same
+// file. Closing the handle, including on process exit, releases the lock.
+pub(crate) fn lock_directory(directory: &Path) -> Result<fs::File> {
+    let path = directory.join(".shuttle.lock");
+    let file = fs::File::options()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&path)
+        .map_err(|e| format!("opening {}: {e}", path.display()))?;
+    fs2::FileExt::lock_exclusive(&file).map_err(|e| format!("locking {}: {e}", path.display()))?;
+    Ok(file)
+}
+
 struct Replacement<'a> {
     staged: &'a Path,
     artifact: &'a Path,
@@ -89,18 +104,7 @@ impl Staging {
         output_root: &Path,
         outputs: &[(PathBuf, PathBuf)],
     ) -> Result<()> {
-        // All Shuttle publishers of this output root use the same lock. Keep the file
-        // between builds so a waiter and a new arrival always lock the same inode.
-        let lock_path = output_root.join(".shuttle.lock");
-        let lock = fs::File::options()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&lock_path)
-            .map_err(|e| format!("opening {}: {e}", lock_path.display()))?;
-        fs2::FileExt::lock_exclusive(&lock)
-            .map_err(|e| format!("locking {}: {e}", lock_path.display()))?;
+        let _lock = lock_directory(output_root)?;
 
         if let [(staged, artifact)] = outputs {
             return artifact_type(artifact)

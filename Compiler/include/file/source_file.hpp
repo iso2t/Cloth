@@ -8,8 +8,6 @@
 
 namespace cloth {
 
-#define SEPERATOR "."
-
 enum Extension { ClothObject, Library };
 
 std::string_view toString (Extension type);

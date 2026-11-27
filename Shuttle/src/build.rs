@@ -219,14 +219,11 @@ pub struct Artifact {
 }
 
 pub fn project(mut options: Options, action: Action) -> Result<Artifact> {
-    let default = match action {
-        Action::Build => "build.k",
-        Action::Run => ".",
+    let manifest = match options.manifest.take() {
+        None => project::enclosing_manifest(Path::new("."))?,
+        Some(path) if action == Action::Run && path.is_dir() => project::enclosing_manifest(&path)?,
+        Some(path) => path,
     };
-    let mut manifest = options.manifest.take().unwrap_or_else(|| default.into());
-    if action == Action::Run && manifest.is_dir() {
-        manifest = project::enclosing_manifest(&manifest)?;
-    }
     let (graph, root) = Graph::load(&manifest, options.target.as_deref(), action)?;
     options.compiler = find_compiler(&options.compiler)?;
     let target = target(&options)?;

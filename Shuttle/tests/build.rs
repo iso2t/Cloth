@@ -278,26 +278,138 @@ fn module_init_preserves_kdl_and_checks_existing_providers() {
 }
 
 #[test]
+fn module_init_recovers_from_an_abandoned_manifest_draft() {
+    let work = Directory::new("interrupted init");
+    let root = &work.0;
+    success(init(root, &[]));
+    let original = fs::read_to_string(root.join("build.k")).unwrap();
+    for (name, abandoned) in [("Math", ""), ("Text", "project stale {")] {
+        write(root, ".build.k.shuttle-init", abandoned);
+        success(init(&root.join("src"), &["--module", name]));
+        assert!(root.join(name).join("module.k").is_file());
+        assert!(!root.join(".build.k.shuttle-init").exists());
+    }
+    let expected = original.replacen('{', "{\n    include \"Text\"\n    include \"Math\"", 1);
+    assert_eq!(fs::read_to_string(root.join("build.k")).unwrap(), expected);
+}
+
+#[test]
+fn module_init_recovers_a_partial_scaffold_from_an_older_writer() {
+    let work = Directory::new("legacy interrupted init");
+    let root = &work.0;
+    success(init(root, &[]));
+    let manifest = root.join("build.k");
+    let original = fs::read_to_string(&manifest).unwrap();
+    let draft = original.replacen('{', "{\n    include \"Math\"", 1);
+    write(root, ".build.k.shuttle-init", &draft);
+    write(root, "Math/src/api.co", "user source");
+    success(init(root, &["--module", "Text"]));
+    let before = fs::read(&manifest).unwrap();
+    failure(
+        init(root, &["--module", "Math"]),
+        "conflicts with the interrupted module",
+    );
+    assert_eq!(fs::read(&manifest).unwrap(), before);
+    assert_eq!(
+        fs::read(root.join("Math/src/api.co")).unwrap(),
+        b"user source"
+    );
+    assert!(!root.join("Math/module.k").exists());
+
+    write(root, "Math/src/api.co", "pub fn<int> ans");
+    success(init(root, &["--module", "Math"]));
+    assert!(!root.join(".build.k.shuttle-init").exists());
+    assert_eq!(
+        fs::read_to_string(&manifest).unwrap(),
+        original.replacen('{', "{\n    include \"Math\"\n    include \"Text\"", 1)
+    );
+    assert_eq!(
+        fs::read(root.join("Math/src/api.co")).unwrap(),
+        fs::read(root.join("Text/src/api.co")).unwrap()
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("Math/module.k")).unwrap(),
+        "module \"Math\" api=\"src/api.co\"\n"
+    );
+}
+
+#[test]
+fn module_init_finishes_a_pending_include_using_the_current_manifest() {
+    let work = Directory::new("pending include");
+    let root = &work.0;
+    success(init(root, &[]));
+    let manifest = root.join("build.k");
+    let original = fs::read(&manifest).unwrap();
+    success(init(root, &["--module", "Math"]));
+
+    // Recreate the state after the scaffold rename and before the manifest rename.
+    let pending = root.join("Math/.shuttle-pending-include.k");
+    fs::rename(&manifest, &pending).unwrap();
+    fs::write(&manifest, original).unwrap();
+    write(root, "Math/src/api.co", "pub fn<int> answer() = 7;\n");
+    success(init(root, &["--module", "Text"]));
+    success(init(root, &["--module", "Math"]));
+    let registered = fs::read_to_string(&manifest).unwrap();
+    for name in ["Math", "Text"] {
+        assert_eq!(
+            registered.matches(&format!("include \"{name}\"")).count(),
+            1
+        );
+    }
+    assert!(!pending.exists());
+    assert_eq!(
+        fs::read_to_string(root.join("Math/src/api.co")).unwrap(),
+        "pub fn<int> answer() = 7;\n"
+    );
+}
+
+#[test]
 fn concurrent_module_additions_preserve_each_registration() {
     let work = Directory::new("concurrent init");
     let root = &work.0;
     success(init(root, &[]));
-    let names = ["Left", "Right"];
-    let results = std::thread::scope(|scope| {
-        let jobs = names.map(|name| scope.spawn(move || init(root, &["--module", name])));
-        jobs.map(|job| job.join().unwrap())
-    });
-    for (name, output) in names.into_iter().zip(results) {
-        if !output.status.success() {
-            failure(output, ".build.k.shuttle-init");
-            success(init(root, &["--module", name]));
+    let names = ["Left", "Right", "Middle"];
+    let ready = std::sync::Barrier::new(names.len());
+    std::thread::scope(|scope| {
+        for name in names {
+            let ready = &ready;
+            scope.spawn(move || {
+                ready.wait();
+                success(init(root, &["--module", name]));
+            });
         }
-    }
+    });
     let manifest = fs::read_to_string(root.join("build.k")).unwrap();
     for name in names {
         assert_eq!(manifest.matches(&format!("include \"{name}\"")).count(), 1);
         assert!(root.join(name).join("module.k").is_file());
     }
+}
+
+#[test]
+fn build_finds_the_nearest_project_unless_given_a_manifest_path() {
+    let work = Directory::new("build discovery");
+    let outer = work.0.join("outer");
+    success(init(&work.0, &["outer"]));
+    success(init(&outer, &["inner"]));
+    let nested = outer.join("inner/src/nested");
+    fs::create_dir(&nested).unwrap();
+
+    let nearest = artifact(&mut build(&nested));
+    assert_eq!(nearest.file_stem().unwrap(), "inner");
+    for path in ["../../..", "../../../build.k"] {
+        let selected = artifact(build(&nested).args(["--manifest-path", path]));
+        assert_eq!(selected.file_stem().unwrap(), "outer");
+    }
+
+    failure(
+        build(&nested)
+            .args(["--manifest-path", "."])
+            .output()
+            .unwrap(),
+        "build.k",
+    );
+    failure(build(&work.0).output().unwrap(), "no build.k");
 }
 
 #[test]
@@ -1072,6 +1184,7 @@ fn manifest_errors_identify_the_declaration_before_building() {
     let work = Directory::new("manifest diagnostics");
     write(&work.0, "src/main.co", "pub fn<int> main() = 0;\n");
     write(&work.0, "outside.co", "pub fn<int> main() = 1;\n");
+    write(&work.0, "Reserved/module.k", "\n  module \"_\"\n");
     let cases = [
         (
             "targt \"executable\"",
@@ -1080,6 +1193,22 @@ fn manifest_errors_identify_the_declaration_before_building() {
         (
             "target \"object\" entry=\"src/main.co\"",
             "build.k:2:5: unknown target kind 'object'",
+        ),
+        (
+            "target library module=\"fn\" entry=\"src/main.co\"",
+            "build.k:2:5: module name 'fn' must be a Cloth identifier",
+        ),
+        (
+            "target executable entry=\"src/main.co\" {\n        uses \"return\"\n    }",
+            "build.k:3:9: module name 'return' must be a Cloth identifier",
+        ),
+        (
+            "dependency \"int\" path=\"../provider\"\n    target executable entry=\"src/main.co\"",
+            "build.k:2:5: module name 'int' must be a Cloth identifier",
+        ),
+        (
+            "include \"Reserved\"\n    target executable entry=\"src/main.co\"",
+            "module.k:2:3: module name '_' must be a Cloth identifier",
         ),
         (
             "target \"executable\" entry=\"src/main.co\" entry=\"outside.co\"",
@@ -1117,7 +1246,12 @@ fn manifest_errors_identify_the_declaration_before_building() {
             "build.k",
             &format!("project \"test\" {{\n    {body}\n}}\n"),
         );
-        failure(build(&work.0).output().unwrap(), expected);
+        let output = build(&work.0)
+            .args(["--compiler", "./missing-compiler"])
+            .output()
+            .unwrap();
+        assert!(output.stdout.is_empty());
+        failure(output, expected);
         assert!(!work.0.join("build").exists());
     }
     for folder in ["First", "Second"] {

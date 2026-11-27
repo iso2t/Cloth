@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 #include <utf8proc/utf8proc.h>
+#include <utility>
 #include <vector>
 
 #include <cde/syntax_exception.hpp>
@@ -27,6 +28,26 @@ void expectToken (const Token &token, TokenType type, std::string_view spelling,
 	EXPECT_EQ(ts_span.startCol, startColumn);
 	EXPECT_EQ(ts_span.endLine, 1u);
 	EXPECT_EQ(ts_span.endCol, endColumn);
+}
+
+TEST (LexerTokens, ConsumingScanTransfersTheTokenBuffer) {
+	std::vector<Token> tokens;
+	{
+		Lexer                     lexer("name\n");
+		const std::vector<Token>  snapshot = lexer.scanTokens();
+		const std::vector<Token> &retained = lexer.getTokens();
+		ASSERT_EQ(retained.size(), 3u);
+		EXPECT_EQ(snapshot.size(), retained.size());
+		EXPECT_NE(snapshot.data(), retained.data());
+		const Token *const first = retained.data();
+		tokens                   = std::move(lexer).scanTokens();
+		EXPECT_EQ(tokens.data(), first);
+	}
+	ASSERT_EQ(tokens.size(), 3u);
+	EXPECT_EQ(tokens[1].getType(), TokenType::NewLine);
+	EXPECT_EQ(tokens.back().getType(), TokenType::EndOfFile);
+	ASSERT_NE(tokens.front().getSpan().source, nullptr);
+	EXPECT_EQ(tokens.front().getSpan().source->getContents(), "name\n");
 }
 
 TEST (LexerKeywords, PubAndBoolInFunctionSignature) {

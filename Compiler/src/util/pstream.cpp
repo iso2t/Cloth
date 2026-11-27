@@ -51,6 +51,7 @@ std::string quoteLexeme (const std::string_view lexeme) {
  */
 void printLexer (Lexer &lexer, std::ostream &out) {
 	lexer.scan();
+	const std::vector<Token> &tokens = lexer.getTokens();
 
 	constexpr std::string_view s_lexemeHeader = "LEXEME";
 	constexpr std::string_view s_typeHeader   = "TYPE";
@@ -66,8 +67,8 @@ void printLexer (Lexer &lexer, std::ostream &out) {
 	};
 
 	std::vector<Row> v_rows;
-	v_rows.reserve(lexer.getTokens().size());
-	for (const Token &t_token : lexer.getTokens()) {
+	v_rows.reserve(tokens.size());
+	for (const Token &t_token : tokens) {
 		const Row &r_row = v_rows.emplace_back(quoteLexeme(t_token.getLexeme()), t_token.typeName(), t_token.getSpan().toString());
 		st_lexemeWidth   = std::max(st_lexemeWidth, r_row.lexeme.size());
 		st_typeWidth     = std::max(st_typeWidth, r_row.type.size());
@@ -83,7 +84,6 @@ void printLexer (Lexer &lexer, std::ostream &out) {
 		printRow(lexeme, type, span);
 	}
 
-	out << "Count: " << lexer.getTokens().size();
+	out << "Count: " << tokens.size();
 }
-
 }

@@ -152,21 +152,72 @@ impl Source<'_> {
     }
 
     fn identifier(&self, node: &KdlNode, name: &str) -> Result<String> {
-        identifier(name).ok_or_else(|| {
-            self.error(
-                node.span().offset(),
-                format!("module name '{name}' must be a Cloth identifier"),
-            )
-        })
+        identifier(name).map_err(|error| self.error(node.span().offset(), error))
     }
 }
 
-pub fn identifier(name: &str) -> Option<String> {
+// Compiler/src/token/token.cpp defines the reserved keywords. The lexer also
+// treats a lone underscore as a discard token.
+const RESERVED: &[&str] = &[
+    "_",
+    "bool",
+    "break",
+    "char",
+    "class",
+    "const",
+    "continue",
+    "def",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "enum",
+    "false",
+    "final",
+    "float",
+    "fn",
+    "for",
+    "if",
+    "init",
+    "int",
+    "interface",
+    "interop",
+    "is",
+    "isize",
+    "mod",
+    "mt",
+    "new",
+    "null",
+    "operator",
+    "opt",
+    "override",
+    "pub",
+    "return",
+    "self",
+    "state",
+    "string",
+    "struct",
+    "true",
+    "typedef",
+    "typeinfo",
+    "unsigned",
+    "using",
+    "usize",
+    "virtual",
+    "void",
+    "while",
+];
+
+pub fn identifier(name: &str) -> Result<String> {
     let mut chars = name.chars();
-    let first = chars.next()?;
-    ((first == '_' || unicode_ident::is_xid_start(first))
-        && chars.all(unicode_ident::is_xid_continue))
-    .then(|| name.nfc().collect())
+    let valid = chars
+        .next()
+        .is_some_and(|c| c == '_' || unicode_ident::is_xid_start(c))
+        && chars.all(unicode_ident::is_xid_continue);
+    valid
+        .then(|| name.nfc().collect::<String>())
+        .filter(|key| !RESERVED.contains(&key.as_str()))
+        .ok_or_else(|| format!("module name '{name}' must be a Cloth identifier").into())
 }
 
 fn read<T>(

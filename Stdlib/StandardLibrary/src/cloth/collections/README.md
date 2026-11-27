@@ -8,6 +8,7 @@ the path to the example. Collection methods are checked by the frontend.
 See the [native object guide](../../../../../Documentation/compiler/driver/Objects.rst#source-checks-and-native-code).
 
 ```cloth
+using cloth.Console : println;
 using cloth.collections.List : List;
 
 fn main() {
@@ -82,6 +83,7 @@ object can occupy only one slot in one owning list. Inserting an already owned
 object or creating an ownership cycle raises an ownership error.
 
 ```cloth
+using cloth.Console : println;
 using cloth.collections.OwningList : OwningList;
 
 typedef<class> Item {
@@ -156,6 +158,7 @@ and the order in which entries are visited, see [Collection iteration](../../../
 Import each class from its own source file.
 
 ```cloth
+using cloth.Console : println;
 using cloth.collections.Deque : Deque;
 using cloth.collections.Queue : Queue;
 using cloth.collections.Stack : Stack;

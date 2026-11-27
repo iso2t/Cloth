@@ -36,10 +36,16 @@ class Lexer {
 
 	~Lexer () = default;
 
-	std::vector<Token> scanTokens ();
+	// A named lexer keeps its tokens. A disposable lexer transfers the buffer.
+	std::vector<Token> scanTokens () &;
+	std::vector<Token> scanTokens () &&;
 	void               scan ();
 
-	[[nodiscard]] std::vector<Token> getTokens () const {
+	[[nodiscard]] const std::vector<Token> &getTokens () const & noexcept {
+		return v_tokens;
+	}
+
+	[[nodiscard]] std::vector<Token> getTokens () const && {
 		return v_tokens;
 	}
 

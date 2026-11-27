@@ -75,7 +75,14 @@ Run this command from the project directory or one of its subdirectories.
 
 Shuttle finds the nearest ``build.k`` and adds ``include "Arithmetic"``.
 The new ``Arithmetic/`` directory at the project root contains ``module.k``
-and ``src/api.co``. The name must be a Cloth identifier available in the project.
+and ``src/api.co``. Module names must be available in the project and follow
+Cloth's identifier rules. ``init --module``, ``build.k`` and ``module.k`` all
+reject reserved keywords such as ``fn`` and the lone underscore ``_``.
+
+Concurrent module additions take turns updating ``build.k``. Shuttle keeps
+``.shuttle.lock`` in the project root and holds an operating-system lock
+on it during each update. If an addition is interrupted before its include
+is published, rerun ``shuttle init --module NAME`` to finish registering it.
 
 The generated API exports ``answer()``. To call it from the executable,
 add a ``uses`` declaration to its target in ``build.k``.
@@ -133,12 +140,12 @@ Shuttle builds the modules reached through ``uses``. To use a module from
 a project-owned entry such as ``src/main.co``, put ``uses`` inside that
 ``target`` node.
 
-To build either target on its own, start in the Cloth checkout and enter
-the example directory.
+From the Cloth checkout, build either target from the console module's
+source directory.
 
 .. code-block:: sh
 
-   cd examples/calculator
+   cd examples/calculator/Console/src
    shuttle build
    shuttle build arithmetic-lib
 
@@ -148,11 +155,12 @@ prints with ``6 '*' 7`` to get ``42``. The console accepts two signed
 toward zero. The second build produces ``arithmetic-lib.o`` for other
 Cloth projects to link.
 
-``shuttle build`` selects the target that inherits the project name.
+``shuttle build`` searches the current directory and its parents for the
+nearest ``build.k``. It selects the target that inherits the project name.
 When every target has an explicit name, a sole target is the default.
-With several named targets, Shuttle lists the choices. Use
-``--manifest-path PATH`` to select a project directory or its manifest
-from a different working directory.
+With several named targets, Shuttle lists the choices. To select a project
+explicitly, pass ``--manifest-path PATH`` with a manifest file or a directory
+containing ``build.k``.
 
 The default output is ``build/<target-triple>/<artifact>``. A project can
 add ``output "out"`` to choose another directory. Shuttle finishes compilation
