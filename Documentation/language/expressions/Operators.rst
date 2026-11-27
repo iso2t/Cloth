@@ -162,8 +162,7 @@ type, ``==(Object)`` for a general operand, or both.
 
 An operand context such as ``operator<string> ==()`` supplies a value for
 comparison with a string. Cloth first looks for a full binary overload.
-When it applies contexts, it evaluates each operand and its selected
-context in source order.
+Each selected context runs immediately after Cloth evaluates its operand.
 
 An integer context can use ``int<auto>`` to take its width from the other
 operand. For example, ``operator<int<auto>> +() -> int<auto>`` can supply
@@ -174,9 +173,10 @@ Evaluation and updates
 ----------------------
 
 Built-in ``a && b`` evaluates ``b`` only if ``a`` is true. Built-in
-``a || b`` evaluates it only if ``a`` is false. In ``a ?: b``, the
-fallback runs only when ``a`` is absent. A present ``false``, ``0.0``, or
-``'\0'`` skips the fallback.
+``a || b`` evaluates it only if ``a`` is false. These rules also apply when
+an operand context supplies a boolean. Skipping the right operand skips its
+context as well. In ``a ?: b``, the fallback runs only when ``a`` is absent.
+A present ``false``, ``0.0``, or ``'\0'`` skips the fallback.
 
 An explicit binary overload evaluates both operands in source order,
 including overloads of ``&&``, ``||``, and ``?:``. A dedicated compound

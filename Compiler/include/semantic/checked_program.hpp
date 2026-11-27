@@ -306,6 +306,8 @@ struct ExpressionInfo {
 	bool                             negateEquality     = false;
 	bool                             liftedEquality     = false;
 	bool                             rightReceiver      = false;
+	// Built-in && and || branch after the left operand and its optional context.
+	bool shortCircuit = false;
 	// Built-in boolean equality compares present payloads by truth value (zero or nonzero).
 	bool booleanEquality = false;
 	// Built-in comparisons use this operand type after contextual typing. Nullable equality retains its presence tag.

@@ -11,3 +11,5 @@
 # CHECK: helper.co:1:26
 # CHECK: pub fn<string> value() = "missing closing quote
 # CHECK: here
+
+# RUN: %python "%S/Inputs/line_endings.py" %cloth "%t"

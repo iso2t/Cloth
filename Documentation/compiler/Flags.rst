@@ -7,6 +7,11 @@ Use ``cloth --src PATH`` to check a source file. A successful source
 check is silent and returns 0. A compilation error is reported on
 standard error and returns 1.
 
+``cloth --help`` lists the supported options and their arguments.
+``cloth --version`` prints ``cloth`` followed by the compiler version.
+Both commands write to standard output and return 0 without requiring
+a source file.
+
 Source files and imports
 ------------------------
 

@@ -48,6 +48,7 @@ $(gtest_objects): $(unit_obj_dir)/googletest/%.o: $(gtest_source) Makefile Tests
 
 $(backend_unit_objects): private override CPPFLAGS += $(backend_cppflags)
 $(backend_unit_objects): Backend/Kbuild
+$(unit_obj_dir)/Compiler/Lexer/Unit/token_test.o: private override CPPFLAGS += -DUTF8PROC_STATIC
 
 $(unit_objects): $(unit_obj_dir)/%.o: Tests/%.cpp Makefile Tests/Makefile compile_flags.txt | $(gtest_source)
 	@$(make_dir)

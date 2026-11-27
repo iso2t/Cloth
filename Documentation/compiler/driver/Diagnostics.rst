@@ -9,7 +9,11 @@ a stable Cloth code, a message and, when source is available, the location
 that triggered it. A second label can point into another file, such as an
 imported declaration. The numeric part of a code identifies its entry
 in the `diagnostic code registry <../../../Diagnostics/include/cde/diagnostic_code.hpp>`_.
-Errors opening an input file can also appear as plain text.
+
+Omitting a required option value, such as the path after ``--src``, reports
+``C0002``. An unsupported value for ``--kind``, ``--emit``, or ``--target-bits``
+reports ``C0003``. If the source file is missing or cannot be read, the driver
+reports ``C0010`` and includes its path.
 
 A missing semicolon
 -------------------

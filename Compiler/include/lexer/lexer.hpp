@@ -58,6 +58,7 @@ class Lexer {
 
 	char                    advance ();
 	void                    advanceBytes (std::size_t length);
+	bool                    consumeLineBreak ();
 	[[nodiscard]] char      peek () const;
 	[[nodiscard]] bool      startsWith (std::string_view spelling) const;
 	[[nodiscard]] bool      isAtEnd () const;

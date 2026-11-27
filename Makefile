@@ -53,7 +53,7 @@ $(BUILD_DIR)/obj/%.o: Compiler/src/%.cpp Makefile compile_flags.txt
 	$(CXX) @compile_flags.txt $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c "$<" -o "$@"
 
 $(BUILD_DIR)/obj/Diagnostics/cde/diagnostic_reporter.o: private override CPPFLAGS += -IThirdParty/musubi -DMU_API=
-$(BUILD_DIR)/obj/util/unicode_identifier.o: private override CPPFLAGS += -DUTF8PROC_STATIC
+$(BUILD_DIR)/obj/token/numeric_literals.o $(BUILD_DIR)/obj/util/unicode_identifier.o: private override CPPFLAGS += -DUTF8PROC_STATIC
 
 $(BUILD_DIR)/obj/Diagnostics/%.o: Diagnostics/src/%.cpp Makefile compile_flags.txt
 	@$(make_dir)

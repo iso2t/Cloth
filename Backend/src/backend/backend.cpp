@@ -238,7 +238,9 @@ class FunctionLowering {
 	LLVMValueRef lowerRangeMembership (const cloth::BinaryExpression &binary);
 	LLVMValueRef lowerGuardedAccess (const cloth::GuardedAccessExpression &access, const cloth::ResolvedType *result);
 	LLVMValueRef lowerNullableFallback (const cloth::ElvisExpression &expression, const cloth::ResolvedType &result);
-	LLVMValueRef lowerLogical (const cloth::BinaryExpression &binary, LLVMValueRef left);
+	LLVMValueRef         lowerLogical (const cloth::BinaryExpression &binary, const cloth::ExpressionInfo &info, LLVMValueRef left);
+	LLVMValueRef lowerContextOperand (const cloth::Expression &source, const std::optional<cloth::OperatorSelection> &context, LLVMValueRef evaluated,
+	                                  bool check);
 	LLVMValueRef lowerCall (const cloth::CallExpression &call);
 	std::vector<LLVMValueRef> lowerArguments (const std::vector<cloth::CallArgument> &supplied, const cloth::ExpressionInfo &info,
 	                                          LLVMValueRef self = nullptr);
@@ -1378,17 +1380,25 @@ std::optional<LoweredValue> FunctionLowering::lowerField (const cloth::FieldAcce
 	return result;
 }
 
-LLVMValueRef FunctionLowering::lowerLogical (const cloth::BinaryExpression &binary, LLVMValueRef left) {
+LLVMValueRef FunctionLowering::lowerContextOperand (const cloth::Expression &source, const std::optional<cloth::OperatorSelection> &context,
+                                                    LLVMValueRef evaluated, bool check) {
+	if (context) return lowerUnaryOperator(source, *context, evaluated, check);
+	return evaluated ? evaluated : lowerExpression(source);
+}
+
+LLVMValueRef FunctionLowering::lowerLogical (const cloth::BinaryExpression &binary, const cloth::ExpressionInfo &info, LLVMValueRef left) {
 	const bool b_and = binary.op.getOperator() == cloth::OAnd;
+	left             = lowerContextOperand(*binary.left, info.leftContext, left, info.receiverChecks.beforeArguments);
 	if (!left) return nullptr;
+	const auto right = [&] { return lowerContextOperand(*binary.right, info.rightContext, nullptr, info.receiverChecks.atAccess); };
 	// When the whole expression transfers control, there is no short-circuit path past the right operand.
-	if (!bf_body.expressions.at(&binary).fallsThrough) return lowerExpression(*binary.right);
+	if (!info.fallsThrough) return right();
 	LLVMBasicBlockRef       bb_left  = LLVMGetInsertBlock(ir_builder);
 	LLVMBasicBlockRef       bb_right = appendBlock("logical.rhs");
 	const LLVMBasicBlockRef bb_end   = appendBlock("logical.end");
 	LLVMBuildCondBr(ir_builder, sl_scalars.predicate(left), b_and ? bb_right : bb_end, b_and ? bb_end : bb_right);
 	LLVMPositionBuilderAtEnd(ir_builder, bb_right);
-	LLVMValueRef ir_right = lowerExpression(*binary.right);
+	LLVMValueRef ir_right = right();
 	if (!ir_right) {
 		LLVMPositionBuilderAtEnd(ir_builder, bb_end);
 		return left;
@@ -1494,6 +1504,7 @@ LLVMValueRef FunctionLowering::lowerBinary (const cloth::BinaryExpression &binar
 	const cloth::ExpressionFacts &ef_facts  = bf_body.expressions;
 	const cloth::ExpressionInfo  &ei_binary = ef_facts.at(&binary);
 	const cloth::Operator         o_op      = binary.op.getOperator();
+	if (ei_binary.shortCircuit) return lowerLogical(binary, ei_binary, left);
 	if (cloth::isEquality(o_op) && ei_binary.fallsThrough && !ei_binary.range && !ei_binary.symbol && !ei_binary.argumentContract && !ei_binary.dispatch)
 		return lowerBuiltinEquality(binary, ei_binary, left);
 	if (ei_binary.leftContext || ei_binary.rightContext || (ei_binary.symbol && ei_binary.symbol->kind == cloth::SymbolKind::Operator))
@@ -1528,7 +1539,6 @@ LLVMValueRef FunctionLowering::lowerBinary (const cloth::BinaryExpression &binar
 		}
 	}
 	if (isBuiltinOperation(ei_binary) && !ei_binary.range) {
-		if (o_op == cloth::OAnd || o_op == cloth::OOr) return lowerLogical(binary, left ? left : lowerExpression(*binary.left));
 		const cloth::ExpressionInfo &ei_left = ef_facts.at(binary.left.get());
 		if (!ei_binary.fallsThrough) {
 			// The checker can record an exit before it selects an operand type for the operation.
@@ -1561,11 +1571,8 @@ LLVMValueRef FunctionLowering::lowerBuiltinEquality (const cloth::BinaryExpressi
 	if (const LLVMValueRef same = tryLowerArrayEquality(binary, left, leftType, rightType)) return equalResult(same);
 
 	// Evaluate each context on its written side. A context result does not inherit self's access during destruction.
-	const LLVMValueRef lhs        = info.leftContext ? lowerUnaryOperator(*binary.left, *info.leftContext, left, info.receiverChecks.beforeArguments) :
-	                                left             ? left :
-	                                                   lowerExpression(*binary.left);
-	const LLVMValueRef rhs        = info.rightContext ? lowerUnaryOperator(*binary.right, *info.rightContext, nullptr, info.receiverChecks.atAccess) :
-	                                                    lowerExpression(*binary.right);
+	const LLVMValueRef lhs        = lowerContextOperand(*binary.left, info.leftContext, left, info.receiverChecks.beforeArguments);
+	const LLVMValueRef rhs        = lowerContextOperand(*binary.right, info.rightContext, nullptr, info.receiverChecks.atAccess);
 	const bool         directLeft = !info.leftContext && bf_body.isDirectReceiver(*binary.left),
 	           directRight        = !info.rightContext && bf_body.isDirectReceiver(*binary.right);
 	if (info.callsClassEquality)
@@ -1704,10 +1711,6 @@ LLVMValueRef FunctionLowering::lowerSelectedBinary (const cloth::BinaryExpressio
 	}
 	if (info.types.empty()) throw unsupported();
 	const cloth::ResolvedType &type = info.comparisonType ? *info.comparisonType : info.types.front();
-	if (op == cloth::OAnd || op == cloth::OOr) {
-		const LLVMValueRef a = sl_scalars.predicate(lhs.value), b = sl_scalars.predicate(rhs.value);
-		return sl_scalars.boolean(op == cloth::OAnd ? LLVMBuildAnd(ir_builder, a, b, "") : LLVMBuildOr(ir_builder, a, b, ""));
-	}
 	if (!sl_scalars.type(type) || (!cloth::isComparison(op) && op != cloth::OPlus && op != cloth::OMinus && op != cloth::OMul && op != cloth::ODiv &&
 	                               op != cloth::OMod && op != cloth::OMulMul))
 		throw unsupported();

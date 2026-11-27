@@ -1,0 +1,86 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<class> Trace(pub def<int> events) {
+    pub Trace() : (0) {}
+    pub mt mark(int digit) { events = events * 10 + digit; }
+}
+
+typedef<struct> Flag {
+    pub Trace trace, pub bool value;
+    pub operator<bool> &&() -> bool { trace.mark(2); return value; }
+    pub operator<bool> ||() -> bool { trace.mark(2); return value; }
+    pub operator<Flag> &&() -> bool { trace.mark(2); return value; }
+    pub operator<Flag> ||() -> bool { trace.mark(2); return value; }
+}
+
+fn<Flag> flag(Trace trace, int digit, bool value) {
+    trace.mark(digit);
+    return {trace, value};
+}
+fn<bool> rhs(Trace trace, bool value) { trace.mark(3); return value; }
+
+typedef<struct> Strict {
+    pub Trace trace;
+    pub operator<bool> &&() -> bool { trace.mark(2); return false; }
+    pub operator<bool> ||() -> bool { trace.mark(2); return true; }
+    pub operator &&(bool peer) -> bool { trace.mark(4); return peer; }
+    pub operator ||(bool peer) -> bool { trace.mark(4); return peer; }
+}
+typedef<struct> Wrapper<T> { pub T inner; pub operator<bool> ||() = inner; }
+
+fn<int> exitAnd(Flag left, bool first) {
+    bool result = left && (if (first) { return 7; } else { return 8; });
+    return if (result) 1 else 9;
+}
+fn<int> exitOr(Flag left, bool first) {
+    bool result = left || (if (first) { return 7; } else { return 8; });
+    return if (result) 9 else 1;
+}
+
+pub fn<int> main() {
+    Trace trace := Trace::new();
+    if (flag(trace, 1, false) && rhs(trace, true)) return 1;
+    if (!(flag(trace, 1, true) || rhs(trace, false))) return 2;
+    if (trace.events != 1212) return 3;
+
+    trace.events = 0;
+    if (!(flag(trace, 1, true) && rhs(trace, true))) return 4;
+    if (flag(trace, 1, false) || rhs(trace, false)) return 5;
+    if (trace.events != 123123) return 6;
+
+    trace.events = 0;
+    if (false && flag(trace, 3, true)) return 7;
+    if (!(true || flag(trace, 3, false))) return 8;
+    if (trace.events != 0) return 9;
+    if (true && flag(trace, 3, false)) return 10;
+    if (!(false || flag(trace, 3, true))) return 11;
+    if (trace.events != 3232) return 12;
+
+    trace.events = 0;
+    if (flag(trace, 1, false) && flag(trace, 3, true)) return 13;
+    if (!(flag(trace, 1, true) || flag(trace, 3, false))) return 14;
+    if (trace.events != 1212) return 15;
+    trace.events = 0;
+    if (!(flag(trace, 1, true) && flag(trace, 3, true))) return 16;
+    if (flag(trace, 1, false) || flag(trace, 3, false)) return 17;
+    if (trace.events != 12321232) return 18;
+
+    trace.events = 0;
+    Strict strict = {trace};
+    if (!(strict && rhs(trace, true))) return 19;
+    if (strict || rhs(trace, false)) return 20;
+    Wrapper<Strict> wrapper = {strict};
+    if (wrapper || rhs(trace, false)) return 21;
+    Wrapper<bool> enabled = {true};
+    if (!(enabled || rhs(trace, false))) return 21;
+    if (trace.events != 343434) return 22;
+
+    Flag yes = {trace, true};
+    Flag no = {trace, false};
+    trace.events = 0;
+    if (exitAnd(no, true) != 9 || exitAnd(yes, false) != 8) return 23;
+    if (exitOr(yes, false) != 9 || exitOr(no, true) != 7) return 24;
+    if (trace.events != 2222) return 25;
+    trace::delete;
+    return 42;
+}

@@ -863,7 +863,7 @@ void BodyChecker::numericPeers (const Expression &node, NumericPeers &peers, boo
 	if (!peers.floating && opt_type->floating() && (contextualFloat || opt_type->parameter)) peers.floating = *opt_type;
 }
 
-ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const ResolvedType *expected, FloatContext floats, bool allowContexts) {
+ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const ResolvedType *expected, const FloatContext &floats, bool allowContexts) {
 	// Candidate selection and numeric peer discovery share natural operand types for this expression.
 	OperatorProbes m_probes;
 
@@ -881,49 +881,64 @@ ExpressionInfo BodyChecker::binary (const BinaryExpression &node, const Resolved
 	return builtinBinary(node, expected, floats);
 }
 
+ExpressionInfo BodyChecker::logical (const BinaryExpression &node, const std::optional<Candidate> &leftContext, const std::optional<Candidate> &rightContext) {
+	const ResolvedType boolean(KBoolean);
+	ExpressionInfo     result{ .types = {}, .shortCircuit = true };
+	const auto         operand = [&] (BodyChecker &checker, const Expression &source, const std::optional<Candidate> &context,
+	                                  std::optional<OperatorSelection> &selection) {
+		ExpressionInfo info = checker.testOperand(source);
+		if (info.fallsThrough && context) {
+			info           = checker.callOperator(*context, source, info.types.front(), node.op, node.getSpan());
+			selection      = OperatorSelection{ .symbol = info.symbol, .instance = info.instance };
+			checker.e_test = nullptr;
+		}
+		if (info.fallsThrough) {
+			requirePresentOperand(info.types.front(), source.getSpan());
+			if (info.types.front() != boolean)
+				fail(Code::BinaryOperands, node.op.getSpan(),
+				     std::format("Operator '{}' requires {} operands", node.op.getLexeme(), toString(KBoolean)));
+		}
+		return checker.splitTest(source, info);
+	};
+	TestPaths   tp_left     = operand(*this, *node.left, leftContext, result.leftContext);
+	const bool  b_and       = node.op.getOperator() == OAnd;
+	TestPath   &tp_evaluate = b_and ? tp_left.yes : tp_left.no;
+	TestPath   &tp_skip     = b_and ? tp_left.no : tp_left.yes;
+	BodyChecker bc_right    = *this;
+	bc_right.fs_flow        = { .narrowed = tp_evaluate.facts, .exits = {} };
+	if (!tp_evaluate.reachable) bc_right.we_capture = nullptr;
+	TestPaths tp_right = operand(bc_right, *node.right, rightContext, result.rightContext);
+	if (tp_evaluate.reachable) {
+		mergeExits(fs_flow.exits, bc_right.fs_flow.exits);
+		const TestPath &tp_short = b_and ? tp_right.no : tp_right.yes;
+		if (!tp_skip.reachable)
+			tp_skip = tp_short;
+		else if (tp_short.reachable)
+			intersect(tp_skip.facts, tp_short.facts);
+	}
+	TestPath &tp_result = b_and ? tp_right.yes : tp_right.no;
+	tp_result.reachable &= tp_evaluate.reachable;
+	tp_evaluate = std::move(tp_result);
+	std::optional<Narrowing> opt_after;
+	if (tp_left.yes.reachable) opt_after = tp_left.yes.facts;
+	if (tp_left.no.reachable) join(opt_after, tp_left.no.facts);
+	e_test              = &node;
+	tp_test             = std::move(tp_left);
+	result.fallsThrough = opt_after.has_value();
+	if (opt_after) {
+		fs_flow.narrowed = std::move(*opt_after);
+		result.types     = { boolean };
+	}
+	return result;
+}
+
 ExpressionInfo BodyChecker::builtinBinary (const BinaryExpression &node, const ResolvedType *expected, FloatContext floats) {
 	const Operator o_operation = node.op.getOperator();
 	if (o_operation == OElvis) {
 		const ResultTypes v_hint = expected ? ResultTypes{ *expected } : ResultTypes{};
 		return elvis({ node.left, node.op, node.right }, expected ? &v_hint : nullptr, floats);
 	}
-	if (o_operation == OAnd || o_operation == OOr) {
-		const ExpressionInfo ei_left     = testOperand(*node.left);
-		TestPaths            tp_left     = splitTest(*node.left, ei_left);
-		const bool           b_and       = o_operation == OAnd;
-		TestPath            &tp_evaluate = b_and ? tp_left.yes : tp_left.no;
-		TestPath            &tp_skip     = b_and ? tp_left.no : tp_left.yes;
-		BodyChecker          bc_right    = *this;
-		bc_right.fs_flow                 = { .narrowed = tp_evaluate.facts, .exits = {} };
-		if (!tp_evaluate.reachable) bc_right.we_capture = nullptr;
-		const ExpressionInfo ei_right = bc_right.testOperand(*node.right);
-		TestPaths            tp_right = bc_right.splitTest(*node.right, ei_right);
-		if (ei_left.fallsThrough) requirePresentOperand(ei_left.types.front(), node.left->getSpan());
-		if (ei_right.fallsThrough) requirePresentOperand(ei_right.types.front(), node.right->getSpan());
-		if ((ei_left.fallsThrough && ei_left.types.front() != ResolvedType(KBoolean)) ||
-		    (ei_right.fallsThrough && ei_right.types.front() != ResolvedType(KBoolean)))
-			fail(Code::BinaryOperands, node.op.getSpan(),
-			     std::format("Operator '{}' requires {} operands", node.op.getLexeme(), toString(KBoolean)));
-		if (tp_evaluate.reachable) {
-			mergeExits(fs_flow.exits, bc_right.fs_flow.exits);
-			const TestPath &tp_short = b_and ? tp_right.no : tp_right.yes;
-			if (!tp_skip.reachable)
-				tp_skip = tp_short;
-			else if (tp_short.reachable)
-				intersect(tp_skip.facts, tp_short.facts);
-		}
-		TestPath &tp_result = b_and ? tp_right.yes : tp_right.no;
-		tp_result.reachable &= tp_evaluate.reachable;
-		tp_evaluate = std::move(tp_result);
-		std::optional<Narrowing> opt_after;
-		if (tp_left.yes.reachable) opt_after = tp_left.yes.facts;
-		if (tp_left.no.reachable) join(opt_after, tp_left.no.facts);
-		e_test  = &node;
-		tp_test = std::move(tp_left);
-		if (!opt_after) return ExpressionInfo::never();
-		fs_flow.narrowed = std::move(*opt_after);
-		return value(ResolvedType(KBoolean));
-	}
+	if (o_operation == OAnd || o_operation == OOr) return logical(node);
 	if (o_operation == ORange || o_operation == ORangeInclusive)
 		return rangeValue(node, expected ? rangeEndpoint(*expected) : nullptr, Code::InvalidRangeValue);
 	const bool equality = o_operation == OEqual || o_operation == ONotEqual || o_operation == OColon || node.op.getLexeme() == toString(KIs);

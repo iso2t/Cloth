@@ -288,7 +288,7 @@ ExpressionInfo BodyChecker::callOperator (const Candidate &candidate, const Expr
 }
 
 std::optional<ExpressionInfo> BodyChecker::binaryOperator (const BinaryExpression &node, const ResolvedType *expected, bool allowContexts,
-                                                           FloatContext floats) {
+                                                           const FloatContext &floats) {
 	const bool b_inequality = node.op.getOperator() == ONotEqual;
 	if (!analyzer.hasOperator(node.op.getNameKey()) && !(b_inequality && analyzer.hasOperator(toString(OEqual)))) return {};
 	ExpressionFacts ef_natural;
@@ -323,12 +323,27 @@ std::optional<ExpressionInfo> BodyChecker::binaryOperator (const BinaryExpressio
                 }
 	};
 	const ResolvedType rt_left = probe(*node.left), rt_right = probe(*node.right);
-	if ((!rt_left.declaration && !rt_left.parameter) && (!rt_right.declaration && !rt_right.parameter)) return {};
-	return applyBinaryOperator(node, rt_left, rt_right, expected, allowContexts, floats);
+	if (rt_left.declaration || rt_left.parameter || rt_right.declaration || rt_right.parameter) {
+		if (std::optional<ExpressionInfo> result = applyBinaryOperator(node, rt_left, rt_right, expected, allowContexts, floats)) return result;
+	}
+	const Operator op = node.op.getOperator();
+	if (allowContexts && (op == OAnd || op == OOr) && rt_left == ResolvedType(KBoolean) && rt_right != rt_left) {
+		// A presence test on the left can expose the right operand's operator only on the path that evaluates it.
+		bc_probe.fs_flow          = fs_flow;
+		const TestPaths paths     = bc_probe.test(*node.left);
+		const TestPath &rightPath = op == OAnd ? paths.yes : paths.no;
+		if (rightPath.facts != bc_probe.fs_flow.narrowed) {
+			bc_probe.fs_flow.narrowed   = rightPath.facts;
+			const ResolvedType narrowed = probe(*node.right);
+			if (narrowed != rt_right && (narrowed.declaration || narrowed.parameter))
+				return applyBinaryOperator(node, rt_left, narrowed, expected, allowContexts, floats);
+		}
+	}
+	return {};
 }
 
 std::optional<ExpressionInfo> BodyChecker::applyBinaryOperator (const BinaryExpression &node, const ResolvedType &rtLeft, const ResolvedType &rtRight,
-                                                                const ResolvedType *expected, bool allowContexts, FloatContext floats) {
+                                                                const ResolvedType *expected, bool allowContexts, const FloatContext &floats) {
 	if (isEquality(node.op.getOperator())) {
 		if (!rtLeft.name.empty()) receiverClassBound(*node.left, rtLeft);
 		if (!rtRight.name.empty()) receiverClassBound(*node.right, rtRight);
@@ -370,17 +385,30 @@ std::optional<ExpressionInfo> BodyChecker::applyBinaryOperator (const BinaryExpr
 	}
 	if (sym_unmatched)
 		fail(Code::OperatorMatch, node.op.getSpan(), "No matching overload for operator '" + node.op.getLexeme() + "'", &sym_unmatched->name);
-	if (!allowContexts || node.op.getLexeme() == toString(KIs) || rtLeft.name.empty() || rtRight.name.empty() || rtLeft.nullable() || rtRight.nullable() ||
-	    rtLeft == ResolvedType(KNull) || rtRight == ResolvedType(KNull) ||
+	const bool logicalOp = node.op.getOperator() == OAnd || node.op.getOperator() == OOr;
+	if (!allowContexts || node.op.getLexeme() == toString(KIs) || (!logicalOp && (rtLeft.name.empty() || rtRight.name.empty())) || rtLeft.nullable() ||
+	    rtRight.nullable() || rtLeft == ResolvedType(KNull) || rtRight == ResolvedType(KNull) ||
 	    (isEquality(node.op.getOperator()) && (rtLeft == rtRight || (analyzer.referenceType(rtLeft) && analyzer.referenceType(rtRight)))))
 		return {};
-	const std::function contextFor = [&] (const ResolvedType &receiver, const ResolvedType &peer) {
-		std::optional<Candidate> opt_context = selectContext(node.op, receiver, peer);
+	const ResolvedType  boolean(KBoolean);
+	const std::function contextFor = [&] (const ResolvedType &receiver, const ResolvedType &peer) -> std::optional<Candidate> {
+		if (receiver.name.empty()) return {};
+		// A control transfer has no value type. A logical operand can still supply the boolean used to reach it.
+		std::optional<Candidate> opt_context = selectContext(node.op, receiver, peer.name.empty() ? boolean : peer);
 		if (!opt_context && b_inequality) opt_context = selectContext(t_equal, receiver, peer);
 		return opt_context;
 	};
 	const std::optional<Candidate> opt_left = contextFor(rtLeft, rtRight), opt_right = contextFor(rtRight, rtLeft);
 	if (!opt_left && !opt_right) return {};
+	if (logicalOp) {
+		const auto suppliesBool = [&] (const ResolvedType &type, const std::optional<Candidate> &context) {
+			if (!context) return type == boolean || type.name.empty();
+			const ResultTypes results = analyzer.callResults(*context->symbol, context->arguments, context->operatorWidth);
+			return results.size() == 1 && results.front() == boolean;
+		};
+		if (suppliesBool(rtLeft, opt_left) && suppliesBool(rtRight, opt_right)) return logical(node, opt_left, opt_right);
+		if (rtLeft.name.empty() || rtRight.name.empty()) return {};
+	}
 	const std::function project = [&] (const Expression &operand, const std::optional<Candidate> &candidate) {
 		ExpressionInfo ei_operand = scalarInfo(operand);
 		if (!candidate || !ei_operand.fallsThrough) return ei_operand;

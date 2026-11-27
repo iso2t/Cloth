@@ -108,12 +108,9 @@ struct DisplaySource {
 		text.reserve(input.size());
 		std::size_t start = 0;
 		for (;;) {
-			const auto newline = input.find('\n', start);
-			auto       line    = input.substr(start, newline == std::string_view::npos ? newline : newline - start);
-			const bool crlf    = newline != std::string_view::npos && line.ends_with('\r');
-			if (crlf) {
-				line.remove_suffix(1);
-			}
+			const auto newline = input.find_first_of("\r\n", start);
+			const auto line    = input.substr(start, newline == std::string_view::npos ? newline : newline - start);
+			const bool crlf    = newline != std::string_view::npos && input.substr(newline).starts_with("\r\n");
 			lines.push_back({ .offset=text.size(), .length=line.size(), .crlf=crlf });
 			text.append(line);
 
@@ -121,7 +118,7 @@ struct DisplaySource {
 				break;
 			}
 			text.push_back('\n');
-			start = newline + 1;
+			start = newline + (crlf ? 2 : 1);
 		}
 	}
 

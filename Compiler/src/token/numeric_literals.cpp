@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utf8proc/utf8proc.h>
 
 #include <diagnostics.hpp>
 #include <token/numeric_literals.hpp>
@@ -17,12 +18,6 @@
 namespace cloth {
 
 namespace {
-
-// Decimal-digit ranges in the BMP
-constexpr char32_t DECIMAL_ZEROES[] = {
-	0x0660, 0x06F0, 0x07C0, 0x0966, 0x09E6, 0x0A66, 0x0AE6, 0x0B66, 0x0BE6, 0x0C66, 0x0CE6, 0x0D66, 0x0DE6, 0x0E50, 0x0ED0, 0x0F20, 0x1040, 0x1090,
-	0x17E0, 0x1810, 0x1946, 0x19D0, 0x1A80, 0x1A90, 0x1B50, 0x1BB0, 0x1C40, 0x1C50, 0xA620, 0xA8D0, 0xA900, 0xA9D0, 0xA9F0, 0xAA50, 0xABF0, 0xFF10,
-};
 
 constexpr int WORD_BITS = std::numeric_limits<std::uint32_t>::digits;
 // Seven hex digits keep the chunk radix within one word.
@@ -58,16 +53,14 @@ DecimalDigit decimalDigit (const std::string_view text) {
 		return c_first >= '0' && c_first <= '9' ? DecimalDigit{ .ascii = static_cast<char>(c_first), .length = 1 } : DecimalDigit{};
 	}
 	const std::size_t st_length = utf8ScalarLength(text);
-	if (st_length == 0 || st_length > 3) {
-		return {};
-	}
-	const char32_t c32_digit = utf8ScalarValue(text.substr(0, st_length));
-	for (const char32_t c32_zero : DECIMAL_ZEROES) {
-		if (c32_digit >= c32_zero && c32_digit <= c32_zero + 9) {
-			return { .ascii = static_cast<char>('0' + (c32_digit - c32_zero)), .length = st_length };
-		}
-	}
-	return {};
+	if (st_length == 0) return {};
+	const auto scalar = static_cast<utf8proc_int32_t>(utf8ScalarValue(text.substr(0, st_length)));
+	if (utf8proc_category(scalar) != UTF8PROC_CATEGORY_ND) return {};
+
+	// Unicode decimal digits form ordered sets of ten. Several sets can be adjacent.
+	utf8proc_int32_t runStart = scalar;
+	while (utf8proc_category(runStart - 1) == UTF8PROC_CATEGORY_ND) --runStart;
+	return { .ascii = static_cast<char>('0' + (scalar - runStart) % 10), .length = st_length };
 }
 
 int integerLiteralRadix (const std::string_view spelling) {

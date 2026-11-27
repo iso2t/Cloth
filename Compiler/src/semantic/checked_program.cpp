@@ -842,4 +842,10 @@ const ResultTypes &Analyzer::resultsOf (const Symbol &symbol) {
 	return declarations.at(&symbol).returns;
 }
 
+ResultTypes Analyzer::callResults (const Symbol &symbol, const Substitutions &arguments, unsigned operatorWidth) {
+	if (operatorWidth) return widthSignature(symbol, arguments, operatorWidth).returns;
+	ResultTypes results;
+	for (const ResolvedType &type : resultsOf(symbol)) results.push_back(substitute(type, arguments));
+	return results;
+}
 }

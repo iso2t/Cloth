@@ -141,13 +141,14 @@ Lexer::Lexer (const SourceFile &source, const std::size_t offset) : Lexer(source
 }
 
 /**
- * @brief Advances the lexer by one character and updates the current position.
+ * @brief Advances the lexer by one source byte and updates the current position.
  *
- * @return char The character that was advanced past.
+ * @return char The consumed byte.
  */
 char Lexer::advance () {
 	const char c = sourceText()[st_current++];
-	if (c == '\n') {
+	// The LF completes CRLF, so an offset between its bytes still belongs to the preceding line.
+	if (c == '\n' || (c == '\r' && peek() != '\n')) {
 		p_current = { .line = p_current.line + 1, .column = 1 };
 	} else {
 		++p_current.column;
@@ -159,6 +160,12 @@ void Lexer::advanceBytes (const std::size_t length) {
 	for (std::size_t st_byte = 0; st_byte < length; ++st_byte) {
 		advance();
 	}
+}
+
+bool Lexer::consumeLineBreak () {
+	if (!isLineBreak(peek())) return false;
+	if (advance() == '\r' && peek() == '\n') advance();
+	return true;
 }
 
 /**
@@ -267,6 +274,10 @@ Operator Lexer::matchOperator () {
  * @return void
  */
 void Lexer::scanToken () {
+	if (consumeLineBreak()) {
+		addToken(TokenType::NewLine, span(), "\n");
+		return;
+	}
 	const std::string_view s_remaining = std::string_view{ sourceText() }.substr(st_current);
 
 	if (s_remaining.starts_with(S_INTERPOLATION_PREFIX)) {
@@ -316,11 +327,7 @@ void Lexer::scanToken () {
 
 	switch (const char c_character = advance()) {
 	case ' ':
-	case '\r':
 	case '\t':
-		return;
-	case '\n':
-		addToken(TokenType::NewLine, span(), "\n");
 		return;
 	default: {
 		const std::size_t st_size = utf8ScalarLength(s_remaining);
@@ -351,7 +358,7 @@ bool Lexer::skipComments () {
 	case '/':
 		advance();
 		advance();
-		while (!isAtEnd() && peek() != '\n') {
+		while (!isAtEnd() && !isLineBreak(peek())) {
 			advance();
 		}
 		return true;
@@ -604,7 +611,7 @@ void Lexer::advanceEscape (const Position start, std::string_view kind) {
 		advance();
 		return;
 	}
-	advanceStringScalar();
+	if (!consumeLineBreak()) advanceStringScalar();
 	throw cde::SyntaxException{ DiagnosticCode::InvalidEscape, std::format("Invalid escape in {}", kind), spanFrom(start) };
 }
 
@@ -615,9 +622,8 @@ void Lexer::advanceStringCharacter (std::string_view kind) {
 		advance();
 		if (isAtEnd()) return;
 	}
-	if (isLineBreak(peek())) {
-		const Position p_newline = p_current;
-		if (advance() == '\r' && peek() == '\n') advance();
+	const Position p_newline = p_current;
+	if (consumeLineBreak()) {
 		throw cde::SyntaxException{ DiagnosticCode::MultilineString, std::format("Newline in {}", kind), spanFrom(p_newline) };
 	}
 	if (b_escape)

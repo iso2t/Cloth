@@ -1,5 +1,34 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+# RUN: %expect_exit --empty-stderr 0 %cloth --help > "%t.help"
+# RUN: %filecheck "%s" --check-prefix=HELP --input-file "%t.help"
+# HELP: cloth [options] --src PATH
+# HELP: Options
+# HELP-DAG: --help Show this help.
+# HELP-DAG: --version Print the compiler version.
+# HELP-DAG: --print-target Print the target triple.
+# HELP-DAG: --record-extern-interfaces
+# HELP-DAG: --module-name <a library name>
+# HELP-DAG: --extern <NAME=SOURCE>
+# HELP-DAG: --kind <library or executable>
+# HELP-DAG: --target-bits <32 or 64>
+# HELP-DAG: --stdlib <a directory>
+# HELP-DAG: -l Scan tokens and exit silently.
+# HELP-DAG: -L Print the token table and exit.
+# HELP-DAG: --src <a file path>
+# HELP-DAG: --emit <object or assembly>
+# HELP-DAG: -o <a file path>
+# HELP-DAG: --output <a file path>
+# HELP-DAG: --emit-object <a file path>
+# RUN: %expect_exit --empty-stderr 0 %cloth --version > "%t.version"
+# RUN: %filecheck "%s" --match-full-lines --check-prefix=VERSION --input-file "%t.version"
+# VERSION: cloth {{[0-9]+\.[0-9]+\.[0-9]+([-+][[:alnum:].-]+)*}}
+# VERSION-NOT: {{.+}}
+
+# Informational actions finish before opening the source or preparing output.
+# RUN: %expect_exit --empty-stderr --stdout-file "%t.help" 0 %cloth --help --src "%t.missing"
+# RUN: %expect_exit --empty-stderr --stdout-file "%t.version" 0 %cloth --emit object --version
+
 # RUN: echo "fn<usize> wide() = 4294967296;" > "%t.co"
 
 # RUN: %expect_exit --empty-stdout 1 %cloth --src "%t.co" --knd executable 2> "%t.err"
@@ -12,6 +41,7 @@
 # RUN: %expect_exit --empty-stdout 1 %cloth --target-bit 32 --src "%t.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=UNKNOWN-WIDTH --input-file "%t.err"
 # UNKNOWN-WIDTH: [C0001] Error: Unknown option '--target-bit'
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0003] Error: --target-bits requires 32 or 64" 1 %cloth --target-bits 16
 # RUN: %expect_exit --empty-stdout 1 %cloth --target-bits 32 --src "%t.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=RANGE --input-file "%t.err"
 # RANGE: [C3004] Error: Integer literal is outside usize
@@ -23,15 +53,10 @@
 # RUN: %expect_exit --empty-stdout 1 %cloth -x 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=SHORT --input-file "%t.err"
 # SHORT: [C0001] Error: Unknown option '-x'
-# RUN: %expect_exit --empty-stdout 1 %cloth --src 2> "%t.err"
-# RUN: %filecheck "%s" --check-prefix=MISSING-VALUE --input-file "%t.err"
-# MISSING-VALUE: --src requires a file path
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0002] Error: --src requires a file path" 1 %cloth --src
 
-# RUN: %expect_exit --empty-stdout 1 %cloth --emit 2> "%t.err"
-# RUN: %filecheck "%s" --check-prefix=EMIT-KIND --input-file "%t.err"
-# RUN: %expect_exit --empty-stdout 1 %cloth --emit unknown 2> "%t.err"
-# RUN: %filecheck "%s" --check-prefix=EMIT-KIND --input-file "%t.err"
-# EMIT-KIND: --emit requires object or assembly
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0002] Error: --emit requires object or assembly" 1 %cloth --emit
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0003] Error: --emit requires object or assembly" 1 %cloth --emit unknown
 # RUN: %expect_exit --empty-stdout 1 %cloth --emit assembly --src "%t.co" 2> "%t.err"
 # RUN: %filecheck "%s" --check-prefix=EMIT-LIBRARY --input-file "%t.err"
 # EMIT-LIBRARY: [C0017] Error: --emit requires --module-name for library output

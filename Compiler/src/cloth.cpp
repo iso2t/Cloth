@@ -6,6 +6,7 @@
 #include <exception>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -20,6 +21,10 @@
 #include <semantic/symbol_table.hpp>
 #include <system/compiler_options.hpp>
 #include <util/pstream.hpp>
+
+namespace {
+constexpr std::string_view COMPILER_VERSION = "0.1.0-dev";
+}
 
 #ifdef _WIN32
 int wmain (const int argc, wchar_t *wideArgv[]) try {
@@ -40,9 +45,18 @@ int main (const int argc, char *argv[]) try {
 		std::fprintf(stderr, "incorrect usage: cloth <args>");
 	}
 
-	if (co_options.printTarget) {
+	switch (co_options.action) {
+	case cloth::sys::DriverAction::Help:
+		co_options.printHelp(std::cout);
+		return SUCCESS;
+	case cloth::sys::DriverAction::Version:
+		std::cout << "cloth " << COMPILER_VERSION << '\n';
+		return SUCCESS;
+	case cloth::sys::DriverAction::PrintTarget:
 		std::cout << backend::toolchainTriple(co_options.targetLayout.sizeBits) << '\n';
 		return SUCCESS;
+	case cloth::sys::DriverAction::Compile:
+		break;
 	}
 	if (!co_options.p_sourcePath) return FAILED;
 

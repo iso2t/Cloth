@@ -28,8 +28,5 @@
 # RETURN: [C3037] Error:
 # RETURN: invalid entry-point return type
 
-# RUN: %expect_exit --empty-stdout 1 %cloth --kind application --src "%t.co" 2> "%t.err"
-# RUN: %filecheck "%s" --check-prefix=OPTION --input-file "%t.err"
-# RUN: %expect_exit --empty-stdout 1 %cloth --src "%t.co" --kind 2> "%t.err"
-# RUN: %filecheck "%s" --check-prefix=OPTION --input-file "%t.err"
-# OPTION: --kind requires library or executable
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0003] Error: --kind requires library or executable" 1 %cloth --kind application --src "%t.co"
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0002] Error: --kind requires library or executable" 1 %cloth --src "%t.co" --kind

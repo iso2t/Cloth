@@ -208,6 +208,7 @@ class Analyzer {
 	void                        recordLifetimeBody (LifetimeBody body, bool initializationMayCall);
 	[[nodiscard]] bool          preservesNewReceiver (const ResolvedType &host, const Symbol &constructor) const;
 	const ResultTypes          &resultsOf (const Symbol &symbol);
+	ResultTypes                 callResults (const Symbol &symbol, const Substitutions &arguments, unsigned operatorWidth);
 	DeclarationInfo             widthSignature (const Symbol &symbol, const Substitutions &arguments, unsigned width);
 	const BodyFacts            &widthTemplate (const Symbol &symbol, unsigned width);
 	void                        useWidthAnnotation (const TypeReference &reference, const Symbol &owner);
@@ -643,12 +644,15 @@ class BodyChecker {
 	bool                          statePayload (const ExpressionPtr &payload, const ResolvedType &required, const TokenSpan &span, const Token &state);
 	ExpressionInfo                transition (const Candidate &state, const ExpressionPtr &payload, const TokenSpan &span);
 	ExpressionInfo                typeCheck (const TypeCheckExpression &node);
-	ExpressionInfo                binary (const BinaryExpression &node, const ResolvedType *expected, FloatContext floats, bool allowContexts = true);
+	ExpressionInfo binary (const BinaryExpression &node, const ResolvedType *expected, const FloatContext &floats, bool allowContexts = true);
 	ExpressionInfo                builtinBinary (const BinaryExpression &node, const ResolvedType *expected, FloatContext floats);
+	ExpressionInfo                logical (const BinaryExpression &node, const std::optional<Candidate> &leftContext = {},
+	                                       const std::optional<Candidate> &rightContext = {});
 	ExpressionInfo                elvis (const ElvisExpression &node, const ResultTypes *expected, FloatContext floats);
-	std::optional<ExpressionInfo> binaryOperator (const BinaryExpression &node, const ResolvedType *expected, bool allowContexts, FloatContext floats);
+	std::optional<ExpressionInfo> binaryOperator (const BinaryExpression &node, const ResolvedType *expected, bool allowContexts,
+	                                              const FloatContext &floats);
 	std::optional<ExpressionInfo> applyBinaryOperator (const BinaryExpression &node, const ResolvedType &rtLeft, const ResolvedType &rtRight,
-	                                                   const ResolvedType *expected, bool allowContexts, FloatContext floats);
+	                                                   const ResolvedType *expected, bool allowContexts, const FloatContext &floats);
 	ExpressionInfo                equality (const BinaryExpression &node, const ResolvedType &left, const ResolvedType &right);
 	std::optional<Candidate>      selectOperator (const Token &op, const TokenSpan &span, const ResolvedType &left, const ResolvedType &right,
 	                                              bool &rightReceiver, const BinaryExpression *operands = nullptr, const Symbol **unmatched = nullptr) const;

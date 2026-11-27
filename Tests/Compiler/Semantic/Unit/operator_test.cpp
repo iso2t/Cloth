@@ -202,6 +202,35 @@ pub operator ||(bool flag, self) = flag; }
 	expectError("typedef<class> P { pub operator &&(bool b) = b; }\nfn f(P p, opt<bool> x ?: p && true) {}", Code::InvalidParameterDefault);
 }
 
+TEST (SemanticOperators, LogicalOperandContextsFollowTheEvaluatedPath) {
+	const std::string ops = R"(typedef<class> Flag { pub operator<bool> &&() = true; pub operator<bool> ||() = false; }
+typedef<class> Box(pub def<string?> name, pub def<Flag> flag) {}
+)";
+	for (const char *expr : { "false && p", "true || p" }) EXPECT_NO_THROW(checkSource(ops + "fn<bool> f(Flag p) { p::delete; return " + expr + "; }"));
+	for (const char *expr : { "true && p", "false || p", "p && false", "p || true" })
+		expectError(ops + "fn<bool> f(Flag p) { p::delete; return " + expr + "; }", Code::DeletedClassAccess);
+	EXPECT_NO_THROW(checkSource(ops + R"(
+fn<bool> guardedAnd(Box? box) = box != null && box.flag;
+fn<bool> guardedOr(Box? box) = box == null || box.flag;
+fn<string> present(Flag flag, Box box) {
+    if (flag && box.name != null) return box.name;
+    if (flag || box.name == null) return "";
+    return box.name;
+}
+fn<string> skipped(Flag flag, Box box) {
+    if (box.name == null) return "";
+    bool skipped = false && flag;
+    return box.name;
+}
+)"));
+	expectError(ops + R"(fn<usize> cleared(Flag flag, Box box) {
+    if (box.name == null) return 0;
+    bool taken = true && flag;
+    return box.name::size;
+})",
+	            Code::NullablePayloadAccess);
+}
+
 TEST (SemanticOperators, UpdatesCapturedClassElementsAndFallsBackToArithmetic) {
 	EXPECT_NO_THROW(checkSource(R"(typedef<class> Item {
     pub operator ++() {}

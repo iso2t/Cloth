@@ -234,6 +234,7 @@ class LifetimeChecker {
 	void     selectState (const ExpressionInfo &call, Handle receiver, bool self, const Token &name, Path &path, ReceiverChecks &checks);
 	void     defaults (const ExpressionInfo &call, Path &path) const;
 	Handle   scalar (const Expression &node, Path &path);
+	Handle                       projectedOperand (const Expression &source, const std::optional<OperatorSelection> &projection, Path &path, bool &runtime);
 	Values   expression (const Expression &node, Path &path);
 	Values   conditional (const IfExpression &node, Path &path);
 	Values   guardedAccess (const GuardedAccessExpression &node, Path &path);
@@ -679,12 +680,19 @@ Branches LifetimeChecker::condition (const Expression &node, Path &path) {
 				return br_paths;
 			}
 		}
-		if ((o_operation == OAnd || o_operation == OOr) && it_info != bf_facts.expressions.end() && !it_info->second.argumentContract &&
-		    !it_info->second.leftContext && !it_info->second.rightContext) {
-			Branches      br_left = condition(*be_test->left, path);
+		if (it_info != bf_facts.expressions.end() && it_info->second.shortCircuit) {
+			ExpressionInfo &info    = it_info->second;
+			const auto      operand = [&] (const Expression &source, const std::optional<OperatorSelection> &context, Path &incoming, bool &check) {
+				if (!context) return condition(source, incoming);
+				bool runtime = false;
+				projectedOperand(source, context, incoming, runtime);
+				if (b_emit) check |= runtime;
+				return incoming.reachable ? Branches{ .yes = incoming, .no = incoming } : Branches{};
+			};
+			Branches      br_left = operand(*be_test->left, info.leftContext, path, info.receiverChecks.beforeArguments);
 			OptionalPath &p_next  = o_operation == OAnd ? br_left.yes : br_left.no;
 			if (!p_next) return br_left;
-			Branches const      br_right = condition(*be_test->right, *p_next);
+			Branches const      br_right = operand(*be_test->right, info.rightContext, *p_next, info.receiverChecks.atAccess);
 			const OptionalPath &p_short  = o_operation == OAnd ? br_right.no : br_right.yes;
 			if (p_short) join(o_operation == OAnd ? br_left.no : br_left.yes, *p_short);
 			p_next = o_operation == OAnd ? br_right.yes : br_right.no;
@@ -774,9 +782,18 @@ Values LifetimeChecker::guardedAccess (const GuardedAccessExpression &node, Path
 	return v_result;
 }
 
+Handle LifetimeChecker::projectedOperand (const Expression &source, const std::optional<OperatorSelection> &projection, Path &path, bool &runtime) {
+	const Handle handle = scalar(source, path);
+	if (!projection || !path.reachable) return handle;
+	access(handle, path, source.getSpan(), bf_facts.isDirectReceiver(source), runtime);
+	unknownEffect(path);
+	const DeclarationInfo &signature = projection->instance ? projection->instance->signature : a_analyzer.declarations.at(projection->symbol);
+	return fresh(signature.returns.front());
+}
+
 void LifetimeChecker::binary (const BinaryExpression &node, const ExpressionInfo &info, Path &path, ReceiverChecks &checks) {
 	const Operator o_operation = node.op.getOperator();
-	if ((o_operation == OAnd || o_operation == OOr) && !info.argumentContract && !info.leftContext && !info.rightContext) {
+	if (info.shortCircuit) {
 		Branches br_paths = condition(node, path);
 		if (br_paths.no) join(br_paths.yes, *br_paths.no);
 		if (br_paths.yes)
@@ -784,20 +801,11 @@ void LifetimeChecker::binary (const BinaryExpression &node, const ExpressionInfo
 		else
 			path.reachable = false;
 	} else {
-		const std::function operand = [&] (const Expression &source, const std::optional<OperatorSelection> &projection, bool &runtime) {
-			const Handle h_source = scalar(source, path);
-			if (!projection || !path.reachable) return h_source;
-			access(h_source, path, source.getSpan(), bf_facts.isDirectReceiver(source), runtime);
-			unknownEffect(path);
-			const DeclarationInfo &di_projection = projection->instance ? projection->instance->signature :
-			                                                              a_analyzer.declarations.at(projection->symbol);
-			return fresh(di_projection.returns.front());
-		};
-		const Handle h_left  = operand(*node.left, info.leftContext, checks.beforeArguments);
+		const Handle h_left  = projectedOperand(*node.left, info.leftContext, path, checks.beforeArguments);
 		const bool   b_right = info.rightReceiver;
 		if (info.argumentContract && !b_right && !info.liftedEquality)
 			access(h_left, path, node.left->getSpan(), bf_facts.isDirectReceiver(*node.left), checks.beforeArguments);
-		const Handle h_right = operand(*node.right, info.rightContext, checks.atAccess);
+		const Handle h_right = projectedOperand(*node.right, info.rightContext, path, checks.atAccess);
 		if (info.callsElementEquality) unknownEffect(path);
 		if (info.liftedEquality && (h_left.presence == Presence::Absent || h_right.presence == Presence::Absent)) return;
 		if (info.argumentContract) {

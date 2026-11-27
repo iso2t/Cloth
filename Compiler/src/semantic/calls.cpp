@@ -595,11 +595,7 @@ ExpressionInfo BodyChecker::bindCall (const Token &name, const TokenSpan &span, 
 		const auto &actual = v_probes.front().result;
 		checkConsoleText(name, *arguments.front().expression, actual ? actual->types.front() : best.parameters.front());
 	}
-	ResultTypes results;
-	if (best.operatorWidth)
-		results = analyzer.widthSignature(*best.contract, best.substitutions, best.operatorWidth).returns;
-	else
-		for (const ResolvedType &rt : analyzer.resultsOf(*best.contract)) results.push_back(analyzer.substitute(rt, best.substitutions));
+	ResultTypes results = analyzer.callResults(*best.contract, best.substitutions, best.operatorWidth);
 	remember(name, best.symbol->name);
 	const GenericInstance *gi_contract = nullptr, *gi_target = nullptr;
 	if (record) {

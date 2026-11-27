@@ -13,6 +13,12 @@
 # RUN: %cc "%t.context.o" %runtime -o "%t.context.exe"
 # RUN: %expect_exit --stdout-line 1 --stdout-line 2 --empty-stderr 42 "%t.context.exe"
 
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/logical-context.co" --target-bits 32 --emit-object "%t.logical.32.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/logical-context.co" --target-bits 64 --emit-object "%t.logical.64.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/logical-context.co" --emit-object "%t.logical.o"
+# RUN: %cc "%t.logical.o" %runtime -o "%t.logical.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.logical.exe"
+
 # RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/operator-dispatch.co" --emit-object "%t.o"
 # RUN: %cc "%t.o" %runtime -o "%t.exe"
 # RUN: %expect_exit --stdout-line 0 --stdout-line 1 --stdout-line 2 --stdout-line 3 --stdout-line 4 --stdout-line 2 --stdout-line 5 --stdout-line 2 --stdout-line 3 --stdout-line 2 --stdout-line 5 --stdout-line 2 --stdout-line 3 --stdout-line 6 --stdout-line 8 --stdout-line 8 --stdout-line 8 --stdout-line 9 --empty-stderr 42 "%t.exe"

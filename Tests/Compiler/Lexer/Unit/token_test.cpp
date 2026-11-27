@@ -4,11 +4,14 @@
 #include <gtest/gtest.h>
 #include <string>
 #include <string_view>
+#include <utf8proc/utf8proc.h>
 #include <vector>
 
 #include <cde/syntax_exception.hpp>
+#include <cloth/text.h>
 #include <file/source_file.hpp>
 #include <lexer/lexer.hpp>
+#include <token/numeric_literals.hpp>
 #include <token/token.hpp>
 #include "cde/diagnostic_code.hpp"
 
@@ -76,6 +79,22 @@ TEST (LexerIdentifiers, RejectsInvalidStartsAndCharactersOutsideTheProfile) {
 	}
 }
 
+TEST (LexerNumbers, DecimalDigitsMatchRuntimeClassificationAndValues) {
+	int digitsSeen = 0;
+	for (utf8proc_int32_t scalar = 0; scalar <= 0x10FFFF; ++scalar) {
+		if (!utf8proc_codepoint_valid(scalar)) continue;
+		utf8proc_uint8_t   bytes[4];
+		const auto         length       = static_cast<std::size_t>(utf8proc_encode_char(scalar, bytes));
+		const DecimalDigit digit        = decimalDigit({ reinterpret_cast<const char *>(bytes), length });
+		const bool         runtimeDigit = clothRtCharTest(scalar, ClothDigit) != 0;
+		ASSERT_EQ(digit.length, runtimeDigit ? length : 0u) << "Code point " << scalar;
+		if (runtimeDigit) {
+			ASSERT_EQ(digit.ascii, static_cast<char>('0' + digitsSeen % 10)) << "Code point " << scalar;
+			++digitsSeen;
+		}
+	}
+}
+
 TEST (LexerDiagnostics, RetainsSourceAndLabelsOffendingBytes) {
 	using cde::DiagnosticCode;
 
@@ -88,6 +107,7 @@ TEST (LexerDiagnostics, RetainsSourceAndLabelsOffendingBytes) {
 	const ErrorCase cases[] = {
 		{ .source="$", .code=DiagnosticCode::UnexpectedCharacter, .span="1:1-1:2" },
 		{ .source="計算 \U0001F408", .code=DiagnosticCode::UnexpectedCharacter, .span="1:8-1:12" },
+		{ .source="/* x\r\ny\rz */\n\r$", .code=DiagnosticCode::UnexpectedCharacter, .span="5:1-5:2" },
 		{ .source="\n/* comment\n", .code=DiagnosticCode::UnterminatedComment, .span="2:1-2:3" },
 		{ .source="1__2", .code=DiagnosticCode::InvalidSeparator, .span="1:2-1:3" },
 		{ .source="\"missing", .code=DiagnosticCode::UnterminatedString, .span="1:1-1:2" },
@@ -98,6 +118,8 @@ TEST (LexerDiagnostics, RetainsSourceAndLabelsOffendingBytes) {
 		{ .source=R"co(#"text\q")co", .code=DiagnosticCode::InvalidEscape, .span="1:7-1:9" },
 		{ .source="'\\q'", .code=DiagnosticCode::InvalidEscape, .span="1:2-1:4" },
 		{ .source="\"a\n", .code=DiagnosticCode::MultilineString, .span="1:3-2:1" },
+		{ .source="\"a\r", .code=DiagnosticCode::MultilineString, .span="1:3-2:1" },
+		{ .source="'\\\r\n", .code=DiagnosticCode::InvalidEscape, .span="1:2-2:1" },
 		{ .source="#\"\\\r\n", .code=DiagnosticCode::MultilineString, .span="1:4-2:1" },
 		{ .source="\"\xFF", .code=DiagnosticCode::InvalidUnicode, .span="1:2-1:3" },
 		{ .source="x\xF0\x80", .code=DiagnosticCode::InvalidUnicode, .span="1:2-1:3" },
@@ -108,6 +130,9 @@ TEST (LexerDiagnostics, RetainsSourceAndLabelsOffendingBytes) {
 		{ .source=R"co(#"a {#"b {1)co", .code=DiagnosticCode::UnterminatedInterpolation, .span="1:10-1:11" },
 		{ .source=R"co(#"ok })co", .code=DiagnosticCode::UnmatchedInterpolationBrace, .span="1:6-1:7" },
 		{ .source="0b2", .code=DiagnosticCode::InvalidNumericLiteral, .span="1:1-1:4" },
+		{ .source="0x𝟜", .code=DiagnosticCode::InvalidNumericLiteral, .span="1:1-1:7" },
+		{ .source="²", .code=DiagnosticCode::UnexpectedCharacter, .span="1:1-1:3" },
+		{ .source="𝟜_", .code=DiagnosticCode::InvalidSeparator, .span="1:5-1:6" },
 	};
 	for (const ErrorCase &test : cases) {
 		SCOPED_TRACE(test.source);
@@ -151,6 +176,25 @@ TEST (LexerSpans, Utf8StringUsesByteColumns) {
 	expectToken(v_tokens[0], TokenType::StringLiteral, "\"\xC3\xA9\"", 1, 5);
 	expectToken(v_tokens[1], TokenType::Identifier, "x", 6, 7);
 	expectToken(v_tokens[2], TokenType::EndOfFile, "", 7, 7);
+}
+
+TEST (LexerSpans, LineEndingsTerminateCommentsAndPreserveRawStringBytes) {
+	for (const std::string ending : { "\n", "\r\n", "\r" }) {
+		SCOPED_TRACE(::testing::PrintToString(ending));
+		const std::string        raw    = "\"\"\"a" + ending + "b\"\"\"";
+		const std::vector<Token> tokens = Lexer("// note" + ending + raw + ending + "// eof").scanTokens();
+		ASSERT_EQ(tokens.size(), 4u);
+		EXPECT_EQ(tokens[0].getType(), TokenType::NewLine);
+		EXPECT_EQ(tokens[0].getLexeme(), "\n");
+		EXPECT_EQ(tokens[0].getSpan().toString(), "1:8-2:1");
+		EXPECT_EQ(tokens[1].getType(), TokenType::RawStringLiteral);
+		EXPECT_EQ(tokens[1].getLexeme(), raw);
+		EXPECT_EQ(tokens[1].getSpan().toString(), "2:1-3:5");
+		EXPECT_EQ(tokens[2].getType(), TokenType::NewLine);
+		EXPECT_EQ(tokens[2].getSpan().toString(), "3:5-4:1");
+		EXPECT_EQ(tokens[3].getType(), TokenType::EndOfFile);
+		EXPECT_EQ(tokens[3].getSpan().toString(), "4:7-4:7");
+	}
 }
 
 TEST (LexerSpans, LiteralAndInterpolationDelimiters) {

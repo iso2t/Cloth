@@ -6,6 +6,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <iosfwd>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -18,6 +19,8 @@
 
 namespace cloth::sys {
 
+enum class DriverAction { Compile, Help, Version, PrintTarget };
+
 struct CompilerFlag {
 	struct Value {
 		std::string                           s_description;
@@ -25,6 +28,7 @@ struct CompilerFlag {
 	};
 
 	std::string                                s_flag;
+	std::string_view                           s_help;
 	std::variant<std::function<void()>, Value> v_action;
 };
 
@@ -40,6 +44,7 @@ class CompilerOptions {
 
 	void addFlag (const CompilerFlag &flag);
 	void buildDefaults ();
+	void printHelp (std::ostream &output) const;
 
 	std::optional<std::filesystem::path> p_sourcePath;
 	std::optional<std::filesystem::path> p_outputPath;
@@ -48,7 +53,7 @@ class CompilerOptions {
 	std::filesystem::path                standardLibraryRoot;
 	ProgramKind                          kind = ProgramKind::Library;
 	NativeModules                        modules;
-	bool                                 printTarget = false;
+	DriverAction                         action = DriverAction::Compile;
 
 	[[nodiscard]] int getLexerFlag () const {
 		return i_lexer;

@@ -8,8 +8,10 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 
+#include <diagnostics.hpp>
 #include <file/source_file.hpp>
 #include <util/utf8.hpp>
 
@@ -78,13 +80,16 @@ Extension SourceFile::sourceExtension (const std::filesystem::path &path) {
 }
 
 std::string SourceFile::readSource (const std::filesystem::path &path) {
-	if (!std::filesystem::is_regular_file(path)) {
-		throw std::runtime_error("Could not open source file '" + pathUtf8(path) + "': expected a regular file");
+	std::error_code                    ec;
+	const std::filesystem::file_status status = std::filesystem::status(path, ec);
+	if (!std::filesystem::is_regular_file(status)) {
+		const std::string reason = std::filesystem::status_known(status) ? "expected a regular file" : ec.message();
+		throw cde::ClothDiagnostic(cde::DiagnosticCode::SourceRead, "Could not open source file '" + pathUtf8(path) + "': " + reason);
 	}
 
 	std::ifstream ifs_input(path, std::ios::binary);
 	if (!ifs_input) {
-		throw std::runtime_error("Could not open source file '" + pathUtf8(path) + "'");
+		throw cde::ClothDiagnostic(cde::DiagnosticCode::SourceRead, "Could not open source file '" + pathUtf8(path) + "'");
 	}
 
 	std::string s_contents;
@@ -93,7 +98,7 @@ std::string SourceFile::readSource (const std::filesystem::path &path) {
 		s_contents.append(c_buffer, sizeof(c_buffer));
 	}
 	if (ifs_input.bad() || !ifs_input.eof()) {
-		throw std::runtime_error("Could not read source file '" + pathUtf8(path) + "'");
+		throw cde::ClothDiagnostic(cde::DiagnosticCode::SourceRead, "Could not read source file '" + pathUtf8(path) + "'");
 	}
 	s_contents.append(c_buffer, static_cast<std::size_t>(ifs_input.gcount()));
 

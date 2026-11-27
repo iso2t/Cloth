@@ -32,6 +32,7 @@ with an ``=`` body also take a semicolon. Braced functions, types, and
 For example, ``fn stop() { return; }`` and ``fn stop() = return;`` both
 define a function that returns immediately.
 
+LF, CRLF, and a lone CR each count as one newline.
 Wherever the grammar accepts a space, it also accepts a newline. An import
 can wrap before its colon, and an expression can continue onto the next
 line. In a generic call such as ``first<int>(x)``, keep the name next to
@@ -46,9 +47,9 @@ Numbers
 
 Write ``42`` in decimal, ``0b101010`` in binary, ``0o52`` in octal or ``0x2a``
 in hexadecimal. Use underscores between digits, as in ``65_535``. Write
-a minus sign before the literal to negate it. Decimal digits can include
-Unicode decimal digits. Prefixed bases use ASCII digits and hexadecimal
-letters.
+a minus sign before the literal to negate it. Decimal literals accept every
+Unicode character for which ``isDigit()`` returns true. For example, ``𝟜𝟚``
+has the value ``42``. Prefixed bases use ASCII digits and hexadecimal letters.
 
 A decimal point followed by digits makes a floating literal, as in ``1.25``.
 A decimal suffix ``f`` or ``F`` selects floating point, and ``i`` or ``I`` marks an
