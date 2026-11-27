@@ -5,6 +5,7 @@
 #include <backend/builtin_lowering.hpp>
 #include <backend/growable_array.hpp>
 #include <backend/nullable_value.hpp>
+#include <backend/runtime.hpp>
 #include <backend/scalar_lowering.hpp>
 #include <backend/string_value.hpp>
 #include <backend/value_types.hpp>
@@ -41,26 +42,15 @@ LLVMValueRef BuiltinLowering::address (LLVMValueRef value) {
 	return slot;
 }
 
-LLVMValueRef BuiltinLowering::invoke (const char *name, LLVMTypeRef result, std::vector<LLVMValueRef> arguments) {
-	LLVMValueRef function = LLVMGetNamedFunction(mod_module, name);
-	if (!function) {
-		std::vector<LLVMTypeRef> parameters;
-		parameters.reserve(arguments.size());
-		for (const LLVMValueRef value : arguments) parameters.push_back(LLVMTypeOf(value));
-		function = LLVMAddFunction(mod_module, name, LLVMFunctionType(result, parameters.data(), static_cast<unsigned>(parameters.size()), false));
-	}
-	return LLVMBuildCall2(ir_builder, LLVMGlobalGetValueType(function), function, arguments.data(), static_cast<unsigned>(arguments.size()), "");
-}
-
 LLVMValueRef BuiltinLowering::call (const char *name, LLVMTypeRef result, std::initializer_list<LLVMValueRef> arguments) {
-	return invoke(name, result, arguments);
+	return callRuntime(ir_builder, mod_module, name, result, arguments);
 }
 
 LLVMValueRef BuiltinLowering::output (const char *name, LLVMTypeRef result, std::initializer_list<LLVMValueRef> arguments) {
 	const LLVMValueRef        slot = address(LLVMConstNull(result));
 	std::vector<LLVMValueRef> args{ slot };
 	args.insert(args.end(), arguments);
-	invoke(name, LLVMVoidTypeInContext(LLVMGetModuleContext(mod_module)), std::move(args));
+	callRuntime(ir_builder, mod_module, name, LLVMVoidTypeInContext(LLVMGetModuleContext(mod_module)), std::move(args));
 	return LLVMBuildLoad2(ir_builder, result, slot, "");
 }
 

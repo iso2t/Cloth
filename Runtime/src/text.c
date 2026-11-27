@@ -12,6 +12,11 @@
 #include <string.h>
 #include <utf8proc.h>
 
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
+
 struct StringEntry {
 	struct StringEntry *next;
 	size_t              length;
@@ -119,8 +124,7 @@ void clothRtTextWrite (const ClothText *value, const uint8_t newline) {
 		clothRtError("standard output write failed");
 }
 
-uint8_t clothRtTextInput (ClothText *result, const ClothText *prompt) {
-	clothRtTextWrite(prompt, 0);
+static uint8_t readLine (ClothText *result) {
 	ClothArray line = { 0 };
 	int        c    = 0;
 	while ((c = fgetc(stdin)) != EOF && c != '\n') {
@@ -135,6 +139,27 @@ uint8_t clothRtTextInput (ClothText *result, const ClothText *prompt) {
 	const uint8_t valid = clothRtDecodeUtf8(result, &line);
 	clothRtArrayRelease(&line);
 	return valid;
+}
+
+uint8_t clothRtTextInput (ClothText *result, const ClothText *prompt) {
+	clothRtTextWrite(prompt, 0);
+#ifdef _WIN32
+	const int fd = _fileno(stdin);
+	if (fd < 0) return 0;
+	if (!_isatty(fd)) {
+		// Text-mode reads consume Ctrl-Z as EOF. Hold the stream lock across the mode change and buffered read.
+		_lock_file(stdin);
+		const int mode  = _setmode(fd, _O_BINARY);
+		uint8_t   valid = 0;
+		if (mode != -1) {
+			valid = readLine(result);
+			if (mode != _O_BINARY && _setmode(fd, mode) == -1) valid = 0;
+		}
+		_unlock_file(stdin);
+		return valid;
+	}
+#endif
+	return readLine(result);
 }
 
 void clothRtTextInteger (ClothText *out, const unsigned char *bits, const uint32_t width, const uint8_t isSigned, const int32_t radix) {

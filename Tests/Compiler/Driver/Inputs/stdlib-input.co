@@ -18,6 +18,11 @@ pub fn<int> main(string[] args) {
         if (args[0] == "index") return "é".charAt(runtimeIndex(1)).toInt();
         if (args[0] == "metadata") return width(string::type) -> int;
         if (args[0] == "invalid") return if (input() == null) 42 else 1;
+        if (args[0] == "redirected") {
+            print(input());
+            if (input() != "next") return 1;
+            return if (input() == null) 42 else 2;
+        }
     }
     print("input");
     string? line = input("> ");

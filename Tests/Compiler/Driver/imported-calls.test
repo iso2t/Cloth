@@ -40,14 +40,14 @@
 # PRIVATE: [C3103] Error: 'identity' is private
 
 # RUN: echo "pub fn<int> identity(int value) {" > "%t.dir/helpers.co"
-# RUN: echo "    1.0 : 0.0..2.0;" >> "%t.dir/helpers.co"
+# RUN: echo "    1 is void;" >> "%t.dir/helpers.co"
 # RUN: echo "    return value;" >> "%t.dir/helpers.co"
 # RUN: echo "}" >> "%t.dir/helpers.co"
 # RUN: %expect_exit --empty-stdout 1 %cloth --kind executable --src "%t.dir/main.co" --emit-object "%t.o" 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=BODY --input-file "%t.err"
 # BODY: [C4040] Error:
 # BODY: helpers.co:2:5
-# BODY: 1.0 : 0.0..2.0
+# BODY: 1 is void
 
 # Each file calls its own private pick. Selecting the first parameter twice
 # would return 7, and selecting the last twice would return 19.

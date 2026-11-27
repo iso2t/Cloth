@@ -4,6 +4,7 @@
 // See Documentation/compiler/driver/Objects.rst
 
 #include <cloth/array.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -116,4 +117,42 @@ void clothRtArrayRemoveAt (ClothArray *array, const size_t index, void *removed,
 
 void clothRtArrayRelease (ClothArray *array) {
 	replace(array, (ClothArray){ 0 });
+}
+
+void clothRtCellsClear (ClothArray *array, const ClothCellOperations *cells) {
+	if (array->owner)
+		for (size_t i = 0; i < array->length; ++i) cells->dispose(array->data + i * cells->stride);
+	clothRtArrayClear(array);
+}
+
+void clothRtCellsRelease (ClothArray *array, const ClothCellOperations *cells) {
+	clothRtCellsClear(array, cells);
+	clothRtArrayRelease(array);
+}
+
+void clothRtCellsAssign (ClothArray *array, const void *data, size_t count, const ClothCellOperations *cells) {
+	if (!count) {
+		clothRtCellsClear(array, cells);
+		return;
+	}
+	// The input can refer to the destination or to one of its subobjects.
+	ClothArray copy = { 0 };
+	clothRtArrayReserve(&copy, count, cells->stride, cells->alignment);
+	const unsigned char *source = data;
+	for (size_t i = 0; i < count; ++i) cells->copy(copy.data + i * cells->stride, source + i * cells->stride);
+	copy.length = count;
+	clothRtCellsRelease(array, cells);
+	*array = copy;
+}
+
+void *clothRtCellBacking (void **owner, size_t bytes, size_t alignment) {
+	const size_t stride = bytes ? bytes : 1;
+	if (!capacityLimit(stride, alignment)) clothRtArrayCapacityOverflow();
+	const ClothArray buffer = allocateBuffer(1, stride, alignment);
+	*owner                  = buffer.owner;
+	return buffer.data;
+}
+
+void clothRtCellFree (void *owner) {
+	free(owner);
 }

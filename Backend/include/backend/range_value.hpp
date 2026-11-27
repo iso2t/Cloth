@@ -6,15 +6,15 @@
 
 namespace backend::detail {
 
-struct IntegerRange {
+struct RangeValue {
 	LLVMValueRef start;
 	LLVMValueRef end;
 	LLVMValueRef inclusive; // Predicate in SSA, one byte in the aggregate.
 
 	static LLVMTypeRef  type (LLVMTypeRef endpoint);
-	static IntegerRange unpack (LLVMBuilderRef builder, LLVMValueRef value);
-	static LLVMValueRef equalPacked (LLVMBuilderRef builder, LLVMValueRef left, LLVMValueRef right, bool isNullable);
+	static RangeValue   unpack (LLVMBuilderRef builder, LLVMValueRef value);
+	static LLVMValueRef equalPackedIntegers (LLVMBuilderRef builder, LLVMValueRef left, LLVMValueRef right, bool isNullable);
 	LLVMValueRef        pack (LLVMBuilderRef builder) const;
-	LLVMValueRef        equal (LLVMBuilderRef builder, const IntegerRange &other) const;
+	LLVMValueRef        equalIntegers (LLVMBuilderRef builder, const RangeValue &other) const;
 };
 }

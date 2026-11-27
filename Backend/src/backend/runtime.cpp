@@ -6,6 +6,7 @@
 
 #include <span>
 #include <string_view>
+#include <vector>
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Target.h>
@@ -35,6 +36,17 @@ LLVMValueRef declareIndexedArrayMutation (LLVMModuleRef module, const char *name
 	LLVMTypeRef          v_parameters[] = { ty_pointer, ty_word, ty_pointer, ty_word, ty_word };
 	return declareVoidFunction(module, name, v_parameters);
 }
+}
+
+LLVMValueRef callRuntime (LLVMBuilderRef builder, LLVMModuleRef module, const char *name, LLVMTypeRef result, std::vector<LLVMValueRef> arguments) {
+	LLVMValueRef function = LLVMGetNamedFunction(module, name);
+	if (!function) {
+		std::vector<LLVMTypeRef> parameters;
+		parameters.reserve(arguments.size());
+		for (const LLVMValueRef value : arguments) parameters.push_back(LLVMTypeOf(value));
+		function = LLVMAddFunction(module, name, LLVMFunctionType(result, parameters.data(), static_cast<unsigned>(parameters.size()), false));
+	}
+	return LLVMBuildCall2(builder, LLVMGlobalGetValueType(function), function, arguments.data(), static_cast<unsigned>(arguments.size()), "");
 }
 
 LLVMValueRef declareNewIdentity (LLVMModuleRef module) {
@@ -85,6 +97,10 @@ LLVMValueRef declareNegativeIntegerExponent (LLVMModuleRef module) {
 
 LLVMValueRef declareInvalidFloatToInteger (LLVMModuleRef module) {
 	return declareVoidFunction(module, "cloth_rt_invalid_float_to_integer", {}, /*noReturn=*/true);
+}
+
+LLVMValueRef declareNonFiniteRangeEndpoint (LLVMModuleRef module) {
+	return declareVoidFunction(module, "cloth_rt_non_finite_range_endpoint", {}, /*noReturn=*/true);
 }
 
 LLVMValueRef declareAmbiguousEquality (LLVMModuleRef module) {

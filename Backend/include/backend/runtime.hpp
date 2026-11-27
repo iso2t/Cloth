@@ -3,8 +3,10 @@
 #pragma once
 
 #include <llvm-c/Types.h>
+#include <vector>
 
 namespace backend::detail {
+LLVMValueRef callRuntime (LLVMBuilderRef builder, LLVMModuleRef module, const char *name, LLVMTypeRef result, std::vector<LLVMValueRef> arguments);
 [[nodiscard]] LLVMValueRef declareProcessArguments (LLVMModuleRef module);
 [[nodiscard]] LLVMValueRef declareReleaseArguments (LLVMModuleRef module);
 [[nodiscard]] LLVMValueRef declareNewIdentity (LLVMModuleRef module);
@@ -14,6 +16,7 @@ namespace backend::detail {
 [[nodiscard]] LLVMValueRef declareSignedDivisionOverflow (LLVMModuleRef module);
 [[nodiscard]] LLVMValueRef declareNegativeIntegerExponent (LLVMModuleRef module);
 [[nodiscard]] LLVMValueRef declareInvalidFloatToInteger (LLVMModuleRef module);
+[[nodiscard]] LLVMValueRef declareNonFiniteRangeEndpoint (LLVMModuleRef module);
 [[nodiscard]] LLVMValueRef declareAmbiguousEquality (LLVMModuleRef module);
 [[nodiscard]] LLVMValueRef declareArrayIndexOutOfBounds (LLVMModuleRef module);
 [[nodiscard]] LLVMValueRef declareArrayLengthMismatch (LLVMModuleRef module);

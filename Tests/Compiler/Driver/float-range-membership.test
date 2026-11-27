@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# Finite literal endpoints can be linked directly with the system C compiler.
+# RUN: echo "pub fn<int> main() { def bounds := -0.5..=0.5; return if (0.5 : bounds && 0.25 : 0.0..0.5) 42 else 1; }" > "%t.co"
+# RUN: %cloth --kind executable --src "%t.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/float-range-membership.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/float-range-membership.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/float-range-membership.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 1 --stdout-line 2 --stdout-line 3 --stdout-line 4 --stdout-line 5 --stdout-line 6 --stdout-line 7 --empty-stderr 42 "%t.exe"
+
+# DEFINE: %{endpoint_error} = Cloth runtime error: floating range endpoints must be finite
+# RUN: %cloth --kind executable --src "%S/Inputs/float-range-endpoints.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --stderr-line "%{endpoint_error}" 1 "%t.exe" half
+# RUN: %expect_exit --empty-stdout --stderr-line "%{endpoint_error}" 1 "%t.exe" single
+# RUN: %expect_exit --empty-stdout --stderr-line "%{endpoint_error}" 1 "%t.exe" double

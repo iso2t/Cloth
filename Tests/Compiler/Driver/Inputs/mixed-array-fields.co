@@ -1,0 +1,82 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Row { pub int[2] pair, pub int[]? cells; }
+typedef<struct> Box { pub Row?[2] rows; }
+typedef<struct> History { pub int[][]? grid, pub Row[1]? previous; }
+typedef<class> Holder(pub def<Box> box, bool checked) {
+    pub Holder(Box value) : (value, true) {}
+}
+
+fn<Row> change(Row row) {
+    row.pair[0] = 7;
+    if (row.cells != null) row.cells.append(9);
+    return row;
+}
+
+fn<Holder> makeHolder(Row row) {
+    Box box := {[row, null]};
+    return Holder::new(box);
+}
+
+fn<bool> classCopy(Row row) {
+    Holder holder := makeHolder(row);
+    holder.box.rows[0] = change(row);
+    Row? result := holder.box.rows[0];
+    holder.box = {[null, row]};
+    holder::delete;
+    return result != null && result.pair == [7, 2] && result.cells == [42, 9];
+}
+
+fn<int> changeWidth(bool reset, Row row) {
+    History history = {[[]], [row]};
+    history.grid = null;
+    History copy = history;
+    history.previous = null;
+    if (copy.previous == null || copy.previous[0].cells != [42]) return 9;
+    if (reset) copy = {null, null};
+    copy.grid = [[42]];
+    if (copy.grid == null) return 10;
+    return copy.grid[0][0];
+}
+
+pub fn<int> main(string[] args) {
+    Row row = {[4, 2], [42]};
+    if (args::size != 0) return changeWidth(false, row);
+    if (!classCopy(row) || changeWidth(true, row) != 42) return 8;
+    Row saved := row;
+    Row changed := change(row);
+    row.pair[1] = 8;
+    if (row.cells == null) return 1;
+    row.cells[0] = 3;
+    row.cells = null;
+    if (row.cells != null || saved.pair != [4, 2] || saved.cells != [42]) return 2;
+    if (changed.pair != [7, 2] || changed.cells != [42, 9]) return 3;
+
+    row = {[0, 1], []};
+    Row empty := row;
+    row = saved;
+    row = row;
+    if (empty.cells == null || empty.cells::size != 0 || row.cells != [42]) return 4;
+    row.pair[1] = (if (true) { row = changed; 6; } else 0);
+    if (row.pair != [7, 6] || row.cells != [42, 9] || saved.pair != [4, 2]) return 5;
+
+    Box box = {[row, null]};
+    Box copied := box;
+    box.rows[0] = saved;
+    box.rows[1] = row;
+    box.rows[0] = null;
+    Row? first := copied.rows[0];
+    if (first == null || first.cells != [42, 9] || first.pair != [7, 6] || copied.rows[1] != null) return 6;
+    Row[2] batch = [saved, changed];
+    Row selected := batch[if (true) { batch = [row, row]; 1; } else 0];
+    if (selected.pair != [7, 2] || selected.cells != [42, 9]) return 11;
+    int total = 0;
+    for (Row item <- batch) {
+        batch = [saved, saved];
+        total += item.pair[1];
+        item.cells = null;
+    }
+    if (total != 12 || batch[0].cells != [42]) return 12;
+    if (saved.cells == null) return 7;
+    return saved.cells[0];
+}

@@ -16,6 +16,12 @@
 # RUN: %python -c "from pathlib import Path; Path(r'%t.input').write_bytes(bytes.fromhex('c3a9f09f98800d0a0a'))"
 # RUN: %expect_exit --stdout-line "input> " --empty-stderr 42 "%t.input.exe" < "%t.input"
 # RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.input.exe" invalid < "%t.é.data"
+
+# Ctrl-Z in a redirected line is data. The final line has no newline.
+# RUN: %python -c "from pathlib import Path; line = bytes.fromhex('61 1a 62'); Path(r'%t.ctrlz.line').write_bytes(line); Path(r'%t.ctrlz.input').write_bytes(line + bytes.fromhex('0d 0a') + b'next')"
+# RUN: %expect_exit --stdout-file "%t.ctrlz.line" --empty-stderr 42 "%t.input.exe" redirected < "%t.ctrlz.input"
+# RUN: %python -c "import sys; from pathlib import Path; sys.stdout.buffer.write(Path(r'%t.ctrlz.input').read_bytes())" | %expect_exit --stdout-file "%t.ctrlz.line" --empty-stderr 42 "%t.input.exe" redirected
+
 # RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: absolute value exceeds the signed integer width" 1 "%t.input.exe" abs
 # RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: invalid clamp bounds" 1 "%t.input.exe" clamp
 # RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: signum of NaN" 1 "%t.input.exe" nan

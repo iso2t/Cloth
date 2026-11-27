@@ -2,6 +2,7 @@
 
 #include <backend/array_descriptor.hpp>
 #include <backend/lowered_module.hpp>
+#include <backend/nullable_value.hpp>
 #include <backend/value_types.hpp>
 
 #include <array>
@@ -194,6 +195,39 @@ pub fn<int> main() { Record value = {[[], []], 42, null}; value.rows = null; Rec
 		EXPECT_EQ(LLVMConstIntGetZExtValue(LLVMGetAggregateElement(ir_inner, 1)), 1u);
 		EXPECT_TRUE(LLVMIsNull(LLVMGetAggregateElement(ir_shape, 3)));
 		EXPECT_TRUE(LLVMIsNull(LLVMGetAggregateElement(ir_shape, 4)));
+	}
+}
+
+TEST (BackendArrayDescriptor, GrowableFieldWitnessRemembersKnownEmptyRowsWithoutOwningCells) {
+	for (const unsigned bits : { 32u, 64u }) {
+		SCOPED_TRACE(bits);
+		const auto                   program = descriptorProgram(bits, R"(typedef<struct> Grid { pub int[][]? rows; }
+fn shape(Grid grid) {}
+pub fn<int> main() = 42;)");
+		const backend::LoweredModule module(program);
+		backend::detail::ValueTypes  types(module.get(), program);
+		const auto                  &grid   = program.declarations.at(&program.units.front()->getGlobals().at("shape").front()).parameters.front();
+		const auto                   matrix = program.structLayouts.at(grid).fields.front().type.element();
+		const LLVMTypeRef            stored = types.get(grid);
+		ASSERT_NE(stored, nullptr);
+		ASSERT_EQ(stored, types.localType(grid));
+		ASSERT_EQ(LLVMCountStructElementTypes(stored), 2u);
+		ASSERT_EQ(LLVMStructGetTypeAtIndex(stored, 0), LLVMStructGetTypeAtIndex(stored, 1));
+		const LLVMContextRef                                                    context = LLVMGetModuleContext(module.get());
+		const std::unique_ptr<LLVMOpaqueBuilder, decltype(&LLVMDisposeBuilder)> builder(LLVMCreateBuilderInContext(context), LLVMDisposeBuilder);
+		const LLVMValueRef buffer   = LLVMAddGlobal(module.get(), LLVMInt8TypeInContext(context), "buffer");
+		const LLVMValueRef emptyRow = backend::detail::array_descriptor::fixedWitness(types.get(matrix.element()), 0, nullptr);
+		const LLVMValueRef shape    = backend::detail::array_descriptor::fixedWitness(types.get(matrix), 3, emptyRow);
+		// Give the live descriptor data, capacity, and an owner so a shallow copy cannot satisfy the check.
+		const LLVMValueRef header  = backend::detail::array_descriptor::fixed(builder.get(), shape, buffer, nullptr);
+		const LLVMValueRef owned   = LLVMBuildInsertValue(builder.get(), header, buffer, 4, "");
+		const LLVMValueRef present = backend::detail::nullable::presentConstant(owned);
+		const LLVMValueRef literal = types.insertStructField(builder.get(), grid, LLVMConstNull(stored), 0, present);
+		const LLVMValueRef witness = LLVMGetAggregateElement(literal, 1);
+		EXPECT_EQ(LLVMGetAggregateElement(literal, 0), present);
+		EXPECT_EQ(witness, backend::detail::nullable::presentConstant(shape));
+		const LLVMValueRef absent = LLVMConstNull(LLVMTypeOf(present));
+		EXPECT_EQ(backend::detail::array_descriptor::growableWitness(builder.get(), absent, witness), witness);
 	}
 }
 

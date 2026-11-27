@@ -67,6 +67,12 @@ establishes a length of two for later rows. Assigning
 ``[[3, 4], [5, 6]]`` to ``rows`` changes the number of rows while
 preserving their length.
 
+Copying ``int[][]`` copies every row. After ``def saved := rows;``,
+a write to ``rows[1][1]`` leaves ``saved[1][1]``
+at its original value. Reading a row into a separate array local also
+copies its cells. See the `runnable growable matrix example
+<../../../Tests/Compiler/Driver/Inputs/growable-rectangular-array.co>`_.
+
 Use one index per dimension. In the `rectangular array example
 <../../../Tests/Compiler/Driver/Inputs/rectangular-array.co>`_, the second
 row is ``[4, 5, 42]``, so ``rows[1][2]`` returns 42. Cloth checks the row
@@ -89,6 +95,12 @@ the original leaves the copy present with both zeros.
 
 A present empty array also passes a presence check. Its length is zero,
 so iteration skips the body and every index is out of bounds.
+
+A struct can hold a nullable growable array. If ``row.cells`` holds
+``[42]`` when you copy ``row``, assigning ``row.cells = null`` leaves
+the copy's field present with one element, ``42``. Assigning ``[]``
+to the field makes it present with length zero. See the `growable
+field example <../../../Tests/Compiler/Driver/Inputs/nullable-growable-array-fields.co>`_.
 
 A fixed-size array can hold nullable rows. For example, ``int[3]?[2]``
 holds three rows, each either ``null`` or a pair of integers. Assigning
@@ -128,6 +140,13 @@ present zero, so ``?:`` keeps the zero. Copying the array preserves
 each cell's presence. Use an explicitly nullable binding such as
 ``for (int? value <- values)`` when iterating. See the `nullable cell
 example <../../../Tests/Compiler/Driver/Inputs/growable-nullable-cells.co>`_.
+
+If a growable array holds structs, their array fields copy recursively.
+For example, after ``Row[] saved := rows``, changing
+``rows[0].pair[0]`` or clearing ``rows[0].cells`` leaves the corresponding
+fields in ``saved`` intact. A row returned by ``removeAt`` keeps its field
+values after the original array is cleared. See the `struct cell example
+<../../../Tests/Compiler/Driver/Inputs/growable-struct-cells.co>`_.
 
 Assigning one growable array to another copies its elements. Appending
 or changing a cell in either array leaves the other copy intact. A

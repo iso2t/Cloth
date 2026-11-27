@@ -9,9 +9,10 @@
 #include <backend/class_objects.hpp>
 #include <backend/function_abi.hpp>
 #include <backend/growable_array.hpp>
-#include <backend/integer_range.hpp>
 #include <backend/lowered_module.hpp>
 #include <backend/nullable_value.hpp>
+#include <backend/range_value.hpp>
+#include <backend/rectangular_array.hpp>
 #include <backend/runtime.hpp>
 #include <backend/scalar_lowering.hpp>
 #include <backend/string_value.hpp>
@@ -22,6 +23,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <ranges>
@@ -66,10 +68,11 @@
 namespace backend {
 namespace {
 
-using detail::IntegerRange;
+using detail::RangeValue;
 using detail::StoragePlace;
 using detail::ArrayLifetimes;
 namespace growable  = detail::growable_array;
+namespace rows = detail::rectangular_array;
 using Code          = cde::DiagnosticCode;
 using Message       = std::unique_ptr<char, decltype(&LLVMDisposeMessage)>;
 using TargetMachine = std::unique_ptr<LLVMOpaqueTargetMachine, decltype(&LLVMDisposeTargetMachine)>;
@@ -88,11 +91,12 @@ struct ResultExit {
 };
 
 enum class ValueStorage { Direct, ReadOnlySlot, MutableSlot };
-enum class AddressUse { Read, ReadOnly, Write };
+// A borrowed receiver must keep its address throughout a call. A write can reload a growable cell by index.
+enum class AddressUse { Read, ReadOnly, Write, Borrow };
 
 bool permitsSlot (const ValueStorage storage, const AddressUse use) {
 	if (use == AddressUse::ReadOnly) return storage == ValueStorage::ReadOnlySlot;
-	if (use == AddressUse::Write) return storage == ValueStorage::MutableSlot;
+	if (use == AddressUse::Write || use == AddressUse::Borrow) return storage == ValueStorage::MutableSlot;
 	return storage != ValueStorage::Direct;
 }
 
@@ -103,6 +107,13 @@ struct ObjectAccess {
 	LLVMValueRef permission = nullptr;
 };
 
+struct SlotAddress {
+	LLVMValueRef operand;
+	LLVMValueRef witness = nullptr;
+};
+
+using ReloadPointer = std::function<LLVMValueRef()>;
+
 struct LoweredValue {
 	LLVMValueRef               operand;
 	const cloth::ResolvedType &type;
@@ -110,6 +121,12 @@ struct LoweredValue {
 	StoragePlace               place   = StoragePlace::Slot;
 	LLVMValueRef               witness = nullptr;
 	ObjectAccess               owner   = {};
+	// A subobject of a growable cell resolves its saved coordinates again after user code runs.
+	std::function<SlotAddress()> reload = {};
+
+	SlotAddress address () const {
+		return reload ? reload() : SlotAddress{ .operand = operand, .witness = witness };
+	}
 };
 
 // A projection can change the operand type before the checked binary operation.
@@ -122,6 +139,7 @@ struct ArrayBuffer {
 	LLVMValueRef address;
 	LLVMValueRef present;
 	LLVMValueRef length;
+	LLVMValueRef descriptor = nullptr;
 };
 
 struct LoopBlocks {
@@ -163,7 +181,7 @@ class FunctionLowering {
 	LLVMValueRef              formatExpression (const cloth::Expression &expression, const cloth::ProviderSelection &format);
 	LLVMValueRef formatValue (const cloth::ResolvedType &type, LLVMValueRef value, const cloth::ProviderSelection &format, const cloth::Expression &at);
 	LLVMValueRef lowerProvider (const cloth::ProviderAccessExpression &expr, const cloth::ExpressionInfo &info, const cloth::ProviderSelection &provider);
-	LLVMValueRef temporarySlot (const cloth::ResolvedType &type, LLVMValueRef value);
+	LLVMValueRef localSlot (const cloth::ResolvedType &type, LLVMValueRef value, ArrayLifetimes::Kind kind = ArrayLifetimes::Kind::Temporary);
 	LLVMValueRef snapshot (const cloth::ResolvedType &type, LLVMValueRef value);
 	LLVMValueRef adoptResults (LLVMValueRef value, ResultView types);
 	LLVMValueRef lowerDeferred (const cloth::DeferredBinding &binding, const cloth::ResolvedType &view);
@@ -175,9 +193,9 @@ class FunctionLowering {
 	void         lowerWhile (const cloth::WhileStatement &loop);
 	void         lowerDoWhile (const cloth::DoWhileStatement &loop);
 	void         lowerFor (const cloth::ForStatement &loop);
-	IntegerRange lowerRange (const cloth::Expression &expression, const cloth::ResolvedType &type);
-	IntegerRange lowerRangeBounds (const cloth::BinaryExpression &range, const cloth::ResolvedType &type);
-	void         lowerIntegerRange (const cloth::ForStatement &loop, IntegerRange range, const cloth::ResolvedType &type);
+	RangeValue   lowerRange (const cloth::Expression &expression, const cloth::ResolvedType &type);
+	RangeValue   lowerRangeBounds (const cloth::BinaryExpression &range, const cloth::ResolvedType &type);
+	void         lowerIntegerRange (const cloth::ForStatement &loop, RangeValue range, const cloth::ResolvedType &type);
 	void         lowerLoopBody (const cloth::LoopStatement &loop, const cloth::LoopBody &body, LoopBlocks blocks);
 	LLVMBasicBlockRef appendBlock (const char *name) const;
 	LLVMBasicBlockRef branchToNewBlock (const char *name) const;
@@ -189,6 +207,7 @@ class FunctionLowering {
 	LLVMValueRef lowerExpression (const cloth::Expression &expression);
 	LLVMValueRef lowerUntilExit (const std::vector<cloth::ExpressionPtr> &elements);
 	LLVMValueRef lowerArrayLiteral (const cloth::ArrayLiteral &literal, const cloth::ExpressionInfo &info);
+	LLVMValueRef convertRectangular (LLVMValueRef value, const cloth::ResolvedType &source, const cloth::ResolvedType &destination);
 	ArrayBuffer  lowerArrayBuffer (const cloth::Expression &operand, AddressUse use, bool needCells = true, const OperatorOperand *captured = nullptr);
 	LLVMValueRef tryLowerArrayEquality (const cloth::BinaryExpression &binary, LLVMValueRef left, const cloth::ResolvedType &leftType,
 	                                    const cloth::ResolvedType &rightType);
@@ -197,14 +216,13 @@ class FunctionLowering {
 	LLVMValueRef lowerIndex (const cloth::IndexExpression &index, const cloth::ExpressionInfo &info);
 	LLVMValueRef lowerGrowableIndex (const cloth::IndexExpression &index, const cloth::ResolvedType &element, const cloth::ResolvedType &view);
 	LLVMValueRef lowerArrayMutation (const cloth::MemberCallExpression &call, cloth::ArrayMutation operation);
-	cloth::StorageLayout arrayCellLayout (const cloth::ResolvedType &type) const;
-	void                 assignArray (LLVMValueRef slot, const cloth::ResolvedType &type, LLVMValueRef value) const;
-	LLVMValueRef         allocateArrayOwner (const cloth::ResolvedType &type, ArrayLifetimes::Kind kind);
-	LLVMValueRef         ownArray (const cloth::ResolvedType &type, LLVMValueRef value, ArrayLifetimes::Kind kind);
-	LLVMValueRef         tryArrayAddress (const cloth::Expression &array, AddressUse use, ObjectAccess *owner = nullptr);
-	LLVMValueRef         tryIndexAddress (const cloth::IndexExpression &index, AddressUse use, ObjectAccess *owner = nullptr);
-	LLVMValueRef         lowerArrayOffset (const cloth::Expression &index, LLVMTypeRef arrayType);
-	LLVMValueRef         arrayElementAddress (LLVMTypeRef arrayType, LLVMValueRef slot, LLVMValueRef offset) const;
+	void         assignArray (LLVMValueRef slot, const cloth::ResolvedType &type, LLVMValueRef value, LLVMValueRef witness = nullptr) const;
+	LLVMValueRef allocateArrayOwner (const cloth::ResolvedType &type, ArrayLifetimes::Kind kind);
+	LLVMValueRef ownArray (const cloth::ResolvedType &type, LLVMValueRef value, ArrayLifetimes::Kind kind);
+	LLVMValueRef tryArrayAddress (const cloth::Expression &array, AddressUse use, ObjectAccess *owner = nullptr, ReloadPointer *reload = nullptr);
+	LLVMValueRef tryIndexAddress (const cloth::IndexExpression &index, AddressUse use, ObjectAccess *owner = nullptr, ReloadPointer *reload = nullptr);
+	LLVMValueRef lowerArrayOffset (const cloth::Expression &index, LLVMTypeRef arrayType);
+	LLVMValueRef arrayElementAddress (LLVMTypeRef arrayType, LLVMValueRef slot, LLVMValueRef offset) const;
 	LLVMValueRef         lowerStructLiteral (const cloth::StructLiteral &literal, const cloth::ExpressionInfo &info);
 	LLVMValueRef         lowerAs (const cloth::Expression &expression, const cloth::ResolvedType &destination, LLVMValueRef evaluated = nullptr);
 	LLVMValueRef convertValue (LLVMValueRef value, const cloth::ResolvedType &source, const cloth::ResolvedType &destination, const cloth::Expression &at,
@@ -243,6 +261,11 @@ class FunctionLowering {
 
 	void         lowerBinding (const cloth::BindingDeclaration &binding);
 	void         lowerAssignment (const cloth::AssignmentStatement &assignment);
+	bool         lowerRectangularWrite (const cloth::IndexExpression &target, cloth::Operator op, const cloth::Expression *value,
+	                                    const cloth::BinaryExpression *compound);
+	LLVMValueRef rowAddress (const LoweredValue &root, std::span<const LLVMValueRef> offsets);
+	const cloth::Expression &indexRoot (const cloth::Expression &expression, std::vector<const cloth::IndexExpression *> &path) const;
+	LLVMValueRef rowOffsets (const LoweredValue &root, const std::vector<const cloth::IndexExpression *> &path, std::vector<LLVMValueRef> &offsets);
 	void         lowerElementAssignment (const cloth::IndexExpression &target, cloth::Operator op, const cloth::Expression *value,
 	                                     const cloth::BinaryExpression *compound);
 	void         lowerGrowableElementAssignment (const LoweredValue &array, const cloth::IndexExpression &target, cloth::Operator op,
@@ -306,10 +329,11 @@ const LoweredValue *FunctionLowering::namedLocal (const cloth::Expression &expre
 
 LLVMValueRef FunctionLowering::readValue (const LoweredValue &value, const cloth::ResolvedType &view) const {
 	if (value.owner.permission) checkOwner(value.owner);
+	const LLVMValueRef operand = value.address().operand;
 	const LLVMValueRef ir_value =
-	        value.storage == ValueStorage::Direct ? value.operand :
-	        growable::ownsBuffer(value.type)      ? LLVMBuildLoad2(ir_builder, mf_functions.valueTypes.localType(value.type), value.operand, "") :
-	                                                mf_functions.valueTypes.loadLocal(ir_builder, value.type, value.operand, value.place);
+	        value.storage == ValueStorage::Direct ? operand :
+	        growable::ownsBuffer(value.type)      ? LLVMBuildLoad2(ir_builder, mf_functions.valueTypes.localType(value.type), operand, "") :
+	                                                mf_functions.valueTypes.loadLocal(ir_builder, value.type, operand, value.place);
 	// The checked read can see the payload while the local or field still stores the whole nullable.
 	return value.type.nullable() && !view.nullable() ? detail::nullable::payload(ir_builder, ir_value) : ir_value;
 }
@@ -339,9 +363,12 @@ LLVMValueRef FunctionLowering::convertValue (LLVMValueRef value, const cloth::Re
 		if (source.objectReference()) return detail::nullable::pack(ir_builder, value);
 		if (source.nullable() && source.element().objectReference()) return value;
 	}
+	if (source.array() && destination.array() && (rows::supported(source) || rows::supported(destination)))
+		return convertRectangular(value, source, destination);
 	if (growable::supported(destination) && source.array() && source.element() == destination.element()) {
 		const LLVMValueRef ir_count = LLVMConstInt(sl_scalars.type(cloth::ResolvedType(cloth::KUsize)), LLVMGetArrayLength2(LLVMTypeOf(value)), false);
-		return growable::borrow(ir_builder, mf_functions.valueTypes.localType(destination), storeInEntrySlot(value), ir_count);
+		const LLVMValueRef cells = mf_functions.valueTypes.slotType(source) == LLVMTypeOf(value) ? storeInEntrySlot(value) : localSlot(source, value);
+		return growable::borrow(ir_builder, mf_functions.valueTypes.localType(destination), cells, ir_count);
 	}
 	if (growable::supported(source) && destination.array() && source.element() == destination.element()) {
 		const LLVMTypeRef ty_fixed = mf_functions.valueTypes.localType(destination);
@@ -349,7 +376,7 @@ LLVMValueRef FunctionLowering::convertValue (LLVMValueRef value, const cloth::Re
 		const growable::Elements elements  = growable::elements(ir_builder, value);
 		const std::uint64_t      u64_count = LLVMGetArrayLength2(ty_fixed);
 		sl_scalars.checkArrayLength(elements.length, u64_count);
-		return u64_count ? LLVMBuildLoad2(ir_builder, ty_fixed, elements.data, "") : LLVMConstNull(ty_fixed);
+		return u64_count ? mf_functions.valueTypes.loadLocal(ir_builder, destination, elements.data) : LLVMConstNull(ty_fixed);
 	}
 	if (!destination.nullable()) return cast ? sl_scalars.checkedCast(value, source, destination, *cast) : sl_scalars.convert(value, source, destination);
 	const cloth::ResolvedType rt_payload = destination.element();
@@ -545,11 +572,17 @@ LLVMValueRef FunctionLowering::lowerExpression (const cloth::Expression &express
 			                          { handleOrZero(value, type), mf_functions.objects.typeTag(*ei_value.testedType),
 			                            LLVMConstInt(sl_scalars.type(*rt_result), bf_body.isDirectReceiver(*tc_test->operand), false) });
 		}
-		if (ei_value.testedType && !ei_value.testedType->objectReference() && sl_scalars.type(*ei_value.testedType)) {
-			const cloth::ResolvedType &rt_source = ef_expressions.at(tc_test->operand.get()).types.front();
-			if (sl_scalars.type(rt_source) || (rt_source.nullable() && rt_source.element().objectReference())) {
-				lowerExpression(*tc_test->operand);
-				return LLVMConstInt(sl_scalars.type(*rt_result), rt_source == *ei_value.testedType, false);
+		if (ei_value.testedType) {
+			const auto &target     = *ei_value.testedType;
+			const auto  targetType = target.nullable() ? target.element() : target;
+			if (valueReceiver(targetType)) {
+				const auto        &source  = ef_expressions.at(tc_test->operand.get()).types.front();
+				const LLVMValueRef operand = lowerExpression(*tc_test->operand);
+				const bool         matches = (source.nullable() ? source.element() : source) == targetType;
+				// A present value matches by its Cloth type. An absent value matches a nullable target.
+				if (!source.nullable() || matches == target.nullable()) return LLVMConstInt(sl_scalars.type(*rt_result), matches, false);
+				const LLVMValueRef present = detail::nullable::presence(ir_builder, operand);
+				return matches ? present : sl_scalars.boolean(LLVMBuildIsNull(ir_builder, present, ""));
 			}
 		}
 	}
@@ -586,6 +619,45 @@ LLVMValueRef FunctionLowering::lowerUntilExit (const std::vector<cloth::Expressi
 	return nullptr;
 }
 
+LLVMValueRef FunctionLowering::convertRectangular (LLVMValueRef value, const cloth::ResolvedType &source, const cloth::ResolvedType &destination) {
+	auto               &types      = mf_functions.valueTypes;
+	const LLVMModuleRef module     = mf_functions.module;
+	const auto          layout     = rows::layout(module, mf_functions.program, source);
+	const LLVMTypeRef   resultType = types.localType(destination);
+	if (!resultType || rows::openType(source) != rows::openType(destination))
+		throw cde::ClothDiagnostic(Code::UnsupportedLowering, "LLVM rectangular array conversion requires matching row and leaf types");
+	if (!rows::supported(source)) {
+		const auto         open       = rows::openType(source);
+		const LLVMTypeRef  descriptor = types.localType(open);
+		const LLVMValueRef owner      = allocateArrayOwner(open, ArrayLifetimes::Kind::Temporary);
+		rows::call(ir_builder, module, "cloth_rt_rows_from_flat",
+		           { owner, storeInEntrySlot(value), storeInEntrySlot(rows::shape(descriptor, source)), layout.rank, layout.stride, layout.alignment });
+		value = LLVMBuildLoad2(ir_builder, descriptor, owner, "");
+	}
+	if (!rows::supported(destination)) {
+		const LLVMValueRef slot     = detail::allocateEntrySlot(ir_builder, resultType);
+		const LLVMValueRef expected = rows::shape(LLVMTypeOf(value), destination);
+		rows::call(ir_builder, module, "cloth_rt_rows_to_flat",
+		           { slot, storeInEntrySlot(value), storeInEntrySlot(expected), layout.rank, layout.stride });
+		return LLVMBuildLoad2(ir_builder, resultType, slot, "");
+	}
+	if (const auto count = destination.arrayExtent()) sl_scalars.checkArrayLength(LLVMBuildExtractValue(ir_builder, value, 1, ""), *count);
+	auto dimension = destination.element();
+	for (unsigned i = 2; dimension.array(); ++i, dimension = dimension.element()) {
+		if (const auto count = dimension.arrayExtent()) {
+			LLVMValueRef       extent   = LLVMBuildExtractValue(ir_builder, value, i, "");
+			const LLVMValueRef length   = LLVMBuildExtractValue(ir_builder, extent, 0, "");
+			const LLVMValueRef known    = LLVMBuildExtractValue(ir_builder, extent, 1, "");
+			const LLVMValueRef expected = LLVMConstInt(LLVMTypeOf(length), *count, false);
+			sl_scalars.checkArrayLength(LLVMBuildSelect(ir_builder, known, length, expected, ""), *count);
+			extent = LLVMBuildInsertValue(ir_builder, extent, expected, 0, "");
+			extent = LLVMBuildInsertValue(ir_builder, extent, LLVMConstAllOnes(LLVMTypeOf(known)), 1, "");
+			value  = LLVMBuildInsertValue(ir_builder, value, extent, i, "");
+		}
+	}
+	return value;
+}
+
 LLVMValueRef FunctionLowering::lowerArrayLiteral (const cloth::ArrayLiteral &literal, const cloth::ExpressionInfo &info) {
 	struct DynamicElement {
 		unsigned     index;
@@ -598,6 +670,23 @@ LLVMValueRef FunctionLowering::lowerArrayLiteral (const cloth::ArrayLiteral &lit
 	if (!ty_array)
 		throw cde::ClothDiagnostic(Code::UnsupportedLowering, "LLVM lowering requires a fixed array with supported element storage",
 		                           { { .span = literal.getSpan(), .text = "unsupported array literal" } });
+	if (rows::supported(rt_array)) {
+		const LLVMModuleRef module = mf_functions.module;
+		const auto          layout = rows::layout(module, mf_functions.program, rt_array);
+		const LLVMValueRef  slot   = allocateArrayOwner(rt_array, ArrayLifetimes::Kind::Temporary);
+		const LLVMTypeRef   word   = LLVMTypeOf(layout.rank);
+		const LLVMValueRef  empty  = LLVMBuildInsertValue(ir_builder, rows::shape(ty_array, rt_array), LLVMConstNull(word), 1, "");
+		LLVMBuildStore(ir_builder, empty, slot);
+		const auto rowType = rows::openType(rt_array.element());
+		if (!literal.elements.empty())
+			rows::call(ir_builder, module, "cloth_rt_rows_reserve", { slot, LLVMConstInt(word, literal.elements.size(), false), layout.rank });
+		for (size_t i = 0; i < literal.elements.size(); ++i) {
+			const LLVMValueRef row = lowerAs(*literal.elements[i], rowType);
+			rows::call(ir_builder, module, "cloth_rt_rows_insert",
+			           { slot, LLVMConstInt(word, i, false), storeInEntrySlot(row), layout.rank, layout.stride, layout.alignment });
+		}
+		return LLVMBuildLoad2(ir_builder, ty_array, slot, "");
+	}
 	const cloth::ResolvedType   rt_element = rt_array.element();
 	const LLVMTypeRef           ty_element = LLVMGetElementType(ty_array);
 	std::vector<LLVMValueRef>   v_constants;
@@ -647,7 +736,7 @@ ArrayBuffer FunctionLowering::lowerArrayBuffer (const cloth::Expression &operand
 			evaluated  = detail::nullable::payload(ir_builder, evaluated);
 		}
 		const growable::Elements elements = growable::elements(ir_builder, evaluated);
-		return { .address = needCells ? elements.data : nullptr, .present = ir_present, .length = elements.length };
+		return { .address = needCells ? elements.data : nullptr, .present = ir_present, .length = elements.length, .descriptor = evaluated };
 	}
 	const bool                b_nullable = rt_operand.nullable();
 	const cloth::ResolvedType rt_payload = b_nullable ? rt_operand.element() : rt_operand;
@@ -676,7 +765,9 @@ LLVMValueRef FunctionLowering::tryLowerArrayEquality (const cloth::BinaryExpress
 	const cloth::ResolvedType          rt_left  = leftType.nullable() ? leftType.element() : leftType;
 	const cloth::ResolvedType          rt_right = rightType.nullable() ? rightType.element() : rightType;
 	const std::optional<std::uint64_t> opt_left = rt_left.arrayExtent(), opt_right = rt_right.arrayExtent();
-	if ((!opt_left && !growable::supported(rt_left)) || (!opt_right && !growable::supported(rt_right))) return nullptr;
+	if ((!opt_left && !growable::ownsBuffer(rt_left)) || (!opt_right && !growable::ownsBuffer(rt_right))) return nullptr;
+	const bool rectangular = rows::supported(rt_left) || rows::supported(rt_right);
+	if (rectangular && rows::openType(rt_left) != rows::openType(rt_right)) return nullptr;
 	cloth::ResolvedType rt_leaf = rt_left;
 	rt_leaf.suffixes.clear();
 	const cloth::ResolvedType *rt_endpoint = cloth::semantic::rangeEndpoint(rt_leaf);
@@ -687,7 +778,7 @@ LLVMValueRef FunctionLowering::tryLowerArrayEquality (const cloth::BinaryExpress
 
 	const LLVMTypeRef ty_left = mf_functions.valueTypes.localType(rt_left), ty_right = mf_functions.valueTypes.localType(rt_right);
 	if (!ty_left || !ty_right) return nullptr;
-	const bool b_growable = !opt_left || !opt_right;
+	const bool b_growable = rectangular || !opt_left || !opt_right;
 	// A fixed shape mismatch or a known empty operand needs no cells, even if the other operand has effects.
 	const bool       b_differentShapes = !b_growable && ty_left != ty_right;
 	const bool       b_needCells       = !b_differentShapes && opt_left != 0 && opt_right != 0;
@@ -695,7 +786,16 @@ LLVMValueRef FunctionLowering::tryLowerArrayEquality (const cloth::BinaryExpress
 	const auto       buffer = [&] (const cloth::Expression &source, const cloth::ResolvedType &type, const std::optional<cloth::OperatorSelection> &context,
                                  LLVMValueRef value, bool check, AddressUse use) {
                 if (context) value = lowerUnaryOperator(source, *context, value, check);
-                if (!value) return lowerArrayBuffer(source, use, b_needCells);
+		if (rectangular) {
+			auto open = rows::openType(type.nullable() ? type.element() : type);
+			if (type.nullable()) open.suffixes.emplace_back(cloth::toString(cloth::OQuestion));
+			if (open != type) {
+				if (!value) value = lowerExpression(source);
+				const OperatorOperand captured{ .value = convertValue(value, type, open, source), .type = open };
+				return lowerArrayBuffer(source, use, b_needCells, &captured);
+			}
+		}
+		if (!value) return lowerArrayBuffer(source, use, b_needCells);
                 const OperatorOperand captured{ .value = value, .type = type };
                 return lowerArrayBuffer(source, use, b_needCells, &captured);
 	};
@@ -703,7 +803,10 @@ LLVMValueRef FunctionLowering::tryLowerArrayEquality (const cloth::BinaryExpress
 	const ArrayBuffer ab_right = buffer(*binary.right, rightType, info.rightContext, nullptr, info.receiverChecks.atAccess,
 	                                    info.callsElementEquality ? AddressUse::ReadOnly : AddressUse::Read);
 	if (b_differentShapes) return LLVMBuildNot(ir_builder, LLVMBuildOr(ir_builder, ab_left.present, ab_right.present, ""), "");
-	return equalArrayBuffers(!opt_right ? rt_right : rt_left, ab_left, ab_right, leftType.nullable() || rightType.nullable(), info, binary);
+	return equalArrayBuffers(rectangular ? rows::openType(rt_left) :
+	                         !opt_right  ? rt_right :
+	                                       rt_left,
+	                         ab_left, ab_right, leftType.nullable() || rightType.nullable(), info, binary);
 }
 
 LLVMValueRef FunctionLowering::equalArrayBuffers (const cloth::ResolvedType &type, const ArrayBuffer &left, const ArrayBuffer &right, const bool checkPresence,
@@ -714,12 +817,26 @@ LLVMValueRef FunctionLowering::equalArrayBuffers (const cloth::ResolvedType &typ
 	LLVMValueRef       ir_length       = left.length;
 	// Walk contiguous dimensions in one loop. A nullable row has its own tag and starts a new comparison.
 	cloth::ResolvedType rt_element = type.element();
-	while (rt_element.array()) rt_element.suffixes.pop_back();
+	const bool          rectangular = rows::supported(type);
+	if (!rectangular)
+		while (rt_element.array()) rt_element.suffixes.pop_back();
 	const LLVMTypeRef ty_element = mf_functions.valueTypes.localType(rt_element);
 	const LLVMTypeRef ty_offset  = LLVMTypeOf(ir_length);
 	std::uint64_t     u64_extent = 0;
-	if (growable::supported(type)) {
-		const LLVMValueRef ir_sameLength = LLVMBuildICmp(ir_builder, LLVMIntEQ, left.length, right.length, "");
+	if (growable::ownsBuffer(type)) {
+		LLVMValueRef ir_sameLength = LLVMBuildICmp(ir_builder, LLVMIntEQ, left.length, right.length, "");
+		if (rectangular) {
+			for (unsigned i = 2; i < LLVMCountStructElementTypes(LLVMTypeOf(left.descriptor)) - 2; ++i) {
+				const auto a = LLVMBuildExtractValue(ir_builder, left.descriptor, i, ""),
+				           b = LLVMBuildExtractValue(ir_builder, right.descriptor, i, "");
+				const LLVMValueRef known =
+				        LLVMBuildAnd(ir_builder, LLVMBuildExtractValue(ir_builder, a, 1, ""), LLVMBuildExtractValue(ir_builder, b, 1, ""), "");
+				const LLVMValueRef same = LLVMBuildICmp(ir_builder, LLVMIntEQ, LLVMBuildExtractValue(ir_builder, a, 0, ""),
+				                                        LLVMBuildExtractValue(ir_builder, b, 0, ""), "");
+				ir_sameLength =
+				        LLVMBuildAnd(ir_builder, ir_sameLength, LLVMBuildOr(ir_builder, LLVMBuildNot(ir_builder, known, ""), same, ""), "");
+			}
+		}
 		ir_skipped                       = ir_enter ? LLVMBuildSelect(ir_builder, ir_enter, ir_sameLength, ir_samePresence, "") : ir_sameLength;
 		if (!left.address || !right.address) return ir_skipped;
 		const LLVMValueRef ir_hasCells = LLVMBuildAnd(ir_builder, ir_sameLength, LLVMBuildIsNotNull(ir_builder, ir_length, ""), "");
@@ -743,11 +860,25 @@ LLVMValueRef FunctionLowering::equalArrayBuffers (const cloth::ResolvedType &typ
 		LLVMBuildBr(ir_builder, bb_compare);
 	}
 	LLVMPositionBuilderAtEnd(ir_builder, bb_compare);
-	const LLVMValueRef ir_offset    = LLVMBuildPhi(ir_builder, ty_offset, "");
-	const LLVMValueRef ir_leftCell  = arrayElementAddress(ty_array, left.address, ir_offset);
-	const LLVMValueRef ir_rightCell = arrayElementAddress(ty_array, right.address, ir_offset);
+	const LLVMValueRef ir_offset = LLVMBuildPhi(ir_builder, ty_offset, "");
+	const auto         cellAt    = [&] (const ArrayBuffer &buffer) {
+		const LLVMTypeRef array = buffer.descriptor ? LLVMArrayType2(mf_functions.valueTypes.slotType(rt_element), u64_extent) : ty_array;
+		return arrayElementAddress(array, buffer.address, ir_offset);
+	};
+	const LLVMValueRef ir_leftCell  = cellAt(left);
+	const LLVMValueRef ir_rightCell = cellAt(right);
 	LLVMValueRef       ir_equal     = nullptr;
-	if (cloth::semantic::hasArrayShape(rt_element)) {
+	if (rectangular) {
+		const auto rowAt = [&] (LLVMValueRef cell) -> ArrayBuffer {
+			const LLVMValueRef descriptor = LLVMBuildLoad2(ir_builder, ty_element, cell, "");
+			const auto         elements   = growable::elements(ir_builder, descriptor);
+			return { .address    = elements.data,
+				 .present    = LLVMConstAllOnes(LLVMTypeOf(left.present)),
+				 .length     = elements.length,
+				 .descriptor = descriptor };
+		};
+		ir_equal = equalArrayBuffers(rt_element, rowAt(ir_leftCell), rowAt(ir_rightCell), false, info, at);
+	} else if (cloth::semantic::hasArrayShape(rt_element)) {
 		const cloth::ResolvedType rt_row = rt_element.element();
 		const LLVMTypeRef         ty_row = mf_functions.valueTypes.localType(rt_row);
 		const auto                rowAt  = [&] (LLVMValueRef cell) -> ArrayBuffer {
@@ -758,8 +889,10 @@ LLVMValueRef FunctionLowering::equalArrayBuffers (const cloth::ResolvedType &typ
 		const ArrayBuffer ab_left = rowAt(ir_leftCell), ab_right = rowAt(ir_rightCell);
 		ir_equal = equalArrayBuffers(rt_row, ab_left, ab_right, true, info, at);
 	} else {
-		const LLVMValueRef ir_left  = LLVMBuildLoad2(ir_builder, ty_element, ir_leftCell, "");
-		const LLVMValueRef ir_right = LLVMBuildLoad2(ir_builder, ty_element, ir_rightCell, "");
+		const LLVMValueRef ir_left =
+		        mf_functions.valueTypes.loadLocal(ir_builder, rt_element, ir_leftCell, left.descriptor ? StoragePlace::Slot : StoragePlace::Value);
+		const LLVMValueRef ir_right =
+		        mf_functions.valueTypes.loadLocal(ir_builder, rt_element, ir_rightCell, right.descriptor ? StoragePlace::Slot : StoragePlace::Value);
 		if (info.callsElementEquality)
 			ir_equal = compareValues({ .value = ir_left, .type = rt_element }, { .value = ir_right, .type = rt_element }, cloth::OEqual,
 			                         info.elementEquality ? &*info.elementEquality : nullptr, false, at);
@@ -769,7 +902,7 @@ LLVMValueRef FunctionLowering::equalArrayBuffers (const cloth::ResolvedType &typ
 			ir_equal = equalObjects({ .handle = handleOrZero(ir_left, rt_element), .directSelf = false },
 			                        { .handle = handleOrZero(ir_right, rt_element), .directSelf = false }, rt_element.nullable(), true);
 		else if (cloth::semantic::rangeEndpoint(rt_element))
-			ir_equal = IntegerRange::equalPacked(ir_builder, ir_left, ir_right, rt_element.nullable());
+			ir_equal = RangeValue::equalPackedIntegers(ir_builder, ir_left, ir_right, rt_element.nullable());
 		else
 			ir_equal = sl_scalars.compare(cloth::OEqual, ir_left, ir_right, rt_element);
 	}
@@ -793,7 +926,7 @@ AddressUse FunctionLowering::arrayReadSlot (const cloth::Expression &index) cons
 	return AddressUse::ReadOnly;
 }
 
-LLVMValueRef FunctionLowering::tryArrayAddress (const cloth::Expression &array, AddressUse use, ObjectAccess *owner) {
+LLVMValueRef FunctionLowering::tryArrayAddress (const cloth::Expression &array, AddressUse use, ObjectAccess *owner, ReloadPointer *reload) {
 	const auto &info = bf_body.expressions.at(&array);
 	if (ir_self && dynamic_cast<const cloth::NameExpression *>(&array) && detail::isStoredField(info.symbol)) {
 		if (use == AddressUse::ReadOnly) return nullptr;
@@ -820,51 +953,83 @@ LLVMValueRef FunctionLowering::tryArrayAddress (const cloth::Expression &array, 
 		// A nullable field's tag and cells live in separate storage. Borrow the cells only after a presence proof.
 		if (ei_field.types.front().nullable()) return nullptr;
 		// Immutable structs are SSA values. Only an addressable root can lend its field buffer.
-		const std::optional<LoweredValue> opt_field = lowerField(*fa_field, use);
+		const std::optional<LoweredValue> opt_field = lowerField(*fa_field, use == AddressUse::Write && !reload ? AddressUse::Borrow : use);
 		if (!opt_field) return nullptr;
 		if (owner) *owner = opt_field->owner;
-		if (opt_field->type.nullable() && opt_field->place == StoragePlace::Slot)
-			return detail::nullable::payloadAddress(ir_builder, mf_functions.valueTypes.slotType(opt_field->type.element()), opt_field->operand);
-		return opt_field->place == StoragePlace::Embedded ? mf_functions.valueTypes.arrayData(ir_builder, opt_field->type, opt_field->operand) :
-		                                                    opt_field->operand;
+		const auto bufferAt = [this, type = opt_field->type, place = opt_field->place] (LLVMValueRef slot) {
+			if (type.nullable() && place == StoragePlace::Slot)
+				return detail::nullable::payloadAddress(ir_builder, mf_functions.valueTypes.slotType(type.element()), slot);
+			return place == StoragePlace::Embedded ? mf_functions.valueTypes.arrayData(ir_builder, type, slot) : slot;
+		};
+		if (reload && opt_field->reload) *reload = [field = opt_field->reload, bufferAt] { return bufferAt(field().operand); };
+		return bufferAt(opt_field->operand);
 	}
 	if (const auto *ie_row = dynamic_cast<const cloth::IndexExpression *>(&array)) {
 		const cloth::ExpressionFacts &ef_facts = bf_body.expressions;
 		const cloth::ExpressionInfo  &ei_row   = ef_facts.at(ie_row);
 		// A nullable indexed row stores a descriptor beside its tag. Only a proven row lends its cell buffer.
 		if (!ei_row.fallsThrough || ei_row.types.front().nullable()) return nullptr;
-		const LLVMValueRef ir_cell = tryIndexAddress(*ie_row, use, owner);
+		ReloadPointer      parent;
+		const LLVMValueRef ir_cell = tryIndexAddress(*ie_row, use, owner, reload ? &parent : nullptr);
 		if (!ir_cell) return nullptr;
 		const cloth::ResolvedType rt_element = ef_facts.at(ie_row->array.get()).types.front().element();
-		return detail::arrayElementPlace(rt_element) == StoragePlace::Embedded ? mf_functions.valueTypes.arrayData(ir_builder, rt_element, ir_cell) :
-		                                                                         ir_cell;
+		const auto                bufferAt   = [this, rt_element] (LLVMValueRef cell) {
+			return detail::arrayElementPlace(rt_element) == StoragePlace::Embedded ?
+			               mf_functions.valueTypes.arrayData(ir_builder, rt_element, cell) :
+			               cell;
+		};
+		if (parent) *reload = [parent, bufferAt] { return bufferAt(parent()); };
+		return bufferAt(ir_cell);
 	}
 	return nullptr;
 }
 
-LLVMValueRef FunctionLowering::tryIndexAddress (const cloth::IndexExpression &index, AddressUse use, ObjectAccess *owner) {
+LLVMValueRef FunctionLowering::tryIndexAddress (const cloth::IndexExpression &index, AddressUse use, ObjectAccess *owner, ReloadPointer *reload) {
 	const cloth::ExpressionFacts &ef_facts = bf_body.expressions;
 	const cloth::ExpressionInfo  &ei_index = ef_facts.at(&index);
 	if (!ei_index.fallsThrough || ei_index.indexed || !isBuiltinOperation(ei_index)) return nullptr;
 	const cloth::ResolvedType &rt_array = ef_facts.at(index.array.get()).types.front();
-	if (!rt_array.arrayExtent()) return nullptr;
+	if (growable::supported(rt_array) && use == AddressUse::Write && reload) {
+		const auto root = writableArray(*index.array);
+		if (!root) return nullptr;
+		const LLVMValueRef coordinate = lowerExpression(*index.index);
+		if (!coordinate) return nullptr;
+		if (owner) *owner = root->owner;
+		const bool        unsignedIndex = ef_facts.at(index.index.get()).types.front().unsignedInteger();
+		const LLVMTypeRef cell          = mf_functions.valueTypes.slotType(rt_array.element());
+		*reload                         = [this, root = *root, rt_array, coordinate, unsignedIndex, cell] {
+			checkOwner(root.owner);
+			const auto   buffer = growable::elements(ir_builder, readValue(root, rt_array));
+			LLVMValueRef offset = sl_scalars.checkedArrayIndex(coordinate, unsignedIndex, buffer.length);
+			return LLVMBuildGEP2(ir_builder, cell, buffer.data, &offset, 1, "");
+		};
+		return (*reload)();
+	}
+	if (!rt_array.arrayExtent() || rows::supported(rt_array)) return nullptr;
 	if (use == AddressUse::Read) use = arrayReadSlot(*index.index);
-	const LLVMValueRef ir_outer = tryArrayAddress(*index.array, use, owner);
+	ReloadPointer      parent;
+	const LLVMValueRef ir_outer = tryArrayAddress(*index.array, use, owner, reload ? &parent : nullptr);
 	if (!ir_outer) return nullptr;
 	const LLVMTypeRef  ty_outer = mf_functions.valueTypes.slotType(rt_array);
 	const LLVMValueRef offset   = lowerArrayOffset(*index.index, ty_outer);
 	if (!offset) return nullptr;
 	if (owner) checkOwner(*owner);
+	if (parent) {
+		*reload = [this, ty_outer, parent, offset] { return arrayElementAddress(ty_outer, parent(), offset); };
+		return (*reload)();
+	}
 	return arrayElementAddress(ty_outer, ir_outer, offset);
 }
 
 LLVMValueRef FunctionLowering::lowerIndex (const cloth::IndexExpression &index, const cloth::ExpressionInfo &info) {
 	const cloth::ExpressionInfo &ei_array = bf_body.expressions.at(index.array.get());
 	if (!ei_array.fallsThrough) return lowerExpression(*index.array);
-	if (growable::supported(ei_array.types.front())) return lowerGrowableIndex(index, ei_array.types.front().element(), info.types.front());
-	const LLVMValueRef ir_buffer = tryArrayAddress(*index.array, arrayReadSlot(*index.index));
-	const LLVMValueRef ir_array  = ir_buffer ? nullptr : lowerExpression(*index.array);
+	if (growable::ownsBuffer(ei_array.types.front())) return lowerGrowableIndex(index, ei_array.types.front().element(), info.types.front());
+	const AddressUse   use       = arrayReadSlot(*index.index);
+	const LLVMValueRef ir_buffer = tryArrayAddress(*index.array, use);
+	LLVMValueRef       ir_array  = ir_buffer ? nullptr : lowerExpression(*index.array);
 	if (!ir_buffer && !ir_array) return nullptr;
+	if (ir_array && use == AddressUse::ReadOnly) ir_array = snapshot(ei_array.types.front(), ir_array);
 	const LLVMTypeRef  ty_array  = ir_buffer ? mf_functions.valueTypes.slotType(ei_array.types.front()) : LLVMTypeOf(ir_array);
 	const LLVMValueRef ir_offset = lowerArrayOffset(*index.index, ty_array);
 	if (!ir_offset) return nullptr;
@@ -887,22 +1052,9 @@ LLVMValueRef FunctionLowering::lowerIndex (const cloth::IndexExpression &index, 
 	                 info.types.front());
 }
 
-cloth::StorageLayout FunctionLowering::arrayCellLayout (const cloth::ResolvedType &type) const {
-	const cloth::ResolvedType                 rt_cell    = type.element();
-	const std::optional<cloth::StorageLayout> opt_layout = mf_functions.program.storageLayout(rt_cell);
-	const LLVMTypeRef                         ty_cell    = mf_functions.valueTypes.localType(rt_cell);
-	if (!opt_layout || !ty_cell)
-		throw cde::ClothDiagnostic(Code::UnsupportedLowering, "LLVM lowering requires a checked storage layout for the array element");
-	const LLVMTargetDataRef    td_target = LLVMGetModuleDataLayout(mf_functions.module);
-	const cloth::StorageLayout actual{ .size = LLVMABISizeOfType(td_target, ty_cell), .alignment = LLVMABIAlignmentOfType(td_target, ty_cell) };
-	if (actual != *opt_layout)
-		throw cde::ClothDiagnostic(Code::AbiLayout,
-		                           std::format("LLVM array cell for '{}' differs from its checked storage layout", rt_cell.spelling()));
-	return *opt_layout;
-}
-
-void FunctionLowering::assignArray (LLVMValueRef slot, const cloth::ResolvedType &type, LLVMValueRef value) const {
-	if (!growable::ownsBuffer(type)) return mf_functions.valueTypes.copyBuffers(ir_builder, type, slot, value);
+void FunctionLowering::assignArray (LLVMValueRef slot, const cloth::ResolvedType &type, LLVMValueRef value, LLVMValueRef witness) const {
+	if (!growable::ownsBuffer(type)) return mf_functions.valueTypes.storeLocal(ir_builder, type, slot, value, StoragePlace::Value);
+	const LLVMValueRef        fieldSlot  = slot;
 	const bool                b_nullable = type.nullable();
 	const cloth::ResolvedType rt_array   = b_nullable ? type.element() : type;
 	if (b_nullable) {
@@ -912,12 +1064,21 @@ void FunctionLowering::assignArray (LLVMValueRef slot, const cloth::ResolvedType
 		value = detail::nullable::payload(ir_builder, value);
 		value = LLVMBuildSelect(ir_builder, sl_scalars.predicate(ir_present), value, LLVMConstNull(LLVMTypeOf(value)), "");
 	}
-	const growable::Elements elements = growable::elements(ir_builder, value);
-	growable::assign(ir_builder, mf_functions.module, slot, elements.data, elements.length, arrayCellLayout(rt_array));
+	if (rows::supported(rt_array)) {
+		const auto layout = rows::layout(mf_functions.module, mf_functions.program, rt_array);
+		rows::call(ir_builder, mf_functions.module, "cloth_rt_rows_assign",
+		           { slot, storeInEntrySlot(value), layout.rank, layout.stride, layout.alignment });
+	} else {
+		const growable::Elements elements = growable::elements(ir_builder, value);
+		growable::assign(ir_builder, mf_functions.module, slot, elements.data, elements.length, mf_functions.valueTypes.cellLayout(rt_array.element()),
+		                 mf_functions.valueTypes.cellOperations(rt_array.element()));
+	}
+	if (witness) mf_functions.valueTypes.updateGrowableWitness(ir_builder, type, fieldSlot, witness);
 }
 
 LLVMValueRef FunctionLowering::allocateArrayOwner (const cloth::ResolvedType &type, ArrayLifetimes::Kind kind) {
-	if (!growable::ownsBuffer(type))
+	const auto array = type.nullable() ? type.element() : type;
+	if (!growable::supported(array) || mf_functions.valueTypes.cellOperations(array.element()))
 		return al_arrays.own(mf_functions.valueTypes.localType(type), kind, false, mf_functions.valueTypes.bufferDisposer(type));
 	const bool        b_nullable    = type.nullable();
 	const LLVMTypeRef ty_descriptor = mf_functions.valueTypes.localType(b_nullable ? type.element() : type);
@@ -936,8 +1097,10 @@ LLVMValueRef FunctionLowering::lowerGrowableIndex (const cloth::IndexExpression 
 	if (!ir_index) return nullptr;
 	const cloth::ResolvedType &rt_index   = bf_body.expressions.at(index.index.get()).types.front();
 	LLVMValueRef               ir_offset  = sl_scalars.checkedArrayIndex(ir_index, rt_index.unsignedInteger(), elements.length);
-	const LLVMTypeRef          ty_element = mf_functions.valueTypes.localType(element);
+	const auto                 stored     = element.array() ? rows::openType(element) : element;
+	const LLVMTypeRef          ty_element = mf_functions.valueTypes.slotType(stored);
 	const LLVMValueRef         ir_cell    = LLVMBuildGEP2(ir_builder, ty_element, elements.address, &ir_offset, 1, "");
+	if (element.array()) return convertValue(LLVMBuildLoad2(ir_builder, ty_element, ir_cell, ""), stored, view, index);
 	return readValue({ .operand = ir_cell, .type = element, .storage = ValueStorage::ReadOnlySlot }, view);
 }
 
@@ -949,54 +1112,136 @@ std::optional<LoweredValue> FunctionLowering::writableArray (const cloth::Expres
 	return std::nullopt;
 }
 
+const cloth::Expression &FunctionLowering::indexRoot (const cloth::Expression &expression, std::vector<const cloth::IndexExpression *> &path) const {
+	const cloth::Expression *base = &expression;
+	while (const auto *index = dynamic_cast<const cloth::IndexExpression *>(base)) {
+		const auto &receiver = bf_body.expressions.at(index->array.get());
+		if (receiver.types.empty() || !receiver.types.front().array()) break;
+		path.push_back(index);
+		base = index->array.get();
+	}
+	return *base;
+}
+
 LLVMValueRef FunctionLowering::lowerArrayMutation (const cloth::MemberCallExpression &call, cloth::ArrayMutation operation) {
 	const cloth::ExpressionInfo &ei_receiver = bf_body.expressions.at(call.receiver.get());
 	if (!ei_receiver.fallsThrough) return lowerExpression(*call.receiver);
 	const cloth::ResolvedType &rt_array = ei_receiver.types.front();
-	if (!growable::supported(rt_array))
+	if (!growable::ownsBuffer(rt_array))
 		throw cde::ClothDiagnostic(Code::UnsupportedLowering, "LLVM lowering does not support this array mutation",
 		                           { { .span = call.getSpan(), .text = "unsupported array mutation" } });
-	const auto         lv_local = writableArray(*call.receiver);
-	const LLVMValueRef ir_slot =
-	        lv_local && lv_local->storage == ValueStorage::MutableSlot ?
-	                (lv_local->type.nullable() ?
-	                         detail::nullable::payloadAddress(ir_builder, mf_functions.valueTypes.localType(rt_array), lv_local->operand) :
-	                         lv_local->operand) :
-	                ownArray(rt_array, lowerExpression(*call.receiver), ArrayLifetimes::Kind::Temporary);
-	const cloth::ResolvedType  rt_element = rt_array.element();
-	const cloth::ResolvedType  rt_word(cloth::KUsize);
-	const cloth::StorageLayout sl_cell    = arrayCellLayout(rt_array);
-	const LLVMModuleRef        mod_module = mf_functions.module;
-	const auto                 argument   = [&] (std::size_t index, const cloth::ResolvedType &type) {
-                const LLVMValueRef value = lowerAs(*call.suppliedArguments[index].expression, type);
-                if (value && index + 1 == call.suppliedArguments.size() && lv_local &&
-                    (lv_local->owner.permission || bf_body.expressions.at(&call).receiverChecks.atAccess))
-                        checkOwner(lv_local->owner);
-                return value;
+	if (operation == cloth::ArrayMutation::Reserve) {
+		std::vector<const cloth::IndexExpression *> path;
+		const auto                                 &base = indexRoot(*call.receiver, path);
+		if (!path.empty() && rows::supported(bf_body.expressions.at(&base).types.front())) {
+			if (const auto root = writableArray(base)) {
+				std::vector<LLVMValueRef> offsets;
+				if (!rowOffsets(*root, path, offsets)) return nullptr;
+				const LLVMValueRef count = lowerAs(*call.suppliedArguments.front().expression, cloth::ResolvedType(cloth::KUsize));
+				if (!count) return nullptr;
+				const LLVMValueRef slot = rowAddress(*root, offsets);
+				if (rows::supported(rt_array)) {
+					const auto layout = rows::layout(mf_functions.module, mf_functions.program, rt_array);
+					rows::call(ir_builder, mf_functions.module, "cloth_rt_rows_reserve", { slot, count, layout.rank });
+				} else {
+					growable::reserve(ir_builder, mf_functions.module, slot, count, mf_functions.valueTypes.cellLayout(rt_array.element()));
+				}
+				return nullptr;
+			}
+		}
+	}
+	const auto lv_local    = writableArray(*call.receiver);
+	const auto payloadSlot = [&] (LLVMValueRef slot) {
+		return lv_local->type.nullable() ? detail::nullable::payloadAddress(ir_builder, mf_functions.valueTypes.localType(rt_array), slot) : slot;
 	};
-	switch (operation) {
-	case cloth::ArrayMutation::Append:
-		if (const LLVMValueRef ir_cell = argument(0, rt_element)) growable::append(ir_builder, mod_module, ir_slot, storeInEntrySlot(ir_cell), sl_cell);
-		break;
-	case cloth::ArrayMutation::Insert: {
-		const LLVMValueRef ir_index = argument(0, rt_word);
-		if (!ir_index) return nullptr;
-		if (const LLVMValueRef ir_cell = argument(1, rt_element))
-			growable::insert(ir_builder, mod_module, ir_slot, ir_index, storeInEntrySlot(ir_cell), sl_cell);
-		break;
+	LLVMValueRef              ir_slot    = lv_local && lv_local->storage == ValueStorage::MutableSlot ?
+	                                               payloadSlot(lv_local->operand) :
+	                                               ownArray(rt_array, lowerExpression(*call.receiver), ArrayLifetimes::Kind::Temporary);
+	const cloth::ResolvedType rt_element = rt_array.element();
+	const cloth::ResolvedType rt_word(cloth::KUsize);
+	const LLVMModuleRef       mod_module = mf_functions.module;
+	const auto                argument   = [&] (std::size_t index, const cloth::ResolvedType &type) {
+		const LLVMValueRef value = lowerAs(*call.suppliedArguments[index].expression, type);
+		if (value && index + 1 == call.suppliedArguments.size() && lv_local) {
+			if (lv_local->owner.permission || bf_body.expressions.at(&call).receiverChecks.atAccess) checkOwner(lv_local->owner);
+			if (lv_local->reload) ir_slot = payloadSlot(lv_local->address().operand);
+		}
+		return value;
+	};
+	LLVMValueRef result = nullptr;
+	if (rows::supported(rt_array)) {
+		const auto layout  = rows::layout(mod_module, mf_functions.program, rt_array);
+		const auto rowType = rows::openType(rt_element);
+		switch (operation) {
+		case cloth::ArrayMutation::Append:
+		case cloth::ArrayMutation::Insert: {
+			const bool   insert = operation == cloth::ArrayMutation::Insert;
+			LLVMValueRef index  = insert ? argument(0, rt_word) : nullptr;
+			if (insert && !index) return nullptr;
+			const LLVMValueRef row = argument(insert ? 1 : 0, rowType);
+			if (!row) return nullptr;
+			if (!insert)
+				index = growable::elements(ir_builder, LLVMBuildLoad2(ir_builder, mf_functions.valueTypes.localType(rt_array), ir_slot, ""))
+				                .length;
+			rows::call(ir_builder, mod_module, "cloth_rt_rows_insert",
+			           { ir_slot, index, storeInEntrySlot(row), layout.rank, layout.stride, layout.alignment });
+			break;
+		}
+		case cloth::ArrayMutation::RemoveAt: {
+			const LLVMValueRef index = argument(0, rt_word);
+			if (!index) return nullptr;
+			const LLVMValueRef removed = allocateArrayOwner(rowType, ArrayLifetimes::Kind::Temporary);
+			rows::call(ir_builder, mod_module, "cloth_rt_rows_remove", { ir_slot, index, removed, layout.rank });
+			result = convertValue(LLVMBuildLoad2(ir_builder, mf_functions.valueTypes.localType(rowType), removed, ""), rowType, rt_element, call);
+			break;
+		}
+		case cloth::ArrayMutation::Clear:
+			rows::call(ir_builder, mod_module, "cloth_rt_rows_clear", { ir_slot, layout.rank });
+			break;
+		case cloth::ArrayMutation::Reserve:
+			if (const LLVMValueRef count = argument(0, rt_word))
+				rows::call(ir_builder, mod_module, "cloth_rt_rows_reserve", { ir_slot, count, layout.rank });
+			return nullptr;
+		}
+	} else {
+		const cloth::StorageLayout sl_cell = mf_functions.valueTypes.cellLayout(rt_element);
+		switch (operation) {
+		case cloth::ArrayMutation::Append: {
+			const LLVMValueRef ir_cell = argument(0, rt_element);
+			if (!ir_cell) return nullptr;
+			growable::append(ir_builder, mod_module, ir_slot, mf_functions.valueTypes.prepareCell(ir_builder, rt_element, ir_cell), sl_cell);
+			break;
+		}
+		case cloth::ArrayMutation::Insert: {
+			const LLVMValueRef ir_index = argument(0, rt_word);
+			if (!ir_index) return nullptr;
+			const LLVMValueRef ir_cell = argument(1, rt_element);
+			if (!ir_cell) return nullptr;
+			growable::insert(ir_builder, mod_module, ir_slot, ir_index, mf_functions.valueTypes.prepareCell(ir_builder, rt_element, ir_cell),
+			                 sl_cell);
+			break;
+		}
+		case cloth::ArrayMutation::RemoveAt: {
+			const LLVMValueRef ir_index = argument(0, rt_word);
+			if (!ir_index) return nullptr;
+			const LLVMValueRef removed = detail::allocateEntrySlot(ir_builder, mf_functions.valueTypes.slotType(rt_element));
+			growable::removeAt(ir_builder, mod_module, ir_slot, ir_index, removed, sl_cell);
+			result = adoptResults(mf_functions.valueTypes.takeCell(ir_builder, rt_element, removed), std::span(&rt_element, 1));
+			break;
+		}
+		case cloth::ArrayMutation::Clear:
+			growable::clear(ir_builder, mod_module, ir_slot, mf_functions.valueTypes.cellOperations(rt_element));
+			break;
+		case cloth::ArrayMutation::Reserve:
+			if (const LLVMValueRef ir_minimum = argument(0, rt_word)) growable::reserve(ir_builder, mod_module, ir_slot, ir_minimum, sl_cell);
+			return nullptr;
+		}
 	}
-	case cloth::ArrayMutation::RemoveAt:
-		if (const LLVMValueRef ir_index = argument(0, rt_word))
-			return growable::removeAt(ir_builder, mod_module, ir_slot, ir_index, mf_functions.valueTypes.localType(rt_element), sl_cell);
-		break;
-	case cloth::ArrayMutation::Clear:
-		growable::clear(ir_builder, mod_module, ir_slot);
-		break;
-	case cloth::ArrayMutation::Reserve:
-		if (const LLVMValueRef ir_minimum = argument(0, rt_word)) growable::reserve(ir_builder, mod_module, ir_slot, ir_minimum, sl_cell);
-		break;
+	if (lv_local && lv_local->witness) {
+		const SlotAddress field = lv_local->address();
+		mf_functions.valueTypes.updateGrowableWitness(ir_builder, lv_local->type, field.operand, field.witness);
 	}
-	return nullptr;
+	return result;
 }
 
 LLVMValueRef FunctionLowering::lowerStructLiteral (const cloth::StructLiteral &literal, const cloth::ExpressionInfo &info) {
@@ -1013,7 +1258,7 @@ LLVMValueRef FunctionLowering::lowerStructLiteral (const cloth::StructLiteral &l
 	for (std::size_t st_index = 0; st_index < literal.fields.size(); ++st_index) {
 		const auto        &field    = sl_layout.fields.at(st_index).type;
 		const LLVMValueRef ir_field = snapshot(field, lowerAs(*literal.fields[st_index], field));
-		ir_struct                   = LLVMBuildInsertValue(ir_builder, ir_struct, ir_field, static_cast<unsigned>(st_index), "");
+		ir_struct = mf_functions.valueTypes.insertStructField(ir_builder, rt_struct, ir_struct, static_cast<unsigned>(st_index), ir_field);
 	}
 	return ir_struct;
 }
@@ -1060,7 +1305,8 @@ std::optional<LoweredValue> FunctionLowering::lowerField (const cloth::FieldAcce
 
 	const auto *ie_root = dynamic_cast<const cloth::IndexExpression *>(e_root);
 	// A read may project a single field when its index leaves the receiver intact.
-	LLVMValueRef                ir_operand = ie_root ? tryIndexAddress(*ie_root, addressUse.value_or(AddressUse::Read), &object) : nullptr;
+	ReloadPointer               reload;
+	LLVMValueRef                ir_operand = ie_root ? tryIndexAddress(*ie_root, addressUse.value_or(AddressUse::Read), &object, &reload) : nullptr;
 	ValueStorage                vs_storage = ValueStorage::Direct;
 	bool                        b_nullable = false;
 	std::optional<LoweredValue> rootField;
@@ -1080,35 +1326,43 @@ std::optional<LoweredValue> FunctionLowering::lowerField (const cloth::FieldAcce
 		vs_storage = lv_root->storage;
 		ir_operand = lv_root->operand;
 		b_nullable = lv_root->type.nullable();
+		if (lv_root->reload) reload = [root = lv_root->reload] { return root().operand; };
 	} else if (ir_operand) {
-		vs_storage = addressUse == AddressUse::Write ? ValueStorage::MutableSlot : ValueStorage::ReadOnlySlot;
+		vs_storage = addressUse == AddressUse::Write || addressUse == AddressUse::Borrow ? ValueStorage::MutableSlot : ValueStorage::ReadOnlySlot;
 		b_nullable = bf_body.expressions.at(ie_root->array.get()).types.front().element().nullable();
 	} else {
 		if (addressUse) return std::nullopt;
 		ir_operand = lowerExpression(*e_root);
 	}
-	const bool   b_address  = vs_storage != ValueStorage::Direct;
-	LLVMValueRef ir_witness = nullptr;
-	// A mutable root keeps the address of its subobject even when the right-hand side replaces a parent.
-	for (const FieldStep &fs_step : std::views::reverse(v_path)) {
-		// A presence proof exposes the payload inside the nullable receiver's storage.
-		if (b_nullable)
-			ir_operand = b_address ? detail::nullable::payloadAddress(ir_builder, fs_step.storage, ir_operand) :
-			                         detail::nullable::payload(ir_builder, ir_operand);
-		if (b_address && fs_step.type.nullable() && fs_step.type.element().array())
-			ir_witness = mf_functions.valueTypes.arrayFieldWitness(ir_builder, fs_step.owner, ir_operand, fs_step.index);
-		ir_operand = b_address ? LLVMBuildStructGEP2(ir_builder, fs_step.storage, ir_operand, fs_step.index, "") :
-		                         LLVMBuildExtractValue(ir_builder, ir_operand, fs_step.index, "");
-		b_nullable = fs_step.type.nullable();
-	}
-	const cloth::ResolvedType &rt_field = v_path.front().type;
-	if (b_address && rt_field.arrayExtent()) ir_operand = mf_functions.valueTypes.arrayData(ir_builder, rt_field, ir_operand);
-	return LoweredValue{ .operand = ir_operand,
-		             .type    = rt_field,
-		             .storage = vs_storage,
-		             .place   = ir_witness ? StoragePlace::Embedded : StoragePlace::Slot,
-		             .witness = ir_witness,
-		             .owner   = object };
+	const bool                 b_address = vs_storage != ValueStorage::Direct;
+	const cloth::ResolvedType &rt_field  = v_path.front().type;
+	const auto                 project   = [this, path = std::move(v_path), b_address, b_nullable] (LLVMValueRef operand) {
+		LLVMValueRef ir_witness = nullptr;
+		bool         nullable   = b_nullable;
+		for (const FieldStep &fs_step : std::views::reverse(path)) {
+			// A presence proof exposes the payload inside the nullable receiver's storage.
+			if (nullable)
+				operand = b_address ? detail::nullable::payloadAddress(ir_builder, fs_step.storage, operand) :
+				                      detail::nullable::payload(ir_builder, operand);
+			if (b_address && fs_step.type.nullable() && fs_step.type.element().array())
+				ir_witness = mf_functions.valueTypes.arrayFieldWitness(ir_builder, fs_step.owner, operand, fs_step.index);
+			operand  = b_address ? LLVMBuildStructGEP2(ir_builder, fs_step.storage, operand, fs_step.index, "") :
+			                       LLVMBuildExtractValue(ir_builder, operand, fs_step.index, "");
+			nullable = fs_step.type.nullable();
+		}
+		const auto &type = path.front().type;
+		if (b_address && type.arrayExtent() && !rows::supported(type)) operand = mf_functions.valueTypes.arrayData(ir_builder, type, operand);
+		return SlotAddress{ .operand = operand, .witness = ir_witness };
+	};
+	const SlotAddress first = project(ir_operand);
+	LoweredValue      result{ .operand = first.operand,
+		                  .type    = rt_field,
+		                  .storage = vs_storage,
+		                  .place   = first.witness ? StoragePlace::Embedded : StoragePlace::Slot,
+		                  .witness = first.witness,
+		                  .owner   = object };
+	if (reload) result.reload = [project, reload] { return project(reload()); };
+	return result;
 }
 
 LLVMValueRef FunctionLowering::lowerLogical (const cloth::BinaryExpression &binary, LLVMValueRef left) {
@@ -1213,13 +1467,9 @@ LLVMValueRef FunctionLowering::lowerRangeMembership (const cloth::BinaryExpressi
 	const cloth::ResolvedType    &rt_left       = ef_facts.at(binary.left.get()).types.front();
 	const bool                    b_rangeOnLeft = cloth::semantic::rangeEndpoint(rt_left) != nullptr;
 	const cloth::ResolvedType    &rt_member     = b_rangeOnLeft ? ef_facts.at(binary.right.get()).types.front() : rt_left;
-	if (!rt_member.integer())
-		throw cde::ClothDiagnostic(Code::UnsupportedLowering, "LLVM range membership requires integer endpoints",
-		                           { { .span = binary.getSpan(), .text = "unsupported range membership" } });
-
 	// Equality permits either order. Evaluate the member on its written side of the range.
-	LLVMValueRef       ir_value = b_rangeOnLeft ? nullptr : lowerExpression(*binary.left);
-	const IntegerRange range    = lowerRange(b_rangeOnLeft ? *binary.left : *binary.right, rt_member);
+	LLVMValueRef     ir_value = b_rangeOnLeft ? nullptr : lowerExpression(*binary.left);
+	const RangeValue range    = lowerRange(b_rangeOnLeft ? *binary.left : *binary.right, rt_member);
 	if (b_rangeOnLeft) ir_value = lowerExpression(*binary.right);
 	const LLVMValueRef ir_lower  = sl_scalars.compare(cloth::OLessEqual, range.start, ir_value, rt_member);
 	const LLVMValueRef ir_upper  = sl_scalars.withinRangeEnd(ir_value, range.end, range.inclusive, rt_member);
@@ -1239,7 +1489,7 @@ LLVMValueRef FunctionLowering::lowerBinary (const cloth::BinaryExpression &binar
 		switch (*ei_binary.range) {
 		case cloth::RangeOperation::Construct: {
 			const cloth::ResolvedType *rt_endpoint = cloth::semantic::rangeEndpoint(ei_binary.types.front());
-			if (rt_endpoint && rt_endpoint->integer()) return lowerRangeBounds(binary, *rt_endpoint).pack(ir_builder);
+			if (rt_endpoint) return lowerRangeBounds(binary, *rt_endpoint).pack(ir_builder);
 			break;
 		}
 		case cloth::RangeOperation::Membership:
@@ -1254,11 +1504,11 @@ LLVMValueRef FunctionLowering::lowerBinary (const cloth::BinaryExpression &binar
 				const cloth::ResolvedType &rt_nullable = rt_left.nullable() ? rt_left : rt_right;
 				const LLVMValueRef         ir_left     = lowerAs(*binary.left, rt_nullable);
 				const LLVMValueRef         ir_right    = lowerAs(*binary.right, rt_nullable);
-				ir_equal                               = IntegerRange::equalPacked(ir_builder, ir_left, ir_right, true);
+				ir_equal                               = RangeValue::equalPackedIntegers(ir_builder, ir_left, ir_right, true);
 			} else {
-				const IntegerRange range_left  = lowerRange(*binary.left, *rt_endpoint);
-				const IntegerRange range_right = lowerRange(*binary.right, *rt_endpoint);
-				ir_equal                       = range_left.equal(ir_builder, range_right);
+				const RangeValue range_left  = lowerRange(*binary.left, *rt_endpoint);
+				const RangeValue range_right = lowerRange(*binary.right, *rt_endpoint);
+				ir_equal                     = range_left.equalIntegers(ir_builder, range_right);
 			}
 			return sl_scalars.boolean(o_op == cloth::ONotEqual ? LLVMBuildNot(ir_builder, ir_equal, "") : ir_equal);
 		}
@@ -1406,7 +1656,7 @@ LLVMValueRef FunctionLowering::lowerSelectedBinary (const cloth::BinaryExpressio
 		                                              bf_body.expressions.at(&source).types.front();
                 if (selected && receiver) {
                         if (!type.classReference() && !valueReceiver(type)) throw unsupported();
-                        if (projection && mf_functions.program.structLayouts.contains(type)) value = packStructReceiver(temporarySlot(type, value), {});
+                        if (projection && mf_functions.program.structLayouts.contains(type)) value = packStructReceiver(localSlot(type, value), {});
                         if (check) checkMemberReceiver(value, type, !projection && bf_body.isDirectReceiver(source), true);
                 } else if (selected) {
                         const cloth::ResolvedType &parameter = mf_functions.signature(*info.symbol, info.instance).parameters.front();
@@ -1469,7 +1719,7 @@ LLVMValueRef FunctionLowering::compareValues (OperatorOperand left, OperatorOper
 	if (selection) {
 		LLVMValueRef self = receiver.value;
 		if (mf_functions.program.structLayouts.contains(receiver.type))
-			self = structReceiver ? structReceiver : packStructReceiver(temporarySlot(receiver.type, self), {});
+			self = structReceiver ? structReceiver : packStructReceiver(localSlot(receiver.type, self), {});
 		checkMemberReceiver(self, receiver.type, direct, true);
 		if (peer.type.objectReference()) validateReference(peer.value, peer.type, false);
 		const auto        &parameter = mf_functions.signature(*selection->symbol, selection->instance).parameters.front();
@@ -1571,7 +1821,7 @@ LoweredValue FunctionLowering::selfField (const cloth::Symbol &field) const {
 	LLVMValueRef       address = LLVMBuildStructGEP2(ir_builder, storage, lv_self->operand, index, "");
 	const LLVMValueRef witness =
 	        type.nullable() && type.element().array() ? mf_functions.valueTypes.arrayFieldWitness(ir_builder, rt_self, lv_self->operand, index) : nullptr;
-	if (type.arrayExtent()) address = mf_functions.valueTypes.arrayData(ir_builder, type, address);
+	if (type.arrayExtent() && !rows::supported(type)) address = mf_functions.valueTypes.arrayData(ir_builder, type, address);
 	return { .operand = address,
 		 .type    = type,
 		 .storage = ValueStorage::MutableSlot,
@@ -1591,13 +1841,13 @@ std::optional<LoweredValue> FunctionLowering::structPlace (const cloth::Expressi
 	if (const auto *local = namedLocal(source)) {
 		if (local->storage == ValueStorage::MutableSlot) return borrow(local->operand, local->type.nullable(), local->owner);
 	} else if (const auto *field = dynamic_cast<const cloth::FieldAccessExpression *>(&source); field && detail::isStoredField(info.symbol)) {
-		if (const auto place = lowerField(*field, AddressUse::Write)) return borrow(place->operand, place->type.nullable(), place->owner);
+		if (const auto place = lowerField(*field, AddressUse::Borrow)) return borrow(place->operand, place->type.nullable(), place->owner);
 	} else if (ir_self && dynamic_cast<const cloth::NameExpression *>(&source) && detail::isStoredField(info.symbol)) {
 		const auto place = selfField(*info.symbol);
 		return borrow(place.operand, place.type.nullable(), place.owner);
 	} else if (const auto *index = dynamic_cast<const cloth::IndexExpression *>(&source); index && !info.indexed && isBuiltinOperation(info)) {
 		ObjectAccess owner;
-		if (const LLVMValueRef address = tryIndexAddress(*index, AddressUse::Write, &owner))
+		if (const LLVMValueRef address = tryIndexAddress(*index, AddressUse::Borrow, &owner))
 			return borrow(address, bf_body.expressions.at(index->array.get()).types.front().element().nullable(), owner);
 	}
 	return std::nullopt;
@@ -1617,7 +1867,7 @@ LLVMValueRef FunctionLowering::memberReceiver (const cloth::Expression &source, 
 		if (const auto place = structPlace(source)) return packStructReceiver(place->operand, place->owner);
 		evaluated = lowerExpression(source);
 	}
-	return evaluated ? packStructReceiver(temporarySlot(info.types.front(), evaluated), {}) : nullptr;
+	return evaluated ? packStructReceiver(localSlot(info.types.front(), evaluated), {}) : nullptr;
 }
 
 bool FunctionLowering::valueReceiver (const cloth::ResolvedType &type) const {
@@ -1785,13 +2035,14 @@ LLVMValueRef FunctionLowering::formatValue (const cloth::ResolvedType &type, LLV
 	}
 	if (type.array()) {
 		const LLVMTypeRef   word  = sl_scalars.type(cloth::ResolvedType(cloth::KUsize));
-		const auto          cells = type.arrayExtent() ?
-		                                    growable::Elements{ .data = storeInEntrySlot(value), .length = LLVMConstInt(word, *type.arrayExtent(), false) } :
-		                                    growable::elements(ir_builder, snapshot(type, value));
+		const auto          extent = type.arrayExtent();
+		const auto          cells  = extent && !rows::supported(type) ?
+		                                     growable::Elements{ .data = storeInEntrySlot(value), .length = LLVMConstInt(word, *extent, false) } :
+		                                     growable::elements(ir_builder, snapshot(type, value));
 		cloth::ResolvedType strings(cloth::KString);
 		strings.suffixes.emplace_back(cloth::semantic::arraySuffix());
 		const LLVMValueRef slot   = allocateArrayOwner(strings, ArrayLifetimes::Kind::Temporary);
-		const auto         cell   = arrayCellLayout(strings);
+		const auto         cell   = mf_functions.valueTypes.cellLayout(strings.element());
 		const auto         append = [&] (LLVMValueRef part) { growable::append(ir_builder, module, slot, storeInEntrySlot(part), cell); };
 		append(detail::string_value::constant(module, cloth::toString(cloth::OBracketOpen)));
 		LLVMBasicBlockRef       start = LLVMGetInsertBlock(ir_builder);
@@ -1806,10 +2057,11 @@ LLVMValueRef FunctionLowering::formatValue (const cloth::ResolvedType &type, LLV
 		const auto         scope     = al_arrays.mark();
 		const LLVMValueRef separator = detail::string_value::constant(module, std::string(cloth::toString(cloth::OComma)) + " ");
 		append(LLVMBuildSelect(ir_builder, LLVMBuildIsNull(ir_builder, index, ""), LLVMConstNull(text), separator, ""));
-		const LLVMTypeRef  element = mf_functions.valueTypes.localType(type.element());
+		const auto         elementType = rows::supported(type) ? rows::openType(type.element()) : type.element();
+		const LLVMTypeRef  element     = mf_functions.valueTypes.localType(elementType);
 		LLVMValueRef       offset  = index;
 		const LLVMValueRef address = LLVMBuildGEP2(ir_builder, element, cells.data, &offset, 1, "");
-		append(formatValue(type.element(), LLVMBuildLoad2(ir_builder, element, address, ""), format, at));
+		append(formatValue(elementType, LLVMBuildLoad2(ir_builder, element, address, ""), format, at));
 		al_arrays.endScope(scope);
 		LLVMValueRef      next = LLVMBuildAdd(ir_builder, index, LLVMConstInt(word, 1, false), "");
 		LLVMBasicBlockRef end  = LLVMGetInsertBlock(ir_builder);
@@ -1823,7 +2075,7 @@ LLVMValueRef FunctionLowering::formatValue (const cloth::ResolvedType &type, LLV
 		return LLVMBuildLoad2(ir_builder, text, result, "");
 	}
 	if (format.formatter) {
-		const LLVMValueRef self = mf_functions.program.structLayouts.contains(type) ? packStructReceiver(temporarySlot(type, value), {}) : value;
+		const LLVMValueRef self = mf_functions.program.structLayouts.contains(type) ? packStructReceiver(localSlot(type, value), {}) : value;
 		checkMemberReceiver(self, type, false, true);
 		return callMember(*format.formatter->symbol, format.formatterInstance, self, {});
 	}
@@ -1933,10 +2185,7 @@ const LoweredValue &FunctionLowering::bindLocal (const cloth::Token &name, const
 	const ValueStorage vs_storage = isMutable                                                                           ? ValueStorage::MutableSlot :
 	                                (cloth::semantic::hasArrayShape(type) || mf_functions.valueTypes.ownsBuffers(type)) ? ValueStorage::ReadOnlySlot :
 	                                                                                                                      ValueStorage::Direct;
-	if (mf_functions.valueTypes.ownsBuffers(type))
-		value = ownArray(type, value, ArrayLifetimes::Kind::Local);
-	else if (vs_storage != ValueStorage::Direct)
-		value = mf_functions.valueTypes.allocateLocal(ir_builder, type, value);
+	if (vs_storage != ValueStorage::Direct) value = localSlot(type, value, ArrayLifetimes::Kind::Local);
 	// A deferred block can bind the same declaration at several read sites.
 	m_locals.erase(&name);
 	return m_locals.emplace(&name, LoweredValue{ .operand = value, .type = type, .storage = vs_storage }).first->second;
@@ -1986,6 +2235,7 @@ void FunctionLowering::lowerElementAssignment (const cloth::IndexExpression &tar
 		return;
 	}
 	const cloth::ResolvedType &rt_array = ei_array.types.front();
+	if (lowerRectangularWrite(target, op, value, compound)) return;
 	if (growable::supported(rt_array)) {
 		const auto lv_array = writableArray(*target.array);
 		if (!lv_array || lv_array->storage != ValueStorage::MutableSlot)
@@ -1994,7 +2244,8 @@ void FunctionLowering::lowerElementAssignment (const cloth::IndexExpression &tar
 		return lowerGrowableElementAssignment(*lv_array, target, op, value, compound);
 	}
 	ObjectAccess       owner;
-	const LLVMValueRef ir_buffer = rt_array.array() ? tryArrayAddress(*target.array, AddressUse::Write, &owner) : nullptr;
+	ReloadPointer      reload;
+	const LLVMValueRef ir_buffer = rt_array.array() ? tryArrayAddress(*target.array, AddressUse::Write, &owner, &reload) : nullptr;
 	if (!ir_buffer)
 		throw cde::ClothDiagnostic(Code::UnsupportedLowering, "LLVM lowering requires a mutable fixed-size array for this assignment",
 		                           { { .span = target.getSpan(), .text = "unsupported array assignment target" } });
@@ -2002,14 +2253,99 @@ void FunctionLowering::lowerElementAssignment (const cloth::IndexExpression &tar
 	const LLVMValueRef ir_offset = lowerArrayOffset(*target.index, ty_array);
 	if (!ir_offset) return;
 	checkOwner(owner);
-	const LLVMValueRef        ir_address = arrayElementAddress(ty_array, ir_buffer, ir_offset);
+	const LLVMValueRef        ir_address = arrayElementAddress(ty_array, reload ? reload() : ir_buffer, ir_offset);
 	const cloth::ResolvedType rt_element = rt_array.element();
-	const LoweredValue        lv_element{
-		       .operand = ir_address, .type = rt_element, .storage = ValueStorage::MutableSlot, .place = detail::arrayElementPlace(rt_element), .owner = owner
+	LoweredValue              lv_element{
+		.operand = ir_address, .type = rt_element, .storage = ValueStorage::MutableSlot, .place = detail::arrayElementPlace(rt_element), .owner = owner
 	};
+	if (reload)
+		lv_element.reload = [this, ty_array, reload, ir_offset] {
+			return SlotAddress{ .operand = arrayElementAddress(ty_array, reload(), ir_offset) };
+		};
 	if (compound) return storeCompound(lv_element, *compound);
 	if (value) return storeExpression(lv_element, *value);
 	lowerUpdate(lv_element, target, op);
+}
+
+LLVMValueRef FunctionLowering::rowAddress (const LoweredValue &root, std::span<const LLVMValueRef> offsets) {
+	checkOwner(root.owner);
+	auto         type  = rows::openType(root.type.nullable() ? root.type.element() : root.type);
+	auto        &types = mf_functions.valueTypes;
+	LLVMValueRef slot  = root.address().operand;
+	if (root.type.nullable()) slot = detail::nullable::payloadAddress(ir_builder, types.localType(type), slot);
+	for (LLVMValueRef offset : offsets) {
+		const auto cells = growable::elements(ir_builder, LLVMBuildLoad2(ir_builder, types.localType(type), slot, ""));
+		sl_scalars.checkedArrayIndex(offset, true, cells.length);
+		type = type.element();
+		slot = LLVMBuildGEP2(ir_builder, types.localType(type), cells.data, &offset, 1, "");
+	}
+	return slot;
+}
+
+LLVMValueRef FunctionLowering::rowOffsets (const LoweredValue &root, const std::vector<const cloth::IndexExpression *> &path,
+                                           std::vector<LLVMValueRef> &offsets) {
+	auto         type  = rows::openType(root.type.nullable() ? root.type.element() : root.type);
+	auto        &types = mf_functions.valueTypes;
+	LLVMValueRef slot  = nullptr;
+	for (const auto *index : std::views::reverse(path)) {
+		const LLVMValueRef raw = lowerExpression(*index->index);
+		if (!raw) return nullptr;
+		if (!slot || arrayReadSlot(*index->index) == AddressUse::ReadOnly) slot = rowAddress(root, offsets);
+		const auto   cells     = growable::elements(ir_builder, LLVMBuildLoad2(ir_builder, types.localType(type), slot, ""));
+		const auto  &indexType = bf_body.expressions.at(index->index.get()).types.front();
+		LLVMValueRef offset    = sl_scalars.checkedArrayIndex(raw, indexType.unsignedInteger(), cells.length);
+		offsets.push_back(offset);
+		type = type.element();
+		slot = LLVMBuildGEP2(ir_builder, types.localType(type), cells.data, &offset, 1, "");
+	}
+	return slot;
+}
+
+bool FunctionLowering::lowerRectangularWrite (const cloth::IndexExpression &target, cloth::Operator op, const cloth::Expression *value,
+                                              const cloth::BinaryExpression *compound) {
+	std::vector<const cloth::IndexExpression *> path;
+	const auto                                 &base = indexRoot(target, path);
+	if (path.empty()) return false;
+	const auto &baseType = bf_body.expressions.at(&base).types.front();
+	if (!rows::supported(baseType)) return false;
+	const auto root = writableArray(base);
+	if (!root || root->storage != ValueStorage::MutableSlot)
+		throw cde::ClothDiagnostic(Code::UnsupportedLowering, "LLVM lowering requires a writable rectangular array",
+		                           { { .span = target.getSpan(), .text = "unsupported array assignment target" } });
+	std::vector<LLVMValueRef> offsets;
+	const LLVMValueRef        cell = rowOffsets(*root, path, offsets);
+	if (!cell) return true;
+	const auto type = rows::openType(bf_body.expressions.at(target.array.get()).types.front().element());
+	// The RHS may replace the whole array. Retain coordinates and resolve them again before writing.
+	LLVMValueRef result = nullptr;
+	if (compound) {
+		const LLVMValueRef old = readValue({ .operand = cell, .type = type, .storage = ValueStorage::ReadOnlySlot },
+		                                   bf_body.expressions.at(compound->left.get()).types.front());
+		result                 = lowerBinary(*compound, old);
+		if (result) result = convertValue(result, bf_body.expressions.at(compound).types.front(), type, *compound);
+	} else if (value) {
+		result = lowerAs(*value, type);
+	} else {
+		lowerUpdate({ .operand = cell, .type = type, .storage = ValueStorage::MutableSlot }, target, op);
+		return true;
+	}
+	if (!result) return true;
+	if (type.array()) {
+		const LLVMValueRef offset = offsets.back();
+		offsets.pop_back();
+		auto parent = type;
+		parent.suffixes.push_back(cloth::semantic::arraySuffix());
+		const auto layout = rows::layout(mf_functions.module, mf_functions.program, parent);
+		rows::call(ir_builder, mf_functions.module, "cloth_rt_rows_set",
+		           { rowAddress(*root, offsets), offset, storeInEntrySlot(result), layout.rank, layout.stride, layout.alignment });
+		if (root->witness) {
+			const SlotAddress field = root->address();
+			mf_functions.valueTypes.updateGrowableWitness(ir_builder, root->type, field.operand, field.witness);
+		}
+	} else {
+		LLVMBuildStore(ir_builder, result, rowAddress(*root, offsets));
+	}
+	return true;
 }
 
 void FunctionLowering::lowerGrowableElementAssignment (const LoweredValue &array, const cloth::IndexExpression &target, cloth::Operator op,
@@ -2020,7 +2356,7 @@ void FunctionLowering::lowerGrowableElementAssignment (const LoweredValue &array
 	checkOwner(array.owner);
 	const cloth::ResolvedType &rt_index   = bf_body.expressions.at(target.index.get()).types.front();
 	const cloth::ResolvedType  rt_element = rt_array.element();
-	const LLVMTypeRef          ty_element = mf_functions.valueTypes.localType(rt_element);
+	const LLVMTypeRef          ty_element = mf_functions.valueTypes.slotType(rt_element);
 	const growable::Elements   before     = growable::elements(ir_builder, readValue(array, rt_array));
 	LLVMValueRef               ir_offset  = sl_scalars.checkedArrayIndex(ir_index, rt_index.unsignedInteger(), before.length);
 	const auto cellAt = [&] (const growable::Elements &elements) { return LLVMBuildGEP2(ir_builder, ty_element, elements.data, &ir_offset, 1, ""); };
@@ -2042,7 +2378,7 @@ void FunctionLowering::lowerGrowableElementAssignment (const LoweredValue &array
 	// The RHS can replace or reallocate the buffer. Keep the coordinate, then check it against the new length.
 	const growable::Elements after = growable::elements(ir_builder, readValue(array, rt_array));
 	sl_scalars.checkedArrayIndex(ir_offset, true, after.length);
-	LLVMBuildStore(ir_builder, ir_new, cellAt(after));
+	mf_functions.valueTypes.storeLocal(ir_builder, rt_element, cellAt(after), ir_new);
 }
 
 void FunctionLowering::lowerSelectedUpdate (const cloth::Expression &target, LLVMValueRef receiver, const cloth::Expression *right,
@@ -2097,7 +2433,7 @@ LLVMValueRef FunctionLowering::lowerIndexed (const cloth::IndexExpression &index
 				lowerSelectedUpdate(index, old, right, info);
 				return nullptr;
 			}
-			const LLVMValueRef storage = mf_functions.program.structLayouts.contains(element) ? temporarySlot(element, old) : nullptr;
+			const LLVMValueRef storage = mf_functions.program.structLayouts.contains(element) ? localSlot(element, old) : nullptr;
 			lowerSelectedUpdate(index, storage ? packStructReceiver(storage, {}) : old, right, info);
 			if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ir_builder))) return nullptr;
 			value = convertValue(storage ? mf_functions.valueTypes.loadLocal(ir_builder, element, storage) : old, element, destination, index);
@@ -2140,10 +2476,11 @@ void FunctionLowering::lowerFieldWrite (const cloth::FieldWriteStatement &write)
 void FunctionLowering::storeExpression (const LoweredValue &target, const cloth::Expression &value) {
 	if (const LLVMValueRef ir_value = lowerAs(value, target.type)) {
 		validateWrite(target.owner);
-		if (mf_functions.valueTypes.ownsBuffers(target.type))
-			assignArray(target.operand, target.type, ir_value);
+		const SlotAddress address = target.address();
+		if (growable::ownsBuffer(target.type))
+			assignArray(address.operand, target.type, ir_value, address.witness);
 		else
-			mf_functions.valueTypes.storeLocal(ir_builder, target.type, target.operand, ir_value, target.place, target.witness);
+			mf_functions.valueTypes.storeLocal(ir_builder, target.type, address.operand, ir_value, target.place, address.witness);
 	}
 }
 
@@ -2153,9 +2490,10 @@ void FunctionLowering::storeCompound (const LoweredValue &target, const cloth::B
 	const LLVMValueRef            ir_old   = readValue(target, ef_facts.at(compound.left.get()).types.front());
 	if (const LLVMValueRef ir_new = lowerBinary(compound, ir_old)) {
 		validateWrite(target.owner);
-		mf_functions.valueTypes.storeLocal(ir_builder, target.type, target.operand,
+		const SlotAddress address = target.address();
+		mf_functions.valueTypes.storeLocal(ir_builder, target.type, address.operand,
 		                                   convertValue(ir_new, ef_facts.at(&compound).types.front(), target.type, compound), target.place,
-		                                   target.witness);
+		                                   address.witness);
 	}
 }
 
@@ -2170,9 +2508,14 @@ void FunctionLowering::lowerUpdate (const LoweredValue &target, const cloth::Exp
 	                                   target.witness);
 }
 
-LLVMValueRef FunctionLowering::temporarySlot (const cloth::ResolvedType &type, LLVMValueRef value) {
-	return mf_functions.valueTypes.ownsBuffers(type) ? ownArray(type, value, ArrayLifetimes::Kind::Temporary) :
-	                                                   mf_functions.valueTypes.allocateLocal(ir_builder, type, value);
+LLVMValueRef FunctionLowering::localSlot (const cloth::ResolvedType &type, LLVMValueRef value, ArrayLifetimes::Kind kind) {
+	auto &types = mf_functions.valueTypes;
+	if (growable::ownsBuffer(type)) return ownArray(type, value, kind);
+	if (!types.ownsBuffers(type)) return types.allocateLocal(ir_builder, type, value);
+	const LLVMTypeRef  stored = types.slotType(type);
+	const LLVMValueRef slot   = al_arrays.own(stored, kind, false, types.bufferDisposer(type, StoragePlace::Slot));
+	types.initializeSlot(ir_builder, type, slot, value);
+	return slot;
 }
 
 LLVMValueRef FunctionLowering::snapshot (const cloth::ResolvedType &type, LLVMValueRef value) {
@@ -2411,7 +2754,7 @@ void FunctionLowering::lowerFor (const cloth::ForStatement &loop) {
 	const cloth::ResolvedType &container  = it_loop.snapshot ? it_loop.snapshot->types.front() : ei_source.types.front();
 	const unsigned             slots      = it_loop.snapshot ? fieldIndex(container, it_loop.slots) : 0;
 	const cloth::ResolvedType &rt_source  = it_loop.snapshot ? types.at(container).fields.at(slots).type : container;
-	const bool                 b_growable = growable::supported(rt_source);
+	const bool                 b_growable = growable::ownsBuffer(rt_source);
 	const LLVMTypeRef          ty_source  = !loop.stepper ? mf_functions.valueTypes.localType(rt_source) : nullptr;
 	if (!ty_source || (!b_growable && LLVMGetTypeKind(ty_source) != LLVMArrayTypeKind))
 		throw cde::ClothDiagnostic(Code::UnsupportedLowering, "LLVM iteration requires an array with supported element storage",
@@ -2448,10 +2791,13 @@ void FunctionLowering::lowerFor (const cloth::ForStatement &loop) {
 	const LLVMValueRef ir_index = LLVMBuildPhi(ir_builder, ty_index, "");
 	LLVMValueRef       ir_zero  = LLVMConstNull(ty_index);
 	LLVMAddIncoming(ir_index, &ir_zero, &bb_start, 1);
-	const LLVMTypeRef ty_array   = b_growable ? LLVMArrayType2(mf_functions.valueTypes.localType(rt_source.element()), 0) : ty_source;
-	LLVMValueRef      ir_element = LLVMBuildLoad2(ir_builder, LLVMGetElementType(ty_array), arrayElementAddress(ty_array, ab_source.address, ir_index), "");
+	const auto        storedElement = rows::supported(rt_source) ? rows::openType(rt_source.element()) : rt_source.element();
+	const LLVMTypeRef ty_array      = b_growable ? LLVMArrayType2(mf_functions.valueTypes.slotType(storedElement), 0) : ty_source;
+	const LLVMValueRef cell = arrayElementAddress(ty_array, ab_source.address, ir_index);
+	LLVMValueRef ir_element = b_growable ? mf_functions.valueTypes.loadLocal(ir_builder, storedElement, cell) : LLVMBuildLoad2(ir_builder, LLVMGetElementType(ty_array), cell, "");
 	if (it_loop.snapshot) ir_element = LLVMBuildExtractValue(ir_builder, ir_element, fieldIndex(rt_source.element(), it_loop.slotValue), "");
-	bindLocal(loop.binding.name, rt_binding, convertValue(ir_element, it_loop.element, rt_binding, e_source), true);
+	bindLocal(loop.binding.name, rt_binding, convertValue(ir_element, rows::supported(rt_source) ? storedElement : it_loop.element, rt_binding, e_source),
+	          true);
 	lowerLoopBody(loop, loop.body, lb_blocks);
 	if (lb_blocks.continuation) {
 		LLVMPositionBuilderAtEnd(ir_builder, lb_blocks.continuation);
@@ -2463,23 +2809,24 @@ void FunctionLowering::lowerFor (const cloth::ForStatement &loop) {
 	if (lb_blocks.exit) LLVMPositionBuilderAtEnd(ir_builder, lb_blocks.exit);
 }
 
-IntegerRange FunctionLowering::lowerRange (const cloth::Expression &expression, const cloth::ResolvedType &type) {
+RangeValue FunctionLowering::lowerRange (const cloth::Expression &expression, const cloth::ResolvedType &type) {
 	const cloth::ExpressionInfo &ei_range = bf_body.expressions.at(&expression);
 	// An inline range supplies the endpoints directly, including for integers wider than a machine word.
 	if (const auto *be_range = dynamic_cast<const cloth::BinaryExpression *>(&expression);
 	    be_range && ei_range.range == cloth::RangeOperation::Construct && isBuiltinOperation(ei_range))
 		return lowerRangeBounds(*be_range, type);
-	return IntegerRange::unpack(ir_builder, lowerExpression(expression));
+	return RangeValue::unpack(ir_builder, lowerExpression(expression));
 }
 
-IntegerRange FunctionLowering::lowerRangeBounds (const cloth::BinaryExpression &range, const cloth::ResolvedType &type) {
+RangeValue FunctionLowering::lowerRangeBounds (const cloth::BinaryExpression &range, const cloth::ResolvedType &type) {
 	const LLVMValueRef ir_start = lowerAs(*range.left, type);
 	const LLVMValueRef ir_end   = lowerAs(*range.right, type);
-	const LLVMTypeRef  ty_flag  = LLVMInt1TypeInContext(LLVMGetModuleContext(mf_functions.module));
+	if (type.floating()) sl_scalars.checkFiniteRangeBounds(ir_start, ir_end, type.width);
+	const LLVMTypeRef ty_flag = LLVMInt1TypeInContext(LLVMGetModuleContext(mf_functions.module));
 	return { .start = ir_start, .end = ir_end, .inclusive = LLVMConstInt(ty_flag, range.op.getOperator() == cloth::ORangeInclusive, false) };
 }
 
-void FunctionLowering::lowerIntegerRange (const cloth::ForStatement &loop, IntegerRange range, const cloth::ResolvedType &type) {
+void FunctionLowering::lowerIntegerRange (const cloth::ForStatement &loop, RangeValue range, const cloth::ResolvedType &type) {
 	const cloth::Operator          o_step    = loop.stepper ? loop.stepper->op.getOperator() : cloth::OPlusPlus;
 	const cloth::BinaryExpression *be_update = loop.stepper ? loop.stepper->compound.get() : nullptr;
 	if (loop.stepper) {
@@ -2595,8 +2942,8 @@ void FunctionLowering::receive (const cloth::Statement &statement, const std::ve
 		const LLVMValueRef ir_result = convertValue(v_sources[st_source], info.types[st_source], type, producer);
 		if (mutableBinding)
 			bindLocal(named->token, type, ir_result, *mutableBinding);
-		else if (mf_functions.valueTypes.ownsBuffers(type))
-			assignArray(lv_target->operand, type, ir_result);
+		else if (growable::ownsBuffer(type))
+			assignArray(lv_target->operand, type, ir_result, lv_target->witness);
 		else
 			mf_functions.valueTypes.storeLocal(ir_builder, type, lv_target->operand, ir_result, lv_target->place, lv_target->witness);
 	}
@@ -2712,10 +3059,10 @@ void FunctionLowering::initializeClass (const cloth::ClassDeclaration &decl) {
 			value = lowerAs(*std::get<const cloth::ClassFieldDeclaration *>(field->declaration)->initializer, fieldType);
 		if (!value) return;
 		const LoweredValue destination = objectField(*field, { .handle = ir_self, .directSelf = true });
-		if (mf_functions.valueTypes.ownsBuffers(fieldType))
+		if (growable::ownsBuffer(fieldType))
 			assignArray(destination.operand, fieldType, value);
 		else
-			mf_functions.valueTypes.initializeField(ir_builder, fieldType, destination.operand, value, ir_self);
+			mf_functions.valueTypes.initializeSlot(ir_builder, fieldType, destination.operand, value, ir_self);
 	}
 	const auto &table = mf_functions.program.dispatchTables.at(rt_self);
 	if (table.initialState) {

@@ -33,7 +33,6 @@ class BuiltinLowering {
 
     private:
 	LLVMValueRef output (const char *name, LLVMTypeRef result, std::initializer_list<LLVMValueRef> arguments);
-	LLVMValueRef invoke (const char *name, LLVMTypeRef result, std::vector<LLVMValueRef> arguments);
 
 	LLVMModuleRef   mod_module;
 	LLVMBuilderRef  ir_builder;

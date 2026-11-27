@@ -35,6 +35,10 @@ _Noreturn void clothRtInvalidFloatToInteger (void) {
 	clothRtError("invalid float-to-integer cast (NaN or out of range)");
 }
 
+_Noreturn void clothRtNonFiniteRangeEndpoint (void) {
+	clothRtError("floating range endpoints must be finite");
+}
+
 _Noreturn void clothRtAmbiguousEquality (void) {
 	clothRtError("ambiguous reference equality overload");
 }

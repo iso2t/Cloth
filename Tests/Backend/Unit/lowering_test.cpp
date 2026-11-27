@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <backend/backend.hpp>
-#include <backend/integer_range.hpp>
 #include <backend/lowered_module.hpp>
 #include <backend/nullable_value.hpp>
+#include <backend/range_value.hpp>
 #include <backend/scalar_lowering.hpp>
 #include <backend/value_types.hpp>
 
@@ -333,8 +333,8 @@ fn<int> main() { Window window = {true, -3..=2, null, false}; return if (window.
 		const LLVMTypeRef ty_struct = LLVMGetAllocatedType(ir_slot);
 		ASSERT_EQ(LLVMGetTypeKind(ty_struct), LLVMStructTypeKind);
 		ASSERT_EQ(LLVMCountStructElementTypes(ty_struct), 4u);
-		const LLVMTypeRef ty_span      = backend::detail::IntegerRange::type(LLVMIntTypeInContext(ctx_context, 12));
-		const LLVMTypeRef ty_wordRange = backend::detail::IntegerRange::type(LLVMIntTypeInContext(ctx_context, u_bits));
+		const LLVMTypeRef ty_span      = backend::detail::RangeValue::type(LLVMIntTypeInContext(ctx_context, 12));
+		const LLVMTypeRef ty_wordRange = backend::detail::RangeValue::type(LLVMIntTypeInContext(ctx_context, u_bits));
 		EXPECT_EQ(LLVMStructGetTypeAtIndex(ty_struct, 1), ty_span);
 		EXPECT_EQ(LLVMStructGetTypeAtIndex(ty_struct, 2), backend::detail::nullable::type(ty_wordRange));
 		const unsigned u_word = u_bits / CHAR_BIT;
@@ -932,15 +932,15 @@ TEST (BackendLowering, AbsentScalarEqualityIgnoresTheUnusedPayload) {
 TEST (BackendLowering, AbsentRangeElementsIgnoreTheUnusedEndpointsAndInclusionFlag) {
 	const std::unique_ptr<LLVMOpaqueContext, decltype(&LLVMContextDispose)> ctx_context(LLVMContextCreate(), LLVMContextDispose);
 	const std::unique_ptr<LLVMOpaqueBuilder, decltype(&LLVMDisposeBuilder)> ir_builder(LLVMCreateBuilderInContext(ctx_context.get()), LLVMDisposeBuilder);
-	const LLVMTypeRef  ty_range  = backend::detail::IntegerRange::type(LLVMIntTypeInContext(ctx_context.get(), 65));
+	const LLVMTypeRef  ty_range  = backend::detail::RangeValue::type(LLVMIntTypeInContext(ctx_context.get(), 65));
 	const LLVMTypeRef  ty_bool   = LLVMInt1TypeInContext(ctx_context.get());
 	const LLVMValueRef ir_absent = LLVMConstNull(backend::detail::nullable::type(ty_range));
 	const LLVMValueRef ir_absentPoison =
 	        backend::detail::nullable::pack(ir_builder.get(), LLVMGetPoison(ty_range), LLVMConstNull(LLVMInt8TypeInContext(ctx_context.get())));
 	const LLVMValueRef ir_presentEmpty = backend::detail::nullable::presentConstant(LLVMConstNull(ty_range));
-	EXPECT_EQ(backend::detail::IntegerRange::equalPacked(ir_builder.get(), ir_absentPoison, ir_absent, true), LLVMConstAllOnes(ty_bool));
-	EXPECT_EQ(backend::detail::IntegerRange::equalPacked(ir_builder.get(), ir_absentPoison, ir_presentEmpty, true), LLVMConstNull(ty_bool));
-	EXPECT_EQ(backend::detail::IntegerRange::equalPacked(ir_builder.get(), ir_presentEmpty, ir_absentPoison, true), LLVMConstNull(ty_bool));
+	EXPECT_EQ(backend::detail::RangeValue::equalPackedIntegers(ir_builder.get(), ir_absentPoison, ir_absent, true), LLVMConstAllOnes(ty_bool));
+	EXPECT_EQ(backend::detail::RangeValue::equalPackedIntegers(ir_builder.get(), ir_absentPoison, ir_presentEmpty, true), LLVMConstNull(ty_bool));
+	EXPECT_EQ(backend::detail::RangeValue::equalPackedIntegers(ir_builder.get(), ir_presentEmpty, ir_absentPoison, true), LLVMConstNull(ty_bool));
 }
 
 TEST (BackendLowering, FixedArrayLayoutMatchesEverySupportedIntegerWidth) {
@@ -2554,10 +2554,10 @@ TEST (BackendLowering, PreservesPrimitiveWidthsAndTruthAtTheBoundaries) {
 
 TEST (BackendLowering, LabelsUnsupportedStatementsInSourceOrder) {
 	expectUnsupported("fn<int> main() { def stop := exit(7); return 42; }", Code::UnsupportedLowering, "return 42");
-	expectUnsupported("pub fn<int> main() { 1.0 : 0.0..2.0; return 42; }", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
+	expectUnsupported("pub fn<int> main() { 1 is void; return 42; }", Code::UnsupportedLowering, "1 is void");
 	expectUnsupported("pub fn<int> main() { return 42; exit(1); }", Code::UnsupportedLowering, "exit(1)");
 	expectUnsupported("pub fn<int> main() { return 42; return 7; }", Code::UnsupportedLowering, "return 7");
-	expectUnsupported("fn<int> main() { int a := 42; 1.0 : 0.0..2.0; return a; }", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
+	expectUnsupported("fn<int> main() { int a := 42; 1 is void; return a; }", Code::UnsupportedLowering, "1 is void");
 	expectUnsupported("fn<int> main() { return 42; int a := 7; }", Code::UnsupportedLowering, "int a := 7");
 	expectUnsupported("fn<int> main() { int a = 42; return a; a = 7; }", Code::UnsupportedLowering, "a = 7");
 	expectUnsupported("fn<int> main() { touch(); return 42; }\nfn<void> touch() { return; other(); }\nfn other() {}", Code::UnsupportedLowering, "other()",
@@ -2571,27 +2571,27 @@ TEST (BackendLowering, LabelsUnsupportedStatementsInSourceOrder) {
 }
 
 TEST (BackendLowering, LabelsUnsupportedConditionalArmExpressions) {
-	expectUnsupported("fn<int> main() { if (true) { 1.0 : 0.0..2.0; } return 7; }", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
-	expectUnsupported("fn<int> main() = if (true) 42 else (if (1.0 : 0.0..2.0) 1 else 0);", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
+	expectUnsupported("fn<int> main() { if (true) { 1 is void; } return 7; }", Code::UnsupportedLowering, "1 is void");
+	expectUnsupported("fn<int> main() = if (true) 42 else (if (1 is void) 1 else 0);", Code::UnsupportedLowering, "1 is void");
 }
 
 TEST (BackendLowering, LabelsUnsupportedLocalBindingsAndInitializers) {
-	expectUnsupported(R"(typedef<struct> S { pub range<float> kind, pub int value; }
-fn<int> main() { S s = {0.0..1.0, 42}; s.value = 7; return s.value; })",
+	expectUnsupported(R"(typedef<struct> S { pub int[]?[] kind, pub int value; }
+fn<int> main() { S s = {[[7]], 42}; s.value = 7; return s.value; })",
 	                  Code::UnsupportedLowering, "S", 2);
-	expectUnsupported(R"(typedef<struct> S { pub range<float> kind, pub int value; }
-fn<int> main() { S s := {0.0..1.0, 42}; return s.value; })",
+	expectUnsupported(R"(typedef<struct> S { pub int[]?[] kind, pub int value; }
+fn<int> main() { S s := {[[7]], 42}; return s.value; })",
 	                  Code::UnsupportedLowering, "S", 2);
-	expectUnsupported(R"(typedef<struct> Leaf { pub range<float> kind; }
+	expectUnsupported(R"(typedef<struct> Leaf { pub int[]?[] kind; }
 typedef<struct> Box { pub Leaf item; }
-fn<int> main() { Box value = {{0.0..1.0}}; return 7; })",
+fn<int> main() { Box value = {{[[7]]}}; return 7; })",
 	                  Code::UnsupportedLowering, "Box", 3);
-	expectUnsupported("fn<int> main() { range<float>? kind = null; return 42; }", Code::UnsupportedLowering, "range<float>?");
-	expectUnsupported("typedef<struct> S { pub range<float> kind; }\nfn<int> main() { S? value = null; return 42; }", Code::UnsupportedLowering, "S?", 2);
-	expectUnsupported("fn<int> main() { int[][] a := [[7]]; return 42; }", Code::UnsupportedLowering, "int[][]");
-	expectUnsupported("fn<int> main() { int[1][] rows := [[7, 42]]; return 42; }", Code::UnsupportedLowering, "int[1][]");
-	expectUnsupported("fn<int> main() { int unused := helper(if (1.0 : 0.0..2.0) 1 else 0); return 42; }\nfn<int> helper(int ignored) = 7;",
-	                  Code::UnsupportedLowering, "1.0 : 0.0..2.0");
+	expectUnsupported("fn<int> main() { int[]?[]? kind = null; return 42; }", Code::UnsupportedLowering, "int[]?[]?");
+	expectUnsupported("typedef<struct> S { pub int[]?[] kind; }\nfn<int> main() { S? value = null; return 42; }", Code::UnsupportedLowering, "S?", 2);
+	expectUnsupported("fn<int> main() { int[]?[] a := [[7]]; return 42; }", Code::UnsupportedLowering, "int[]?[]");
+	expectUnsupported("fn<int> main() { int[1]?[] rows := [[7, 42]]; return 42; }", Code::UnsupportedLowering, "int[1]?[]");
+	expectUnsupported("fn<int> main() { int unused := helper(if (1 is void) 1 else 0); return 42; }\nfn<int> helper(int ignored) = 7;",
+	                  Code::UnsupportedLowering, "1 is void");
 }
 
 TEST (BackendLowering, StringLiteralStoresItsUtf8BytesAndTargetSizedByteLength) {
@@ -2631,23 +2631,26 @@ TEST (BackendLowering, StringLiteralStoresItsUtf8BytesAndTargetSizedByteLength) 
 }
 
 TEST (BackendLowering, LabelsUnsupportedAssignments) {
-	expectUnsupported("fn<int> main() { int a = 42; a += (if (1.0 : 0.0..2.0) 1 else 0); return a; }", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
-	expectUnsupported("fn<int> main() { int a = 42; a = (if (1.0 : 0.0..2.0) 1 else 0); a = 7; return a; }", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
+	expectUnsupported("fn<int> main() { int a = 42; a += (if (1 is void) 1 else 0); return a; }", Code::UnsupportedLowering, "1 is void");
+	expectUnsupported("fn<int> main() { int a = 42; a = (if (1 is void) 1 else 0); a = 7; return a; }", Code::UnsupportedLowering, "1 is void");
 }
 
 TEST (BackendLowering, LabelsUnsupportedExpressions) {
-	expectUnsupported(R"(fn<int> main() = exit(7, if (1.0 : 0.0..2.0) "finished" else "");)", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
-	expectUnsupported("pub fn<int> main() = 40 - (if (1.0 : 0.0..2.0) 1 else 0);", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
-	expectUnsupported("pub fn<int> main() = (if (1.0 : 0.0..2.0) 1 else 0) + (if (true) { return 42; } else 0);", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
-	expectUnsupported("pub fn<int> main() = +(if (1.0 : 0.0..2.0) 1 else 0);", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
-	expectUnsupported("pub fn<int> main() = ~(if (1.0 : 0.0..2.0) 1 else 0) ** 2;", Code::UnsupportedLowering, "1.0 : 0.0..2.0");
-	expectUnsupported("pub fn<int> main() = sideEffect();\nfn<int> sideEffect() { 1.0 : 0.0..2.0;\nreturn 42; }", Code::UnsupportedLowering, "1.0 : 0.0..2.0",
+	expectUnsupported(R"(fn<int> main() = exit(7, if (1 is void) "finished" else "");)", Code::UnsupportedLowering, "1 is void");
+	expectUnsupported("pub fn<int> main() = 40 - (if (1 is void) 1 else 0);", Code::UnsupportedLowering, "1 is void");
+	expectUnsupported("pub fn<int> main() = (if (1 is void) 1 else 0) + (if (true) { return 42; } else 0);", Code::UnsupportedLowering, "1 is void");
+	expectUnsupported("pub fn<int> main() = +(if (1 is void) 1 else 0);", Code::UnsupportedLowering, "1 is void");
+	expectUnsupported("pub fn<int> main() = ~(if (1 is void) 1 else 0) ** 2;", Code::UnsupportedLowering, "1 is void");
+	expectUnsupported("pub fn<int> main() = sideEffect();\nfn<int> sideEffect() { 1 is void;\nreturn 42; }", Code::UnsupportedLowering, "1 is void",
 	                  2);
 }
 
 TEST (BackendLowering, LabelsUnsupportedEnumPayloadFieldTypes) {
 	const std::string source = "typedef<enum> Mode(pub def<int[]> row = [1, 2]) { pub On; }\n";
 	expectUnsupported(source + "fn<int> main() { Mode mode = Mode.On; mode.row; return 42; }", Code::UnsupportedLowering, "mode.row", 2);
+	expectUnsupported("typedef<struct> Row { pub int[]? cells; }\ntypedef<enum> Mode(pub def<Row> row = {[1, 2]}) { pub On; }\n"
+	                  "fn<int> main() { Mode mode = Mode.On; mode.row; return 42; }",
+	                  Code::UnsupportedLowering, "[1, 2]", 2);
 }
 
 TEST (BackendLowering, EmitsTextOutputForms) {
@@ -2827,8 +2830,8 @@ fn<int> main() = (step(narrow(), 2) -> int) + (again() -> int) - wide();)";
 }
 
 TEST (BackendLowering, LabelsUnsupportedHelperSignatures) {
-	expectUnsupported("fn<int> main() = helper([[42]]);\nfn<int> helper(int[][] values) = 7;", Code::UnsupportedFunctionAbi, "helper", 2);
-	expectUnsupported("fn<int> main() { pair(); return 42; }\nfn<int, range<float>> pair() = 1, 0.0..1.0;", Code::UnsupportedFunctionAbi, "pair", 2);
+	expectUnsupported("fn<int> main() = helper([[42]]);\nfn<int> helper(int[]?[] values) = 7;", Code::UnsupportedFunctionAbi, "helper", 2);
+	expectUnsupported("fn<int> main() { pair(); return 42; }\nfn<int, int[]?[]> pair() = 1, [[7]];", Code::UnsupportedFunctionAbi, "pair", 2);
 }
 
 TEST (BackendLowering, AdaptsCheckedEntriesToTheNativeCSignature) {

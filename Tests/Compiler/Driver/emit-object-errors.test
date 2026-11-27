@@ -2,17 +2,17 @@
 
 # RUN: mkdir -p "%t"
 # RUN: echo "pub fn<int> main () {" > "%t/entry.co"
-# RUN: echo "    1.0 : 0.0..2.0;" >> "%t/entry.co"
+# RUN: echo "    1 is void;" >> "%t/entry.co"
 # RUN: echo "    return 42;" >> "%t/entry.co"
 # RUN: echo "}" >> "%t/entry.co"
 # RUN: cd "%t" && %expect_exit --empty-stdout --empty-stderr 0 %cloth --src entry.co
 # RUN: cd "%t" && %expect_exit --empty-stdout --empty-stderr 0 %cloth --src entry.co --kind executable
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --target-bits 32 --src entry.co --emit-object answer.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=STATEMENT --input-file "%t.err"
-# STATEMENT: [C4040] Error: LLVM range membership requires integer endpoints
+# STATEMENT: [C4040] Error: LLVM lowering does not support this expression
 # STATEMENT: entry.co:2:5
-# STATEMENT: 1.0 : 0.0..2.0
-# STATEMENT: unsupported range membership
+# STATEMENT: 1 is void
+# STATEMENT: unsupported expression
 # RUN: cd "%t" && %python -c "from pathlib import Path; assert list(Path('.').iterdir()) == [Path('entry.co')]"
 
 # RUN: echo "previous object" > "%t.saved"
@@ -21,26 +21,26 @@
 # RUN: %filecheck "%/s" --check-prefix=STATEMENT --input-file "%t.err"
 # RUN: diff "%t.saved" "%t/answer.o"
 # RUN: echo "pub fn<int> main () {" > "%t/entry.co"
-# RUN: echo "    int unused := (1.0 : 0.0..2.0).toInt();" >> "%t/entry.co"
+# RUN: echo "    int unused := (1 is void).toInt();" >> "%t/entry.co"
 # RUN: echo "    return 42;" >> "%t/entry.co"
 # RUN: echo "}" >> "%t/entry.co"
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --stdlib "%stdlib" --src entry.co --emit-object answer.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=INITIALIZER --input-file "%t.err"
-# INITIALIZER: [C4040] Error: LLVM range membership requires integer endpoints
+# INITIALIZER: [C4040] Error: LLVM lowering does not support this expression
 # INITIALIZER: entry.co:2:20
-# INITIALIZER: int unused := (1.0 : 0.0..2.0).toInt()
-# INITIALIZER: unsupported range membership
+# INITIALIZER: int unused := (1 is void).toInt()
+# INITIALIZER: unsupported expression
 # RUN: diff "%t.saved" "%t/answer.o"
 # RUN: echo "pub fn<int> main () {" > "%t/entry.co"
 # RUN: echo "    int answer = 42;" >> "%t/entry.co"
-# RUN: echo "    answer += (1.0 : 0.0..2.0).toInt();" >> "%t/entry.co"
+# RUN: echo "    answer += (1 is void).toInt();" >> "%t/entry.co"
 # RUN: echo "    return answer;" >> "%t/entry.co"
 # RUN: echo "}" >> "%t/entry.co"
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --stdlib "%stdlib" --src entry.co --emit-object answer.o 2> "%t.err"
 # RUN: %filecheck "%/s" --check-prefix=COMPOUND --input-file "%t.err"
-# COMPOUND: [C4040] Error: LLVM range membership requires integer endpoints
+# COMPOUND: [C4040] Error: LLVM lowering does not support this expression
 # COMPOUND: entry.co:3:16
-# COMPOUND: unsupported range membership
+# COMPOUND: unsupported expression
 # RUN: diff "%t.saved" "%t/answer.o"
 # RUN: echo "pub fn<int> helper () = 7;" > "%t/helper.co"
 # RUN: cd "%t" && %expect_exit --empty-stdout 1 %cloth --kind executable --src helper.co --emit-object answer.o 2> "%t.err"

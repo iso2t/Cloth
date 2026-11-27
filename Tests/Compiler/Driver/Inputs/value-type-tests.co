@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using cloth.Console : println;
+
+typedef<struct> Point { pub int x; }
+typedef<struct> Other { pub int x; }
+typedef<struct> Box<T> { pub T value; }
+typedef<struct> Matcher { pub operator<string> is() = true; }
+
+fn<bool> isString(string text) = text is string;
+fn<bool> isPoint(Point point) = point is Point;
+fn<bool> matches<T, U>(T value) = value is U;
+fn<string> readText() { println(1); return ""; }
+fn<Point> readPoint() { println(2); return {0}; }
+
+pub fn<int> main() {
+    Point point := {0};
+    Other other := {0};
+    if (!isString("") || !isPoint(point) || other is Point || 1 is string) return 1;
+    if (!(readText() is string) || readPoint() is string) return 2;
+    Box<int> box := {7};
+    if (!(box is Box<int>) || box is Box<unsigned int> || box is Point) return 3;
+    if (!matches<string?, string>("") || matches<string?, string>(null)) return 4;
+    if (!matches<Point?, Point>(point) || matches<Point?, Point>(null)) return 5;
+    if (matches<Point?, Other>(point) || matches<Point?, Other>(null)) return 6;
+    if (!matches<Point?, Point?>(null) || !matches<Point, Point?>(point)) return 7;
+    if (!matches<string?, Point?>(null) || matches<string?, Point?>("")) return 8;
+    Matcher custom := {};
+    if (!(custom is string)) return 9;
+    return 42;
+}

@@ -46,6 +46,10 @@ Strings, arrays and structs copy recursively. Class-valued elements keep their
 object identities. Clearing or deleting a list does not delete those objects;
 their lifetime remains the caller's responsibility.
 
+In a `List<int[]>`, each row keeps its own length. A row returned by
+`get()` or `removeAt()` remains usable after you clear or delete the list.
+See the [native collection example](../../../../../Tests/Compiler/Driver/Inputs/growable-struct-cells.co).
+
 `list[index]` and `list.get(index)` both take a `usize` index and return an
 independent value of `T`. Replace an element with `list[index] = value` or
 `list.set(index, value)`. Bracket writes check the captured list and index

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-backend-obj-y := backend/aggregate_storage.o backend/buffer_ownership.o backend/array_descriptor.o backend/array_lifetimes.o backend/array_storage.o backend/backend.o backend/builtin_lowering.o backend/type_metadata.o backend/class_objects.o backend/dispatch.o backend/enum_payloads.o backend/function_abi.o backend/growable_array.o backend/integer_range.o backend/nullable_value.o backend/runtime.o backend/scalar_lowering.o backend/string_value.o backend/value_types.o
+backend-obj-y := backend/aggregate_storage.o backend/buffer_ownership.o backend/array_cells.o backend/array_descriptor.o backend/array_lifetimes.o backend/array_storage.o backend/backend.o backend/builtin_lowering.o backend/type_metadata.o backend/class_objects.o backend/dispatch.o backend/enum_payloads.o backend/function_abi.o backend/growable_array.o backend/range_value.o backend/rectangular_array.o backend/nullable_value.o backend/runtime.o backend/scalar_lowering.o backend/string_value.o backend/value_types.o
 
 LLVM_CONFIG ?= llvm-config
 llvm_query = $(shell "$(LLVM_CONFIG)" $(1))

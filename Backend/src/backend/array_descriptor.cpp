@@ -3,6 +3,7 @@
 // See Documentation/compiler/storage/Aggregates.rst
 
 #include <backend/array_descriptor.hpp>
+#include <backend/nullable_value.hpp>
 
 #include <cstdint>
 #include <format>
@@ -77,6 +78,17 @@ LLVMValueRef fixedWitness (LLVMTypeRef descriptorType, std::uint64_t count, LLVM
 	v_fields.push_back(LLVMConstNull(ty_word));
 	v_fields.push_back(ir_null);
 	return LLVMConstNamedStruct(descriptorType, v_fields.data(), static_cast<unsigned>(v_fields.size()));
+}
+
+LLVMValueRef growableWitness (LLVMBuilderRef builder, LLVMValueRef nullableArray, LLVMValueRef previous) {
+	const LLVMValueRef descriptor = nullable::payload(builder, nullableArray);
+	const LLVMTypeRef  type       = LLVMTypeOf(descriptor);
+	const unsigned     end        = LLVMCountStructElementTypes(type) - (hasSharedShape(type) ? 3u : 2u);
+	LLVMValueRef       shape      = LLVMConstNull(type);
+	// Copy the outer length and inner extents. All allocation and shared-shape pointers stay null.
+	for (unsigned i = 1; i < end; ++i) shape = LLVMBuildInsertValue(builder, shape, LLVMBuildExtractValue(builder, descriptor, i, ""), i, "");
+	return LLVMBuildSelect(builder, LLVMBuildIsNotNull(builder, nullable::presence(builder, nullableArray), ""), nullable::pack(builder, shape), previous,
+	                       "");
 }
 
 LLVMValueRef sharedShape (LLVMModuleRef module, LLVMValueRef fixedWitness) {

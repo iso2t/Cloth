@@ -149,6 +149,15 @@ destination extent. See the `runtime call builders
 <../../../Backend/src/backend/growable_array.cpp>`_ and `growable buffer
 layout <../storage/Aggregates.rst#growable-array-buffers>`_.
 
+For rectangular arrays with an open dimension and non-nullable rows,
+the runtime copies and releases each row descriptor recursively. When a
+fully fixed array crosses into growable storage, lowering copies its inline
+cells into the row buffers. A nested write captures each checked index
+in source order. After the right-hand side runs, it resolves those
+coordinates against the current buffers before storing. The `rectangular
+growable array test <../../../Tests/Compiler/Driver/growable-rectangular-array.test>`_
+checks copy independence, shape and bounds errors, and allocation balance.
+
 Indexing, removal, and iteration take the cell type from
 ``ValueTypes::localType``. A nullable cell carries its presence byte
 through these operations. An indexed read extracts the payload when
@@ -307,14 +316,16 @@ test <../../../Tests/Compiler/Driver/guarded-struct-field.test>`_ covers
 nested guards, fallback side effects, and a receiver that returns early.
 
 For a built-in ``RangeOperation::Construct``, lower both endpoints in
-source order at the checked integer width. A stored range carries the start,
-the end, and a one-byte inclusion flag, in that order. An immutable local
-holds this aggregate in SSA. A value-producing ``if`` selects the whole
+source order at the checked numeric width. Floating-point construction
+checks both endpoints for infinity and NaN before producing the range.
+A stored range carries the start, the end, and a one-byte inclusion
+flag, in that order. An immutable local holds this aggregate in SSA.
+A value-producing ``if`` selects the whole
 aggregate so the endpoints and flag come from the same arm. See the
-`range representation <../../../Backend/src/backend/integer_range.cpp>`_ and
+`range representation <../../../Backend/src/backend/range_value.cpp>`_ and
 `checked storage layout <../../../Compiler/src/semantic/storage_layout.cpp>`_.
 
-Locals and struct fields use the same integer range type from
+Locals and struct fields use the same range type from
 ``ValueTypes::get``. For ``range<T>?``, the standard nullable layout puts a
 presence byte before the aligned range payload. Comparisons with ``null``
 read that byte. The inclusion flag stays inside the payload, so even
@@ -330,16 +341,19 @@ The frontend records ``RangeOperation::Membership`` for a built-in
 membership test. For ``is`` with a named value target, ``BodyFacts::valueTests``
 holds the resolved binary expression. Lower its operands in source order,
 including when equality places the range first. Compare the member with
-the start and end at the checked width and signedness, and use the range's
-inclusion flag at the upper bound. ``!=`` negates that predicate before
-it becomes a Cloth boolean. The `membership driver test
-<../../../Tests/Compiler/Driver/integer-range-membership.test>`_ verifies
+the start and end using the checked integer signedness or ordered
+floating-point comparisons. The inclusion flag selects the upper-bound
+test. ``!=`` negates the membership predicate before it becomes a Cloth
+boolean. The `integer membership test
+<../../../Tests/Compiler/Driver/integer-range-membership.test>`_ and
+`floating-point membership test
+<../../../Tests/Compiler/Driver/float-range-membership.test>`_ cover
 endpoint effects, early returns, and both operand orders.
 
 The frontend keeps the nullable range type when checking a conditional
 operand, so a literal range and a ``null`` branch share the peer's type.
 When it selects ``RangeOperation::Equal``, evaluate the left range before
-the right. ``IntegerRange::equal`` compares each pair of
+the right. ``RangeValue::equalIntegers`` compares each pair of
 integer endpoints at its checked width and the inclusion flags as LLVM
 predicates. For a comparison with a nullable operand, lift a plain range
 to a present value. ``nullable::equal`` selects the structural result
@@ -385,7 +399,7 @@ Contiguous rows that are always present share a flat cell buffer.
 Dividing its allocation size by the cell's stride gives the cell count, including
 for padded integer types. A single target-sized index visits the cells in
 row order and stops at the first unequal pair. The loop uses scalar
-equality or ``IntegerRange::equalPacked``, preserving the cell type's
+equality or ``RangeValue::equalPackedIntegers``, preserving the cell type's
 rules for NaN, null, and range end inclusion. See the `rectangular
 comparison test <../../../Tests/Compiler/Driver/rectangular-array-equality.test>`_
 and the `range array test <../../../Tests/Compiler/Driver/fixed-array-range-equality.test>`_.

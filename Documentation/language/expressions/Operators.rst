@@ -34,7 +34,9 @@ Ranges and membership
 ``low .. high`` excludes the ending value. ``low ..= high`` includes it.
 A range is a value of type ``range<T>``, with a common non-null numeric
 type for the endpoints. A typed endpoint can supply the width of a
-literal peer. Floating-point endpoints must be finite.
+literal peer. Floating-point endpoints must be finite. A known non-finite
+endpoint is a source error. A computed NaN or infinity raises a runtime
+error when the range is constructed.
 
 .. code-block:: text
 
@@ -45,12 +47,14 @@ literal peer. Floating-point endpoints must be finite.
 
 Write ``value : range`` to test membership. The example includes 1, 2,
 and 3. With an inline range, ``16 : 13..16`` is false and
-``16 : 13..=16`` is true. Reversed bounds contain no values. The value
+``16 : 13..=16`` is true. The same rule makes ``0.5 : 0.0..0.5`` false
+and ``0.5 : 0.0..=0.5`` true. A NaN member always tests false.
+Reversed bounds contain no values. The value
 and endpoints must have the same numeric type. A numeric literal takes
 its type from its context. See the `runnable membership example
 <../../../Tests/Compiler/Driver/Inputs/integer-range-membership.co>`_ and
 `endpoint types supported by native code
-<../../compiler/driver/Objects.rst#integer-range-comparisons>`_.
+<../../compiler/driver/Objects.rst#range-membership-and-comparison>`_.
 
 The existing spelling ``value is range`` also works. Comparing a number
 and a range with ``==`` tests membership in either operand order.

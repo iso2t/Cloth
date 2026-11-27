@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/value-type-tests.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/value-type-tests.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/value-type-tests.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 1 --stdout-line 2 --empty-stderr 42 "%t.exe"

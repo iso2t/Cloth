@@ -2,6 +2,7 @@
 
 runtime-obj-y := arguments.o \
                array.o \
+               array_rows.o \
                files.o \
                text.o \
                errors.o \

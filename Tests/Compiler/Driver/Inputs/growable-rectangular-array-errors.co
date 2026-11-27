@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using cloth.Console : println;
+
+fn<int> trace(int n) { println(n); return n; }
+fn<int[]> single() = [1];
+fn<int[]> empty() = [];
+fn<int> asFixed(int[][] rows) { int[2][1] fixed := rows; return fixed[0][0]; }
+
+pub fn<int> main(string[] args) {
+    int[][] rows = [[1, 2], [3, 4]];
+    if (args[0] == "outer") return rows[trace(2)][trace(0)];
+    if (args[0] == "inner") { rows[trace(0)][trace(2)] = trace(99); return 2; }
+    if (args[0] == "shorter") {
+        rows[trace(1)][trace(0)] = (if (true) { rows = [[5, 6]]; trace(7); } else 0);
+        return 3;
+    }
+    if (args[0] == "assign") { rows[1] = single(); return 4; }
+    if (args[0] == "clear") { rows.clear(); rows.append(single()); return 5; }
+    if (args[0] == "fixed") return asFixed(rows);
+    int[][] zeros = [empty()];
+    zeros.append(single());
+    return 6;
+}

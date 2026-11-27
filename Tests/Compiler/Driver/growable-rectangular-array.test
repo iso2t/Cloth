@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# REQUIRES: x86 && (linux || win32)
+
+# RUN: %cloth --kind executable --src "%S/Inputs/growable-rectangular-array.co" --target-bits 32 --emit-object "%t.32.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/growable-rectangular-array.co" --target-bits 64 --emit-object "%t.64.o"
+# RUN: %cloth --kind executable --src "%S/Inputs/growable-rectangular-array.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+# Count every row buffer allocated by construction, assignment, function returns and mutation.
+# RUN: %cc -I "%S/../../../Runtime/include" -DCLOTH_TEST_TRACK_ARRAYS -include "%S/Inputs/growable-array-allocator.h" -c "%S/../../../Runtime/src/array.c" -o "%t.array.o"
+# RUN: %cc "%t.o" "%t.array.o" -I "%S/Inputs" -I "%S/../../../Runtime/include" "%S/Inputs/growable-array-allocator.c" "%S/../../../Runtime/src/array_rows.c" "%S/../../../Runtime/src/errors.c" -o "%t.exe"
+# RUN: %expect_exit --stdout-line "Growable array allocations balanced" --empty-stderr 42 "%t.exe"
+
+# DEFINE: %{bounds} = Cloth runtime error: array index out of bounds
+# DEFINE: %{shape} = Cloth runtime error: array length does not match fixed extent
+# RUN: %cloth --stdlib %stdlib --kind executable --src "%S/Inputs/growable-rectangular-array-errors.co" --emit-object "%t.o"
+# RUN: %cc "%t.o" %runtime -o "%t.exe"
+# RUN: %expect_exit --stdout-line 2 --stderr-line "%{bounds}" 1 "%t.exe" outer
+# RUN: %expect_exit --stdout-line 0 --stdout-line 2 --stderr-line "%{bounds}" 1 "%t.exe" inner
+# RUN: %expect_exit --stdout-line 1 --stdout-line 0 --stdout-line 7 --stderr-line "%{bounds}" 1 "%t.exe" shorter
+# RUN: %expect_exit --empty-stdout --stderr-line "%{shape}" 1 "%t.exe" assign
+# RUN: %expect_exit --empty-stdout --stderr-line "%{shape}" 1 "%t.exe" clear
+# RUN: %expect_exit --empty-stdout --stderr-line "%{shape}" 1 "%t.exe" fixed
+# RUN: %expect_exit --empty-stdout --stderr-line "%{shape}" 1 "%t.exe" zero

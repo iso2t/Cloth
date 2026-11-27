@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string_view>
@@ -256,6 +257,19 @@ LLVMValueRef ScalarLowering::checkedArrayIndex (LLVMValueRef index, bool isUnsig
 
 void ScalarLowering::checkArrayLength (LLVMValueRef length, std::uint64_t expected) const {
 	failIf(LLVMBuildICmp(ir_builder, LLVMIntNE, length, integerConstant(LLVMTypeOf(length), expected), ""), declareArrayLengthMismatch);
+}
+
+void ScalarLowering::checkFiniteRangeBounds (LLVMValueRef start, LLVMValueRef end, unsigned width) const {
+	const LLVMTypeRef ty_bits = LLVMIntTypeInContext(LLVMGetModuleContext(mod_module), width);
+	// In each IEEE format, positive infinity has just the exponent bits set.
+	const LLVMValueRef ir_exponentMask = LLVMConstBitCast(LLVMConstReal(LLVMTypeOf(start), std::numeric_limits<double>::infinity()), ty_bits);
+	const auto         nonFinite       = [&] (LLVMValueRef endpoint) {
+		const LLVMValueRef ir_bits = LLVMBuildBitCast(ir_builder, endpoint, ty_bits, "");
+		return LLVMBuildICmp(ir_builder, LLVMIntEQ, LLVMBuildAnd(ir_builder, ir_bits, ir_exponentMask, ""), ir_exponentMask, "");
+	};
+	const LLVMValueRef ir_badStart = nonFinite(start);
+	const LLVMValueRef ir_badEnd   = nonFinite(end);
+	failIf(LLVMBuildOr(ir_builder, ir_badStart, ir_badEnd, ""), declareNonFiniteRangeEndpoint);
 }
 
 LLVMValueRef ScalarLowering::withinRangeEnd (LLVMValueRef value, LLVMValueRef end, LLVMValueRef inclusive, const cloth::ResolvedType &type) const {

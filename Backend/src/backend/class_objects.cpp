@@ -192,9 +192,9 @@ void ClassObjects::describe (const cloth::ResolvedType &type, ClassStorage &stor
 		for (const cloth::Symbol *field : current->fields) {
 			const cloth::ResolvedType &type = fieldType(*current, *field);
 			if (!vt_types.ownsBuffers(type)) continue;
-			const LLVMValueRef data = callback(storage.dispose, "cloth.dispose", pointer);
-			LLVMValueRef       slot = fieldAddress(builder.get(), data, *current, *field);
-			const LLVMValueRef dispose = vt_types.bufferDisposer(type);
+			const LLVMValueRef data    = callback(storage.dispose, "cloth.dispose", pointer);
+			LLVMValueRef       slot    = fieldAddress(builder.get(), data, *current, *field);
+			const LLVMValueRef dispose = vt_types.bufferDisposer(type, StoragePlace::Slot);
 			LLVMBuildCall2(builder.get(), LLVMGlobalGetValueType(dispose), dispose, &slot, 1, "");
 		}
 	}

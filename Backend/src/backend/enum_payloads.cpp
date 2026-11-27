@@ -50,6 +50,10 @@ LLVMValueRef EnumPayloads::constant (const cloth::Expression &value, const cloth
 	if (const auto *cl_literal = dynamic_cast<const cloth::CharacterLiteral *>(&value)) return LLVMConstInt(ty_value, cl_literal->value, false);
 	if (const auto *sl_literal = dynamic_cast<const cloth::StringLiteral *>(&value)) return string_value::literal(mod_module, *sl_literal);
 	if (const auto *al_literal = dynamic_cast<const cloth::ArrayLiteral *>(&value)) {
+		if (growable_array::ownsBuffer(destination))
+			throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedLowering,
+			                           "LLVM lowering requires a fixed-size array literal in an enum payload",
+			                           { { .span = value.getSpan(), .text = "growable array initializer" } });
 		const cloth::ResolvedType rt_element = destination.element();
 		std::vector<LLVMValueRef> v_elements;
 		v_elements.reserve(al_literal->elements.size());
@@ -80,7 +84,7 @@ LLVMValueRef EnumPayloads::table (const cloth::Symbol &field, const cloth::Token
 	const cloth::DeclarationInfo &di_field = cp_program.declarations.at(&field);
 	const cloth::ResolvedType    &rt_field = di_field.value.value();
 	const LLVMTypeRef             ty_field = vt_types.localType(rt_field);
-	if (!ty_field || growable_array::supported(rt_field))
+	if (!ty_field || (rt_field.array() && growable_array::ownsBuffer(rt_field)))
 		throw cde::ClothDiagnostic(cde::DiagnosticCode::UnsupportedLowering,
 		                           "LLVM lowering does not support enum payload type '" + rt_field.spelling() + "'",
 		                           { { .span = use, .text = "unsupported enum payload field" } });

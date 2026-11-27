@@ -41,6 +41,9 @@ console function.
 ``input(prompt)`` accepts any printable value, formats it once, and flushes
 the prompt before reading a line. For example, ``input(42)`` displays ``42``.
 ``input()`` and ``input(null)`` read silently. The result is ``string?``.
+When reading from a file or pipe, LF and CRLF end a line. An embedded
+Ctrl-Z (``U+001A``) is part of the text. A final line without a newline is
+returned before the next call reports end of input.
 A blank line yields ``""``. End of input and malformed UTF-8 yield ``null``.
 
 Ending the process

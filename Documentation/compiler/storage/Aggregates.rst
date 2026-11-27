@@ -38,7 +38,7 @@ below are measured from the beginning of ``Sample``. See the
 
 ``Sample`` occupies 6 bytes with 2-byte alignment.
 
-An integer range field stores the start, end, and one-byte end-inclusion
+A numeric range field stores the start, end, and one-byte end-inclusion
 flag inline. In a ``range<int<12>>`` field these start at offsets 0, 2,
 and 4 within the field. Its size is 6 bytes with 2-byte alignment.
 In a ``range<int<12>>?`` field, a separate presence byte occupies
@@ -113,6 +113,15 @@ struct. The `field copy test
 <../../../Tests/Compiler/Driver/fixed-array-fields.test>`_ exercises
 copies in loops, nested fields, and a nullable parent.
 
+When a struct also contains a growable field, the backend captures the
+fixed cells and clones the growable buffers before releasing the
+destination's old buffers. It then writes the fixed cells into the
+destination's existing backing storage. Cleanup walks the stored fields
+using their physical offsets, including any owned buffers in fixed arrays
+of structs. Function arguments and results use the inline value layout.
+The `mixed field copy test <../../../Tests/Compiler/Driver/mixed-array-fields.test>`_
+checks both copy independence and allocation balance.
+
 Each nullable array field adds a hidden shape witness after the declared
 fields, in declaration order. It has the same storage type as the field.
 Its tag starts at zero when the field has never held an array. The first
@@ -127,6 +136,14 @@ and the declared extents. Replacing the whole struct therefore also
 replaces its shape history. See the `nullable field regression
 <../../../Tests/Compiler/Driver/nullable-fixed-array-fields.test>`_ and
 the `witness layout test <../../../Tests/Backend/Unit/array_descriptor_test.cpp>`_.
+
+For growable fields the witness carries the last present outer length
+and the inner extents, including which extents are known. A struct copy
+copies this shape and gives the destination its own array buffers.
+Assigning ``null`` to the field preserves the established inner extents.
+Assigning a whole struct replaces them with the source's extents. See
+the `growable field regression
+<../../../Tests/Compiler/Driver/nullable-growable-array-fields.test>`_.
 
 The element buffer occupies the element count times the allocation size
 of one element. For integer elements, see `Integer storage layout <Integers.rst>`_.
@@ -162,6 +179,24 @@ Length and capacity count elements. The data pointer satisfies the
 element alignment, and the owner points to the allocation the runtime
 must free. A fresh empty descriptor has all four words zero. An empty
 array with reserved storage can have a nonzero capacity.
+
+In a growable array of structs, each live cell uses the checked struct
+layout. If a struct contains array fields, the compiler supplies copy
+and disposal functions for its cell type. A copy gets its own backing
+for fixed fields and independent buffers for growable fields. A nullable
+field also retains its shape witness. Reserving capacity or shifting cells
+moves their existing owners. Clearing or releasing the array disposes
+each live cell. The `struct cell regression
+<../../../Tests/Compiler/Driver/growable-struct-cells.test>`_ also checks
+that removing a cell preserves its value after the array is cleared.
+
+In a rectangular growable local, each outer cell holds the descriptor
+of one row. Each row owns its child buffer. Inner extents in the outer
+descriptor distinguish an established length of zero from an unknown
+length. Clearing the outer array releases its rows and retains those
+extents for later insertions. Copying the array walks the row descriptors
+and allocates independent buffers down to the leaf cells. See the
+`row runtime <../../../Runtime/src/array_rows.c>`_.
 
 The byte stride is the checked allocation size of one element. A boolean
 uses one byte, and a character uses four bytes for its Unicode scalar

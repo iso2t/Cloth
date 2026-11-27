@@ -170,9 +170,12 @@ copies, and conditional results. In the `string size example
 returns 0 for ``""`` and 5 for ``"Cloth"``. See `data providers
 <../../language/expressions/Access.rst#data-providers>`_ for how Unicode is counted.
 
-A struct local can contain scalars, strings, integer ranges, and nested
+A struct local can contain scalars, strings, numeric ranges, and nested
 structs, including nullable forms of these fields. It can also contain
-fixed-size arrays, including whole nullable array fields. Native enum
+both fixed-size and growable array fields. Copying a struct with an
+``int[2]`` field and an ``int[]?`` field copies both sets of elements and
+preserves the nullable field's presence. See the `mixed array field example
+<../../../Tests/Compiler/Driver/Inputs/mixed-array-fields.co>`_. Native enum
 payloads can use scalar and string literals, fixed-size array literals,
 and structs built from them.
 A nullable enum field can default to ``null``.
@@ -272,6 +275,20 @@ inserts 42 between ``null`` and zero, then removes and returns it.
 Floats may be 16, 32, or 64 bits wide. Signed and unsigned integers may
 have any supported width, including the target-sized ``isize`` and ``usize``.
 
+One-dimensional growable arrays can also hold structs with fixed-size or
+growable array fields, including nullable fields. Copying the array
+copies those fields recursively. The `struct cell example
+<../../../Tests/Compiler/Driver/Inputs/growable-struct-cells.co>`_
+updates a fixed field in a ``Row[]`` and reads a row obtained from a
+``List<int[]>`` after deleting the list.
+
+Rectangular locals such as ``int[][]`` and ``int[][2]`` can store rows
+with a common inner shape. Copying a matrix gives the destination its
+own row buffers. You can update one cell with ``rows[r][c] = value``
+or assign a whole row of the established length. The `linked example
+<../../../Tests/Compiler/Driver/Inputs/growable-rectangular-array.co>`_
+also copies a three-dimensional array and grows a matrix from empty rows.
+
 Use ``append``, ``insert``, ``removeAt``, ``clear``, and ``reserve`` on a
 mutable local. Read the length with ``::size`` and read or update
 individual cells by index. Assignment copies the elements. A growable
@@ -291,18 +308,23 @@ removes a NUL character, compares both signs of floating-point zero, and
 returns the removed floating-point value as exit status 42.
 
 .. _integer-range-membership:
+.. _integer-range-comparisons:
 
-Integer range comparisons
--------------------------
+Range membership and comparison
+-------------------------------
 
-Native code supports ``value : range`` and compares integer ranges with
-``==`` and ``!=``, including when either or both operands are nullable.
-Ranges can be written inline or stored in locals and struct fields.
-Their endpoints can be signed or unsigned integers of any Cloth width,
-including ``isize`` and ``usize``. See `Ranges and membership
+Native membership (``value : range``) accepts signed and unsigned integers
+of every Cloth width, including ``isize`` and ``usize``, and all three
+floating-point widths. A range can be written inline, stored in a local
+or struct field, or passed to a function. Comparing a number and a range
+with ``==`` tests membership in either order. See the
+`floating-point example <../../../Tests/Compiler/Driver/Inputs/float-range-membership.co>`_
+and `Ranges and membership
 <../../language/expressions/Operators.rst#ranges-and-membership>`_.
 
-Test a nullable range with ``bounds == null`` or ``bounds != null``, or
+Native code also supports comparing two integer ranges with ``==`` and
+``!=``, including when either operand is nullable. Test a nullable
+range with ``bounds == null`` or ``bounds != null``, or
 use ``?:`` to select a fallback range. The `nullable range example
 <../../../Tests/Compiler/Driver/Inputs/nullable-integer-range.co>`_ returns 42.
 
@@ -310,7 +332,7 @@ Loop sources
 ------------
 
 Native ``for`` loops accept integer ranges, fixed-size arrays with
-supported element types, and one-dimensional `growable array locals`_.
+supported element types, and `growable array locals`_.
 A rectangular array yields a writable copy of each row. The `growable
 array example <../../../Tests/Compiler/Driver/Inputs/growable-array-traversal.co>`_
 returns 42 while clearing the source inside the loop. See `array iteration
@@ -335,8 +357,8 @@ visits its snapshot while clearing the list, and exits with status 42.
 See the `collection consumer <../../../Tests/Compiler/Driver/Inputs/stdlib-collections.co>`_
 and the `standard library guide <../../../Stdlib/README.md>`_.
 
-The frontend also accepts primitive boxing into an interface value,
-multidimensional growable arrays, and floating-point range membership.
+The frontend also accepts primitive boxing into an interface value and
+growable arrays with nullable rows.
 A reachable use of these forms can produce an object emission diagnostic.
 See the `driver tests <../../../Tests/Compiler/Driver/emit-object-errors.test>`_.
 
@@ -363,12 +385,14 @@ C compiler's link command. For the effects of printing and exiting, see
   <../../language/expressions/Builtins.rst#ending-the-process>`_ for the byte
   and newline behavior.
 * Integer division and remainder checks, negative integer exponent checks,
-  float-to-integer conversion checks, array bounds checks, range steps
-  that can stall, and ambiguous reference equality use
+  float-to-integer conversion checks, floating-point range endpoint checks,
+  array bounds checks, range steps that can stall, and ambiguous reference equality use
   `Runtime/src/errors.c <../../../Runtime/src/errors.c>`_.
 * Growable arrays use `Runtime/src/array.c <../../../Runtime/src/array.c>`_
   for allocation, copying, and release, and `Runtime/src/errors.c
   <../../../Runtime/src/errors.c>`_ for capacity, allocation, bounds, and length errors.
+  Rectangular growable arrays also use `Runtime/src/array_rows.c
+  <../../../Runtime/src/array_rows.c>`_ to manage the row buffers.
 * Class allocation, access, deletion, method and state dispatch, and struct
   methods that check their receiver's owning object use `Runtime/src/object.c
   <../../../Runtime/src/object.c>`_. Pass ``-IRuntime/include`` when

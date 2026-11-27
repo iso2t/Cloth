@@ -15,6 +15,7 @@ CLOTH_RT_API(_Noreturn void, clothRtDivideByZero, divide_by_zero, void);
 CLOTH_RT_API(_Noreturn void, clothRtSignedDivisionOverflow, signed_division_overflow, void);
 CLOTH_RT_API(_Noreturn void, clothRtNegativeIntegerExponent, negative_integer_exponent, void);
 CLOTH_RT_API(_Noreturn void, clothRtInvalidFloatToInteger, invalid_float_to_integer, void);
+CLOTH_RT_API(_Noreturn void, clothRtNonFiniteRangeEndpoint, non_finite_range_endpoint, void);
 CLOTH_RT_API(_Noreturn void, clothRtAmbiguousEquality, ambiguous_equality, void);
 CLOTH_RT_API(_Noreturn void, clothRtArrayIndexOutOfBounds, array_index_out_of_bounds, void);
 CLOTH_RT_API(_Noreturn void, clothRtArrayLengthMismatch, array_length_mismatch, void);

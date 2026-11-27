@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+fn<float<16>> square(final float<16> value) = value * value;
+fn<float> nan(final float zero) = zero / zero;
+fn<float<64>> negativeInfinity(final float<64> zero) = -1.0 / zero;
+
+pub fn<int> main(string[] args) {
+    if (args[0] == "half") {
+        range<float<16>> bounds := 0.0..=square(256.0);
+        return 42;
+    }
+    if (args[0] == "single") return if ((nan(0.0)..1.0) == 0.5) 42 else 1;
+    return if (0.5 : negativeInfinity(0.0)..=1.0) 42 else 1;
+}

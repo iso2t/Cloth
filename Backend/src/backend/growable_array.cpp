@@ -4,8 +4,8 @@
 // See Documentation/compiler/internals/Backend.rst
 
 #include <backend/growable_array.hpp>
+#include <backend/rectangular_array.hpp>
 #include <backend/runtime.hpp>
-#include <backend/value_types.hpp>
 
 #include <cstdint>
 #include <span>
@@ -43,7 +43,8 @@ bool supported (const cloth::ResolvedType &type) {
 }
 
 bool ownsBuffer (const cloth::ResolvedType &type) {
-	return supported(type.nullable() ? type.element() : type);
+	const auto array = type.nullable() ? type.element() : type;
+	return supported(array) || rectangular_array::supported(array);
 }
 
 LLVMValueRef borrow (LLVMBuilderRef builder, LLVMTypeRef descriptorType, LLVMValueRef data, LLVMValueRef length) {
@@ -56,7 +57,13 @@ Elements elements (LLVMBuilderRef builder, LLVMValueRef descriptor) {
 	return { .data = LLVMBuildExtractValue(builder, descriptor, DATA, ""), .length = LLVMBuildExtractValue(builder, descriptor, LENGTH, "") };
 }
 
-void assign (LLVMBuilderRef builder, LLVMModuleRef module, LLVMValueRef destination, LLVMValueRef data, LLVMValueRef count, cloth::StorageLayout cell) {
+void assign (LLVMBuilderRef builder, LLVMModuleRef module, LLVMValueRef destination, LLVMValueRef data, LLVMValueRef count, cloth::StorageLayout cell,
+             LLVMValueRef operations) {
+	if (operations) {
+		callRuntime(builder, module, "cloth_rt_cells_assign", LLVMVoidTypeInContext(LLVMGetModuleContext(module)),
+		            { destination, data, count, operations });
+		return;
+	}
 	LLVMValueRef v_arguments[] = { destination, data, count, word(module, cell.size), word(module, cell.alignment) };
 	call(builder, declareArrayAssign(module), v_arguments);
 }
@@ -76,20 +83,25 @@ void insert (LLVMBuilderRef builder, LLVMModuleRef module, LLVMValueRef destinat
 	call(builder, declareArrayInsert(module), v_arguments);
 }
 
-LLVMValueRef removeAt (LLVMBuilderRef builder, LLVMModuleRef module, LLVMValueRef destination, LLVMValueRef index, LLVMTypeRef cellType,
-                       cloth::StorageLayout cell) {
-	const LLVMValueRef ir_removed    = allocateEntrySlot(builder, cellType);
-	LLVMValueRef       v_arguments[] = { destination, index, ir_removed, word(module, cell.size), word(module, cell.alignment) };
+void removeAt (LLVMBuilderRef builder, LLVMModuleRef module, LLVMValueRef destination, LLVMValueRef index, LLVMValueRef removed, cloth::StorageLayout cell) {
+	LLVMValueRef v_arguments[] = { destination, index, removed, word(module, cell.size), word(module, cell.alignment) };
 	call(builder, declareArrayRemoveAt(module), v_arguments);
-	return LLVMBuildLoad2(builder, cellType, ir_removed, "");
 }
 
-void clear (LLVMBuilderRef builder, LLVMModuleRef module, LLVMValueRef destination) {
+void clear (LLVMBuilderRef builder, LLVMModuleRef module, LLVMValueRef destination, LLVMValueRef operations) {
+	if (operations) {
+		callRuntime(builder, module, "cloth_rt_cells_clear", LLVMVoidTypeInContext(LLVMGetModuleContext(module)), { destination, operations });
+		return;
+	}
 	LLVMValueRef v_arguments[] = { destination };
 	call(builder, declareArrayClear(module), v_arguments);
 }
 
-void release (LLVMBuilderRef builder, LLVMModuleRef module, LLVMValueRef destination) {
+void release (LLVMBuilderRef builder, LLVMModuleRef module, LLVMValueRef destination, LLVMValueRef operations) {
+	if (operations) {
+		callRuntime(builder, module, "cloth_rt_cells_release", LLVMVoidTypeInContext(LLVMGetModuleContext(module)), { destination, operations });
+		return;
+	}
 	LLVMValueRef v_arguments[] = { destination };
 	call(builder, declareArrayRelease(module), v_arguments);
 }

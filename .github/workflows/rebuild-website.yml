@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+name: Rebuild website documentation
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'Documentation/**'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  rebuild:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Trigger the Cloth website build
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          : "${VERCEL_DEPLOY_HOOK_URL:?Set the VERCEL_DEPLOY_HOOK_URL repository secret}"
+          curl --fail --silent --show-error --max-time 30 --retry 2 \
+            --request POST --output /dev/null "$VERCEL_DEPLOY_HOOK_URL"

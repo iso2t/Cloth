@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+typedef<struct> Row { pub int[]? cells; }
+typedef<struct> Grid { pub int[][]? rows, pub int[]? labels; }
+typedef<struct> Box { pub Grid? grid; }
+
+fn<Row> copyRow(Row row) = row;
+
+fn<bool> nestedCopies() {
+    Grid initial := {[], [6]};
+    Box box = {initial};
+    if (box.grid == null || box.grid.rows == null) return false;
+    box.grid.rows.append([0, 42]);
+    Box saved := box;
+    box.grid.rows[0][1] = 8;
+    box.grid.rows.clear();
+    box.grid.rows = null;
+    if (box.grid.labels == null || box.grid.labels[0] != 6) return false;
+    box.grid = null;
+    if (box.grid != null || saved.grid == null || saved.grid.rows == null) return false;
+    return saved.grid.rows[0][1] == 42;
+}
+
+fn<int> changeWidth(bool replaceStruct) {
+    Grid grid = {[[]], null};
+    grid.rows = null;
+    Grid copy = grid;
+    if (replaceStruct) copy = {null, null};
+    copy.rows = [[42]];
+    if (copy.rows == null) return 0;
+    return copy.rows[0][0];
+}
+
+pub fn<int> main(string[] args) {
+    if (args::size != 0) return changeWidth(false);
+    if (!nestedCopies() || changeWidth(true) != 42) return 6;
+    Row row = {null};
+    if (row.cells != null) return 1;
+    row.cells = [];
+    Row empty := row;
+    if (empty.cells == null || empty.cells::size != 0) return 2;
+
+    row.cells = [42];
+    Row saved := copyRow(row);
+    if (row.cells == null) return 3;
+    row.cells[0] = 7;
+    row.cells.append(9);
+    row.cells = null;
+    if (row.cells != null || saved.cells == null || saved.cells::size != 1) return 4;
+
+    row = saved;
+    row = row;
+    row.cells = row.cells;
+    if (row.cells == null || row.cells[0] != 42) return 5;
+    row.cells = [3, 4, 5];
+    if (row.cells == null || row.cells[2] != 5 || empty.cells == null || empty.cells::size != 0) return 7;
+    Row[1] group = [saved];
+    Row[1] original := group;
+    group[0].cells = null;
+    if (group[0].cells != null || original[0].cells != [42]) return 8;
+    return saved.cells[0];
+}

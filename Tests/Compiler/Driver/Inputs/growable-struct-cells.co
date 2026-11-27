@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+using cloth.collections.List : List;
+
+typedef<struct> Row { pub int[2] pair, pub int[]? cells; }
+typedef<struct> Batch { pub Row?[2] fixed, pub Row[] others; }
+typedef<struct> Pair {
+    pub int[2] values;
+    pub operator ==(Pair other) -> bool = values == other.values;
+}
+
+fn<int> listRow() {
+    def list = List<int[]>::new;
+    int[] source = [42];
+    list.append(source);
+    source[0] = 7;
+    list.insert(0, [2, 3]);
+    def copy = list.copy();
+    list.set(1, [9]);
+    int[] removed := list.removeAt(0);
+    int[] saved := copy.get(1);
+    int[][] matrix := list.toArray();
+    int total = 0;
+    for (int[] values <- copy) total += values[0];
+    list.clear();
+    list::delete;
+    copy::delete;
+    if (removed != [2, 3] || matrix[0] != [9] || total != 44) return 1;
+    return saved[0];
+}
+
+fn<Row[]> detach(Row[] items) {
+    items.reserve(16);
+    items.insert(0, items[0]);
+    return items;
+}
+
+fn<bool> nested(Row row) {
+    Batch batch = {[row, null], [row]};
+    Batch[] batches = [batch];
+    batches.insert(0, batches[0]);
+    Batch removed := batches.removeAt(1);
+    batches[0].fixed[0] = null;
+    batches[0].others.append(if (true) { batches.reserve(24); row; } else row);
+    if (batches[0].others::size != 2 || removed.others::size != 1) return false;
+    batches[0].others.clear();
+    batches.clear();
+    Row? first := removed.fixed[0];
+    if (first == null || first.cells != [42] || removed.others[0].pair != [1, 2]) return false;
+    Row?[] optional = [null, row];
+    Row?[] saved := optional;
+    optional[1] = null;
+    optional.clear();
+    Row? copy := saved[1];
+    if (copy == null || copy.cells != [42] || saved[0] != null) return false;
+    Pair[] pairs = [{[5, 6]}];
+    pairs.append(pairs[0]);
+    Pair[2] expected := pairs;
+    if (pairs != expected || expected != pairs) return false;
+    pairs[1].values[0] = 8;
+    if (pairs == expected) return false;
+    Pair pair := pairs.removeAt(0);
+    pairs[0].values[1] = 7;
+    pairs.clear();
+    return pair.values == [5, 6];
+}
+
+pub fn<int> main(string[] args) {
+    Row row = {[1, 2], [42]};
+    Row[] items = [row];
+    if (args::size != 0) {
+        items[0].pair[0] = (if (true) { items.clear(); 9; } else 0);
+        return 6;
+    }
+    if (!nested(row)) return 4;
+    Row[] saved := detach(items);
+    row.cells = null;
+    items.append(items[0]);
+    items[0] = {[3, 4], []};
+    Row removed := items.removeAt(1);
+    if (items[0].cells == null || items[0].cells::size != 0) return 2;
+    items.clear();
+    if (removed.cells != [42] || saved[0].pair != [1, 2] || saved[1].cells != [42]) return 2;
+    Row[2] fixed := saved;
+    items = fixed;
+    items[0].pair[0] = 7;
+    items[1].cells = null;
+    if (items[0].pair != [7, 2] || items[1].cells != null || saved[0].pair != [1, 2] || fixed[1].cells != [42]) return 3;
+    int evaluations = 0;
+    items[if (true) { evaluations += 1; 0; } else 1].pair[1] = (if (true) { items = saved; items.reserve(24); 8; } else 0);
+    if (evaluations != 1 || items[0].pair != [1, 8] || saved[0].pair != [1, 2]) return 5;
+    return listRow();
+}

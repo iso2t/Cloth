@@ -58,10 +58,10 @@ Object emission and runtime errors
 ----------------------------------
 
 A program can pass source checking and report an error when compiled
-with ``--emit-object``. For example, the frontend accepts the floating-point
-range membership expression ``1.0 : 0.0..2.0``. Object emission reports
-``C4040`` at that expression because native range membership requires
-integer endpoints. See `Emitting and linking object files <Objects.rst>`_.
+with ``--emit-object``. For example, the frontend accepts the type test
+``1 is string``. Object emission reports ``C4040`` at the expression
+because this type test has no native implementation. See
+`Emitting and linking object files <Objects.rst>`_.
 
 A runtime error comes from the linked program. In the `division example
 <../../../Tests/Compiler/Driver/zero-divisor.test>`_, the program prints
