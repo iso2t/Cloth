@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// RUN: %cloth --stdlib %stdlib --kind executable --src "%s" --emit-object "%t.o"
+// RUN: %cc "%t.o" %runtime -o "%t.exe"
+// RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+using cloth.collections.Deque : Deque;
+
+pub fn<int> main() {
+    def deque = Deque<int>::new;
+    for (int item <- deque) return 1;
+
+    for (int item <- 1..=5) deque.pushFront(item);
+    if (deque.popBack() != 1) return 2;
+    deque.pushFront(6);
+    deque.pushBack(7);
+
+    int[] seen = [];
+    for (int item <- deque) {
+        if (seen::size == 0) {
+            if (deque.popFront() != 6 || deque.popBack() != 7) return 3;
+            deque.clear();
+            deque.pushBack(9);
+            deque.pushFront(8);
+        }
+        seen.append(item);
+    }
+    if (seen != [6, 5, 4, 3, 2, 7]) return 4;
+
+    seen.clear();
+    for (int item <- deque) seen.append(item);
+    if (seen != [8, 9] || deque.size() != 2) return 5;
+    if (deque.popFront() != 8 || deque.popBack() != 9) return 6;
+    deque::delete;
+    return 42;
+}

@@ -478,6 +478,20 @@ that generate many distinct strings retain that storage for the life of
 the process. Runtime calls receive pointers to aggregates so both x86
 targets use the host C calling convention.
 
+During a native Cloth call, ``charAt`` remembers the next scalar index and
+byte offset for the most recently indexed string view on each thread.
+Reading consecutive indices in that view decodes each scalar once.
+``substring`` can resume at that offset when locating its start, then scans
+from there to its end. A backward lookup or a different view starts at
+byte zero. The outermost Cloth call clears the cursor when it returns,
+so a native caller can reuse borrowed storage. See the
+`linked traversal test <../../../Tests/Compiler/Driver/char-at-traversal.co>`_.
+
+The `Cloth string methods <../../../Stdlib/StandardLibrary/src/cloth/lang/Primitive.co>`_
+implement trimming and replacement. Trimming finds the scalar bounds of a
+view. Replacement chooses non-overlapping matches and encodes the resulting
+scalars as UTF-8.
+
 The ``DeclarationInfo::intrinsic`` selection identifies a registered file
 or decoder operation. A file handle belongs to its object registry slot.
 The lowering maps runtime status codes to the checked enum cases by name,

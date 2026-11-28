@@ -55,6 +55,7 @@ struct ModuleFunctions {
 	void                          declareExports ();
 	void                          recordInterfaces ();
 	void                          emitNativeEntry (LLVMBuilderRef builder, LLVMValueRef function);
+	void                          scopeTextIndexing (LLVMBuilderRef builder) const;
 
     private:
 	LLVMValueRef declare (const cloth::Symbol &symbol, const cloth::GenericInstance *instance, std::optional<std::size_t> index,

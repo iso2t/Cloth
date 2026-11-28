@@ -44,16 +44,30 @@ pub typedef<intrinsic "primitive.string"> String {
     pub mt<string[]> split(char separator) = self.split(encodeChars([separator]));
 
     pub mt<Self> replace(string search, string replacement) {
-        string[] parts = self.split(search);
-        if (parts::size == 1) return self;
-        string[] output = [parts[0]];
-        for (def i <- 1..parts::size) {
-            output.append(replacement);
-            output.append(parts[i]);
-        }
-        return concatParts(output);
-    }
+        if (self == search) return replacement;
+        if (search == replacement || self.indexOf(search) == null) return self;
+        usize count = self::size;
+        usize width = search::size;
+        char first = if (width == 0) '\0' else search.charAt(0);
+        string suffix = if (width > 1) search.substring(1, width) else "";
+        char[] inserted := replacement.toChars();
+        char[] output = [];
+        if (inserted::size >= width) output.reserve(count);
+        if (width == 0) output = inserted;
 
+        usize i = 0;
+        while (i < count) {
+            char scalar = self.charAt(i);
+            bool matched = width != 0 && scalar == first && width <= count - i &&
+                (width == 1 || self.substring(i + 1, i + width) == suffix);
+            if (!matched) output.append(scalar);
+            if (matched || width == 0) {
+                for (def j <- 0..inserted::size) output.append(inserted[j]);
+            }
+            i += if (matched) width else 1;
+        }
+        return encodeChars(output);
+    }
     pub mt<Self> replaceFirst(string search, string replacement) {
         usize? at = self.indexOf(search);
         if (at == null) return self;
@@ -72,14 +86,18 @@ pub typedef<intrinsic "primitive.string"> String {
     pub mt<Self> toLowerCase() = self.mapCase(false);
 
     mt<Self> trimEdges(bool start, bool end) {
-        char[] scalars = self.toChars();
+        usize count = self::size;
         usize first = 0;
-        usize last = scalars::size;
-        while (start && first < last && scalars[first].isWhitespace()) first++;
-        while (end && first < last && scalars[last - 1].isWhitespace()) last--;
-        return if (first == 0 && last == scalars::size) self else self.substring(first, last);
+        while (start && first < count && self.charAt(first).isWhitespace()) first++;
+        usize last = count;
+        if (end) {
+            last = first;
+            for (def i <- first..count) {
+                if (!self.charAt(i).isWhitespace()) last = i + 1;
+            }
+        }
+        return if (first == 0 && last == count) self else self.substring(first, last);
     }
-
     pub mt<Self> trim() = self.trimEdges(true, true);
     pub mt<Self> trimStart() = self.trimEdges(true, false);
     pub mt<Self> trimEnd() = self.trimEdges(false, true);

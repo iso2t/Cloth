@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.collections.Snapshot : Snapshot, emptySnapshot;
+
 typedef<struct> StackSlot<T> { pub T value; }
 
 pub typedef<class> Stack<T>(def<StackSlot<T>[]> items) {
@@ -24,6 +26,16 @@ pub typedef<class> Stack<T>(def<StackSlot<T>[]> items) {
     pub mt clear() = items.clear();
 
     pub mt reserve(usize minimum) = items.reserve(minimum);
+
+    pub operator foreach() -> Snapshot<T> {
+        def snapshot = emptySnapshot<T>();
+        usize index = items::size;
+        while (index != 0) {
+            index -= 1;
+            snapshot.append(items[index].value);
+        }
+        return snapshot;
+    }
 
     mt<usize> topIndex() {
         // On empty, let the ordinary checked access report the bounds error.

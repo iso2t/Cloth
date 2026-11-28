@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 using cloth.collections.Deque : Deque;
+using cloth.collections.Snapshot : Snapshot;
 
 pub typedef<class> Queue<T>(def<Deque<T>> items) {
     pub Queue() : (Deque<T>::new) {}
@@ -18,6 +19,8 @@ pub typedef<class> Queue<T>(def<Deque<T>> items) {
     pub mt clear() = items.clear();
 
     pub mt reserve(usize minimum) = items.reserve(minimum);
+
+    pub operator foreach() -> Snapshot<T> = items.snapshot();
 
     pub ~Queue { items::delete; }
 }

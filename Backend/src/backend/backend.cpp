@@ -3262,6 +3262,8 @@ void FunctionLowering::lowerFunction (const detail::FunctionBodyToEmit &body) {
 		if (symbol.kind == cloth::SymbolKind::StateInitializer)
 			return lowerBody(std::get<const cloth::StateInitializerDeclaration *>(symbol.declaration)->body);
 	}
+	// Native helpers read the incoming operands directly.
+	if (di_function.intrinsic && !body.defaultParameter) return lowerLibraryIntrinsic(*di_function.intrinsic, function);
 	const auto       &signature = *std::get<const cloth::CallableSignature *>(body.symbol->declaration);
 	const auto       *primary   = dynamic_cast<const cloth::PrimaryConstructorDeclaration *>(&signature);
 	const std::size_t st_count  = body.defaultParameter.value_or(signature.parameters.size());
@@ -3284,7 +3286,6 @@ void FunctionLowering::lowerFunction (const detail::FunctionBodyToEmit &body) {
 		if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ir_builder))) return;
 		invokeConstructor(selected, std::move(args), ir_self);
 	}
-	if (di_function.intrinsic) return lowerLibraryIntrinsic(di_function.intrinsic.value(), function);
 	lowerBody(*signature.executableBody());
 }
 
@@ -3329,6 +3330,7 @@ void lowerProgram (const cloth::CheckedProgram &program, LLVMModuleRef module) {
 		mf_functions.dispatch.resolve(mf_functions);
 	} while (st_index < mf_functions.pending.size());
 	mf_functions.dispatch.finish();
+	mf_functions.scopeTextIndexing(ir_builder.get());
 }
 
 void checkLLVMResult (LLVMBool failed, char *message, Code code, const char *operation) {

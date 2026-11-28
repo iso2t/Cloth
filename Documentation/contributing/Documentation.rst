@@ -3,6 +3,9 @@
 Writing Cloth documentation
 ===========================
 
+Write project documentation in reStructuredText (``.rst``) and use
+``README.rst`` for READMEs.
+
 Choose a page by the question a reader wants to answer. When a change
 affects what a programmer can write or how someone uses the compiler,
 update the relevant guide in the same pull request. Group related chapters

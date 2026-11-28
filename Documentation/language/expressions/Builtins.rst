@@ -145,16 +145,23 @@ returning the same type as the receiver.
   ``indexOf(text)`` and ``lastIndexOf(text)`` return an optional index, ``usize?``.
 * ``toChars()`` returns ``char[]``. ``split(separator)`` accepts a ``char`` or a
   ``string`` and returns ``string[]``.
-* ``replace(old, new)`` and ``replaceFirst(old, new)`` take two strings.
-  ``removePrefix(text)`` and ``removeSuffix(text)`` take one.
-  These operations and ``trim()``, ``trimStart()``, and ``trimEnd()`` return strings.
+* ``replace(old, new)`` replaces non-overlapping matches from left to right.
+  When ``old`` does not occur, it returns the original string without
+  allocating. ``replaceFirst(old, new)`` replaces the first match.
+  Both methods take two strings and return a string.
+* ``removePrefix(text)`` and ``removeSuffix(text)`` each take and return a string.
+* ``trimStart()`` removes leading whitespace, ``trimEnd()`` removes trailing
+  whitespace, and ``trim()`` removes both. They use the same Unicode whitespace
+  test as ``isWhitespace()`` on a ``char``. In native code, a nonempty result
+  shares the original string's UTF-8 storage.
 
 Indices and substring bounds count Unicode scalar values. The substring
 includes the start and stops before the end. A missing search result is
 ``null``. Case conversion uses Unicode simple case mappings.
 An empty separator splits before the first scalar, between adjacent
-scalars, and after the last. Replacing an empty search string inserts the
-replacement at those same positions. See the `Cloth implementations
+scalars, and after the last. With an empty search string, ``replace()``
+inserts the replacement at each of those positions and ``replaceFirst()``
+inserts it at the beginning. See the `Cloth implementations
 <../../../Stdlib/StandardLibrary/src/cloth/lang/Primitive.co>`_ and
 `native examples <../../../Tests/Compiler/Driver/Inputs/primitive-text.co>`_.
 

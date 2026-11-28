@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// RUN: %cloth --stdlib %stdlib --kind executable --src "%s" --emit-object "%t.o"
+// RUN: %llvm_readobj --symbols "%t.o" | %filecheck "%s" --check-prefix=OBJECT --implicit-check-not=cloth_rt_text_replace
+// OBJECT: Symbols [
+// RUN: %cc -I "%S/../../../Runtime/include" -DCLOTH_TEST_FORBID_ALLOCATIONS -include "%S/Inputs/growable-array-allocator.h" -c "%S/../../../Runtime/src/array.c" -o "%t.array.o"
+// RUN: %cc -std=c11 -I "%S/../../../Runtime/include" -I "%S/../../../ThirdParty/utf8proc" -DUTF8PROC_STATIC -DCLOTH_TEST_FORBID_ALLOCATIONS -include "%S/Inputs/growable-array-allocator.h" -c "%S/../../../Runtime/src/text.c" -o "%t.text.o"
+// RUN: %cc "%t.o" "%t.array.o" "%t.text.o" %runtime -o "%t.exe"
+// RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+pub fn<int> main() {
+    string view = "xé\0😀y".substring(1, 4);
+    if (view.replace("y", "found") != view) return 1;
+    if (view.replace("é\0😀y", "") != view) return 2;
+    if ("".replace("x", "found") != "") return 3;
+    if ("é\0é\0".replace("é\0", "") != "") return 4;
+    if ("".replace("", "😀") != "😀") return 5;
+    return 42;
+}

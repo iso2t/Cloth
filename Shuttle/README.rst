@@ -204,12 +204,24 @@ leave the existing object usable. If an interface has changed or an older
 object lacks a record, rebuild the library target named in the diagnostic
 for the same target width. See `Native libraries <../Documentation/compiler/driver/Objects.rst#native-libraries>`_.
 
-The shipped `standard library project <../Stdlib/build.k>`_ can be built
-from the checkout with its source root supplied to the native compiler.
+Check the shipped standard library
+----------------------------------
+
+Building the shipped `standard library project <../Stdlib/build.k>`_ is a
+smoke check. Its `entry file <../Stdlib/StandardLibrary/src/cloth/Library.co>`_
+imports the collection modules so the build checks that they compile together.
+The resulting ``Cloth-Standard-Library.o`` exports no public symbols.
+Run the check from the repository root.
 
 .. code-block:: sh
 
    cargo run --locked --manifest-path Shuttle/Cargo.toml -- build --manifest-path Stdlib/build.k --compiler build/cloth --stdlib Stdlib/StandardLibrary/src
+
+Applications import the names they use from their defining Cloth modules,
+as in ``using cloth.Console : println;``. Shuttle links each executable
+with the selected target's ``libcloth_runtime.a``, which supplies native
+helpers such as the console writer. See the
+`console example <../Tests/Compiler/Driver/Inputs/println.co>`_.
 
 Target and tool selection
 -------------------------

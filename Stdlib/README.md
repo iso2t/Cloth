@@ -54,6 +54,29 @@ owned children are destroyed, then exits with status 42. On Windows use
 `-lshell32` to the link command. For the
 additional text and file link inputs, see the [runtime dependencies](../Documentation/compiler/driver/Objects.rst#runtime-dependencies).
 
+### Check a single module
+
+To check edits to `cloth.text.Utf8`, save this one-line consumer as
+`build/check.co` in the repository checkout.
+
+```cloth
+using cloth.text.Utf8: *;
+```
+
+From the repository root, run the checks against the working copy of the
+standard library. On Windows, use `build/cloth.exe`.
+
+```sh
+build/cloth --kind library --stdlib Stdlib/StandardLibrary/src --target-bits 32 --src build/check.co
+build/cloth --kind library --stdlib Stdlib/StandardLibrary/src --target-bits 64 --src build/check.co
+```
+
+A successful check prints nothing and exits with status `0`. Passing `Utf8.co`
+directly to `--src` reports `C3136` because its `text.utf8.decode` intrinsic
+requires an import from the standard library selected by `--stdlib`. To check
+`File.co` or `OwningList.co`, change the import path in `check.co` to
+`cloth.io.fs.File` or `cloth.collections.OwningList`, respectively.
+
 ## Strings, characters, and booleans
 
 `String`, `Char`, and `Bool` supply methods on the primitive types

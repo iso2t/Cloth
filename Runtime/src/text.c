@@ -237,6 +237,7 @@ static void appendScalar (ClothArray *result, int32_t scalar) {
 
 void clothRtTextFromChars (ClothText *out, const int32_t *scalars, const size_t count) {
 	ClothArray result = { 0 };
+	clothRtArrayReserve(&result, count, 1, 1);
 	for (size_t i = 0; i < count; ++i) appendScalar(&result, scalars[i]);
 	*out = finish(&result);
 }
@@ -251,21 +252,45 @@ void clothRtTextCase (ClothText *out, const ClothText *value, const uint8_t uppe
 	*out = finish(&result);
 }
 
-static size_t offset (const ClothText value, size_t index) {
-	size_t at = 0;
-	while (index--) at = advance(value, at);
+static size_t advanceBy (const ClothText value, size_t at, size_t count) {
+	while (count--) at = advance(value, at);
 	return at;
 }
 
+struct TextCursor {
+	ClothText text;
+	size_t    nextIndex;
+	size_t    nextByte;
+};
+static _Thread_local struct TextCursor cursor;
+static _Thread_local uint8_t           indexingEnabled;
+
+uint8_t clothRtSetTextIndexing (const uint8_t enabled) {
+	const uint8_t previous = indexingEnabled;
+	indexingEnabled        = enabled;
+	if (!enabled) cursor = (struct TextCursor){ 0 };
+	return previous;
+}
+
+static size_t byteOffset (const ClothText value, const size_t index) {
+	if (indexingEnabled && cursor.text.data == value.data && cursor.text.length == value.length && cursor.nextIndex <= index)
+		return advanceBy(value, cursor.nextByte, index - cursor.nextIndex);
+	return advanceBy(value, 0, index);
+}
+
 int32_t clothRtTextAt (const ClothText *value, const size_t index) {
-	int32_t scalar = 0;
-	if (!decode(*value, offset(*value, index), &scalar)) clothRtError("string index out of bounds");
+	const size_t at     = byteOffset(*value, index);
+	int32_t      scalar = 0;
+	const size_t width  = decode(*value, at, &scalar);
+	if (!width) clothRtError("string index out of bounds");
+	if (indexingEnabled) cursor = (struct TextCursor){ .text = *value, .nextIndex = index + 1, .nextByte = at + width };
 	return scalar;
 }
 
 void clothRtTextSubstring (ClothText *out, const ClothText *value, const size_t start, const size_t end) {
 	if (end < start) clothRtError("invalid substring bounds");
-	*out = slice(*value, offset(*value, start), offset(*value, end));
+	const size_t first = byteOffset(*value, start);
+	*out               = slice(*value, first, advanceBy(*value, first, end - start));
 }
 
 size_t clothRtTextFind (const ClothText *value, const ClothText *search, const uint8_t last) {
@@ -293,6 +318,10 @@ void clothRtTextAffix (ClothText *out, const ClothText *value, const ClothText *
 }
 
 void clothRtTextTrim (ClothText *out, const ClothText *value, const int32_t ends) {
+	if (!ends) {
+		*out = *value;
+		return;
+	}
 	size_t first = value->length, last = 0;
 	for (size_t i = 0; i < value->length;) {
 		int32_t      scalar = 0;
@@ -338,10 +367,12 @@ void clothRtTextSplit (ClothArray *out, const ClothText *value, const ClothText 
 }
 
 void clothRtTextReplace (ClothText *out, const ClothText *value, const ClothText *search, const ClothText *replacement, const uint8_t first) {
-	ClothArray result = { 0 };
-	size_t     start  = 0;
+	ClothArray result  = { 0 };
+	size_t     start   = 0;
+	int        matched = 0;
 	for (size_t i = 0;;) {
 		if (matches(*value, i, *search)) {
+			matched              = 1;
 			const ClothText part = slice(*value, start, i);
 			append(&result, part.data, part.length);
 			append(&result, replacement->data, replacement->length);
@@ -354,6 +385,10 @@ void clothRtTextReplace (ClothText *out, const ClothText *value, const ClothText
 		}
 		if (i == value->length) break;
 		i = advance(*value, i);
+	}
+	if (!matched) {
+		*out = *value;
+		return;
 	}
 	const ClothText tail = slice(*value, start, value->length);
 	append(&result, tail.data, tail.length);

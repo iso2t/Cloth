@@ -42,6 +42,8 @@ CLOTH_RT_API(void, clothRtTextFromChars, text_from_chars, ClothText *out, const 
 CLOTH_RT_API(uint8_t, clothRtCharTest, char_test, int32_t scalar, int32_t test);
 CLOTH_RT_API(int32_t, clothRtCharCase, char_case, int32_t value, uint8_t upper);
 CLOTH_RT_API(void, clothRtTextCase, text_case, ClothText *out, const ClothText *value, uint8_t upper);
+// Returns the previous setting. Indexed bytes must stay immutable until the outermost caller restores it.
+CLOTH_RT_API(uint8_t, clothRtSetTextIndexing, set_text_indexing, uint8_t enabled);
 CLOTH_RT_API(int32_t, clothRtTextAt, text_at, const ClothText *value, size_t index);
 CLOTH_RT_API(void, clothRtTextSubstring, text_substring, ClothText *out, const ClothText *value, size_t start, size_t end);
 CLOTH_RT_API(size_t, clothRtTextFind, text_find, const ClothText *value, const ClothText *search, uint8_t last);
@@ -50,6 +52,7 @@ CLOTH_RT_API(void, clothRtTextAffix, text_affix, ClothText *out, const ClothText
 CLOTH_RT_API(void, clothRtTextTrim, text_trim, ClothText *out, const ClothText *value, int32_t ends);
 CLOTH_RT_API(void, clothRtTextChars, text_chars, ClothArray *out, const ClothText *value);
 CLOTH_RT_API(void, clothRtTextSplit, text_split, ClothArray *out, const ClothText *value, const ClothText *separator);
+// When there is no match, the result borrows the input bytes.
 CLOTH_RT_API(void, clothRtTextReplace, text_replace, ClothText *out, const ClothText *value, const ClothText *search, const ClothText *replacement,
              uint8_t first);
 

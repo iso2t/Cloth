@@ -15,6 +15,22 @@ Omitting a required option value, such as the path after ``--src``, reports
 reports ``C0003``. If the source file is missing or cannot be read, the driver
 reports ``C0010`` and includes its path.
 
+Both ``--module-name NAME`` and ``--extern NAME=SOURCE`` require a single
+Cloth identifier as ``NAME``. If the name is a reserved word such as ``fn``
+or contains an invalid character such as ``@``, the driver reports
+``C0003`` and names the option.
+For ``--extern``, a missing ``=``, an empty module name, or an empty source
+path also reports ``C0003``.
+
+``--module-name`` applies only to library builds. Using it with
+``--kind executable`` reports ``C0017``. If a library binds its own name
+with ``--extern``, the driver reports ``C0017`` and names the library.
+
+Each ``--extern`` module name may appear once. The driver compares names
+case-sensitively after Unicode NFC normalization. A repeated name reports
+``C0017`` with the spelling from the second binding, even when both bindings
+point to the same source file.
+
 A missing semicolon
 -------------------
 

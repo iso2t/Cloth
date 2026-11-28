@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// RUN: %cloth --kind library --module-name Reader --src "%S/Inputs/char-at-reader.co" --emit-object "%t.reader.o"
+// RUN: %cloth --kind executable --extern "Reader=%S/Inputs/char-at-reader.co" --src "%s" --emit-object "%t.o"
+// RUN: %cc -std=c11 -I "%S/../../../Runtime/include" -I "%S/../../../ThirdParty/utf8proc" -DUTF8PROC_STATIC -Dutf8proc_iterate=countCharAtDecode -c "%S/../../../Runtime/src/text.c" -o "%t.text.o"
+// RUN: %cc "%t.o" "%t.reader.o" "%t.text.o" -DUTF8PROC_STATIC -I "%S/../../../ThirdParty/utf8proc" "%S/Inputs/char_at_decodes.c" %runtime -o "%t.exe"
+// RUN: env CLOTH_TEST_BORROW_AFTER_RETURN=1 %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+// RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: string index out of bounds" 1 "%t.exe" end
+// RUN: %expect_exit --empty-stdout --stderr-line "Cloth runtime error: invalid string index" 1 "%t.exe" past
+
+using Reader : readAt;
+
+pub fn<int> main(string[] args) {
+    string pattern = "aé€😀";
+    if (args::size != 0) {
+        if (readAt(pattern, 2) != '€') return 1;
+        string prefix = pattern.substring(0, 2);
+        if (args[0] == "end") return readAt(prefix, 2).toInt();
+        return readAt(prefix, 3).toInt();
+    }
+
+    string text = pattern;
+    while (text::size < 2048) text = #"{text}{text}";
+    char[] expected = ['a', 'é', '€', '😀'];
+    for (def i <- 0..text::size) {
+        if (readAt(text, i) != expected[i % 4]) return 2;
+        if (i == 2046 && text.substring(i + 1, i + 2) != "😀") return 5;
+    }
+
+    if (readAt(pattern, 3) != '😀' || readAt(pattern, 1) != 'é') return 3;
+    string slice = pattern.substring(1, 4);
+    if (readAt(slice, 1) != '€' || readAt("a\0b", 1) != '\0') return 4;
+    return 42;
+}

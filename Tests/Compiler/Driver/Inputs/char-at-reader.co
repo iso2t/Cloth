@@ -1,0 +1,3 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+pub fn<char> readAt(string value, usize i) = value.charAt(i);

@@ -57,11 +57,15 @@ std::filesystem::path compilerExecutable () {
 #endif
 }
 
-std::string moduleName (std::string_view name) {
-	const std::vector<Token> v_tokens = Lexer(std::string(name)).scanTokens();
-	if (v_tokens.size() != 2 || v_tokens.front().getType() != TokenType::Identifier || v_tokens.front().getLexeme() != name)
-		throw std::invalid_argument("A library module name must be a Cloth identifier");
-	return v_tokens.front().getNameKey();
+std::string moduleName (std::string_view name, std::string_view option) {
+	try {
+		const std::vector<Token> v_tokens = Lexer(std::string(name)).scanTokens();
+		if (v_tokens.size() == 2 && v_tokens.front().getType() == TokenType::Identifier && v_tokens.front().getLexeme() == name)
+			return v_tokens.front().getNameKey();
+	} catch (const cde::SyntaxException &) {
+		// A tokenization failure in an option value uses the same driver diagnostic.
+	}
+	throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidOptionValue, std::format("{} requires a Cloth identifier as the module name", option));
 }
 }
 
@@ -92,8 +96,13 @@ CompilerOptions::CompilerOptions (const int argc, const char *const argv[]) : ar
 		throw std::invalid_argument("--print-target takes no source or output");
 	if (modules.recordExternInterfaces && (!p_sourcePath || i_lexer))
 		throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidCompilationRequest, "--record-extern-interfaces requires a checked --src PATH");
-	if (!modules.name.empty() && (kind != ProgramKind::Library || modules.imports.contains(modules.name)))
-		throw std::invalid_argument("--module-name requires a library name distinct from its dependencies");
+	if (!modules.name.empty()) {
+		if (kind != ProgramKind::Library)
+			throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidCompilationRequest, "--module-name is only valid for library builds");
+		if (modules.imports.contains(modules.name))
+			throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidCompilationRequest,
+			                           std::format("Library '{}' cannot depend on itself through --extern", modules.name));
+	}
 	if (!s_emitFlag.empty()) {
 		if (kind == ProgramKind::Library && modules.name.empty())
 			throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidCompilationRequest,
@@ -138,16 +147,19 @@ void CompilerOptions::buildDefaults () {
 	addFlag({ .s_flag   = "--module-name",
 	          .s_help   = "Name the library being compiled.",
 	          .v_action = CompilerFlag::Value{ .s_description = "a library name",
-	                                           .f_func        = [this] (std::string_view name) { modules.name = moduleName(name); } } });
+	                                           .f_func        = [this] (std::string_view name) { modules.name = moduleName(name, "--module-name"); } } });
 	addFlag({ .s_flag   = "--extern",
 	          .s_help   = "Bind a separately compiled library to its source.",
 	          .v_action = CompilerFlag::Value{
 	                  .s_description = "NAME=SOURCE", .f_func = [this] (std::string_view binding) {
 		                  const auto st_equal = binding.find('=');
-		                  if (st_equal == binding.npos || st_equal + 1 == binding.size()) throw std::invalid_argument("--extern requires NAME=SOURCE");
+		                  if (st_equal == binding.npos || st_equal == 0 || st_equal + 1 == binding.size())
+			                  throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidOptionValue, "--extern requires NAME=SOURCE");
+		                  const auto name = binding.substr(0, st_equal);
 		                  const auto path = binding.substr(st_equal + 1);
-		                  if (!modules.imports.emplace(moduleName(binding.substr(0, st_equal)), std::u8string(path.begin(), path.end())).second)
-			                  throw std::invalid_argument("Duplicate --extern module name");
+		                  if (!modules.imports.emplace(moduleName(name, "--extern"), std::u8string(path.begin(), path.end())).second)
+			                  throw cde::ClothDiagnostic(cde::DiagnosticCode::InvalidCompilationRequest,
+			                                             std::format("Duplicate --extern module name '{}'", name));
 	                  } } });
 	addFlag({ .s_flag   = "--kind",
 	          .s_help   = "Select the program kind (library by default).",

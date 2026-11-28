@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// RUN: %cloth --stdlib %stdlib --kind executable --src "%s" --emit-object "%t.o"
+// RUN: %cc "%t.o" %runtime -o "%t.exe"
+// RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+using cloth.collections.Queue : Queue;
+
+fn<int> digits(Queue<int> queue) {
+    int result = 0;
+    for (int item <- queue) result = result * 10 + item;
+    return result;
+}
+
+pub fn<int> main() {
+    def queue = Queue<int>::new;
+    if (digits(queue) != 0) return 1;
+    for (int value <- 1..=6) queue.enqueue(value);
+    if (queue.dequeue() != 1) return 2;
+    queue.enqueue(7);
+    if (digits(queue) != 234567 || queue.size() != 6 || queue.peek() != 2) return 3;
+
+    int captured = 0;
+    for (int item <- queue) {
+        if (item == 2) {
+            if (queue.dequeue() != 2) return 4;
+            queue.clear();
+            queue.enqueue(8);
+            queue.enqueue(9);
+        }
+        captured = captured * 10 + item;
+    }
+    if (captured != 234567 || digits(queue) != 89) return 5;
+    queue::delete;
+
+    def rows = Queue<int[]>::new;
+    rows.enqueue([1, 2]);
+    rows.enqueue([3]);
+    int visits = 0;
+    for (int[] row <- rows) {
+        if (visits == 0 && row != [1, 2]) return 6;
+        if (visits == 1 && row != [3]) return 7;
+        row[0] = 0;
+        visits += 1;
+    }
+    if (visits != 2 || rows.dequeue() != [1, 2] || rows.dequeue() != [3]) return 8;
+    rows::delete;
+    return 42;
+}

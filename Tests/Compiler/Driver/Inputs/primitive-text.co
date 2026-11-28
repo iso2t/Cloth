@@ -28,6 +28,8 @@ pub fn<int> main(string[] args) {
     if ("é😀".replace("", "|") != "|é|😀|" || "".replace("", "x") != "x" || "aaa".replace("aa", "x") != "xa") return 14;
     if ("ababa".replaceFirst("ba", "X") != "aXba" || "é😀".replaceFirst("", "X") != "Xé😀" || text.replaceFirst("x", "y") != text) return 15;
     if (text.replace("\0", "XX") != "éXX😀é" || text.replace("X", "not found") != text) return 16;
+    if ("a😀a".replace("a", "a\0a") != "a\0a😀a\0a") return 17;
+    if ("é\0xé\0😀é".replace("é\0😀", "é") != "é\0xéé") return 18;
     println(#"{true::str} {false} {'😀'::str} {text.substring(2, 3)}");
     println(['λ', '٣']);
     return 0;

@@ -213,6 +213,16 @@ the loop visits in order. A ``List<T>`` captures its entries in list
 order. Appending or removing an entry in the body leaves the captured
 sequence intact.
 
+A loop over a ``Queue<T>`` visits entries in dequeue order, from oldest
+to newest, without consuming them. If the body enqueues, dequeues, or
+clears the queue, the current loop still visits its original entries.
+The next loop captures the updated queue.
+
+A loop over a ``Deque<T>`` visits entries from front to back. A loop
+over a ``Stack<T>`` visits entries from top to bottom, in ``pop()`` order.
+Both loops leave the entries in place. Pushing or popping during either
+loop leaves its snapshot intact.
+
 .. code-block:: text
 
    using cloth.collections.List : List;

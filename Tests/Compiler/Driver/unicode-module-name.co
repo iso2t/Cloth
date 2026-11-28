@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// The provider decomposes the first accent, the binding the second. The import uses NFC.
+// RUN: %cloth --kind library --module-name "Résumé" --src "%S/Inputs/native-library/offsets.co" --emit-object "%t.lib.o"
+// RUN: %cloth --kind executable --extern "Résumé=%S/Inputs/native-library/offsets.co" --src "%s" --emit-object "%t.o"
+// RUN: %cc "%t.o" "%t.lib.o" %runtime -o "%t.exe"
+// RUN: %expect_exit --empty-stdout --empty-stderr 42 "%t.exe"
+
+using Résumé : offset;
+
+pub fn<int> main() = 40 + offset();

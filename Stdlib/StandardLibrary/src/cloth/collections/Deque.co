@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+using cloth.collections.Snapshot : Snapshot, emptySnapshot;
+
 typedef<struct> DequeSlot<T> { pub T value; }
 typedef<struct> DequeSide<T> { pub DequeSlot<T>[] items; }
 
@@ -33,6 +35,21 @@ pub typedef<class> Deque<T>(def<DequeSide<T>[2]> sides) {
         sides[0].items.reserve(minimum);
         sides[1].items.reserve(minimum);
     }
+
+    pub mt<Snapshot<T>> snapshot() {
+        def result = emptySnapshot<T>();
+        usize front = sides[0].items::size;
+        while (front != 0) {
+            front -= 1;
+            result.append(sides[0].items[front].value);
+        }
+        for (def index <- 0..sides[1].items::size) {
+            result.append(sides[1].items[index].value);
+        }
+        return result;
+    }
+
+    pub operator foreach() -> Snapshot<T> = snapshot();
 
     mt<T> peekSide(usize end) {
         usize count = sides[end].items::size;

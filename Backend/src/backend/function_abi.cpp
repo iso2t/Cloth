@@ -364,6 +364,35 @@ void ModuleFunctions::recordInterfaces () {
 	LLVMSetSection(global, machO ? "__DATA,__clapi" : ".clapi");
 }
 
+void ModuleFunctions::scopeTextIndexing (LLVMBuilderRef builder) const {
+	if (!LLVMGetNamedFunction(module, "cloth_rt_text_at") &&
+	    std::ranges::none_of(m_functions, [] (const auto &entry) { return LLVMIsDeclaration(entry.second); }))
+		return;
+	// A separately compiled callee may use charAt. Scalar-only projects can still link without the text runtime.
+	const LLVMContextRef context     = LLVMGetModuleContext(module);
+	LLVMTypeRef          flag        = LLVMInt8TypeInContext(context);
+	const LLVMTypeRef    signature   = LLVMFunctionType(flag, &flag, 1, false);
+	const LLVMValueRef   setIndexing = LLVMAddFunction(module, "cloth_rt_set_text_indexing", signature);
+	LLVMSetLinkage(setIndexing, LLVMLinkOnceAnyLinkage);
+	LLVMPositionBuilderAtEnd(builder, LLVMAppendBasicBlockInContext(context, setIndexing, "entry"));
+	LLVMBuildRet(builder, LLVMConstNull(flag));
+
+	// A native caller can reuse a string's backing storage after returning from the outermost Cloth call.
+	LLVMValueRef enabled = LLVMConstInt(flag, 1, false);
+	for (LLVMValueRef function = LLVMGetFirstFunction(module); function; function = LLVMGetNextFunction(function)) {
+		if (LLVMIsDeclaration(function) || LLVMGetLinkage(function) != LLVMExternalLinkage) continue;
+		LLVMPositionBuilderBefore(builder, LLVMGetFirstInstruction(LLVMGetEntryBasicBlock(function)));
+		LLVMValueRef previous = LLVMBuildCall2(builder, signature, setIndexing, &enabled, 1, "");
+		for (LLVMBasicBlockRef block = LLVMGetFirstBasicBlock(function); block; block = LLVMGetNextBasicBlock(block)) {
+			const LLVMValueRef terminator = LLVMGetBasicBlockTerminator(block);
+			if (LLVMIsAReturnInst(terminator)) {
+				LLVMPositionBuilderBefore(builder, terminator);
+				LLVMBuildCall2(builder, signature, setIndexing, &previous, 1, "");
+			}
+		}
+	}
+}
+
 void ModuleFunctions::emitNativeEntry (LLVMBuilderRef builder, LLVMValueRef function) {
 	const cloth::DeclarationInfo &signature = program.declarations.at(program.entryPoint);
 	if (nativeSignature(signature)) return;

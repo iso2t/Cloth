@@ -55,6 +55,34 @@
 # SHORT: [C0001] Error: Unknown option '-x'
 # RUN: %expect_exit --empty-stdout --stderr-line "[C0002] Error: --src requires a file path" 1 %cloth --src
 
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0002] Error: --module-name requires a library name" 1 %cloth --module-name
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0003] Error: --module-name requires a Cloth identifier as the module name" 1 %cloth --module-name fn
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0003] Error: --module-name requires a Cloth identifier as the module name" 1 %cloth --module-name "@"
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0003] Error: --module-name requires a Cloth identifier as the module name" 1 %cloth --module-name bad-name
+
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0017] Error: --module-name is only valid for library builds" 1 %cloth --kind executable --module-name Lib
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0017] Error: --module-name is only valid for library builds" 1 %cloth --module-name Lib --extern Lib=api.co --kind executable
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0017] Error: Library 'Lib' cannot depend on itself through --extern" 1 %cloth --module-name Lib --extern Lib=api.co
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0017] Error: Library 'Café' cannot depend on itself through --extern" 1 %cloth --extern "Café=api.co" --module-name "Café" --kind library
+
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0002] Error: --extern requires NAME=SOURCE" 1 %cloth --extern
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0003] Error: --extern requires NAME=SOURCE" 1 %cloth --extern bad
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0003] Error: --extern requires NAME=SOURCE" 1 %cloth --extern =api.co
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0003] Error: --extern requires NAME=SOURCE" 1 %cloth --extern Lib=
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0003] Error: --extern requires a Cloth identifier as the module name" 1 %cloth --extern fn=api.co
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0003] Error: --extern requires a Cloth identifier as the module name" 1 %cloth --extern "@=api.co"
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0003] Error: --extern requires a Cloth identifier as the module name" 1 %cloth --extern "Lib =api.co"
+
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0017] Error: Duplicate --extern module name 'Lib'" 1 %cloth --extern Lib=a.co --extern Lib=b.co
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0017] Error: Duplicate --extern module name 'Lib'" 1 %cloth --extern Lib=a.co --extern Lib=a.co
+# The second binding spells the accent with a combining character.
+# RUN: %expect_exit --empty-stdout --stderr-line "[C0017] Error: Duplicate --extern module name 'Café'" 1 %cloth --extern "Café=a.co" --extern "Café=b.co"
+
+# RUN: echo "pub fn<int> base() = 40;" > "%t api=v1.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --module-name Lib --extern "lib=%S/Inputs/native-library/offsets.co" --src "%t api=v1.co"
+# RUN: echo "using Lib : base; using lib : offset; pub fn<int> main() = base() + offset();" > "%t.client.co"
+# RUN: %expect_exit --empty-stdout --empty-stderr 0 %cloth --kind executable --extern "Lib=%t api=v1.co" --extern "lib=%S/Inputs/native-library/offsets.co" --src "%t.client.co"
+
 # RUN: %expect_exit --empty-stdout --stderr-line "[C0002] Error: --emit requires object or assembly" 1 %cloth --emit
 # RUN: %expect_exit --empty-stdout --stderr-line "[C0003] Error: --emit requires object or assembly" 1 %cloth --emit unknown
 # RUN: %expect_exit --empty-stdout 1 %cloth --emit assembly --src "%t.co" 2> "%t.err"
